@@ -146,6 +146,8 @@ public sealed partial class GameServer
 			s.Id == EsferasNegras.IdDoSet ? BlackStarComSupremoDeTeste : s.TemSupremo,
 			EhKaioshinDoCorpo(pl),
 			pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0)
+		// (2026-10-23) OS PEDIDOS SO DAS BLACK STAR (a Danca da Fusao, dono): no fim da lista delas, e de nenhum outro dragao
+		.Concat(s.Id == EsferasNegras.IdDoSet || DancaEmTodoDragaoDeTeste ? Desejos.DaBlackStar : [])
 		// (2026-10-22) O QUE O CRIADOR DESLIGOU no menu da estatua nao esta no dragao dele -- nem na janela, nem no pedido por verbo (que
 		// procura AQUI dentro)
 		.Where(d => DesligadosIgnoradosDeTeste || !s.Desligados.Contains(d.Id));
@@ -297,6 +299,7 @@ public sealed partial class GameServer
 		"matar" => DesejoDeMatar(pl, s, alvo),
 		"supremo" => DesejoSupremo(pl, s, pl),
 		"corpo_saiyajin" => DesejoDeCorpoSaiyajin(pl, s, alvo),
+		Desejos.IdDaDancaDaFusao => DesejoDaDancaDaFusao(pl, s),
 		_ => false,
 	};
 

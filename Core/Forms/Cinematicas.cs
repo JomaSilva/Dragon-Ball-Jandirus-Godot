@@ -528,6 +528,60 @@ public enum Efeito
 	/// ================================================================================================================================
 	/// </summary>
 	Passagem = 1048576,
+
+	/// <summary>
+	/// (2026-10-24) O FUNDO DA ESTREIA DO SSJ2 -- so na tela de QUEM VIRA. O dono: *"faça um efeito q so aparece pro personagem q virou ssj2 pela primeira vez (um efeito local) como pode ver na imagem, ficaria tudo escuro atras do personagem, tudo do jogo sumiria, e uma linha vermelha passaria atras e se expande cobrindo todo o fundo preto com esse efeito vermelho/amarelo, e ai começa a cinematica normal do ssj2 n deve durar mais do q 4 segundos isso tudo, e a musica do ssj2 ja deve começar desde o começo desse efeito, dps dele faz a cinematica padrao atual"*.
+	///
+	/// O jogo some atras do corpo, uma linha vermelha cruza o fundo preto e se abre em fogo vermelho e amarelo, e o mundo volta -- tudo
+	/// dentro de <see cref="Cinematicas.SegundosDoPreludio"/>, e quem desenha e o `FundoDaEstreia` do cliente. Quem assiste de fora nao ve
+	/// nada: o corpo parado e, depois, a cena de sempre. So a <see cref="Cinematicas.EstreiaDoSsj2"/> o escreve.
+	/// </summary>
+	FundoDaEstreia = 2097152,
+
+	/// <summary>
+	/// (2026-10-25) A COLUNA DE LUZ DAS ESTREIAS DIVINAS -- o dono, com uma imagem (uma coluna branca larga, de borda azulada, subindo do chao
+	/// ao ceu e acendendo o chao em volta): *"faça a cinematica da primeira vez transformando em UI pressagio(sign) ter esse clarao subindo do
+	/// personagem"*, e *"ultra ego vai ter um clarao parecido com do UI so q roxo"*.
+	///
+	/// ESTADO, como a <see cref="SilhuetaDoCorpo"/>: o beat ACENDE -- a coluna nasce nos pes e sobe ate o alto da tela --, ela engrossa ate a
+	/// virada, e quem a desfaz e o <see cref="Assumir"/>: ela se solta do chao, sobe e se apaga na cauda da cena. A COR E A DA FORMA
+	/// (`FormaDef.Aura`: a prata-azulada do -Sign-, o lilas do Ultra Ego), com o miolo branco. Atras do corpo, como a chama da cena. Quem
+	/// desenha e o tocador (`Transformacao.EstreiaDivina.cs`); so as estreias de <see cref="Cinematicas.EstreiaDivina"/> a escrevem.
+	/// </summary>
+	ColunaDeLuz = 4194304,
+
+	/// <summary>
+	/// (2026-10-25) O BRANCO QUE ENGOLE TUDO, E DO CORPO SO A SOMBRA -- *"e aparece so a silhueta do corpo como uma sombra"*, com uma imagem
+	/// (tudo branco, o corpo uma silhueta preta e borrada, com pontinhos escuros em volta).
+	///
+	/// O mundo some num branco (o painel junto, como no <see cref="FundoDaEstreia"/>) e o corpo fica por cima, preto -- na tela de quem vira E
+	/// na de quem esta PERTO: o dono, 2026-10-25: *"lembrando q a cinematica dos ui e ue n sao efeitos locais mas server side tb, todos perto
+	/// podem ver"*. Perto e o `view(src)` do DM, o mesmo do tremor cheio (<see cref="Cinematicas.RaioDoTremorCheio"/>) e o com que o
+	/// `ui_grand_cinematic` narra a coluna engolindo quem vira (`UltraInstinct.dm:361`); quem esta longe ve a <see cref="ColunaDeLuz"/>
+	/// engrossar e o corpo preto dentro dela. ESTADO ate a virada (<see cref="Assumir"/>), quando o branco e a sombra escoam juntos e o corpo
+	/// aparece na forma: *"e no final aparece ele transformado no UI sign"*.
+	/// </summary>
+	SombraNoBranco = 8388608,
+
+	/// <summary>
+	/// (2026-10-25) A GALAXIA DO PERFECTED -- *"e pro perfect UI aparece essa galaxia (terceira imagem) em volta do personagem e no final ela
+	/// comprime nele causando um clarao"*; a imagem e uma espiral branca e azul-lilas, com pedras escuras flutuando.
+	///
+	/// ESTADO: o beat a abre em volta do corpo (atras dele), ela gira a cena inteira e COMPRIME no corpo nos ultimos
+	/// <see cref="Cinematicas.SegundosDaCompressaoDaGalaxia"/> antes da virada -- o relogio e o da cena, contado pra tras do
+	/// <see cref="Assumir"/>, e nao um beat a mais. O clarao e o corpo branco sao da propria virada (<see cref="ClaraoDeTela"/> e
+	/// <see cref="SilhuetaBranca"/>: *"mesmo efeito de transformar instantaneamente com o personagem ficando todo branco"*).
+	/// </summary>
+	Galaxia = 16777216,
+
+	/// <summary>
+	/// (2026-10-25) O FOGO EM VOLTA DO ULTRA EGO -- *"com uns efeitos q parecem fogo em volta roxo"*; a imagem e um paredao de fogo magenta
+	/// subindo atras de pinheiros escuros.
+	///
+	/// ESTADO: o beat acende um anel de chamas no chao em volta do corpo, elas sobem e crescem ate a virada, e na virada estouram e se apagam
+	/// na cauda. A COR E A DA FORMA, como a da <see cref="ColunaDeLuz"/>.
+	/// </summary>
+	FogoEmVolta = 33554432,
 }
 
 /// <summary>
@@ -634,6 +688,13 @@ public sealed class Cinematica
 	/// poder reagir num jogo com outras pessoas em volta.
 	/// </summary>
 	public double SegundosPreso;
+
+	/// <summary>
+	/// (2026-10-24) QUANTO DO <see cref="SegundosPreso"/> E PRELUDIO DO PORT, NA FRENTE DA CENA DO DM: so a
+	/// <see cref="Cinematicas.EstreiaDoSsj2"/> tem (o fundo do dono, <see cref="Cinematicas.SegundosDoPreludio"/>). A regua das proc do
+	/// DM (`RoboDeForma.ADuracaoDoDm`) desconta: ela cronometra a cena do BYOND, e o preludio vem antes dela.
+	/// </summary>
+	public double PreludioNaFrente;
 
 	/// <summary>
 	/// A FOLHA QUE O BEAT <see cref="Efeito.SilhuetaDoCorpo"/> acende nesta cena.
@@ -793,7 +854,7 @@ public sealed class Cinematica
 	private Beat[] _beats = [];
 
 	/// <summary>
-	/// ============================ ESTA CENA QUEBRA O CHAO? -- **SIM, MENOS UMA** ============================
+	/// ============================ ESTA CENA QUEBRA O CHAO? -- **SIM, MENOS TRES** ============================
 	/// O funil abaixo poe cratera e poeira no beat que assume, em toda cena, por construcao. Isso e a
 	/// regra e continua sendo: uma transformacao abre o chao, e o dono cobrou o instante disso duas
 	/// vezes. Esta propriedade nasce `true` justamente pra que **uma cena nova nasca quebrando o chao
@@ -822,8 +883,22 @@ public sealed class Cinematica
 	/// inteira), o tremor e o `rockmoving` seguem no beat zero e os aneis de choque seguem na cauda. O
 	/// que saiu foi a NUVEM, que o original nao tem.
 	/// ==========================================================================================================
+	///
+	/// ============================ (2026-10-25) E O ULTRA INSTINTO, PELO DONO ============================
+	/// *"so ultra ego q cria cratera, ui e ui perfeito nao criam"*. O -Sign- e o Perfected (a curta e a estreia -- o `Encurtar` e o
+	/// `ComEfeitos` carregam o campo) ficam sem cratera -- e sem poeira, pela regra do port de que a poeira e a da cratera (a `diagforma`:
+	/// *"nao ha poeira nenhuma sem cratera nenhuma"*) --; o Ultra Ego e a Destroyer continuam abrindo o chao. O beat que SO tinha a poeira
+	/// (a cauda das duas cenas) some na leitura (`SemChao`) em vez de ficar vazio, e a duracao continua contando com ele (`Segundos` le o
+	/// roteiro cru): a cena acaba onde acabava, e o branco do Perfected escoa ate o mesmo fim.
+	/// ==========================================================================================================
 	/// </summary>
 	public bool OChaoAbre { get; init; } = true;
+
+	/// <summary>
+	/// (2026-10-25) O ROTEIRO CRU, antes do funil de leitura do chao: e o que a estreia (`ComEfeitos` e a estreia com fundo) le, pra durar
+	/// o mesmo que a cena do DM -- a leitura dela tira o chao de novo (o campo atravessa).
+	/// </summary>
+	internal Beat[] BeatsCrus => _beats;
 
 	/// <summary>
 	/// O ROTEIRO -- e ele passa pelo funil da cratera antes de virar cena. Ver
@@ -847,12 +922,10 @@ public sealed class Cinematica
 	/// TIRA A CRATERA E A POEIRA DE TODOS OS BEATS. Ver <see cref="OChaoAbre"/> sobre a unica cena que
 	/// passa por aqui e por que.
 	/// </summary>
-	private static Beat[] SemChao(Beat[] roteiro)
-	{
-		var saida = new Beat[roteiro.Length];
-		for (int i = 0; i < roteiro.Length; i++) saida[i] = roteiro[i] with { Faz = roteiro[i].Faz & ~Chao };
-		return saida;
-	}
+	private static Beat[] SemChao(Beat[] roteiro) =>
+		// (2026-10-25) o beat que SO tinha o chao some, em vez de ficar vazio: a cauda do -Sign- e do Perfected era so a poeira
+		[.. roteiro.Select(b => b with { Faz = b.Faz & ~Chao })
+				   .Where(b => b.Faz != Efeito.Nada || b.Som.Length > 0 || b.Fala.Length > 0 || b.Narra.Length > 0)];
 
 	/// <summary>Os dois efeitos de chao que NENHUM roteiro decide. Ver o funil logo abaixo.</summary>
 	private const Efeito Chao = Efeito.Cratera | Efeito.Poeira;
@@ -1426,6 +1499,8 @@ public static class Cinematicas
 		Forma = "ui_sign",
 		Musica = "Ui forms/omen/Ultimate Battle Theme Official Guitar Version - Full Song Montage Montaje.mp3",
 		SegundosPreso = 22.0,
+		// (2026-10-25) O ULTRA INSTINTO NAO ABRE O CHAO -- o dono: *"so ultra ego q cria cratera, ui e ui perfeito nao criam"*. Ver `OChaoAbre`.
+		OChaoAbre = false,
 		Beats =
 		[
 			new(0.0, Efeito.Nada, Som: "chargeaura",
@@ -1476,6 +1551,8 @@ public static class Cinematicas
 		Forma = "ui_perfected",
 		Musica = "Ui forms/Perfect/Dragon Ball Super Moro Arc   Ultra Instinct Perfected! (Norihito Sumitomo)   By Gladius.mp3",
 		SegundosPreso = 22.0,
+		// (2026-10-25) nem o Perfected -- o mesmo pedido do -Sign-, logo acima
+		OChaoAbre = false,
 		Beats =
 		[
 			new(0.0, Efeito.Tremor, Som: "chargeaura",
@@ -2019,7 +2096,7 @@ public static class Cinematicas
 				// de jeito nenhum -- a `AuraGrande` deste beat e a chama que SOBE, nao a que lava o corpo.
 				//
 				// Ele vira `BanhoDeCor` porque e o que ele e: uma cor por cima do boneco inteiro, por um
-				// segundo, e depois nao. A cor sai da forma (`ff4d6a` no SSG) e nao do arquivo -- e ha uma
+				// segundo, e depois nao. A cor sai da forma (o `Aura` do SSG) e nao do arquivo -- e ha uma
 				// DIVERGENCIA DECLARADA aqui, do mesmo tipo da `DeusRosa` em `Catalogo.Folha`: o
 				// `godhue.dmi` do repo e AZUL (media de pixel 101,150,254) numa cena que e vermelha do
 				// comeco ao fim, e a `godhue2.dmi` -- a que fica de aura permanente -- e que e laranja. Se
@@ -2514,8 +2591,8 @@ public static class Cinematicas
 		Jandirus.Core.Forms.Catalogo.IdMistico,
 		"o potencial que estava dormindo se mexe, e o ar em volta esfria.",
 		"nada explode: o corpo simplesmente para de ter limite.",
-		// "You unleash your godly Mystic form."
-		"o Místico se abre -- todo o potencial de uma vez, sem virar deus.");
+		// "You unleash your godly Mystic form." -- (2026-10-23) e o nome na tela virou Potential Unleashed (o dono)
+		"o Potential Unleashed se abre -- todo o potencial de uma vez, sem virar deus.");
 
 	/// <summary>
 	/// BEAST -- o despertar do Prodigial (`BeastUp()` + `/obj/buff/BeastForm.Buff()`, `Mystic.dm`).
@@ -2812,6 +2889,17 @@ public static class Cinematicas
 		"tensao_divina", "", SurtoInstantaneo,
 		"Um Humano também chega lá!",
 		"o ki divino entra na tensão, e o corpo de um Humano alcança o patamar dos deuses.");
+
+	/// <summary>
+	/// (2026-10-23) SUPER MAJIN -- a forma do Majin que nao e Corrupted (`Forms.SuperMajin`). NAO TEM PROC DE CENA NO DM: o que havia la
+	/// era a skill de buff (`majin.dm:117-124`: *"You become a Super Majin!"* e o `1aura.wav`), e ela foi aposentada. Ganha o surto curto
+	/// das formas sem proc, com o piso de la (<see cref="SurtoInstantaneo"/>), pela mesma regra da Tensao: cena INVENTADA nao passa da menor
+	/// cena do DM. A narracao e a do `to_chat` da skill, com o visual que o dono escolheu (a aura rosa e as faiscas).
+	/// </summary>
+	public static readonly Cinematica SuperMajin = SurtoCurto(
+		Forms.SuperMajin.Id, "", SurtoInstantaneo,
+		"Super Majin!",
+		"vira um Super Majin: a aura rosa explode em volta do corpo, e faíscas estalam na pele.");
 
 	/// <summary>
 	/// FURY, a forma do Deus da Destruicao. No DM ela e MUDA e instantanea: o `Buff()`
@@ -3760,6 +3848,9 @@ public static class Cinematicas
 		// (v0.4.0) a linha da Tensao do Humano
 		AltaTensao, TensaoExtrema, TensaoDivina,
 
+		// (2026-10-23) o Super Majin do Majin que nao e Corrupted
+		SuperMajin,
+
 		// e o BIO-ANDROIDE, a unica forma do catalogo que estava sem cena nenhuma -- as tres cenas
 		// avulsas dele (os dois degraus e o SSJ2 pela morte) NAO entram aqui, pelo motivo escrito
 		// junto delas.
@@ -4121,9 +4212,151 @@ public static class Cinematicas
 	{
 		DegrauDeCena.Nenhuma => null,
 		_ when instavel && !DescontroleSemCenaDeTeste => degrau == DegrauDeCena.Estreia ? FrostDescontrole : FrostSurtoDoDescontrole,
-		DegrauDeCena.Estreia => Para(d),
+		DegrauDeCena.Estreia => DaEstreia(d),
 		_ => Para(d) is { } cheia ? Encurtada(cheia) : null,
 	};
+
+	// ============================ (2026-10-24) O PRELUDIO DA ESTREIA DO SSJ2 ============================
+	/// <summary>
+	/// A CENA CHEIA DA PRIMEIRA VEZ: a do DM (<see cref="Para"/>), e no SSJ2 ela com o preludio do dono na frente (<see cref="EstreiaDoSsj2"/>).
+	/// (2026-10-25) E nas tres divinas, ela com os efeitos do dono por cima (<see cref="EstreiaDivina"/>).
+	/// So a estreia: a encurtada continua saindo da cena do DM, sem preludio e sem efeito nenhum destes.
+	/// </summary>
+	public static Cinematica? DaEstreia(FormaDef d) =>
+		d.Id == Ssj2.Forma && !EstreiaDoSsj2SemPreludioDeTeste ? EstreiaDoSsj2
+		: !EstreiasDivinasDeAntesDeTeste && EstreiaDivina(d.Id) is { } divina ? divina
+		: Para(d);
+
+	/// <summary>
+	/// QUANTO DURA O PRELUDIO DA ESTREIA DO SSJ2: o fundo inteiro, do mundo sumindo ao mundo voltando. O dono: *"n deve durar mais do q 4
+	/// segundos isso tudo"*.
+	/// </summary>
+	public const double SegundosDoPreludio = 4.0;
+
+	private static Cinematica? _estreiaDoSsj2;
+
+	/// <summary>
+	/// A ESTREIA DO SSJ2 COM O PRELUDIO: o beat <see cref="Efeito.FundoDaEstreia"/> no segundo zero e a cena do DM (<see cref="Ssj2"/>) inteira
+	/// <see cref="SegundosDoPreludio"/> depois. O roteiro anda PRA TODO MUNDO, e nao so pra quem vira: o servidor prende o corpo pelo mesmo
+	/// funil (`MarcarCena`), e a forma visivel trocaria no meio do fundo se so a tela de quem vira esperasse. Quem assiste ve o corpo parado e,
+	/// depois, a cena de sempre. A musica e a da cena -- toca do segundo zero, junto do fundo, como o dono pediu.
+	/// </summary>
+	public static Cinematica EstreiaDoSsj2 => _estreiaDoSsj2 ??= ComPreludio(Ssj2, SegundosDoPreludio);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagpreludio`): a estreia do SSJ2 volta a ser a cena do DM, sem o fundo -- o jogo de antes de 2026-10-24.
+	/// Lido pelo <see cref="DaEstreia"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EstreiaDoSsj2SemPreludioDeTeste;
+
+	/// <summary>A cena com o fundo na frente: os mesmos campos (o molde do <see cref="Encurtar"/>), o corpo preso a mais e os beats depois.</summary>
+	private static Cinematica ComPreludio(Cinematica cheia, double segundos) => new()
+	{
+		Forma = cheia.Forma,
+		Musica = cheia.Musica,
+		SegundosPreso = cheia.SegundosPreso + segundos,
+		PreludioNaFrente = cheia.PreludioNaFrente + segundos,
+		Silhueta = cheia.Silhueta,
+		FolhaDaPassagem = cheia.FolhaDaPassagem,
+		EstadoDaPassagem = cheia.EstadoDaPassagem,
+		NaCorDoCorpo = cheia.NaCorDoCorpo,
+		CorPropria = cheia.CorPropria,
+		ColadaDaCena = cheia.ColadaDaCena,
+		OChaoAbre = cheia.OChaoAbre,
+		// (2026-10-25) o roteiro CRU, pra durar o mesmo que a cheia (a leitura desta tira o chao de novo) -- ver `Cinematica.BeatsCrus`
+		Beats = [new Beat(0.0, Efeito.FundoDaEstreia), .. cheia.BeatsCrus.Select(b => b with { Em = Math.Round(b.Em + segundos, 2) })],
+	};
+
+	// ============================ (2026-10-25) AS ESTREIAS DIVINAS ============================
+	/// <summary>
+	/// AS TRES ESTREIAS DIVINAS COM OS EFEITOS DO DONO. Ele, com quatro imagens: *"faça a cinematica da primeira vez transformando em UI
+	/// pressagio(sign) ter esse clarao subindo do personagem(imagem 1) , e aparece so a silhueta do corpo como uma sombra(imagem 2) , e no final
+	/// aparece ele transformado no UI sign. e pro perfect UI aparece essa galaxia (terceira imagem) em volta do personagem e no final ela
+	/// comprime nele causando um clarao (mesmo efeito de transformar instantaneamente com o personagem ficando todo branco) e lentamente esse
+	/// efeito vai saindo e mostrando o personagem no perfect ultra instinct. ultra ego vai ter um clarao parecido com do UI so q roxo com uns
+	/// efeitos q parecem fogo em volta roxo"*.
+	///
+	/// A CENA DO DM INTEIRA, COM OS EFEITOS NOVOS POR CIMA: o relogio, o corpo preso, a musica, as falas e a virada sao os dela (o
+	/// `ui_grand_cinematic` e o `ue_grand_cinematic`, 22 s cada), e os beats novos caem nos instantes que ela ja tinha (<see cref="ComEfeitos"/>).
+	/// Cada efeito pegou o instante que o proprio roteiro ja narrava:
+	///   * UI -Sign-: a coluna nasce com o primeiro anel (2,0 s) e engrossa a subida inteira; aos 12,0 s -- *"uma coluna de luz azul-prateada
+	///     engole tudo"* -- ela engole a tela de quem vira, e do corpo so fica a sombra (<see cref="Efeito.SombraNoBranco"/>) ate a virada;
+	///   * Perfected: a galaxia abre com o primeiro anel (2,0 s), gira a cena inteira e comprime no corpo nos ultimos
+	///     <see cref="SegundosDaCompressaoDaGalaxia"/> antes da virada -- e a virada lava o corpo de branco, que escoa ate o fim da cena
+	///     (<see cref="Efeito.SilhuetaBranca"/>: o canal da instantanea, devagar);
+	///   * Ultra Ego: o fogo roxo acende em volta com o primeiro tremor da subida (4,0 s), com o cone de luz dentro dele (no tocador). A
+	///     coluna que irrompia aos 12,0 s SAIU (2026-10-25, o dono: *"n precisa de um segundo raio no ultra ego, so do primeiro"*).
+	/// Nulo pra toda forma fora das tres.
+	/// </summary>
+	public static Cinematica? EstreiaDivina(string id) =>
+		id == UiSign.Forma ? EstreiaDoUiSign
+		: id == UiPerfected.Forma ? EstreiaDoUiPerfected
+		: id == UltraEgo.Forma ? EstreiaDoUltraEgo
+		: null;
+
+	private static Cinematica? _estreiaDoUiSign, _estreiaDoUiPerfected, _estreiaDoUltraEgo;
+
+	/// <summary>A estreia do UI -Sign-: a coluna de luz aos 2,0 s, e o branco que engole tudo aos 12,0 s. Ver <see cref="EstreiaDivina"/>.</summary>
+	public static Cinematica EstreiaDoUiSign =>
+		_estreiaDoUiSign ??= ComEfeitos(UiSign, new Beat(2.0, Efeito.ColunaDeLuz), new Beat(12.0, Efeito.SombraNoBranco));
+
+	/// <summary>A estreia do Perfected: a galaxia aos 2,0 s, e a virada que lava o corpo de branco. Ver <see cref="EstreiaDivina"/>.</summary>
+	public static Cinematica EstreiaDoUiPerfected =>
+		_estreiaDoUiPerfected ??= ComEfeitos(UiPerfected, new Beat(2.0, Efeito.Galaxia), new Beat(UiPerfected.SegundosAteAVirada, Efeito.SilhuetaBranca));
+
+	/// <summary>A estreia do Ultra Ego: o fogo roxo aos 4,0 s (e o cone dentro dele), e so -- a coluna dos 12,0 s saiu. Ver <see cref="EstreiaDivina"/>.</summary>
+	public static Cinematica EstreiaDoUltraEgo =>
+		_estreiaDoUltraEgo ??= ComEfeitos(UltraEgo, new Beat(4.0, Efeito.FogoEmVolta));
+
+	/// <summary>
+	/// QUANTO A GALAXIA DO PERFECTED LEVA PRA COMPRIMIR NO CORPO, terminando na virada -- *"no final ela comprime nele causando um clarao"*.
+	/// O tocador conta pra tras a partir da virada da cena (`Transformacao.EstreiaDivina.cs`).
+	/// </summary>
+	public const double SegundosDaCompressaoDaGalaxia = 1.2;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagestreiadivina`): as estreias divinas voltam a ser as cenas do DM, sem os efeitos do dono -- o jogo de
+	/// antes de 2026-10-25. Lido pelo <see cref="DaEstreia"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EstreiasDivinasDeAntesDeTeste;
+
+	/// <summary>
+	/// A cena com efeitos a mais: os mesmos campos (o molde do <see cref="ComPreludio"/>) e os beats dela com os novos -- num instante que ela ja
+	/// tem, o OU das bandeiras; num instante novo, um beat a mais, no lugar dele na ordem.
+	/// </summary>
+	private static Cinematica ComEfeitos(Cinematica cheia, params Beat[] extras)
+	{
+		// (2026-10-25) SEM A CHAMA DA CENA (`Efeito.AuraGrande`) -- o dono, vendo as tres estreias: *"tira essa aura de carga q fica em volta
+		// deles no final da cinematica"*. A cena do DM (a curta, que passa pelo `Encurtar` e nao por aqui) continua com ela.
+		// (o roteiro CRU: a estreia dura o mesmo que a cena do DM, e a leitura dela tira o chao de novo -- ver `Cinematica.BeatsCrus`)
+		var beats = cheia.BeatsCrus.Select(b => b with { Faz = b.Faz & ~Efeito.AuraGrande }).ToList();
+		foreach (Beat x in extras)
+		{
+			int i = beats.FindIndex(b => Math.Abs(b.Em - x.Em) < 1e-9);
+			if (i >= 0)
+			{
+				beats[i] = beats[i] with { Faz = beats[i].Faz | x.Faz };
+				continue;
+			}
+			int depois = beats.FindIndex(b => b.Em > x.Em);
+			beats.Insert(depois < 0 ? beats.Count : depois, x);
+		}
+		return new()
+		{
+			Forma = cheia.Forma,
+			Musica = cheia.Musica,
+			SegundosPreso = cheia.SegundosPreso,
+			PreludioNaFrente = cheia.PreludioNaFrente,
+			Silhueta = cheia.Silhueta,
+			FolhaDaPassagem = cheia.FolhaDaPassagem,
+			EstadoDaPassagem = cheia.EstadoDaPassagem,
+			NaCorDoCorpo = cheia.NaCorDoCorpo,
+			CorPropria = cheia.CorPropria,
+			ColadaDaCena = cheia.ColadaDaCena,
+			OChaoAbre = cheia.OChaoAbre,
+			Beats = [.. beats],
+		};
+	}
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancadas `--frostteste` e `--diagmutante`): o bit do descontrole e ignorado e o Mutante volta a abrir a
@@ -4266,6 +4499,9 @@ public static class Cinematicas
 			// primeira que for nao saia na cor da forma, calada.
 			CorPropria = cheia.CorPropria,
 			ColadaDaCena = cheia.ColadaDaCena,
+			// (2026-10-25) O CHAO ATRAVESSA tambem: sem esta linha a curta do Ultra Instinto voltava a abrir o chao (o funil do `Beats` poe a
+			// cratera de novo, e so o campo a tira) -- ver `OChaoAbre`.
+			OChaoAbre = cheia.OChaoAbre,
 			Beats = [.. beats],
 		};
 	}

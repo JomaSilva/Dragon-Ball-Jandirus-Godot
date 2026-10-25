@@ -67,6 +67,7 @@ public partial class MenuJogo
 		// (2026-10-19) O RASTRO EM CURSO vem antes de tudo -- inclusive com a lista vazia, que e justamente quando ele se perdeu e
 		// alguem quer parar de segui-lo.
 		if (RastroDoSense.Ativo) CartaoDoRastro(lista);
+		CartaoDaMaestriaDaTransmissao();   // (2026-10-23) a maestria do Instant Transmission -- ver MenuJogo.MaestriaDaTransmissao.cs
 
 		if (lista.Count == 0)
 		{
@@ -169,7 +170,7 @@ public partial class MenuJogo
 	{
 		GameClient? c = GameClient.Instance;
 		// (2026-10-19) as duas buscas e o rastro -- ver `AssinaturaDaBuscaEDoRastro` (`MenuJogo.Rastro.cs`)
-		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|{c?.NivelDaTransmissao}|{AssinaturaDaBuscaEDoRastro()}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
+		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|{c?.NivelDaTransmissao}{c?.Transmissao}|{AssinaturaDaBuscaEDoRastro()}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
 			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}/{p.Corpo}"));
 	}
 }

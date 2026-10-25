@@ -82,6 +82,7 @@
   },
   "roupas": [
     "res://Assets/Sprites/Clothes/Abdominal_Machinegun.tres",
+    "res://Assets/Sprites/Clothes/Android17 Suit.tres",
     "res://Assets/Sprites/Clothes/Angel Wings.tres",
     "res://Assets/Sprites/Clothes/Black Goku Suit Fixed.tres",
     "res://Assets/Sprites/Clothes/Blue Armor.tres",
@@ -222,10 +223,6 @@
     "res://Assets/Sprites/Clothes/PhoenixPauldronsMakyo.tres",
     "res://Assets/Sprites/Clothes/PhoenixTorso.tres",
     "res://Assets/Sprites/Clothes/PhoenixTorsoMakyo.tres",
-    "res://Assets/Sprites/Clothes/potara.tres",
-    "res://Assets/Sprites/Clothes/Potara-Equipped.tres",
-    "res://Assets/Sprites/Clothes/potaraleft.tres",
-    "res://Assets/Sprites/Clothes/potararight.tres",
     "res://Assets/Sprites/Clothes/PredatorMask.tres",
     "res://Assets/Sprites/Clothes/PredatorWristBracerR.tres",
     "res://Assets/Sprites/Clothes/Pride Trooper Suit.tres",

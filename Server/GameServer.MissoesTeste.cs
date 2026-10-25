@@ -132,6 +132,7 @@ public partial class GameServer
 			OCicloVivo(guardiao, vilao);
 			OServicoEAVerba(mestre, aluno, presidente, kaio);
 			ORelogio(guardiao, vilao);
+			OsTextosDasTarefas();
 		}
 		catch (Exception e) { AfirmarMis($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -255,7 +256,8 @@ public partial class GameServer
 		AfirmarMis("o prazo e 3 dias IN-GAME derivados do ceu (nao um numero solto)",
 			Math.Abs(MissoesDeCargo.SegundosDePrazo - 3 * Espaco.SegundosPorDiaInGame) < 1e-9,
 			$"{MissoesDeCargo.SegundosDePrazo:0} s");
-		AfirmarMis("...e isso da 72h in-game", MissoesDeCargo.TextoDeTempo(MissoesDeCargo.SegundosDePrazo).StartsWith("72h"),
+		// (2026-10-24, `cargotexto`) o texto virou "72 horas do jogo (~72 min reais)" -- o "72h in-game" de antes ninguem entendia
+		AfirmarMis("...e isso da 72 horas in-game", MissoesDeCargo.TextoDeTempo(MissoesDeCargo.SegundosDePrazo).StartsWith("72 horas do jogo"),
 			MissoesDeCargo.TextoDeTempo(MissoesDeCargo.SegundosDePrazo));
 		AfirmarMis("o texto tambem diz o equivalente REAL (senao ninguem sabe se da tempo)",
 			MissoesDeCargo.TextoDeTempo(MissoesDeCargo.SegundosDePrazo).Contains("min reais"));
@@ -397,6 +399,68 @@ public partial class GameServer
 		guardiao.Ficha.godki = null;
 		ReconciliarDadiva(guardiao);
 		ReconciliarDadiva(vilao);
+	}
+
+	// =====================================================================
+	// 5. OS TEXTOS DAS TAREFAS (dono, 2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// *"Explique melhor oq tem q fazer aqui e reescreva essas quests de rank de uma forma mais entendivel"* -- com o print de um
+	/// jogador (*"I cannot comprehend what this actually means"*) sobre o SERVICO de antes, que dava as duas metades da regra pra todo
+	/// cargo. A regua, pelo texto que o servidor manda (`MissoesDeCargo`, o Core):
+	///   (a) o servico do MESTRE fala de quem TREINA e nao de mortos; o do OUTRO MUNDO fala de MORTOS e nao de quem treina -- e os dois
+	///       dizem o raio, o ponto por minuto, o teto por minuto e o placar;
+	///   (b) o aviso de tarefa nova diz o prazo nas duas unidades, que a terceira falha TIRA O CARGO, o que cumprir paga e onde ver o
+	///       andamento -- e o maligno nao promete karma;
+	///   (c) a falhada diz quantas faltam pra perder o cargo; a cumprida, a falha que caiu.
+	/// Contra-exemplo: o texto do servico de ANTES (literal, o que o jogador leu) reprova a regua (a).
+	/// A TRADUCAO desses mesmos textos e cobrada na bancada da lingua (Tools/AssetPipeline, secao 4b).
+	/// </summary>
+	private void OsTextosDasTarefas()
+	{
+		GD.Print("[missoes] -- 5. os textos das tarefas, pra quem joga entender --");
+		var servico = new FichaDeMissao { Tarefa = TipoDeTarefa.Servico, Progresso = 4, Meta = 15 };
+		string doMestre = MissoesDeCargo.Descricao(servico, doOutroMundo: false);
+		string doKaio = MissoesDeCargo.Descricao(servico, doOutroMundo: true);
+		static bool DizOServico(string s) =>
+			s.Contains($"{MissoesDeCargo.TilesDoServico} tiles", StringComparison.Ordinal)
+			&& s.Contains("1 ponto por minuto", StringComparison.Ordinal)
+			&& s.Contains($"até {MissoesDeCargo.TetoDoServico} por minuto", StringComparison.Ordinal)
+			&& s.Contains("4/15", StringComparison.Ordinal);
+		static bool SoOMestre(string s) => DizOServico(s) && s.Contains("TREINANDO", StringComparison.Ordinal) && !s.Contains("MORTO", StringComparison.Ordinal);
+		static bool SoOKaio(string s) => DizOServico(s) && s.Contains("MORTOS", StringComparison.Ordinal) && !s.Contains("TREINA", StringComparison.Ordinal);
+		AfirmarMis("(a) O SERVICO DIZ SO A PARTE DE QUEM LE: o mestre, os vivos TREINANDO; o Outro Mundo, os MORTOS -- com o raio, o ponto por "
+				 + "minuto, o teto e o placar (*\"I cannot comprehend what this actually means\"*)",
+				   SoOMestre(doMestre) && SoOKaio(doKaio), $"mestre: {doMestre} || Outro Mundo: {doKaio}");
+		const string deAntes = "SERVIÇO: 4/15 pontos (visitantes qualificados a 6 tiles: vivos TREINANDO para os mestres, almas MORTAS para o Outro Mundo)";
+		AfirmarMis("(contra-exemplo: o texto de antes, o que o jogador leu) as duas metades pra todo cargo -- a regua (a) REPROVA",
+				   !SoOMestre(deAntes) && !SoOKaio(deAntes));
+
+		var caca = new FichaDeMissao { Tarefa = TipoDeTarefa.Vilao, AlvoNome = "Freeza", Falhas = 1 };
+		string[] nova = MissoesDeCargo.AvisoDeTarefaNova("Guardião da Terra", caca, doOutroMundo: false, maligno: false);
+		string[] novaMaligna = MissoesDeCargo.AvisoDeTarefaNova("Demon Lord", caca, doOutroMundo: false, maligno: true);
+		string tudo = string.Join(" | ", nova);
+		AfirmarMis("(b) A TAREFA NOVA DIZ TUDO: o que fazer (mate-o enquanto online), o prazo nas duas unidades, que a 3a falha TIRA O CARGO, o "
+				 + "que cumprir paga e onde ver o andamento (Rank Duty)",
+				   nova.Length == 3 && nova[0].Contains("NOVA TAREFA -- CAÇAR o vilão Freeza: mate-o enquanto ele estiver online", StringComparison.Ordinal)
+				   && nova[1].Contains("horas do jogo", StringComparison.Ordinal) && nova[1].Contains("min reais", StringComparison.Ordinal)
+				   && nova[1].Contains("(tem 1 de 3)", StringComparison.Ordinal) && nova[1].Contains("com 3 falhas, perde o cargo", StringComparison.Ordinal)
+				   && nova[2].Contains($"{MissoesDeCargo.ZeniPorTarefa:N0} zeni", StringComparison.Ordinal) && nova[2].Contains("karma", StringComparison.Ordinal)
+				   && nova[2].Contains("Rank Duty", StringComparison.Ordinal),
+				   tudo);
+		AfirmarMis("...e o cargo MALIGNO nao promete karma (cumprir nao paga karma bom, `RQ_EVIL`)",
+				   novaMaligna.Length == 3 && !novaMaligna[2].Contains("karma", StringComparison.Ordinal), novaMaligna.LastOrDefault() ?? "");
+
+		var falhou = new FichaDeMissao { Falhas = 2 };
+		string falhada = MissoesDeCargo.AvisoDeFalhada("Crane Hermit", falhou);
+		string cumprida = MissoesDeCargo.AvisoDeCumprida("Crane Hermit", MissoesDeCargo.NomeCurto(servico, false), falhou, false,
+														   MissoesDeCargo.TextoDeRenome(1, true));
+		AfirmarMis("(c) A FALHADA diz que a terceira tira o cargo; a CUMPRIDA, o que pagou, a falha que caiu e o renome",
+				   falhada.Contains("Falhas: 2/3 (com 3, você perde o cargo)", StringComparison.Ordinal)
+				   && cumprida.Contains("TAREFA CUMPRIDA (ensinar quem treina)", StringComparison.Ordinal)
+				   && cumprida.Contains("1 falha a menos (agora 2/3)", StringComparison.Ordinal)
+				   && cumprida.Contains("Renome: 1/3", StringComparison.Ordinal),
+				   $"{falhada} || {cumprida}");
 	}
 
 	// =====================================================================

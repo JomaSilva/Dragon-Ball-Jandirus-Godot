@@ -272,8 +272,8 @@ public sealed partial class GameServer
 	/// que nao tem dono (ninguem a assentou) e de quem chegar.
 	/// </summary>
 	private bool ADrillEDele(Obra o, ServerPlayer pl) =>
-		DrillDeQualquerUmDeTeste || o.DonoConta.Length == 0
-		|| string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase);
+		// (2026-10-25) a sem dono continua de quem chegar; e a liberada, e a do corpo que o Neo Tuffle dirige -- ver `MexeComoDono`
+		DrillDeQualquerUmDeTeste || MexeComoDono(o, pl, semDonoEDeTodos: true);
 
 	/// <summary>
 	/// A DRILL AO ALCANCE DA MAO (a mais perto, como toda maquina do menu da tecla E), JA POSTA EM DIA -- ela

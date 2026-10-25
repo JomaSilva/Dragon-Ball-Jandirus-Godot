@@ -14,7 +14,8 @@ namespace Jandirus.Client;
 /// quatro cenas da saga tocando pelo gatilho de verdade (o Kai absorvido, o amigo morto, a outra metade vencida, os tres jogadores
 /// selados), a metamorfose desenhada (a passagem) no meio delas, o corpo novo depois da virada, a outra metade de pe, a Forma Pura
 /// com o Kid Boo na cor do jogador, a vinheta da loucura fechando, o tunel e os gritos da insana, o sono, a Sycophantic Rage num
-/// raio na mao -- e o RELOG de verdade (a conexao cai e volta), que cospe quem estava dentro e devolve o corpo a Forma Pura.
+/// raio na mao -- e o RELOG de verdade (a conexao cai e volta) com um NPC devorado dentro: desde 2026-10-23 (dono) ele FICA, o corpo
+/// volta FORA da Forma Pura com o botao de expelir dele no menu, e expelir pelo botao devolve a Forma Pura.
 ///
 /// (dono, no meio do lote: *"lembrando q majin absorver npc faz ele sumir sem deixar um corpo, e o conserto na regeneraçao do majin
 /// é pra todos, nao so o corrupted"*) ANTES DA SAGA, a regeneracao de morte num Majin COMUM, com a mesma regua da Forma Pura
@@ -37,8 +38,8 @@ public partial class RoboDaSagaMajin : Node
 	private static GameClient? C => GameClient.Instance;
 	private static Jandirus.Server.GameServer? S => Jandirus.Server.GameServer.Instance as Jandirus.Server.GameServer;
 
-	/// <summary>A regeneracao do Majin comum, quatro cenas de 27,5 s, a da Forma Pura, a loucura, o sono, o relog -- e folga.</summary>
-	private const double Paciencia = 450;
+	/// <summary>A regeneracao do Majin comum, quatro cenas de 27,5 s, a da Forma Pura, a loucura, o sono, o relog e o expelir -- e folga.</summary>
+	private const double Paciencia = 540;
 
 	private readonly List<string> _linhas = [];
 	private readonly List<string> _falhas = [];
@@ -58,8 +59,22 @@ public partial class RoboDaSagaMajin : Node
 
 	private void Nota(string oque) => _linhas.Add("  --     " + oque);
 
+	/// <summary>
+	/// O ROBO VIVO -- um so por processo. O relog remonta o mundo pelo `Boot.MontarMundo`, que cria OUTRO robo: o segundo recomecava a
+	/// saga do zero no meio do primeiro (r2 e d1 de 2026-10-24: logo depois do login a classe ia pra Normal, o corpo se desfazia e a lista
+	/// de quem esta dentro esvaziava -- era o passo do Majin comum do robo novo, e nao o jogo).
+	/// </summary>
+	private static RoboDaSagaMajin? _vivo;
+
 	public override void _Ready()
 	{
+		if (_vivo is { } outro && IsInstanceValid(outro) && outro != this)
+		{
+			_acabou = true;
+			QueueFree();
+			return;
+		}
+		_vivo = this;
 		ProcessMode = ProcessModeEnum.Always;
 		if (GetParent() is Boot boot) _boot = boot;
 		if (C is { } cli) cli.Falou += AoOuvir;
@@ -70,7 +85,9 @@ public partial class RoboDaSagaMajin : Node
 	public override void _ExitTree()
 	{
 		// SO NA SAIDA DE VERDADE: a mudanca pra raiz tambem passa por aqui.
-		if (IsQueuedForDeletion() && C is { } cli) cli.Falou -= AoOuvir;
+		if (!IsQueuedForDeletion() || _vivo != this) return;
+		_vivo = null;
+		if (C is { } cli) cli.Falou -= AoOuvir;
 	}
 
 	private void Emancipar()
@@ -668,9 +685,15 @@ public partial class RoboDaSagaMajin : Node
 		FolhasPresas.Carregar(folhaDoCorpo) is { } f && f.HasAnimation(PedacosDoMajin.AnimDaReconstrucao) ? folhaDoCorpo : PedacosDoMajin.FolhaDosPedacos;
 
 	// =====================================================================
-	// 11..12) ABSORVER TIRA DA PURA, E O RELOG A DEVOLVE
+	// 11..13) ABSORVER TIRA DA PURA; O NPC FICA NO RELOG (dono, 2026-10-23); EXPELIR A DEVOLVE
 	// =====================================================================
 	private int _idAntesDoRelog;
+
+	/// <summary>O nome do NPC devorado como o servidor o registrou -- o `Expelir: nome` que o menu tem de mostrar depois do relog.</summary>
+	private string _nomeDoDevorado = "";
+
+	/// <summary>A chave do botao `Expelir: nome` do NPC que voltou com o Majin (`hab:expelir:numero`).</summary>
+	private string _botaoDoDevorado = "";
 
 	private void Absorvido(World mundo, Jandirus.Server.GameServer srv)
 	{
@@ -689,6 +712,7 @@ public partial class RoboDaSagaMajin : Node
 				var s = srv.SagaNaFoto(_eu);
 				Conferir(s.Dentro == 1 && s.FormaAtual != Catalogo.IdDaFormaPura && s.FormaAtual != Catalogo.IdDaFormaPuraInsana,
 						 "ABSORVER alguem tira da Forma Pura (o corpo de absorcao, sem os 56x)", $"{s.Dentro} dentro, {s.FormaAtual}");
+				_nomeDoDevorado = srv.AbsorvidosPor(_eu).FirstOrDefault()?.Nome ?? "";
 				Sub(2);
 				break;
 			}
@@ -701,6 +725,10 @@ public partial class RoboDaSagaMajin : Node
 		}
 	}
 
+	/// <summary>
+	/// O RELOG DE VERDADE, pelo fio, UMA vez (o defeito injetado da lista que o login manda e da `--majinteste`, familia 15d). A volta
+	/// passa outra vez pelo `Boot.MontarMundo`, que cria outro robo -- e quem o cala e o <see cref="_vivo"/>.
+	/// </summary>
 	private void Relogar(Jandirus.Server.GameServer srv)
 	{
 		switch (_sub)
@@ -712,7 +740,9 @@ public partial class RoboDaSagaMajin : Node
 				break;
 			case 1:
 				if (_boot?.AvisoDeQuedaNaTela() == null && _t < 10) return;
-				Conferir(srv.AbsorvidosPor(_idAntesDoRelog).Count == 0, "...e quem estava dentro foi CUSPIDO na saida");
+				// (dono, 2026-10-23) o NPC devorado FICA: o que sai com a sessao e o REGISTRO dela -- o id nao volta, quem volta e a ficha
+				Conferir(srv.AbsorvidosPor(_idAntesDoRelog).Count == 0,
+						 "...e o registro da sessao saiu com ela (o NPC devorado vai pro disco na ficha, e nao no id de sessao)");
 				Conferir(_boot?.ApertarOkDoAvisoDeQueda() == true, "(montagem) o aviso de queda tem OK");
 				Sub(2);
 				break;
@@ -734,16 +764,103 @@ public partial class RoboDaSagaMajin : Node
 		}
 	}
 
+	/// <summary>
+	/// DE VOLTA AO JOGO com o NPC devorado dentro -- o dono (2026-10-23): ele FICA, e pro Corrupted "Conta" (o corpo volta fora da Forma
+	/// Pura ate expelir). O que so a tela mostra: o corpo de absorcao no lugar do Kid Boo, e o `Expelir: nome` dele no menu -- a lista
+	/// que o login manda DEPOIS do `JoinAccepted` (que a zera). E expelir pelo BOTAO devolve a Forma Pura.
+	/// </summary>
 	private void DeVolta(World mundo, Jandirus.Server.GameServer srv)
 	{
-		if (_t < 4) return;   // o mundo monta, a aparencia chega
-		var s = srv.SagaNaFoto(_eu);
-		Conferir(s.Pura && s.FormaAtual == Catalogo.IdDaFormaPura && s.Dentro == 0,
-				 "DE VOLTA AO JOGO o Majin esta na Forma Pura de novo, e vazio", $"{s.FormaAtual}, {s.Dentro} dentro");
+		GameClient? cli = C;
 		CharacterVisual? v = mundo.VisualLocalDeTeste;
-		Conferir(v?.FolhaDoCorpoDaFormaDeTeste == SagaDoMajin.FolhaDaFormaPura, "...desenhado como o Kid Boo", v?.FolhaDoCorpoDaFormaDeTeste ?? "");
-		Foto("dsaga-12-relog.png", "12. depois do relog: a Forma Pura de volta");
-		Fechar();
+		switch (_sub)
+		{
+			case 0:
+			{
+				if (_t < 4) return;   // o mundo monta; a aparencia e a lista chegam
+				var s = srv.SagaNaFoto(_eu);
+				Conferir(s.Pura && s.Dentro == 1 && s.FormaAtual != Catalogo.IdDaFormaPura && s.FormaAtual != Catalogo.IdDaFormaPuraInsana,
+						 "DE VOLTA AO JOGO o NPC devorado CONTINUA dentro (dono, 2026-10-23) -- e o Corrupted volta FORA da Forma Pura, no corpo de absorcao",
+						 $"{s.FormaAtual}, {s.Dentro} dentro");
+				Conferir(v != null && v.FolhaDoCorpoDaFormaDeTeste != SagaDoMajin.FolhaDaFormaPura && v.CorpoBaseVisivelDeTeste,
+						 "...desenhado no corpo de absorcao, e nao no Kid Boo", v?.FolhaDoCorpoDaFormaDeTeste ?? "sem boneco");
+				GameClient.AbsorvidoDoMajin? a = cli is { AbsorvidosDoMajin.Count: 1 } ? cli.AbsorvidosDoMajin[0] : null;
+				_botaoDoDevorado = a is { } x ? $"hab:expelir:{x.Numero}" : "";
+				Conferir(a is { Devorado: true } d && d.Nome == _nomeDoDevorado && Botao(_botaoDoDevorado) != null && Botao("hab:expelir") is { PodeAgora: true },
+						 $"...e a LISTA chegou no login: o `{_nomeDoDevorado}` devorado, com o botao `Expelir: nome` dele e o Expelir todos aceso",
+						 $"{cli?.AbsorvidosDoMajin.Count ?? 0} na lista do cliente");
+				Foto("dsaga-12-relog.png", "12. depois do relog: o NPC continua dentro -- fora da Forma Pura, no corpo de absorcao");
+				if (MenuJogo.Instancia is { } menu) { menu.Abrir(); menu.IrPara(Verbos.Skills); }
+				Sub(1);
+				break;
+			}
+			case 1:
+			{
+				if (_t < 0.6) return;
+				// (a pagina remonta quando o que ela mostra muda: o botao e procurado por ate 3 s, e a falha diz o que a pagina tinha)
+				Button? b = MenuJogo.Instancia is { } menu ? BotaoNaPagina(menu, $"Expelir: {_nomeDoDevorado}") : null;
+				if (b == null && _t < 3) return;
+				Conferir(b != null, $"o botao `Expelir: {_nomeDoDevorado}` esta DESENHADO na aba de skills do menu",
+						 MenuJogo.Instancia is { } m ? "botoes na pagina: " + string.Join(" | ", BotoesNaPagina(m).Take(14)) : "sem menu");
+				if (b != null) RoloDe(b)?.EnsureControlVisible(b);
+				Sub(2);
+				break;
+			}
+			case 2:
+				if (_t < 0.4) return;
+				Foto("dsaga-12b-menu.png", "12b. o menu depois do relog: o `Expelir: nome` do NPC que voltou com o Majin");
+				MenuJogo.Instancia?.Fechar();
+				// O BOTAO, e nao o pacote: o `Acionar` e o que o clique no menu (e a tecla ligada a ele) chama.
+				Botao(_botaoDoDevorado)?.Acionar?.Invoke();
+				Sub(3);
+				break;
+			default:
+			{
+				// A PURA VOLTA COM A CENA DELA (o corpo novo so aparece na virada) -- espera ela acabar e o Kid Boo chegar a tela.
+				var s = srv.SagaNaFoto(_eu);
+				if ((s.Dentro > 0 || s.FormaAtual != Catalogo.IdDaFormaPura || mundo.CenaEmCursoDeTeste(_eu) != null
+					 || v?.FolhaDoCorpoDaFormaDeTeste != SagaDoMajin.FolhaDaFormaPura) && _t < 15) return;
+				if (_t < 1.5) return;
+				Conferir(s.Dentro == 0 && s.FormaAtual == Catalogo.IdDaFormaPura && cli is { AbsorvidosDoMajin.Count: 0 },
+						 "EXPELIR o NPC pelo botao do menu devolve a Forma Pura -- e a lista do meu cliente esvazia",
+						 $"{s.FormaAtual}, {s.Dentro} dentro, {cli?.AbsorvidosDoMajin.Count} na lista");
+				Conferir(v?.FolhaDoCorpoDaFormaDeTeste == SagaDoMajin.FolhaDaFormaPura, "...desenhado como o Kid Boo", v?.FolhaDoCorpoDaFormaDeTeste ?? "");
+				Foto("dsaga-13-expeliu.png", "13. expelido o NPC: a Forma Pura de volta");
+				Fechar();
+				break;
+			}
+		}
+	}
+
+	/// <summary>Um verb do catalogo do personagem local pela chave (o botao que o menu desenha).</summary>
+	private static Verbo? Botao(string chave) => chave.Length == 0 ? null : Verbos.Todos.FirstOrDefault(v => v.Chave == chave);
+
+	/// <summary>Os botoes vivos da aba de skills do menu (os que a remontagem ja jogou fora ficam de fora), pela arvore inteira da pagina.</summary>
+	private static IEnumerable<Button> BotoesDaPagina(MenuJogo menu)
+	{
+		if (menu.PaginaDeTeste(Verbos.Skills) is not { } pagina) yield break;
+		var pilha = new Stack<Node>([pagina]);
+		while (pilha.Count > 0)
+		{
+			Node n = pilha.Pop();
+			if (n.IsQueuedForDeletion()) continue;
+			if (n is Button b) yield return b;
+			foreach (Node f in n.GetChildren()) pilha.Push(f);
+		}
+	}
+
+	/// <summary>O botao da aba de skills cujo texto comeca assim -- o que o jogador clicaria (o molde da `--diagmajin`).</summary>
+	private static Button? BotaoNaPagina(MenuJogo menu, string comeco) =>
+		BotoesDaPagina(menu).FirstOrDefault(b => b.Text.StartsWith(comeco, StringComparison.Ordinal));
+
+	/// <summary>O texto de cada botao da aba de skills -- o detalhe da falha quando o procurado nao esta la.</summary>
+	private static IEnumerable<string> BotoesNaPagina(MenuJogo menu) => BotoesDaPagina(menu).Select(b => b.Text);
+
+	private static ScrollContainer? RoloDe(Control c)
+	{
+		for (Node? n = c.GetParent(); n != null; n = n.GetParent())
+			if (n is ScrollContainer s) return s;
+		return null;
 	}
 
 	// =====================================================================

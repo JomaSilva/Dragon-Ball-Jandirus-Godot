@@ -661,9 +661,32 @@ public sealed partial class GameServer
 		// qualquer tiro, o BP so sai quando ele encosta em algo -- `GameServer.Ganhos.cs`.)
 		GanhoDeKi(pl);
 
+		// (2026-10-25) ...E OS CONTADORES DAS SKILLS, como os da tecnica pronta do mesmo tipo -- o dono: *"permita q ataques custom
+		// permitam upar skills e nao so ataques pre feitos tipo upar effusion"*. A bola leva a pericia do tiro e o `blastcounter` da Ki
+		// Blast (`blasts.dm:54`); a teleguiada ainda leva a pericia e o `guidedcounter` do disco (`discs.dm:93`). Sao eles que dao
+		// experiencia as skills que treinam atirando -- as tres Ki Effusion inclusive, pelo somatorio (`CreditarContador`). O RAIO custom
+		// ja contava: ele anda no motor do `Ki_Wave`, que credita o `beamcounter` a cada ciclo (`GameServer.Projeteis`).
+		if (!CustomSemContadorDeTeste)
+		{
+			pl.Ficha.blastskill += 0.05;
+			CreditarContador(pl, "blastcounter", 1);
+			if (t.Tipo == TipoDeProjetil.Guided)
+			{
+				pl.Ficha.guidedskill += 0.1;
+				CreditarContador(pl, "guidedcounter", 2);
+			}
+		}
+
 		Projetil p = Disparar(pl, t.Receita());
 		if (p.Vivo && alvo != null) p.Alvo = alvo.Id;
 	}
+
+	/// <summary>
+	/// (2026-10-25) DEFEITO INJETADO (`--niveisteste`, familia E2): a bola e a teleguiada inventadas voltam a nao creditar contador
+	/// nenhum -- o jogo de antes, em que so as tecnicas prontas subiam a Efusao. Lido pelo <see cref="AtirarBolaCustom"/>. Falso em jogo,
+	/// sempre.
+	/// </summary>
+	internal static bool CustomSemContadorDeTeste;
 
 	/// <summary>
 	/// `if(S.use_stamina && stamina < S.stamina_cost)` (`:487`) -- e a mensagem tambem e a do DM.

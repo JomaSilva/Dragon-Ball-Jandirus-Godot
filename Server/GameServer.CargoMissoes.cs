@@ -325,9 +325,8 @@ public partial class GameServer
 		}
 
 		_missoes[vaga] = nova;
-		Avisar(portador, $"{r.Nome}: NOVA TAREFA -- {MissoesDeCargo.Descricao(nova)}. "
-					   + $"Prazo: {MissoesDeCargo.TextoDeTempo(MissoesDeCargo.SegundosDePrazo)}. "
-					   + $"Falhar corrói o trono ({nova.Falhas}/{MissoesDeCargo.FalhasQueDestituem}).");
+		// (2026-10-24) tres linhas, e o texto mora no Core -- ver `MissoesDeCargo.AvisoDeTarefaNova`
+		foreach (string linha in MissoesDeCargo.AvisoDeTarefaNova(r.Nome, nova, r.DoOutroMundo, r.Maligno)) Avisar(portador, linha);
 		return true;
 	}
 
@@ -425,7 +424,7 @@ public partial class GameServer
 		// O AVISO A CADA CINCO PONTOS, como no DM (`:572`): um por minuto viraria ruido, e nenhum
 		// deixaria o servico parecendo que nao esta contando.
 		if (f.Progresso < f.Meta && antes / 5 != f.Progresso / 5)
-			Avisar(portador, $"serviço do cargo: {Math.Min(f.Progresso, f.Meta)}/{f.Meta}.");
+			Avisar(portador, MissoesDeCargo.AvisoDeServico(r.Nome, f));
 	}
 
 	// =====================================================================
@@ -450,7 +449,7 @@ public partial class GameServer
 					f.Tarefa = TipoDeTarefa.Nenhuma;
 					f.AlvoConta = f.AlvoNome = "";
 					f.Proxima = agora + MissoesDeCargo.SegundosSemAlvo;
-					Avisar(portador, $"{r.Nome}: o alvo deixou o plano físico. A tarefa se anula sem punição.");
+					Avisar(portador, MissoesDeCargo.AvisoDeAlvoQueSaiu(r.Nome));
 					return false;
 				}
 				return alvo.Ficha.dead;
@@ -487,7 +486,7 @@ public partial class GameServer
 	/// </summary>
 	private void CumprirTarefa(RankDef r, FichaDeMissao f, ServerPlayer portador, double agora)
 	{
-		string oque = MissoesDeCargo.Descricao(f);
+		string oque = MissoesDeCargo.NomeCurto(f, r.DoOutroMundo);
 
 		f.Falhas = Math.Max(f.Falhas - 1, 0);
 		f.Cumpridas++;
@@ -500,10 +499,7 @@ public partial class GameServer
 		if (!r.Maligno)
 			portador.Karma = Math.Min(portador.Karma + MissoesDeCargo.KarmaPorTarefa, MissoesDeCargo.KarmaMaximo);
 
-		Avisar(portador, $"TAREFA DE {r.Nome.ToUpperInvariant()} CUMPRIDA! ({oque}) "
-					   + $"+{MissoesDeCargo.ZeniPorTarefa:N0} zeni"
-					   + (r.Maligno ? "" : $", +{MissoesDeCargo.KarmaPorTarefa} karma")
-					   + $". Falhas: {f.Falhas}/{MissoesDeCargo.FalhasQueDestituem}. {TextoDeRenome(r, f)}");
+		Avisar(portador, MissoesDeCargo.AvisoDeCumprida(r.Nome, oque, f, r.Maligno, TextoDeRenome(r, f)));
 		Anunciar($"{r.Nome} cumpriu seu dever para com o universo.");
 
 		// ============================ O AVISO DE ASCENSAO CAI QUANDO O DEGRAU FECHA ============================
@@ -518,8 +514,7 @@ public partial class GameServer
 		if (f.AvisouAscensao) return;
 
 		f.AvisouAscensao = true;
-		Avisar(portador, $"seu renome como {r.Nome} correu o universo. O caminho para "
-					   + $"{MissoesDeCargo.TextoDosDegraus(r.Chave)} está aberto -- reivindique o cargo.");
+		Avisar(portador, MissoesDeCargo.AvisoDeAscensao(r.Nome, MissoesDeCargo.TextoDosDegraus(r.Chave)));
 	}
 
 	/// <summary>
@@ -538,7 +533,7 @@ public partial class GameServer
 		f.Progresso = f.Meta = 0;
 		f.Proxima = agora + MissoesDeCargo.SegundosDeIntervalo / 2;
 
-		Avisar(portador, $"{r.Nome}: TAREFA FALHADA. Falhas: {f.Falhas}/{MissoesDeCargo.FalhasQueDestituem}.");
+		Avisar(portador, MissoesDeCargo.AvisoDeFalhada(r.Nome, f));
 		Anunciar($"{r.Nome} FALHOU em seu dever ({f.Falhas}/{MissoesDeCargo.FalhasQueDestituem}).");
 
 		if (f.Falhas >= MissoesDeCargo.FalhasQueDestituem)
@@ -563,13 +558,8 @@ public partial class GameServer
 		return string.Equals(f.Dono, dono, StringComparison.OrdinalIgnoreCase) ? f.Cumpridas : 0;
 	}
 
-	private string TextoDeRenome(RankDef r, FichaDeMissao f)
-	{
-		if (!MissoesDeCargo.DegrausAcima(r.Chave).Any())
-			return $"Renome: {f.Cumpridas} tarefa(s) cumprida(s) neste cargo.";
-		return $"Renome: {Math.Min(f.Cumpridas, MissoesDeCargo.TarefasParaAscender)}"
-			 + $"/{MissoesDeCargo.TarefasParaAscender} para a ascensão.";
-	}
+	private static string TextoDeRenome(RankDef r, FichaDeMissao f) =>
+		MissoesDeCargo.TextoDeRenome(f.Cumpridas, MissoesDeCargo.DegrausAcima(r.Chave).Any());
 
 	// =====================================================================
 	// 6. OS VERBS -- `Meu Rank` (`:664`)
@@ -598,28 +588,30 @@ public partial class GameServer
 		_missoes.TryGetValue(vaga, out FichaDeMissao? f);
 		int renome = RenomeDe(vaga);
 
-		Avisar(pl, $"-- {r.Nome} ({(r.Sabedoria ? "vocação de SABEDORIA: serviço" : "vocação de PODER")}) --");
+		// (2026-10-24) o que o cargo pede, em palavras de quem joga -- ver `MissoesDeCargo.Descricao`
+		// (duas linhas, e nao "-- cargo (vocacao) --": o " --" do fim escondia o parentese do tradutor, e a linha saia em portugues)
+		Avisar(pl, $"-- {r.Nome} --");
+		Avisar(pl, !r.Sabedoria ? "suas tarefas: missões de poder" : r.DoOutroMundo ? "suas tarefas: atender almas" : "suas tarefas: ensinar quem treina");
 		Avisar(pl, TextoDeRenome(r, f ?? new FichaDeMissao()));
 
 		// A ESCADA, em tres estados diferentes -- e os tres dizem coisas opostas ao jogador (`:674-679`).
 		var acima = MissoesDeCargo.DegrausAcima(chave).ToList();
 		if (acima.Count == 0)
 		{
-			Avisar(pl, $"este é o fim da sua escada -- nenhum cargo exige {r.Nome} como pré-requisito.");
+			Avisar(pl, $"não há cargo acima de {r.Nome}.");
 		}
 		else if (!MissoesDeCargo.PodeAscender(renome))
 		{
-			Avisar(pl, $"degrau acima: {MissoesDeCargo.TextoDosDegraus(chave)} "
-					 + $"(faltam {MissoesDeCargo.TarefasParaAscender - renome} tarefa(s) de renome).");
+			Avisar(pl, $"cargo acima: {MissoesDeCargo.TextoDosDegraus(chave)} "
+					 + $"(faltam {MissoesDeCargo.TarefasParaAscender - renome} tarefa(s) cumprida(s) pra poder subir).");
 		}
 		else if (acima.Any(a => VagaLivre(a) != null))
 		{
-			Avisar(pl, $"ASCENSÃO LIBERADA: {MissoesDeCargo.TextoDosDegraus(chave)} -- reivindique o cargo.");
+			Avisar(pl, $"você já pode subir para {MissoesDeCargo.TextoDosDegraus(chave)} -- reivindique o cargo na aba Cargos.");
 		}
 		else
 		{
-			Avisar(pl, $"renome suficiente, mas {MissoesDeCargo.TextoDosDegraus(chave)} segue OCUPADO "
-					 + "-- o trono precisa vagar.");
+			Avisar(pl, $"você já pode subir, mas {MissoesDeCargo.TextoDosDegraus(chave)} está ocupado -- espere vagar.");
 		}
 
 		if (f == null || f.Tarefa == TipoDeTarefa.Nenhuma)
@@ -627,16 +619,16 @@ public partial class GameServer
 			Avisar(pl, f == null || f.Proxima <= 0
 				? "sem tarefa no momento. A próxima chega em breve."
 				: $"sem tarefa no momento. A próxima chega em ~{MissoesDeCargo.TextoDeTempo(f.Proxima - agora)}.");
-			Avisar(pl, $"falhas: {f?.Falhas ?? 0}/{MissoesDeCargo.FalhasQueDestituem}.");
+			Avisar(pl, $"falhas: {f?.Falhas ?? 0}/{MissoesDeCargo.FalhasQueDestituem} (com {MissoesDeCargo.FalhasQueDestituem}, você perde o cargo).");
 			return;
 		}
 
-		Avisar(pl, $"tarefa: {MissoesDeCargo.Descricao(f)}");
+		Avisar(pl, $"tarefa: {MissoesDeCargo.Descricao(f, r.DoOutroMundo)}");
 		Avisar(pl, $"prazo restante: {MissoesDeCargo.TextoDeTempo(f.Prazo - agora)} | "
-				 + $"falhas: {f.Falhas}/{MissoesDeCargo.FalhasQueDestituem}");
+				 + $"falhas: {f.Falhas}/{MissoesDeCargo.FalhasQueDestituem} (com {MissoesDeCargo.FalhasQueDestituem}, você perde o cargo)");
 
 		if (f.Tarefa == TipoDeTarefa.Verba)
-			Avisar(pl, $"o cofre da Terra tem {_cofreDaTerra:N0} zeni. Use o verb Fund Earth para depositar.");
+			Avisar(pl, $"o cofre da Terra tem {_cofreDaTerra:N0} zeni. Use o botão Fund Earth (aba Other) para depositar.");
 	}
 
 	/// <summary>

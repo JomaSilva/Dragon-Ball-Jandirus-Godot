@@ -217,6 +217,26 @@ public partial class RoboDoPoder : Node
 		Checa("a faixa e SO da aba Ki: noutra aba ela some", !menu.PoderNaAbaDeTeste().Visivel);
 		menu.Fechar();
 
+		// ---- 9) (2026-10-24) o Sense no nivel 4 sente o PROPRIO poder, sem scouter ----
+		// O dono: *"faça com quem tenha sense lvl 4 ou mais consiga sentir o PROPRIO bp sem scouter, nao o bp dos outros"*. A regra e do
+		// servidor (`GameServer.SenteOProprioPoder`: a ficha leva os dois numeros); o painel e a faixa da aba Stats escrevem o que chega. No
+		// nivel 3 (o planeta) nada muda -- a metade negativa, sem a qual "aparece" poderia ser "sempre apareceu".
+		Checa("(palco) a cobaia ganha o Sense no nivel 3 (o planeta), sem scouter", srv.PalcoDoPoder_SenseNoNivel(eu, 3) && !cli.Atributos.Tem(Protocol.Poder.Scouter));
+		await Segundos(1.0);
+		Checa("no nivel 3 o proprio poder continua escondido: o painel diz \"BP ???\"", hud.TextoDeBpDeTeste == "BP ???", hud.TextoDeBpDeTeste);
+		Checa("(palco) ...e o Sense sobe pro nivel 4 (o sistema)", srv.PalcoDoPoder_SenseNoNivel(eu, 4));
+		bool sentiu = await Ate(() => hud.TextoDeBpDeTeste.Any(char.IsDigit), 3);
+		Checa("**O SENSE NO NIVEL 4 SENTE O PROPRIO PODER** (dono, 2026-10-24): sem scouter, o painel de status escreve o BP em numero",
+			  sentiu && !hud.TextoDeBpDeTeste.Contains("???"), hud.TextoDeBpDeTeste);
+		await FotoDoPainel("sense-nivel-4");
+		menu.Abrir();
+		await Abrir(menu, "Stats");
+		string faixa = menu.ValorDesenhado("Stats", "Battle Power") ?? "(nulo)";
+		Checa("**...E A FAIXA \"Battle Power\" DA ABA STATS TAMBEM**: o expresso e o base em numero, sem \"???\"",
+			  faixa.Any(char.IsDigit) && !faixa.Contains("???") && faixa.Contains("base"), faixa);
+		await Foto("sense-nivel-4-aba-stats");
+		menu.Fechar();
+
 		Encerrar(_falha + _injFalha == 0 ? 0 : 1);
 	}
 

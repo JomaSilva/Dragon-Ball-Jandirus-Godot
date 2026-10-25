@@ -18,7 +18,7 @@ namespace Jandirus.Server;
 ///      `PesoDeTreino.EstadoForaDoIdDeTeste` (o item sem estado -- o jogo de antes, em que tudo morava na ficha).
 ///   M. A MIGRACAO -- o save de antes (o maximo e a arte na ficha) entra com os pesos de fabrica levando o que a ficha tinha, o vestido
 ///      continua vestido, e os campos da ficha zeram; o save sem nada fica como estava.
-///   G. A GRAVIDADE COM PESO -- numa gravidade 10x acima da maestria, com os pesos que o corpo aguenta no maximo, o treino cansa em segundos
+///   G. A GRAVIDADE COM PESO -- numa gravidade 10x acima da maestria, com o peso no teto do ganho (8x), o treino cansa em segundos
 ///      (o vigor pelo QUADRADO do peso, `Train.dm:88`) -- e a maestria sobe do mesmo jeito, a cada passe, como no DM. E parado tambem. Contra:
 ///      `MaestriaSoNoTreinoDeTeste` (a maestria so no passe do treino -- o jogo de antes, em que o peso a travava).
 /// </summary>
@@ -221,7 +221,9 @@ public sealed partial class GameServer
 			f.Tick(agoraMs: NowMs());
 			string pesos = PesoDeTreino.IdDe(f.weight_cap_hw * GainKnobs.WeightItemCapMult, "");
 			pl.Mochila.Guardar(pesos);
-			if (comPeso) AjustarPeso(pl, pesos, "100");
+			// (2026-10-23) 35%, e nao 100%: a 10x o "100" e 20x o limite do corpo, e acima de 8x nem se treina mais (dono, `Fighter.PesoDemaisPraTreinar`)
+			// -- o treino cairia no primeiro passe. 35% e 7x: o `weight` no teto (8x), o mesmo cansaco do 100% de antes.
+			if (comPeso) AjustarPeso(pl, pesos, "35");
 			f.stamina = f.maxstamina;
 			f.train = treinar;
 			f.med = false;
@@ -241,24 +243,29 @@ public sealed partial class GameServer
 
 		try
 		{
-			var comPeso = Passes(60, treinar: true, comPeso: true);
-			var parado = Passes(60, treinar: false, comPeso: false);
+			// (2026-10-24) 300 PASSES (60 s), e nao 60: o vigor do treino passou a ser proporcional ao peso (dono), e com o peso no teto
+			// (8x) o tanque cheio dura uns 118 passes (pelo quadrado eram ~15). O cenario continua o mesmo -- o treino com peso para de
+			// cansaco no meio da janela, e a maestria tem de seguir subindo depois.
+			const int N = 300;
+			var comPeso = Passes(N, treinar: true, comPeso: true);
+			var parado = Passes(N, treinar: false, comPeso: false);
 			MaestriaSoNoTreinoDeTeste = true;
 			(double Subiu, int Treinando) deAntes;
-			try { deAntes = Passes(60, treinar: true, comPeso: true); }
+			try { deAntes = Passes(N, treinar: true, comPeso: true); }
 			finally { MaestriaSoNoTreinoDeTeste = false; }
 
-			AfirmarPesos("(montagem) com os pesos no maximo numa gravidade 10x, o treino CANSA em poucos passes (o vigor pelo quadrado do peso) -- o "
-					  + "cenario do relato", comPeso.Treinando < 30, $"treinando em {comPeso.Treinando} de 60 passes");
+			AfirmarPesos("(montagem) com os pesos no maximo numa gravidade 10x, o treino CANSA antes da metade dos passes (o vigor proporcional ao "
+					  + "peso: no teto de 8x o tanque dura uns 24 s) -- o cenario do relato", comPeso.Treinando < N / 2,
+					  $"treinando em {comPeso.Treinando} de {N} passes");
 			AfirmarPesos("**A MAESTRIA DE GRAVIDADE SOBE COM PESO** (*\"usar peso na gravidade aparentemente n ta deixando a gravidade ser "
-					  + "masterizada\"*): os 60 passes (12 s) contam todos, com o treino parado de cansaco ou nao -- como no DM (`Gravity.dm:30-33`)",
+					  + "masterizada\"*): os 300 passes (60 s) contam todos, com o treino parado de cansaco ou nao -- como no DM (`Gravity.dm:30-33`)",
 					  comPeso.Subiu > 0 && deAntes.Subiu > 0 && comPeso.Subiu > deAntes.Subiu * 1.8,
 					  $"subiu {comPeso.Subiu:0.#####}; no jogo de antes {deAntes.Subiu:0.#####}");
 			AfirmarPesos("...e parado na gravidade tambem: o corpo se acostuma estando nela (o esmagamento e o preco)", parado.Subiu > 0,
 					  $"subiu {parado.Subiu:0.#####}");
 			AfirmarPesos("(defeito injetado: a maestria so no passe do treino, o jogo de antes) o treino com peso para de cansaco e a maestria para "
-					  + "junto -- a regua de cima REPROVA", deAntes.Treinando < 30 && deAntes.Subiu < comPeso.Subiu * 0.6,
-					  $"treinando {deAntes.Treinando} de 60; subiu {deAntes.Subiu:0.#####}");
+					  + "junto -- a regua de cima REPROVA", deAntes.Treinando < N / 2 && deAntes.Subiu < comPeso.Subiu * 0.6,
+					  $"treinando {deAntes.Treinando} de {N}; subiu {deAntes.Subiu:0.#####}");
 		}
 		finally
 		{

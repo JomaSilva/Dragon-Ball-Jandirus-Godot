@@ -13,7 +13,9 @@ namespace Jandirus.Core.Stats;
 ///     comida  ->  nutricao  ->  vigor (e Ki)  ->  poder de luta
 ///
 /// O ultimo elo ja existia aqui (`staminaratio` entra no `statusBuff`, que multiplica o BP
-/// expresso). Os dois primeiros sao o que este arquivo traz.
+/// expresso). Os dois primeiros sao o que este arquivo traz. (O ultimo existia so na CONTA: nada
+/// escrevia o `staminadeBuff` que ela le, e o vigor no fundo nao pesava no poder ate 2026-10-24 --
+/// ver <see cref="FolegoNoPoder"/>.)
 /// =======================================================================
 ///
 /// ============================ O QUE NAO VEIO, E POR QUE ============================
@@ -53,6 +55,12 @@ public static class Nutricao
 	public const double LimiarDeSaciedade = 0.96;
 
 	/// <summary>
+	/// O PINGO DE VIGOR DE CADA PASSADA, em fracao do tanque (dividida pelo metabolismo): `0.005*globalfoodmod*maxstamina/Metabolism`
+	/// (`Stomach.dm:22`). E por ele que o vigor volta -- e so por ele: meditar nao o acelera. Ver <see cref="VigorQueVoltaPorSegundo"/>.
+	/// </summary>
+	public const double PingoDeVigorPorPassada = 0.005;
+
+	/// <summary>
 	/// O TETO DO TANQUE deste personagem. Metabolismo alto = estomago maior.
 	/// `maxNutrition = 50 * Metabolism` (Stomach.dm).
 	/// </summary>
@@ -88,7 +96,7 @@ public static class Nutricao
 			f.CurrentNutrition - Math.Log(Math.Max(f.CurrentNutrition, 1), 1.5) * (tanque / 100) * 0.005, 0);
 
 		// 2. o pingo que nao cobra nada
-		double vigor = 0.005 * comidaGlobal * f.maxstamina / metabolismo;
+		double vigor = PingoDeVigorPorPassada * comidaGlobal * f.maxstamina / metabolismo;
 
 		// 3. a conversao de verdade, que come o tanque
 		double custoDeVigor = 0.025 * comidaGlobal * f.maxstamina / 100 / metabolismo;
@@ -273,10 +281,9 @@ public static class Nutricao
 		// QUEM ESCONDE O PODER CANSA MAIS DEVAGAR PARADO: `max(200*Ewillpower*concealedBuff*Estaminamod,0.01)`
 		// (`StaminaDrain.dm:30`), com o `concealedBuff` em 1,5 enquanto o sigilo esta ligado (`master.dm:136-141`).
 		// O `Statify` ja calculava o campo e NINGUEM O LIA -- o mesmo defeito do `KIregen` e do `splitformdeBuff`.
-		// So o primeiro termo o leva, como la: a parcela de luta, logo abaixo, nao.
-		double folgaDoSigilo = PoderEmUso.SigiloNaoPoupaVigorDeTeste ? 1 : f.concealedBuff;
-		double resistencia = Math.Max(200 * f.Ewillpower * folgaDoSigilo * f.Estaminamod, 0.01);
-		double gasto = 1.5 * f.dashingMod * dreno * (Math.Max(f.Metabolism, 0.1) / 2) / resistencia;
+		// So o primeiro termo o leva, como la: a parcela de luta, logo abaixo, nao. (A conta mora em `GastoParado`: o aviso de
+		// quanto falta pra treinar, `VigorQueVoltaPorSegundo`, desconta o mesmo numero.)
+		double gasto = GastoParado(f, dreno);
 
 		// LUTAR CANSA MAIS, e por um caminho proprio: a conta do DM soma um segundo termo em vez de
 		// multiplicar o primeiro, entao o combate pesa igual pra quem tem vontade alta e pra quem
@@ -286,6 +293,73 @@ public static class Nutricao
 
 		f.stamina = Math.Max(f.stamina - gasto, 0);
 	}
+
+	/// <summary>O que uma passada queima de quem esta fora da luta, em vigor absoluto -- o primeiro termo do dreno (`StaminaDrain.dm:30`).</summary>
+	private static double GastoParado(Fighter f, double dreno = 1)
+	{
+		double folgaDoSigilo = PoderEmUso.SigiloNaoPoupaVigorDeTeste ? 1 : f.concealedBuff;
+		double resistencia = Math.Max(200 * f.Ewillpower * folgaDoSigilo * f.Estaminamod, 0.01);
+		return 1.5 * f.dashingMod * dreno * (Math.Max(f.Metabolism, 0.1) / 2) / resistencia;
+	}
+
+	/// <summary>
+	/// QUANTO VIGOR VOLTA POR SEGUNDO AGORA, descansando: o pingo de cada passada do estomago (<see cref="Digerir"/>, o passo 2 -- com o
+	/// descanso de quem se contem e a recuperacao racial) menos o que a passada queima parado (<see cref="GastoParado"/>), vezes as
+	/// passadas por segundo (`Metabolism / SegundosPorPassada`: o metabolismo se cancela no pingo). Zero com o estomago vazio (o `Digerir`
+	/// sai na entrada) e no morto. So a conta do aviso de quanto falta (`Cansaco.SegundosAteAguentarTreinar`): fora da luta, e sem o
+	/// pouco que a regen de Ki cobra.
+	/// </summary>
+	public static double VigorQueVoltaPorSegundo(Fighter f)
+	{
+		if (f.dead || f.CurrentNutrition <= 0) return 0;
+		double metabolismo = Math.Max(f.Metabolism, 0.1);
+		double pingo = PingoDeVigorPorPassada * f.maxstamina / metabolismo * PoderEmUso.FatorDeDescanso(f) * f.racialRegenVigor;
+		return Math.Max(pingo - GastoParado(f), 0) * metabolismo / SegundosPorPassada;
+	}
+
+	// =====================================================================
+	// O VIGOR NO FUNDO PESA NO PODER -- `StaminaDrain.dm:40` (dono, 2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// O `staminadeBuff` DO DM, AGORA DE VERDADE: `if(stamina>0) staminadeBuff = min((101.047 - ((1.047^(maxstamina/stamina))*0.008*
+	/// (maxstamina/stamina)/Estaminamod)),100)` (`StaminaDrain.dm:40`), a linha do `CheckNutrition` que o port nao tinha trazido. Ate
+	/// 2026-10-24 o campo nascia em 100 e nada o abaixava (so a mordida do vampiro o SOBE, `GameServer.MorderG3`): a conta de poder tinha
+	/// a perna da estamina MORTA -- `staminaratio = max(staminadeBuff/100, 0.3)` no `statusBuff` do BP expresso (`base.dm:78`, :85) e
+	/// `statstamina = max(min(1, staminadeBuff), 0.8)` na fadiga dos quatro atributos de luta e no `KIregen` (`master.dm:133`, :154-158,
+	/// :184), as tres ja portadas (`Fighter.PowerLevel`, `Fighter.Statify`). O dono: *"sem vigor o personagem tb deveria ficar nerfado
+	/// igual era no dm"*.
+	///
+	/// A CURVA SO MORDE NO FUNDO DO TANQUE, e o numero e o do DM: com `Estaminamod` 1 ela da 100 (o poder inteiro) ate uns 3% de vigor,
+	/// 97 a 2%, 90 a 1,5%, 76 a 1,25%, 22 a 1% -- o BP expresso no piso de 0,3x (o do `staminaratio`) de ~1% pra baixo, e os atributos de
+	/// luta e o `KIregen` a 0,8x (o piso do `statstamina`) de ~0,96% pra baixo. `Estaminamod` alto (vontade, estilo, saciedade) empurra a
+	/// curva pro fundo; baixo, pra cima. (O treino para antes, nos 5% -- `Cansaco.VigorQueParaOTreino` --: quem chega ao fundo e quem
+	/// continua gastando, na luta, na carga, no corpo que se refaz, ou parado de estomago vazio.) O resto do que o vigor baixo faz no DM ja
+	/// estava portado e nao passa por aqui: a velocidade
+	/// (`staminapercent`, `master.dm:144`), o ganho de treino (`StamBPGainMod`, `StaminaDrain.dm:58`), a regen de Ki (`Ki.dm:27-45`,
+	/// `RegenDeKi`), a de vida (`master.dm:185`, `Regeneracao`), a tecla C (`Meditate.dm:181`, `CargaDeKi`) e o agarrao (`movement
+	/// handler.dm:230-231`, `Agarrao`).
+	///
+	/// SO DE JOGADOR, como no DM: o `CheckNutrition` abre com `if(client)` (`StaminaDrain.dm:16`), e o NPC fica no 100 da normalizacao
+	/// (`SorteioDeNpc.Normalizar`, `PlanetPopulation.dm:331`). Quem chama e o estomago do servidor (`GameServer.TickDoEstomago`), a cada
+	/// tique, so pra quem e jogador.
+	///
+	/// O PISO EM ZERO e meu: abaixo de ~0,96% a conta do DM fica negativa (a 0,5% ja da -15 mil) e perto de zero o `1.047^razao` estoura
+	/// pra menos infinito -- e o campo vai pro save, onde o JSON nao grava infinito. Zero ja e mais fundo que os dois pisos que o leem (0,3
+	/// e 0,8), entao nada do que ele faz muda. Vigor zero nao mexe no numero, como o `if(stamina>0)` de la: fica o ultimo.
+	/// </summary>
+	public static void FolegoNoPoder(Fighter f)
+	{
+		if (FolegoNaoPesaNoPoderDeTeste || f.stamina <= 0) return;
+		double razao = f.maxstamina / f.stamina;
+		double v = 101.047 - Math.Pow(1.047, razao) * 0.008 * razao / f.Estaminamod;
+		if (!double.IsNaN(v)) f.staminadeBuff = Math.Clamp(v, 0, 100);
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--vigortreinoteste`): o vigor no fundo volta a nao pesar no poder -- o
+	/// `staminadeBuff` fica onde estava, o jogo de antes de 2026-10-24. Lido por <see cref="FolegoNoPoder"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FolegoNaoPesaNoPoderDeTeste;
 
 	/// <summary>O que uma refeicao deu: se foi comida, e o aviso que o jogador le (vazio se nao ha o que dizer).</summary>
 	public readonly record struct Refeicao(bool Comeu, string Aviso);

@@ -501,7 +501,7 @@ public partial class GameServer
 		fraco.Pos = naMesa;
 		fraco.Ficha.Zeni = Alem.PrecoDoReviveDoEnma * 1.5;
 		falas = Ouvir(() => EnmaReviverPorZeni(fraco));
-		AfirmarGdk("**COM UM MILHAO E MEIO O APAGADO NAO VOLTA**: o Enma recusa, diz por que, e nao cobra nada",
+		AfirmarGdk("**COM UMA VEZ E MEIA O PRECO O APAGADO NAO VOLTA**: o Enma recusa, diz por que, e nao cobra nada",
 				  fraco.Ficha.dead && Math.Abs(fraco.Ficha.Zeni - Alem.PrecoDoReviveDoEnma * 1.5) < 1e-6 && Disse(falas, "apagou você"),
 				  Ultimos(falas));
 
@@ -509,7 +509,7 @@ public partial class GameServer
 		try
 		{
 			Ouvir(() => EnmaReviverPorZeni(fraco));
-			AfirmarGdk("(defeito injetado: o Hakai nao encarece) com um milhao e meio ele volta, pagando um milhao",
+			AfirmarGdk("(defeito injetado: o Hakai nao encarece) com uma vez e meia o preco ele volta, pagando o preco de todo mundo",
 					  !fraco.Ficha.dead && Math.Abs(fraco.Ficha.Zeni - Alem.PrecoDoReviveDoEnma * 0.5) < 1e-6, $"zeni {fraco.Ficha.Zeni:0}");
 		}
 		finally { HakaiNaoEncareceDeTeste = false; }
@@ -522,7 +522,7 @@ public partial class GameServer
 		fraco.Pos = naMesa;
 		fraco.Ficha.Zeni = Alem.PrecoDoReviveDoEnma * 2 + 7;
 		falas = Ouvir(() => EnmaReviverPorZeni(fraco));
-		AfirmarGdk("**COM OS DOIS MILHOES ELE VOLTA**, e o Enma cobrou exatamente o dobro",
+		AfirmarGdk("**COM O DOBRO DO PRECO ELE VOLTA**, e o Enma cobrou exatamente o dobro",
 				  !fraco.Ficha.dead && Math.Abs(fraco.Ficha.Zeni - 7) < 1e-6 && !fraco.Ficha.hakai_mark, $"zeni {fraco.Ficha.Zeni:0} | {Ultimos(falas)}");
 	}
 
@@ -616,10 +616,12 @@ public partial class GameServer
 		if (tiros.Count == 1)
 		{
 			Projetil p = tiros[0];
-			AfirmarGdk("a receita e a do DM: bola, `basedamage` 1,5, sem deflexao, `walk(A, dir, 2)`, 30 tiles, folha `12.dmi`, e nao empurra",
+			// (2026-10-23) a ARTE deixou de ser a `12.dmi` do DM: e a esfera do Hakai, a menor (o pedido do dono com a imagem)
+			AfirmarGdk("a receita e a do DM: bola, `basedamage` 1,5, sem deflexao, `walk(A, dir, 2)`, 30 tiles, e nao empurra -- e a arte e a "
+					  + "FURY DO HAKAI (dono, 2026-10-23), e nao mais a `12.dmi`",
 					  p.Tipo == TipoDeProjetil.Blast && Math.Abs(p.BaseDano - 1.5) < 1e-9 && !p.Deflectivel && !p.Empurra
 					  && Math.Abs(p.SegundosPorTile - Projetil.AtrasoDeBola(2)) < 1e-9 && Math.Abs(p.MaxDistancia - 30) < 1e-9
-					  && p.Arte == ArteDeKi.Blast12,
+					  && p.Arte == ArteDeKi.HakaiFuria,
 					  $"{p.Tipo} base {p.BaseDano} defl {p.Deflectivel} emp {p.Empurra} s/tile {p.SegundosPorTile:0.###} alc {p.MaxDistancia} arte {p.Arte}");
 			AfirmarGdk("...ela traz a propria zona (`A.selectzone = \"torso\"`, `:279`) e o dom de derrubar a guarda (`godfury`, `:251-256`)",
 					  p.ZonaCerta == "torso" && p.Dom == DomDeProjetil.DerrubaAGuarda, $"zona '{p.ZonaCerta}', dom {p.Dom}");
@@ -716,10 +718,11 @@ public partial class GameServer
 		AdiantoDoRelogioDeTeste += (long)(KitDoDeus.TiquesDeCarga(deus.Ficha.Eactspeed) * TempoDoDm.MsPorTique) + 1;
 		PulsoDoKitDoDeus();
 		List<Projetil> tiros = TirosDe(deus);
-		AfirmarGdk("a esfera nasce: `basedamage` 2, sem deflexao, sem zona propria, com o dom do HAKAI (`goddestroyer`, `:294-299`)",
+		AfirmarGdk("a esfera nasce: `basedamage` 2, sem deflexao, sem zona propria, com o dom do HAKAI (`goddestroyer`, `:294-299`) -- e a "
+				  + "arte e a ESFERA DO HAKAI (dono, 2026-10-23)",
 				  tiros.Count == 1 && Math.Abs(tiros[0].BaseDano - 2) < 1e-9 && !tiros[0].Deflectivel && tiros[0].ZonaCerta.Length == 0
-				  && tiros[0].Dom == DomDeProjetil.Hakai && tiros[0].Arte == ArteDeKi.Blast12,
-				  tiros.Count == 1 ? $"base {tiros[0].BaseDano} zona '{tiros[0].ZonaCerta}' dom {tiros[0].Dom}" : $"{tiros.Count} tiro(s)");
+				  && tiros[0].Dom == DomDeProjetil.Hakai && tiros[0].Arte == ArteDeKi.HakaiEsfera,
+				  tiros.Count == 1 ? $"base {tiros[0].BaseDano} zona '{tiros[0].ZonaCerta}' dom {tiros[0].Dom} arte {tiros[0].Arte}" : $"{tiros.Count} tiro(s)");
 		LimparTudoDaBancada([deus]);
 
 		// O MEMBRO E SORTEADO, entao a prova e por INVARIANTE em varias rodadas: com o golpe nao-letal um impacto no
@@ -744,6 +747,52 @@ public partial class GameServer
 			AfirmarGdk("(defeito injetado: o tiro sem dom) a esfera vira bola comum e ninguem e apagado", apagados == 0, $"{apagados} apagado(s)");
 		}
 		finally { TiroDoKitSemDomDeTeste = false; }
+
+		AArteDoHakai(deus, chao);
+	}
+
+	/// <summary>
+	/// 5b) A ESFERA DO HAKAI (dono, 2026-10-23: *"faca bills usar skills de hakai q tem esse efeito nos ataques de ki dele como na
+	/// imagem"*). As decisoes: "os tiros do kit" (a Destroyer Sphere e a Fury) e "o titulo tambem" (a arte e do TIRO). Entao os
+	/// dois tiros saem com a arte nova pros DOIS jeitos de carregar o kit: o titulo (o Deus de bancada esta no trono, como o
+	/// jogador que o ganhou) e o corpo sem dono consagrado (como o Bills na luta). Quem desenha e o cliente
+	/// (`--diagartedeki` familia 9, `--diaghakaibills`); aqui se mede a arte que o tiro LEVA no anuncio.
+	/// </summary>
+	private void AArteDoHakai(ServerPlayer deus, Vec2 chao)
+	{
+		GD.Print("[godkit] -- 5b) A ESFERA DO HAKAI (dono, 2026-10-23): o titulo e o corpo sem dono (o Bills) soltam a MESMA arte --");
+		LimparTudoDaBancada([deus]);
+		ServerPlayer semDono = ForjarGdk("DeusSemDono", chao + new Vec2(0, 3 * ZoneCollision.TileSize), 1e9, conta: "");
+		ConsagrarDeusSemDono(semDono);
+		try
+		{
+			(ArteDeKi Esfera, ArteDeKi Furia) titulo = ArtesDoKit(deus), bills = ArtesDoKit(semDono);
+			AfirmarGdk("**OS DOIS TIROS DO KIT SAEM COMO A ESFERA DO HAKAI** -- pra quem tem o TITULO e pro corpo sem dono consagrado (o "
+					  + "Bills): a Destroyer Sphere com a `HakaiEsfera`, a Fury com a `HakaiFuria` (a menor)",
+					  titulo == (ArteDeKi.HakaiEsfera, ArteDeKi.HakaiFuria) && bills == titulo, $"titulo {titulo}, sem dono {bills}");
+
+			ArteDeProjetil.DardoNosTirosDoDeusDeTeste = true;
+			try
+			{
+				(ArteDeKi Esfera, ArteDeKi Furia) antes = ArtesDoKit(deus), antesDoBills = ArtesDoKit(semDono);
+				AfirmarGdk("(defeito injetado: `ArteDeProjetil.DardoNosTirosDoDeusDeTeste`, o jogo de antes) os dois voltam ao dardo `12.dmi` "
+						  + "nos dois jeitos -- a mesma regua REPROVA",
+						  antes == (ArteDeKi.Blast12, ArteDeKi.Blast12) && antesDoBills == antes, $"titulo {antes}, sem dono {antesDoBills}");
+			}
+			finally { ArteDeProjetil.DardoNosTirosDoDeusDeTeste = false; }
+		}
+		finally { ConsagrarDeusSemDono(semDono, consagrado: false); }
+		LimparTudoDaBancada([deus]);
+	}
+
+	/// <summary>A arte dos dois tiros do kit deste corpo: aperta cada verb sem a carga e le o tiro que nasceu.</summary>
+	private (ArteDeKi Esfera, ArteDeKi Furia) ArtesDoKit(ServerPlayer quem)
+	{
+		ArteDeKi esfera = TiroDoKitNaHora(quem, KitDoDeus.VerbEsfera)?.Arte ?? ArteDeKi.Nenhuma;
+		LimparTudoDaBancada(_players.Values.Where(p => p.Id >= IdBaseDeProjetil).ToList());
+		ArteDeKi furia = TiroDoKitNaHora(quem, KitDoDeus.VerbFuria)?.Arte ?? ArteDeKi.Nenhuma;
+		LimparTudoDaBancada(_players.Values.Where(p => p.Id >= IdBaseDeProjetil).ToList());
+		return (esfera, furia);
 	}
 
 	/// <summary>

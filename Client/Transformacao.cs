@@ -638,6 +638,12 @@ public partial class Transformacao : Node2D
 	internal static bool CenaSemOVermelhoDeTeste;
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diaglingua`): o balao da cena volta a receber a fala CRUA, em portugues, com o jogo em
+	/// ingles -- o jogo de antes de 2026-10-23. Lido pela linha do balao em <see cref="Disparar"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool FalaCruNoBalaoDeTeste;
+
+	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagraiva`): a cena que pede a cor do corpo (`Cinematica.NaCorDoCorpo` -- a
 	/// furia) volta a cair na cor das cenas sem forma: os aneis de choque VERMELHOS do port ate 2026-10-11. Lido
 	/// pela <see cref="CorSemForma"/>.
@@ -1461,6 +1467,10 @@ public partial class Transformacao : Node2D
 		TocarALuzDaFusao(delta);
 		Pedaco("a luz da fusao");
 
+		// (2026-10-25) AS ESTREIAS DIVINAS, DEPOIS DOS BEATS pelo motivo da luz da fusao: o beat que acende pinta no proprio quadro.
+		TocarAEstreiaDivina(delta);
+		Pedaco("a estreia divina");
+
 		// DEPOIS DOS BEATS TAMBEM, e o motivo aqui e o inverso do das pedras: o beat que ASSUME acende
 		// o `ClaraoDeTela`, e um raio caindo no MESMO quadro tem que somar clarao POR CIMA dele em vez
 		// de ser lavado por ele. Rodando antes, o unico instante da cena que o dono chama de climax
@@ -1604,6 +1614,10 @@ public partial class Transformacao : Node2D
 		// tres fins (o teto, o alvo sumindo, o `_ExitTree`) a cena pode morrer NO MEIO de um estouro,
 		// e sem esta linha o clarão sobreviveria a cena que o acendeu.
 		ApagarALuzDaFusao();
+
+		// (2026-10-25) E AS ESTREIAS DIVINAS, pela mesma regra: a coluna, o branco (com o painel e o plano do corpo), a galaxia e o fogo
+		// saem em todo caminho de saida, e o preto segurado sai num instante. Ver `Transformacao.EstreiaDivina.cs`.
+		ApagarAEstreiaDivina();
 
 		// (2026-10-19) E A AURA DE CARGA VOLTA, pela mesma regra: a cena que a calou devolve em todo caminho de saida, e nao so no
 		// bom. Ela pergunta sozinha se o alvo vive (ver `Transformacao.CargaDaCena.cs`).
@@ -2240,6 +2254,15 @@ public partial class Transformacao : Node2D
 	{
 		BeatsDeTeste++;
 
+		// (2026-10-24) O FUNDO DA ESTREIA DO SSJ2: so na tela de QUEM VIRA -- quem assiste ve o corpo parado e, depois, a cena de sempre.
+		// Ver `Efeito.FundoDaEstreia` e `FundoDaEstreia`.
+		if (b.Faz.HasFlag(Efeito.FundoDaEstreia) && (_souEu || FundoDaEstreia.PraQuemAssisteDeTeste))
+			FundoDaEstreia.Abrir(_alvo, Cinematicas.SegundosDoPreludio);
+
+		// (2026-10-25) AS ESTREIAS DIVINAS: a coluna de luz, o branco com a sombra, a galaxia e o fogo -- o beat so acende. Ver
+		// `Transformacao.EstreiaDivina.cs`.
+		AcenderAEstreiaDivina(b);
+
 		// ============================ O TREMOR E DE QUEM ESTA NO PLANETA ============================
 		// A FORCA, A QUEDA E A CADENCIA SAO DA CENA e por isso saem do Core (ver
 		// `Cinematicas.QuedaDoTremor`): o padrao do `Sacudir` e o solavanco SECO do combate, e uma
@@ -2498,10 +2521,16 @@ public partial class Transformacao : Node2D
 		// A NARRACAO NAO VIRA BALAO. Ela nao e voz de ninguem -- ela descreve o MUNDO ("o chao comeca
 		// a tremer"), sem sujeito. Balao de narracao poria na boca do personagem uma frase que ele nao
 		// disse. Ela continua no chat, onde ja era o `*[src] ...` do DM.
+		//
+		// (2026-10-23) O BALAO RECEBE A FALA JA NA LINGUA DA TELA. Ele desenha a mao (`BalaoDeFala._Draw`), e a
+		// fala que chega do servidor ja vem traduzida (`GameClient`, no `S2C.Chat`) -- esta nasce AQUI, no
+		// cliente, e passava crua: quem joga em ingles via "AINDA MAIS ALEM!" em cima da cabeca na cena do SSJ3
+		// (a unica falada do jogo) e na do Blue, do Rose, do Frost... As linhas do chat logo abaixo ja se
+		// traduziam no `Chat.Sistema`.
 		// ========================================================================================================
 		if (b.Fala.Length > 0)
 		{
-			_alvo.GetNodeOrNull<BalaoDeFala>("Balao")?.Dizer(Jandirus.Net.Protocol.Fala.Diz, b.Fala);
+			_alvo.GetNodeOrNull<BalaoDeFala>("Balao")?.Dizer(Jandirus.Net.Protocol.Fala.Diz, FalaCruNoBalaoDeTeste ? b.Fala : Idioma.T(b.Fala));
 			if (_souEu) Chat.Sistema($"Você: {b.Fala}");
 			else if (_nome.Length > 0) Chat.Sistema($"{_nome}: {b.Fala}");
 		}
@@ -2629,6 +2658,9 @@ public partial class Transformacao : Node2D
 		// ======================================================================================================
 		Pedaco("a aura base, o piscar e a silhueta devolvidos");
 		if (_forma != null) Vestir(_forma);
+
+		// (2026-10-25) E AS ESTREIAS DIVINAS COMECAM A CAUDA AQUI, depois de a forma vestir o corpo: o preto da sombra escoa por cima dela.
+		VirarAEstreiaDivina();
 
 		// ============================ E QUEM ESPERAVA A CENA ACABAR ENTRA AQUI, POR ULTIMO ============================
 		// O <see cref="Virar"/> e o instante unico de "a cena acabou" (ver o campo `_naVirada`). Ele vem

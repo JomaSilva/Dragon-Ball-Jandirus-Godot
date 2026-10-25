@@ -17,7 +17,11 @@ namespace Jandirus.Client;
 ///   N2. a tecla E de verdade pega a numero 1 ("voce pega a Esfera de 1 estrela negra", e ela sai do chao) e ela esta na mochila -- fotos
 ///       `negra-2-pegou` e `negra-2b-mochila`;
 ///   N3. o `db_invocar` de producao: o Shenlong vermelho sobe no mundo, na altura certa -- foto `negra-3-shenlong`;
-///   N4. a janela do dragao abre com o nome dele -- foto `negra-4-desejo`.
+///   N4. a janela do dragao abre com o nome dele -- foto `negra-4-desejo`;
+///   N5-N8. (2026-10-23, dono) "Aprender a Danca da Fusao" na lista das Black Star, acesa; o clique leva a confirmacao com o nome dele
+///       -- foto `negra-5-danca`; "Pedir": o Shenlong ensina a danca e o planeta do desejo comeca a se partir (os dois avisos no chat, a
+///       contagem no servidor, dentro do palco das mortes) -- foto `negra-6-pediu`; vinte segundos depois, o ceu do fim do mundo entrando
+///       -- foto `negra-7-ceu`. As regras (e os contra-exemplos) sao da `--esferanegrateste`, familias X e D: aqui e a tela.
 /// A FOTO SO EXISTE DEPOIS DO `--import` do png novo do Shenlong: no ciclo, o caso `importar` roda antes deste, dentro da fila.
 ///
 ///     Godot --path . --host --rede 10131 --campoteste 12 --horateste 0.5 --semfauna --diagestrelanegra --raca Human --conta bancada_negra_foto --nome Negro
@@ -141,6 +145,45 @@ public partial class RoboDaEstrelaNegra : Node
 		await Segundos(0.6);
 		Conferir(janela, $"N4. A JANELA DO DESEJO ABRE COM O NOME DO DRAGAO [\"{MenuDeDesejos.Instancia?.NomeDesenhado}\"]");
 		Fotografar("user://negra-4-desejo.png");
+
+		// N5. (2026-10-23) "APRENDER A DANCA DA FUSAO", SO NA LISTA DAS BLACK STAR (dono): a linha esta la, e acesa (o corpo nao sabe a danca)
+		string nomeDaDanca = Desejos.DaBlackStar.First(d => d.Id == Desejos.IdDaDancaDaFusao).Nome;
+		MenuDeDesejos? menu = MenuDeDesejos.Instancia;
+		List<(string Id, string Nome, bool Pode, string Motivo)> linhas = menu?.LinhasDesenhadas() ?? [];
+		Conferir(janela && linhas.Any(l => l.Id == Desejos.IdDaDancaDaFusao && l.Pode && l.Nome.Equals(nomeDaDanca, StringComparison.OrdinalIgnoreCase)),
+				 $"N5. A LISTA DAS BLACK STAR TEM \"{nomeDaDanca}\", ACESA [{string.Join(" | ", linhas.Select(l => $"{l.Id}:{l.Pode}"))}]");
+
+		// N6. o clique na linha leva a confirmacao, com o nome do desejo
+		bool clicou = menu != null && menu.ApertarLinha(Desejos.IdDaDancaDaFusao);
+		bool confirmando = clicou && await Ate(() => menu!.EtapaDeTeste == "Confirmar"
+												  && menu.ConfirmarDesenhado().Nome.Equals(nomeDaDanca, StringComparison.OrdinalIgnoreCase), 5);
+		Conferir(confirmando, $"N6. O CLIQUE NA DANCA LEVA A CONFIRMACAO COM O NOME DELA [{menu?.EtapaDeTeste}: \"{menu?.ConfirmarDesenhado().Nome}\"]");
+		await Segundos(0.4);
+		Fotografar("user://negra-5-danca.png");
+
+		// N7. "Pedir": o Shenlong ensina a danca, e o planeta onde as Black Star foram usadas comeca a se partir. DENTRO DO PALCO DAS MORTES
+		// (o servidor deste processo): a contagem fica na memoria, e o `PalcoEN_Encerrar` devolve o planeta.
+		srv.PalcoEN_AbrirOPalcoDasMortes();
+		_ditas.Clear();
+		cli.Falou += Ouvir;
+		try
+		{
+			bool pediu = confirmando && menu!.ApertarBotao("Pedir");
+			bool aprendeu = pediu && await Ate(() => srv.PalcoEN_SabeDancar(eu)
+													&& _ditas.Any(t => t.StartsWith("você aprende a Dança da Fusão", StringComparison.Ordinal)), 8);
+			Conferir(aprendeu, $"N7. \"PEDIR\": O SHENLONG ENSINA A DANCA DA FUSAO (o livro do servidor a tem, e o chat diz) [ouvi: {string.Join(" | ", _ditas.TakeLast(4))}]");
+			bool partiu = pediu && await Ate(() => srv.PalcoEN_PlanetaSeParte(eu)
+												  && _ditas.Any(t => t.Contains("COMEÇA A SE PARTIR", StringComparison.Ordinal))
+												  && _ditas.Any(t => t.Contains("se despedaçando", StringComparison.Ordinal)), 8);
+			Conferir(partiu, $"N7b. ...E O PLANETA DO DESEJO COMECA A SE PARTIR: a contagem dos 310 s no servidor, o aviso de quem esta nele e o do mundo [ouvi: {string.Join(" | ", _ditas.TakeLast(4))}]");
+		}
+		finally { cli.Falou -= Ouvir; }
+		await Segundos(1.5);
+		Fotografar("user://negra-6-pediu.png");
+
+		// N8. O CEU DO FIM DO MUNDO entrando: o clima forcado da destruicao sobe em 45 s (`ForcarClima`), e vinte segundos depois ja se ve
+		await Segundos(20);
+		Fotografar("user://negra-7-ceu.png");
 
 		srv.PalcoEN_Encerrar();
 	}

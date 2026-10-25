@@ -351,6 +351,11 @@ public partial class MenuJogo
 	/// <summary>O titulo do cartao, sem a contagem. Uma casa so: a bancada (`--diagabas`) procura por ele.</summary>
 	internal const string TituloDasMinhasObras = "Suas construções nesta zona";
 
+	/// <summary>(2026-10-25) O botao da linha de cada construcao (`LinhaDeObra`) e a pilula da liberada. O robo `--diagabas` le por eles.</summary>
+	internal const string RotuloDeLiberar = "Liberar", RotuloDeTrancar = "Trancar", PilulaDeLiberada = "liberada";
+	internal const string DicaDeLiberar = "libera esta construção pra qualquer um mexer nela como você: aparafusar, soltar, pegar, usar";
+	internal const string DicaDeTrancar = "volta a ser só sua: ninguém mais mexe nela";
+
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagabas`): o cartao volta a listar TUDO o que esta de pe na zona -- o estado
 	/// de antes de 2026-10-12, com as macieiras do mapa e a bancada dos outros no meio. Falso em jogo, sempre.
@@ -417,9 +422,26 @@ public partial class MenuJogo
 
 		HFlowContainer pilulas = Pilulas(
 			(!Interacoes.PedeParafuso(o.Tipo) ? "" : o.Aparafusada ? "aparafusada" : "solta",
-			 o.Aparafusada ? Tema.Bom : Tema.Destaque));
+			 o.Aparafusada ? Tema.Bom : Tema.Destaque),
+			(o.Liberada ? PilulaDeLiberada : "", Tema.Destaque));   // (2026-10-25) a liberada se diz
 		pilulas.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
 		h.AddChild(pilulas);
+
+		// (2026-10-25) LIBERAR / TRANCAR -- o dono: *"permita com q o criador da tech libere ela quando quiser pra qualquer um mexer nela,
+		// desparafusar, pegar, etc, tudo q o dono pode fazer"*. A linha so PEDE, pelo id do pacote (negativo e nave); quem decide e o servidor
+		// (`LiberarObra`), e a resposta volta no proximo pacote das obras.
+		int id = o.Id;
+		var liberar = new Button
+		{
+			Text = o.Liberada ? RotuloDeTrancar : RotuloDeLiberar,
+			TooltipText = o.Liberada ? DicaDeTrancar : DicaDeLiberar,
+			FocusMode = Control.FocusModeEnum.None,
+			SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+		};
+		liberar.AddThemeFontSizeOverride("font_size", 12);
+		liberar.SetMeta("liberar", id);
+		liberar.Pressed += () => GameClient.Instance?.SendTech("liberar", id.ToString());
+		h.AddChild(liberar);
 		return h;
 	}
 
@@ -446,6 +468,6 @@ public partial class MenuJogo
 		return string.Concat(c.Catalogo.Select(o => (char)('0' + Math.Clamp((int)c.VereditoDe(o, Moeda.Zeni), 0, 9))))
 			 + "|" + string.Concat(c.Catalogo.Select(o => (char)('0' + Math.Clamp((int)c.VereditoDe(o, Moeda.Recursos), 0, 9))))
 			 + $"|{_pediCatalogo}|"
-			 + string.Join(',', c.Obras.Select(o => $"{o.Id}{(o.Aparafusada ? '+' : '-')}"));
+			 + string.Join(',', c.Obras.Select(o => $"{o.Id}{(o.Aparafusada ? '+' : '-')}{(o.Liberada ? "L" : "")}"));   // (2026-10-25) e a liberada
 	}
 }

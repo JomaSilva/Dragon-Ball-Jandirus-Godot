@@ -706,9 +706,17 @@ public partial class GameServer
 	/// de 60 s como correto -- o andaime `MsNoAlem`. O dono pediu o contrario: *"voce teria que ficar
 	/// morto ate alguem te reviver com as esferas, ou juntar 1 milhao de zeni e pagar o Enma Daioh"*.
 	/// O que se prova agora: nao ha volta por tempo; o Enma existe na mesa dele; longe dele nada
-	/// acontece; sem o milhao ele recusa; com o milhao cobra, aplica o debuff de 25% por uma hora e
-	/// devolve o corpo INTEIRO ao berco; o vivo e enxotado; e o DEFEITO INJETADO (o Enma de graca)
-	/// mostra que a prova do preco enxerga.
+	/// acontece; sem o preco ele recusa; com o preco cobra e devolve o corpo INTEIRO ao berco; o vivo
+	/// e enxotado; e o DEFEITO INJETADO (o Enma de graca) mostra que a prova do preco enxerga.
+	///
+	/// (2026-10-23) O PRECO E O DEBUFF, PELA REGRA DO DONO: *"diminua o preco de reviver no ceu pra 200k
+	/// zeni, e faca com q ao reviver n tenha mais o debuff de bp"*. Ate aqui esta familia AFIRMAVA o
+	/// milhao do DM e o debuff de 25% por uma hora (`SkyNPCs.dm:92`, `:194`); agora ela cobra os 200 mil
+	/// do dono -- LITERAIS, a regua nao le a constante que prova (8c, 8d, 8e) --, o botao da mesa
+	/// dizendo esse numero (8a, 8b), e o poder inteiro em tres reguas, uma por linha da regra de antes:
+	/// o Enma nao ARMA o prazo (8f), quem volta tem o poder inteiro (8g), e o prazo que o save de quem
+	/// pagou ate a v0.4.4 ainda traz nao corta nada (8h). O contra-exemplo e a regra de antes inteira
+	/// de volta (`Alem.DebuffDoEnmaComoAntesDeTeste`): a mesma volta paga, e as tres REPROVAM.
 	/// ==============================================================================
 	/// </summary>
 	private void OEnmaEAVoltaPaga(ServerPlayer pl)
@@ -744,6 +752,17 @@ public partial class GameServer
 						$"obra na fileira {fileiraDaObra}, cadeira na {fileiraDaCadeira}, PixelY={_obras?.Get(Alem.TipoDoEnma)?.PixelY}");
 		}
 
+		// O BOTAO DA MESA DIZ O PRECO DE VERDADE. O rotulo escreve o numero A MAO (ele e a chave do ingles no `lingua-en.json`) e o
+		// preco mora em `Alem.PrecoDoReviveDoEnma`: quem mexer num tem de mexer no outro, e esta regua cobra os dois juntos.
+		{
+			Interacoes.Acao volta = Interacoes.De(Alem.TipoDoEnma).FirstOrDefault(a => a.Verbo == "enma_reviver");
+			string preco = Alem.PrecoDoReviveDoEnma.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+			AfirmarAlem("8a. O BOTAO DA MESA DIZ O PRECO: o rotulo de \"enma_reviver\" e \"Voltar a vida (<o preco da constante> zeni)\"",
+						volta.Rotulo == $"Voltar à vida ({preco} zeni)", $"rotulo '{volta.Rotulo}', preco {preco}");
+			AfirmarAlem("8b. ...e a dica dele nao fala mais em corpo fraco (o dono, 2026-10-23): volta inteiro, com todo o poder",
+						(volta.Dica ?? "").Contains("todo o seu poder") && !(volta.Dica ?? "").Contains("25%"), $"dica '{volta.Dica}'");
+		}
+
 		// LONGE DA MESA: nada acontece
 		pl.Pos = new Vec2(enma.X + 20 * ZoneCollision.TileSize, enma.Y);
 		pl.Ficha.Zeni = 2_000_000;
@@ -751,48 +770,46 @@ public partial class GameServer
 		AfirmarAlem("LONGE da mesa o pedido nao chega ao Enma: continua morto e com o zeni no bolso",
 					pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - 2_000_000) < 1e-6);
 
-		// NA MESA, SEM O MILHAO: recusa
-		pl.Pos = new Vec2(enma.X + ZoneCollision.TileSize, enma.Y);
-		pl.Ficha.Zeni = Alem.PrecoDoReviveDoEnma - 1;
-		EnmaReviverPorZeni(pl);
-		AfirmarAlem("na mesa SEM o milhao o Enma recusa (`SkyNPCs.dm:190`): continua morto, zeni intacto",
-					pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - (Alem.PrecoDoReviveDoEnma - 1)) < 1e-6);
+		// O PRECO DO DONO, LITERAL de proposito: a regua nao le a constante que ela prova (o mutante que a devolvesse ao milhao
+		// passaria por uma regua que perguntasse a `Alem.PrecoDoReviveDoEnma` quanto cobrar).
+		const double PrecoDoDono = 200_000;   // o dono, 2026-10-23: *"diminua o preco de reviver no ceu pra 200k zeni"*
 
-		// COM O MILHAO: a volta
-		pl.Ficha.Zeni = Alem.PrecoDoReviveDoEnma + 5;
-		long antesDaVolta = NowMs();
+		// NA MESA, UM ZENI ABAIXO: recusa
+		pl.Pos = new Vec2(enma.X + ZoneCollision.TileSize, enma.Y);
+		pl.Ficha.Zeni = PrecoDoDono - 1;
 		EnmaReviverPorZeni(pl);
-		AfirmarAlem("COM O MILHAO ele volta a vida (`enma_zeni_revive`)", !pl.Ficha.dead && !pl.Ficha.KO);
-		AfirmarAlem("...o Enma cobrou exatamente 1.000.000", Math.Abs(pl.Ficha.Zeni - 5) < 1e-6, $"{pl.Ficha.Zeni}");
+		AfirmarAlem("8c. na mesa com 199.999 zeni (um abaixo dos 200 mil do dono) o Enma recusa (`SkyNPCs.dm:190`): continua morto, zeni intacto",
+					pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - (PrecoDoDono - 1)) < 1e-6, $"morto={pl.Ficha.dead} zeni={pl.Ficha.Zeni:0}");
+
+		// COM OS 200 MIL: a volta. O campo do prazo parte do zero (o que se mede e se o Enma o ARMA).
+		pl.Ficha.Zeni = PrecoDoDono + 5;
+		pl.Ficha.zeni_revive_debuff_until = 0;
+		EnmaReviverPorZeni(pl);
+		AfirmarAlem("8d. COM OS 200 MIL ele volta a vida (`enma_zeni_revive`; o preco do dono, 2026-10-23 -- o DM cobra 1 milhao)",
+					!pl.Ficha.dead && !pl.Ficha.KO, $"morto={pl.Ficha.dead} KO={pl.Ficha.KO} zona={pl.Zone.Name}");
+		AfirmarAlem("8e. ...o Enma cobrou exatamente 200.000", Math.Abs(pl.Ficha.Zeni - 5) < 1e-6, $"{pl.Ficha.Zeni}");
 		AfirmarAlem("...e ele sai do Outro Mundo pro berco", !Alem.EhOAlem(pl.Zone), pl.Zone.Name);
 		AfirmarAlem("...INTEIRO: a perna decepada voltou (a cura e da VOLTA, nao da morte)",
 					pl.Combate.Corpo.Achar("Perna esquerda") is { Decepado: false });
 		AfirmarAlem("...com a vida e o Ki cheios (`Revive()` do DM = `SpreadHeal(100)` + `Ki = MaxKi`)",
 					pl.Ficha.HP >= 99.99 && pl.Ficha.Ki >= pl.Ficha.MaxKi - 1e-6,
 					$"HP {pl.Ficha.HP:0.##} Ki {pl.Ficha.Ki:0}/{pl.Ficha.MaxKi:0}");
-		AfirmarAlem("...com o DEBUFF armado por UMA HORA (`zeni_revive_debuff_until`, `SkyNPCs.dm:194`)",
-					pl.Ficha.zeni_revive_debuff_until >= antesDaVolta + Alem.MsDoDebuffDoEnma - 1000
-					&& pl.Ficha.zeni_revive_debuff_until <= antesDaVolta + Alem.MsDoDebuffDoEnma + 1000,
-					$"{pl.Ficha.zeni_revive_debuff_until - antesDaVolta} ms");
-		{
-			// COM BP DE GENTE GRANDE: o host desta bancada nasce com BP ~8, e `Round(2 * 0,25)` da zero --
-			// a razao viraria 0/2 e a prova mediria arredondamento, nao o debuff.
-			double bpGuardado = pl.Ficha.BP;
-			pl.Ficha.BP = 100_000;
-			pl.Ficha.Statify();
-			pl.Ficha.PowerLevel(agoraMs: NowMs());
-			double com = pl.Ficha.expressedBP;
-			long guardado = pl.Ficha.zeni_revive_debuff_until;
-			pl.Ficha.zeni_revive_debuff_until = 0;
-			pl.Ficha.PowerLevel(agoraMs: NowMs());
-			double sem = pl.Ficha.expressedBP;
-			pl.Ficha.zeni_revive_debuff_until = guardado;
-			pl.Ficha.BP = bpGuardado;
-			pl.Ficha.Statify();
-			pl.Ficha.PowerLevel(agoraMs: NowMs());
-			AfirmarAlem("...e o debuff e o BP expresso em 25% (`Fighter.Power`, a familia 3 'no fim de tudo')",
-						sem > 0 && Math.Abs(com / sem - 0.25) < 0.03, $"{com:0.##} de {sem:0.##}");
-		}
+
+		// SEM O DEBUFF DE BP (o dono, 2026-10-23: *"faca com q ao reviver n tenha mais o debuff de bp"*). Uma regua por linha da regra
+		// de antes: o Enma nao ARMA o prazo (8f); o poder de quem volta e o inteiro (8g); e o prazo de uma hora que o save de quem pagou
+		// ate a v0.4.4 ainda traz -- LITERAL, 3.600.000 ms (`SkyNPCs.dm:194`) -- nao corta nada, sem relogar (8h).
+		const long UmaHoraDoDm = 3_600_000;
+		bool NaoArmou() => pl.Ficha.zeni_revive_debuff_until == 0;
+		static bool Inteiro((double Com, double Sem) p) => p.Sem > 0 && Math.Abs(p.Com / p.Sem - 1) < 0.01;
+		static string Razao((double Com, double Sem) p) => $"{p.Com:0.##} de {p.Sem:0.##} ({(p.Sem > 0 ? p.Com / p.Sem : 0):0.###})";
+		AfirmarAlem("8f. SEM O DEBUFF: a volta paga nao arma prazo nenhum (`zeni_revive_debuff_until` continua zero)",
+					NaoArmou(), $"prazo {pl.Ficha.zeni_revive_debuff_until - NowMs()} ms a frente");
+		var daVolta = PoderComESemOPrazoDoEnma(pl, pl.Ficha.zeni_revive_debuff_until);
+		AfirmarAlem("8g. ...e o poder de quem volta e o INTEIRO: o BP expresso dele e o do mesmo corpo sem prazo nenhum",
+					Inteiro(daVolta), Razao(daVolta));
+		var doSaveVelho = PoderComESemOPrazoDoEnma(pl, NowMs() + UmaHoraDoDm);
+		AfirmarAlem("8h. O SAVE DE ANTES NAO CORTA: a hora de prazo que traz quem pagou o Enma ate a v0.4.4 deixa o poder inteiro",
+					Inteiro(doSaveVelho), Razao(doSaveVelho));
 		AfirmarAlem("...e o relogio da morte zerado", pl.RelogioDaMorte == 0);
 		TickDasAureolas();
 		AfirmarAlem("E A AUREOLA SOME SOZINHA -- ela nao tem linha propria no revive", !pl.EnvAureola);
@@ -804,7 +821,43 @@ public partial class GameServer
 		AfirmarAlem("um VIVO na mesa e enxotado (`SkyNPCs.dm:151-153`): nada cobrado, nada mudado",
 					!pl.Ficha.dead && Math.Abs(pl.Ficha.Zeni - zeniVivo) < 1e-6);
 
-		// DEFEITO INJETADO: o Enma de graca. Morre de novo no Outro Mundo e o crivo do preco e o que segura.
+		// DEFEITO INJETADO: a regra de antes inteira (o prazo armado na volta e o corte de 25%). Morre de novo no Outro Mundo, paga de
+		// novo, e as tres reguas do debuff, com a mesma conta, REPROVAM. O prazo que o defeito arma sai junto com ele.
+		pl.Combate.Morrer(ignorarSeguro: true);
+		pl.RelogioDaMorte = 0;
+		VenceuOPrazoDaMorte(pl);
+		pl.Pos = new Vec2(enma.X + ZoneCollision.TileSize, enma.Y);
+		pl.Ficha.Zeni = PrecoDoDono + 5;
+		pl.Ficha.zeni_revive_debuff_until = 0;
+		bool voltouComODefeito, armouComODefeito;
+		(double Com, double Sem) daVoltaComODefeito, doSaveVelhoComODefeito;
+		Alem.DebuffDoEnmaComoAntesDeTeste = true;
+		try
+		{
+			EnmaReviverPorZeni(pl);
+			voltouComODefeito = !pl.Ficha.dead;
+			armouComODefeito = !NaoArmou();
+			daVoltaComODefeito = PoderComESemOPrazoDoEnma(pl, pl.Ficha.zeni_revive_debuff_until);
+			doSaveVelhoComODefeito = PoderComESemOPrazoDoEnma(pl, NowMs() + UmaHoraDoDm);
+		}
+		finally
+		{
+			Alem.DebuffDoEnmaComoAntesDeTeste = false;
+			pl.Ficha.zeni_revive_debuff_until = 0;
+		}
+		AfirmarAlem("(defeito injetado: a regra de antes, o debuff do DM) a mesma volta paga ARMA uma hora de prazo -- a regua 8f REPROVA",
+					voltouComODefeito && armouComODefeito, $"voltou={voltouComODefeito} armou={armouComODefeito}");
+		AfirmarAlem("(defeito injetado: a regra de antes) ...e quem volta fica com um quarto do poder -- a regua 8g REPROVA",
+					!Inteiro(daVoltaComODefeito) && Math.Abs(daVoltaComODefeito.Com / Math.Max(daVoltaComODefeito.Sem, 1e-9) - 0.25) < 0.03,
+					Razao(daVoltaComODefeito));
+		AfirmarAlem("(defeito injetado: a regra de antes) ...e a hora de prazo do save de antes corta o poder a um quarto -- a regua 8h REPROVA",
+					!Inteiro(doSaveVelhoComODefeito) && Math.Abs(doSaveVelhoComODefeito.Com / Math.Max(doSaveVelhoComODefeito.Sem, 1e-9) - 0.25) < 0.03,
+					Razao(doSaveVelhoComODefeito));
+
+		// DEFEITO INJETADO: o Enma de graca. Morre de novo no Outro Mundo e o crivo do preco e o que segura. (Vivo de volta a mesa
+		// ANTES de morrer, como depois do "vivo enxotado": morrer no berco faria a viagem largar um cadaver la, ao lado de onde a
+		// familia 9 exige a alma como o UNICO morto ao alcance do Revive.)
+		MoveToZone(pl.Id, alem, new Vec2(enma.X + ZoneCollision.TileSize, enma.Y));
 		pl.Combate.Morrer(ignorarSeguro: true);
 		pl.RelogioDaMorte = 0;
 		VenceuOPrazoDaMorte(pl);
@@ -815,8 +868,38 @@ public partial class GameServer
 		EnmaNaoCobraDeTeste = true;
 		try { EnmaReviverPorZeni(pl); }
 		finally { EnmaNaoCobraDeTeste = false; }
-		AfirmarAlem("DEFEITO INJETADO (o Enma sem cobrar): com ZERO zeni ele revive -- a prova 'sem o milhao recusa' ficaria vermelha (a bancada enxerga o preco)",
+		AfirmarAlem("DEFEITO INJETADO (o Enma sem cobrar): com ZERO zeni ele revive -- a prova 'sem o preco recusa' ficaria vermelha (a bancada enxerga o preco)",
 					!pl.Ficha.dead);
+	}
+
+	/// <summary>
+	/// O BP EXPRESSO DESTE CORPO com este prazo do Enma no campo, e com o campo zerado -- a mesma conta de producao (`PowerLevel`), no
+	/// instante de agora. COM BP DE GENTE GRANDE: o host desta bancada nasce com BP ~8, e `Round(2 * 0,25)` da zero -- a razao mediria
+	/// arredondamento, e nao o corte. Devolve o corpo como estava (BP, prazo e a conta refeita).
+	/// </summary>
+	private (double Com, double Sem) PoderComESemOPrazoDoEnma(ServerPlayer pl, long prazo)
+	{
+		double bpGuardado = pl.Ficha.BP;
+		long prazoGuardado = pl.Ficha.zeni_revive_debuff_until;
+		long agora = NowMs();
+		try
+		{
+			pl.Ficha.BP = 100_000;
+			pl.Ficha.Statify();
+			pl.Ficha.zeni_revive_debuff_until = prazo;
+			pl.Ficha.PowerLevel(agoraMs: agora);
+			double com = pl.Ficha.expressedBP;
+			pl.Ficha.zeni_revive_debuff_until = 0;
+			pl.Ficha.PowerLevel(agoraMs: agora);
+			return (com, pl.Ficha.expressedBP);
+		}
+		finally
+		{
+			pl.Ficha.zeni_revive_debuff_until = prazoGuardado;
+			pl.Ficha.BP = bpGuardado;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel(agoraMs: agora);
+		}
 	}
 
 	private void OCorpoQueFicaEOPrecoDoRevive(ServerPlayer pl, List<ServerPlayer> forjados, ZoneKey zonaDosVivos, Vec2 pontoDosVivos)

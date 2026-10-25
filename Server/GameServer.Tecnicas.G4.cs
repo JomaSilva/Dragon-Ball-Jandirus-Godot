@@ -446,19 +446,59 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (`--kaikaiteste` familia 9): o salto de planeta volta a pousar no ponto fixo de antes, o `SpawnPos` (249,250)
+	/// -- a agua de Namek, a rocha de Icer. Lido pelo <see cref="ChegadaDoSaltoDePlaneta"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ChegadaNoPontoFixoDeTeste;
+
+	/// <summary>
+	/// ONDE O SALTO DE PLANETA POUSA: no BERCO do planeta (<see cref="PontoDeNascimento"/> -- o marco do mapa do BYOND, conferido contra
+	/// a colisao pelo `PontoLivrePerto`, que recusa parede, beirada e agua).
+	///
+	/// (2026-10-24, dono: "Usar o berco do planeta") Ate aqui o Kai Kai, o Devil Bringer e o Rasgo Dimensional pousavam no `SpawnPos`
+	/// fixo, o (249,250) que foi escrito pro campo aberto da Terra. Nos doze destinos do Kai Kai ele so e chao em cinco: e AGUA em Namek
+	/// (a foto 4 da r1 do `kaikai`: o Kaioshin chegando no meio do lago), em Arconia e no Ceu, ROCHA em Icer, NUVEM no Afterlife, e
+	/// FORA DO MAPA nas duas estacoes (que tem 200x200). O DM sorteia um chao andavel do planeta (`SpawnPoints.dm:113-124`); o berco e
+	/// o ponto fixo e reproduzivel que o port ja tem pra isso. O Atalho Sagrado continua nas coordenadas dele, e o mundo gerado, no
+	/// ponto que o gerador garantiu (o Kai Kai nao passa por aqui pra ele).
+	/// </summary>
+	private Vec2 ChegadaDoSaltoDePlaneta(ZoneKey zona) => ChegadaNoPontoFixoDeTeste ? SpawnPos : PontoDeNascimento(zona);
+
+	/// <summary>
 	/// UM SALTO DE PLANETA INTEIRO, na ordem do DM: porta, recarga, preco, destino, carona, emote,
 	/// cobranca, salto. O que muda entre os quatro verbs sao parametros -- a lista, o preco (Ki CHEIO
 	/// que zera, ou METADE que paga metade: o Atalho Sagrado, `usr.Ki >= MaxKi/2` e `Ki /= 2`), se
-	/// leva carona, o ponto de chegada (o spawn da zona, salvo o Atalho, que cai em coordenadas
-	/// proprias do DM) e as frases. Devolve o destino escolhido e quantas caronas foram, pra fala de
-	/// chegada de cada verb. Os `sleep(1)`/`spawn(1)` que escalonavam a chegada no DM nao vieram:
-	/// despacho sincrono.
+	/// leva carona, o ponto de chegada (o berco do planeta, <see cref="ChegadaDoSaltoDePlaneta"/>, salvo
+	/// o Atalho, que cai em coordenadas proprias do DM) e as frases. Devolve o destino escolhido e quantas
+	/// caronas foram, pra fala de chegada de cada verb. Os `sleep(1)`/`spawn(1)` que escalonavam a chegada
+	/// no DM nao vieram: despacho sincrono.
 	/// </summary>
 	private bool SaltarDePlaneta(ServerPlayer pl, string destino, string[] lista, string oQue, string verbo,
 								 bool kiCheio, bool comCarona, string emote, string fraseDaCarona,
 								 Func<ZoneKey, Vec2>? pontoDeChegada, out string escolhido, out int levou)
 	{
 		escolhido = ""; levou = 0;
+		if (!PortaDoSaltoDePlaneta(pl, kiCheio)) return false;
+
+		string? alvo = EscolherDaLista(pl, destino, lista, oQue, verbo);
+		if (alvo == null) return false;
+		escolhido = alvo;
+
+		List<ServerPlayer> caronas = PagarOSaltoDePlaneta(pl, kiCheio, comCarona, emote);
+		ZoneKey z = ZoneKey.Premade(alvo);
+		Saltar(pl, z, pontoDeChegada?.Invoke(z) ?? ChegadaDoSaltoDePlaneta(z), caronas, fraseDaCarona);
+		levou = caronas.Count;
+		return true;
+	}
+
+	/// <summary>
+	/// A PORTA, A RECARGA E O PRECO de todo salto de planeta, nesta ordem e sem cobrar nada: quem pode, se o espaco ja se recompos e
+	/// se ha a energia que o salto pede. Separada do <see cref="SaltarDePlaneta"/> (2026-10-23) porque o Kai Kai com tela pergunta o
+	/// mesmo ANTES de abrir a lista (o `input()` do DM so abre com Ki cheio, `kai.dm:115`) e de novo no clique -- uma copia destas
+	/// linhas la seria a segunda nocao de "Ki cheio" do jogo. Fala o motivo quando recusa.
+	/// </summary>
+	private bool PortaDoSaltoDePlaneta(ServerPlayer pl, bool kiCheio)
+	{
 		if (!PodeSaltarDePlaneta(pl, out string porque)) { Avisar(pl, porque); return false; }
 		if (EmEspera(pl, _saltoPronto, "o espaco em volta de voce ainda esta se recompondo")) return false;
 
@@ -472,20 +512,20 @@ public partial class GameServer
 				: $"isso pede metade da energia ({pedagio:0}) e voce tem {pl.Ficha.Ki:0}.");
 			return false;
 		}
+		return true;
+	}
 
-		string? alvo = EscolherDaLista(pl, destino, lista, oQue, verbo);
-		if (alvo == null) return false;
-		escolhido = alvo;
-
+	/// <summary>
+	/// O PAGAMENTO de um salto ja decidido: quem vai de carona (colhido ANTES do primeiro `MoveToZone`, ver
+	/// <see cref="LevarCaronas"/>), o emote, o Ki e a recarga. Devolve as caronas.
+	/// </summary>
+	private List<ServerPlayer> PagarOSaltoDePlaneta(ServerPlayer pl, bool kiCheio, bool comCarona, string emote)
+	{
 		List<ServerPlayer> caronas = comCarona ? LevarCaronas(pl) : [];
 		Falar(pl, Protocol.Fala.Emote, emote);
 		pl.Ficha.Ki = kiCheio ? 0 : pl.Ficha.Ki / 2;   // `usr.Ki = 0` -- ZERA, nao desconta; o Atalho paga metade
 		_saltoPronto[pl.Id] = NowMs() + RecargaDoSaltoMs;
-
-		ZoneKey z = ZoneKey.Premade(alvo);
-		Saltar(pl, z, pontoDeChegada?.Invoke(z) ?? SpawnPos, caronas, fraseDaCarona);
-		levou = caronas.Count;
-		return true;
+		return caronas;
 	}
 
 	/// <summary>
@@ -493,8 +533,8 @@ public partial class GameServer
 	///
 	/// FICOU DE FORA: o `input("X Location?")` do DM, que deixa escolher a coordenada exata de
 	/// chegada. Isso e teleporte cirurgico pra dentro de qualquer lugar do mapa de destino --
-	/// inclusive pra dentro de parede, que o DM nem confere. Aqui a chegada e o ponto de spawn da
-	/// zona, que e o unico lugar de que se sabe que existe chao.
+	/// inclusive pra dentro de parede, que o DM nem confere. Aqui a chegada e o berco do planeta
+	/// (<see cref="ChegadaDoSaltoDePlaneta"/>, 2026-10-24), que e chao conferido.
 	/// </summary>
 	private void RasgoDimensionalG4(ServerPlayer pl, string destino)
 	{

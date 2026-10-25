@@ -99,8 +99,9 @@ public partial class RoboDasAbas
 
 		// ---- as pilulas ----
 		List<string> pilulas = PilulasDaAba(pg);
-		string condicao = f.Morto ? "MORTO" : f.KO ? "NOCAUTEADO" : "de pé";
-		Checa("a Condição e uma PILULA (de pé / NOCAUTEADO / MORTO) e diz o que a ficha diz", pilulas.Contains(condicao), string.Join(",", pilulas));
+		// (2026-10-24) "vivo" no lugar de "de pé" -- o dono: *"mude o texto \"de pe\" pra vivo/alive no ingles"*
+		string condicao = f.Morto ? "MORTO" : f.KO ? "NOCAUTEADO" : "vivo";
+		Checa("a Condição e uma PILULA (vivo / NOCAUTEADO / MORTO) e diz o que a ficha diz", pilulas.Contains(condicao), string.Join(",", pilulas));
 		Checa("o Golpe e uma PILULA (LETAL / não-letal) e diz o que a ficha diz", pilulas.Contains(f.Letal ? "LETAL" : "não-letal"));
 
 		// ---- os cartoes ----

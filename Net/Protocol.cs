@@ -820,6 +820,22 @@ public static class Protocol
         NomesDePlanetas = 62,
 
         /// <summary>
+        /// (2026-10-23) A TELA DO KAI KAI: os destinos que o Kai Kai de quem recebe alcanca AGORA -- os doze de sempre e os mundos
+        /// gerados do livro de batismo, sem os destruidos. Sai pra quem apertou o verbo SEM destino (o botao ou a tecla), e so
+        /// depois da porta do Ki cheio, como o `input()` do DM; o cliente abre a tela ao receber. Corpo escrito e lido em
+        /// `Net/FioDoKaiKai.cs`. Ver `GameServer.KaiKai.cs`.
+        /// </summary>
+        DestinosDoKaiKai = 180,
+
+        /// <summary>
+        /// (2026-10-24) AS MINHAS COPIAS DO SPLIT FORM DE PE: `int n` + n x `int id` -- a lista INTEIRA, que substitui a de antes.
+        /// Pessoal, e sai a cada copia que nasce ou se desfaz (`GameServer.MandarMinhasCopiasG12`). E o que deixa o clique do cliente
+        /// abrir o menu de ordens numa copia (o `Click()` do `/mob/npc/Splitform`, `Split Forms.dm:28-68`): o snapshot diz onde os
+        /// corpos estao, e nao de quem sao. Nada de poder no pacote.
+        /// </summary>
+        MinhasCopias = 181,
+
+        /// <summary>
         /// O QUE DA PRA LEVAR DE QUEM ESTA NOCAUTEADO AO MEU ALCANCE -- a resposta do verbo `saquear` (item 9b do
         /// playtest de 2026-10-10; a regra esta em `Core/Items/Saque.cs`). So pra quem perguntou: id do caido
         /// (int), nome dele (string) e a lista (byte n; n x (id do item, ushort quantidade)). Vazia quer dizer
@@ -2108,6 +2124,12 @@ public static class Protocol
         /// </summary>
         public float Aclimatacao;
 
+        /// <summary>
+        /// (2026-10-23) A ASCENSAO -- o `Fighter.BPBoost` de agora (1 = nenhuma): o bonus de poder das racas sem transformacao, pelo BP
+        /// base (`Core.Races.Ascensao`). A aba de Formas o mostra como a linha "Ascensão". No FIM do pacote, depois do vigor.
+        /// </summary>
+        public float Ascensao;
+
         /// <summary>Quantos kg dos pesos estao NO CORPO agora (`Fighter.Weighted`): a aba Equip escreve "vestindo X kg".</summary>
         public float PesoKg;
 
@@ -2213,6 +2235,7 @@ public static class Protocol
             w.Put(KaiokenMaestria); w.Put(KaiokenVezes); w.Put(KaiokenAceso);
             w.Put(SkillsRaciais); w.Put(SkillsDoSangue);
             w.Put(VigorMult);
+            w.Put(Ascensao);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -2251,6 +2274,7 @@ public static class Protocol
             SkillsRaciais = r.GetUInt(),
             SkillsDoSangue = r.GetUInt(),
             VigorMult = r.GetFloat(),
+            Ascensao = r.GetFloat(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -3169,7 +3193,7 @@ public struct SheetState
 
     /// <summary>
     /// (v0.3.0) O TERCEIRO BYTE DO CORPO -- os dois primeiros estao cheios. Bit 0: <see cref="EmVisita"/>; bit 1 (2026-10-17):
-    /// <see cref="Enterrado"/>; seis livres.
+    /// <see cref="Enterrado"/>; bit 2 (2026-10-23): <see cref="SoRasteja"/>; cinco livres.
     /// </summary>
     public byte Estado3;
 
@@ -3186,6 +3210,13 @@ public struct SheetState
     /// veem (o `Oculto` do snapshot). Vem pela ficha pelo motivo do nado: e estado do MEU corpo que muda como eu ando -- e como eu me vejo.
     /// </summary>
     public bool Enterrado => (Estado3 & 2) != 0;
+
+    /// <summary>
+    /// (2026-10-23, bit 2 do <see cref="Estado3"/>) SO A GRAVIDADE ME SEGURA, E EU ME ARRASTO: desmaiado pelo esmagamento, ou preso de pe
+    /// pela razao 4 (dono). O passo vale, a 1/4 -- ja no <see cref="SpeedStat"/> desta mesma ficha --, e a corrida nao. O cliente nao tem
+    /// como saber POR QUE o corpo caiu; quem sabe e o servidor (`GameServer.SoAGravidadeSegura`). Vem pela ficha pelo motivo do nado.
+    /// </summary>
+    public bool SoRasteja => (Estado3 & 4) != 0;
 
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;

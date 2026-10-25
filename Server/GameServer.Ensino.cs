@@ -182,6 +182,9 @@ public partial class GameServer
 		RecusaDeLicao.NaoSeEnsina => $"{s?.Nome ?? "isso"} nao se ensina a um estranho -- so um mestre mostra isso ao proprio aluno.",
 		RecusaDeLicao.DoCargo =>
 			$"{s?.Nome ?? "isso"} e do cargo e nao se ensina: do kit de um cargo so passam adiante os ataques de ki, a Fusion Dance e o Mafuba.",
+		// (2026-10-23) A regra inteira, como a do cargo logo acima: quem aperta descobre o caminho que sobrou.
+		RecusaDeLicao.SoPeloRitual =>
+			"o Potential Unleashed não se ensina: só o Ritual Místico do Velho Kaiohshin o desperta, feito por um Kaioshin.",
 		RecusaDeLicao.NaoEDoCorpoDele => s != null && Jandirus.Core.Skills.SkillsFechadas.De(s.Path) is { } fechada
 			? $"{s.Nome} ainda nao existe neste jogo (falta {fechada.Falta}): nem um mestre a ensina."
 			: $"{s?.Nome ?? "isso"} nao e do corpo de {aluno.Name}: nem um mestre ensina o que a raca ou a classe dele nao alcanca.",

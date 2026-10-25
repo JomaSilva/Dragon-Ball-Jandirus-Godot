@@ -26,6 +26,12 @@ public enum RecusaDeLicao
 	/// nem do mestre ao proprio aluno. Ver <see cref="EnsinoDeSkill.CargoTrancaOEnsino"/>.
 	/// </summary>
 	DoCargo,
+
+	/// <summary>
+	/// (dono, 2026-10-23) O Potential Unleashed (a skill `kai/Mystic`, que era a forma) nao se ensina mais por porta nenhuma: so o
+	/// Ritual Mistico do Velho Kaiohshin o desperta. Ver <see cref="EnsinoDeSkill.SoPeloRitual"/>.
+	/// </summary>
+	SoPeloRitual,
 }
 
 /// <summary>
@@ -201,20 +207,42 @@ public static class EnsinoDeSkill
 	/// <summary>A TRAVA DO ENSINO -- a <see cref="FicaNoCargo"/> nas tres portas (o bloco acima).</summary>
 	public static bool CargoTrancaOEnsino(Skill s) => !CargoSeEnsinaComoAntesDeTeste && FicaNoCargo(s);
 
+	// =====================================================================
+	// O POTENTIAL UNLEASHED NAO SE ENSINA -- regra do dono (2026-10-23), e ela DIVERGE do DM de olho aberto
+	// =====================================================================
+	// *"essa forma nao pode ser ensinada diretamente, precisando passar do ritual"*. No DM a skill `kai/Mystic` (`Race Trees/kai.dm:12`)
+	// nasce `teacher = TRUE`: o Kaioshin a mostrava a quem estivesse colado nele, e o aluno ganhava a forma (ela era a skill). Agora so o
+	// Ritual Mistico do Velho Kaiohshin (`Ranks.RitualDoKaioshin`) da a forma -- e o ensino da skill fecha por PORTA NENHUMA: o verbo
+	// `ens_ensinar`, o cartao do aluno, a licao de mestre (as tres daqui), a heranca do bio (o parto pula a skill) e o botao "Ensinar" do
+	// cliente. Quem ja a aprendeu fica com ela (o dono: "quem tem fica"), e a copia ensinada nao passava adiante de qualquer jeito.
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ensinoteste`, familia 11m, e robo `--diagverbs`, F8m): o Potential Unleashed volta a se ensinar como
+	/// antes de 2026-10-23. Lido pelo <see cref="SoPeloRitual"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MisticoSeEnsinaComoAntesDeTeste;
+
+	/// <summary>A TRAVA DO ENSINO DO POTENTIAL UNLEASHED: a skill que era a forma so vem pelo ritual (o bloco acima).</summary>
+	public static bool SoPeloRitual(Skill s) =>
+		!MisticoSeEnsinaComoAntesDeTeste
+		&& string.Equals(s.Path, Ranks.RitualDoKaioshin.SkillDoMistico, StringComparison.OrdinalIgnoreCase);
+
 	/// <summary>
 	/// ESTE LIVRO PODE REPASSAR ESTA SKILL? As tres condicoes do `Teach_Skill` (`:9-10`), e a
 	/// terceira e a regra inteira do sistema:
 	///
 	///   1. ele **sabe** a skill;
 	///   2. o tipo diz que ela se ensina (`teacher = TRUE`) -- e, desde 2026-10-23, ela nao fica no cargo
-	///      (<see cref="CargoTrancaOEnsino"/>);
+	///      (<see cref="CargoTrancaOEnsino"/>) nem e o Potential Unleashed (<see cref="SoPeloRitual"/>);
 	///   3. ele **nao a aprendeu de alguem** (`teacher = FALSE` na copia ensinada, `:53`).
 	///
 	/// A (3) e o que impede a corrente: A ensina B, e B nao ensina C. Sem ela uma skill rara
 	/// atravessa o servidor inteiro numa tarde, e o `teacher` do catalogo vira decoracao.
 	/// </summary>
 	public static bool PodeRepassar(SkillBook livro, Skill s) =>
-		s.Ensinavel && !CargoTrancaOEnsino(s) && livro.Sabe(s.Path) && !livro.FoiEnsinada(s.Path);
+		s.Ensinavel && !CargoTrancaOEnsino(s)
+		&& !SoPeloRitual(s)
+		&& livro.Sabe(s.Path) && !livro.FoiEnsinada(s.Path);
 
 	/// <summary>
 	/// TUDO O QUE A LICAO PERGUNTA, sem nada de servidor dentro -- e na ordem em que o original
@@ -254,6 +282,8 @@ public static class EnsinoDeSkill
 		if (!doMestre.Sabe(s.Path)) return RecusaDeLicao.NaoSabe;
 		// ANTES da licao de mestre: ela nao abre o que o cargo guarda (dono, 2026-10-23).
 		if (CargoTrancaOEnsino(s)) return RecusaDeLicao.DoCargo;
+		// ...nem o Potential Unleashed, que so o ritual da (dono, 2026-10-23).
+		if (SoPeloRitual(s)) return RecusaDeLicao.SoPeloRitual;
 		if (!s.Ensinavel && !LicaoDeMestre(s, eMeuAluno)) return RecusaDeLicao.NaoSeEnsina;
 		if (doMestre.FoiEnsinada(s.Path)) return RecusaDeLicao.AprendeuDeAlguem;
 		if (!mestreTemAssinatura || !alunoTemAssinatura) return RecusaDeLicao.SemAssinatura;
@@ -296,14 +326,16 @@ public static class EnsinoDeSkill
 
 	/// <summary>
 	/// O QUE ESTE MESTRE TEM PRA ENSINAR A UM ALUNO DELE -- tudo o que ele sabe e nao e arvore, menos o que fica no cargo
-	/// (<see cref="CargoTrancaOEnsino"/>: a tela sabe disso pelo catalogo, e um botao que recusa pra todo mundo e so ruido). A
-	/// lista e o que a tela oferece; cada licao ainda passa pelo <see cref="Avaliar"/> (o que foi ensinado a ele nao repassa, e
-	/// a tela nao sabe disso: quem diz e a recusa).
+	/// (<see cref="CargoTrancaOEnsino"/>: a tela sabe disso pelo catalogo, e um botao que recusa pra todo mundo e so ruido) e o
+	/// Potential Unleashed (<see cref="SoPeloRitual"/>, pelo mesmo motivo). A lista e o que a tela oferece; cada licao ainda passa
+	/// pelo <see cref="Avaliar"/> (o que foi ensinado a ele nao repassa, e a tela nao sabe disso: quem diz e a recusa).
 	/// </summary>
 	public static IEnumerable<Skill> OQueOMestreEnsina(SkillCatalog cat, IEnumerable<string> aprendidas)
 	{
 		foreach (string path in aprendidas)
-			if (cat.Get(path) is { Arvore: false, Nome.Length: > 0 } s && !CargoTrancaOEnsino(s)) yield return s;
+			if (cat.Get(path) is { Arvore: false, Nome.Length: > 0 } s && !CargoTrancaOEnsino(s)
+				&& !SoPeloRitual(s))
+				yield return s;
 	}
 
 	/// <summary>

@@ -295,6 +295,7 @@ public partial class RoboDeTecla : Node
 	public override void _ExitTree()
 	{
 		Jandirus.Server.GameServer.EspiaoDeEntrada = null;
+		DesligarOsDefeitosDoMouse();   // (2026-10-23) a familia FM -- ver RoboDeTecla.Mouse.cs
 		Devolver();
 	}
 
@@ -365,6 +366,7 @@ public partial class RoboDeTecla : Node
 		foreach (double d in F4_ConflitoERestauro()) yield return d;
 		foreach (double d in F5_Digitando()) yield return d;
 		foreach (double d in F6_SobreviveAoRelog()) yield return d;
+		foreach (double d in FM_OMouseQueValeTecla()) yield return d;   // (2026-10-23) ver RoboDeTecla.Mouse.cs
 		foreach (double d in F7_AsFixas()) yield return d;
 
 		// ---------------------------------------------------------------- fim
@@ -800,15 +802,16 @@ public partial class RoboDeTecla : Node
 
 		// ---------------------------------------------------------------- 3c. NAO PULA DEGRAU
 		//
-		// "Tecla 3 = SSJ3" e o que um jogador espera ao ligar a tecla, e e o que NAO pode acontecer.
-		// Este corpo desperta o SSJ1; pedir o SSJ3 da base tem que bater no `Avaliar` igual ao C.
+		// "Tecla 3 = SSJ3" e o que um jogador espera ao ligar a tecla, e (2026-10-23, o adendo do dono) so acontece com 50% de
+		// maestria no SSJ3 ja assumido -- ver `EstadoDeForma.VaiDiretoPelaTecla` e a `--formasteclasteste`. Este corpo desperta o SSJ1 e
+		// NUNCA foi SSJ3: pedir o SSJ3 da base tem que bater no `Avaliar` igual ao C.
 		Marcar();
 		C?.SendVerbo("forma", "ssj3");
 		yield return 0.6;
 		Gesto salto = Colher("pedido de SSJ3 da base");
 
 		string aposSalto = Catalogo.PorRede(C?.Atributos.FormaAtual ?? 0)?.Id ?? "?";
-		Checa("F3 pedir SSJ3 da base NAO transforma (o atalho e escolha, nao salto)",
+		Checa("F3 pedir SSJ3 da base, sem nunca ter sido SSJ3, NAO transforma (a tecla so salta com 50% de maestria na forma -- dono, 2026-10-23)",
 			  aposSalto == Catalogo.IdBase, aposSalto);
 		Checa("F3 ...e a recusa explica que ele vem DEPOIS de outra forma",
 			  LinhaCom(salto, "vem depois").Length > 0, PrimeiraLinha(salto));

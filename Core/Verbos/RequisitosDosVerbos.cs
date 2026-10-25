@@ -263,6 +263,9 @@ public static class RequisitosDosVerbos
 		// nao ha recusa a cobrar.
 		new(ChaveDoVerbo("graus"), "Toggle SSJ Grades", AbaOther,
 			Raca("Saiyan", "Halfbreed").Ou(Fato(Fatos.EscadaSuperSaiyajin, "escada do Super Saiyajin aberta (DNA Saiyajin)"))),
+		// (2026-10-23) A FAMILIA DO C DUPLO so tem o que escolher em quem tem forma DIVINA a alcancar -- e forma divina e a que pede ki
+		// divino desperto, de qualquer raca (o Ultra Instinct e de todas). Como os graus, o servidor guarda a de qualquer um: sem recusa.
+		new(ChaveDoVerbo("divinas_c"), "Toggle C: Mortal/Divine Forms", AbaOther, Fato(Fatos.GodKiDesperto, "God Ki desperto")),
 
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM, de todo Frost Demon (`fd_login_check`,
 		// `IcerTransform.dm:148`). Quem recusa quem nao e um e o servidor (`GameServer.Frost.ComandoDasFormasDoFrost`).
@@ -389,6 +392,12 @@ public static class RequisitosDosVerbos
 		new("hab:absorver", "Absorver", AbaSkills,
 			Raca(Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm).Ou(Tecnica("Bio_Absorb")).Ou(Tecnica(Combat.AbsorcaoMajin.Verbo)),
 			"nao tem como absorver ninguem|ainda nao sabe absorver"),
+		// (2026-10-24) O BIO COM SANGUE MAJIN TEM AS DUAS (o dono: *"Os dois, em botoes separados"*): o "Absorver" de cima bebe, e este sela
+		// como o Majin. Quem tem: o bio que sabe Buu Absorb -- a arvore do Majin so abre pro sangue Majin, e o servidor confere o sangue
+		// (`GameServer.BioMajin.cs`). O Majin de verdade sela pelo "Absorver" e nao o ve.
+		new("hab:absorver_majin", "Absorver como Majin", AbaSkills,
+			Raca(Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm).E(Tecnica(Combat.AbsorcaoMajin.Verbo)),
+			"só o bio-androide com sangue Majin|ainda nao sabe absorver"),
 		new("hab:expelir", "Expelir todos", AbaSkills, Tecnica(Combat.AbsorcaoMajin.Verbo), "nao ha ninguem dentro de voce"),
 		// (2026-10-17) A LARVA DO BIO-ANDROIDE (o adendo do dono): a forma de barata que o bio de laboratorio veste quando quer, e o enterrar,
 		// que e so dela -- e o unico jeito de sair dela (5 min enterrada). Ver `GameServer.Larva.cs`.
@@ -449,6 +458,13 @@ public static class RequisitosDosVerbos
 		new(PrefixoDeHabilidade + World.TravessiaDoJuiz.Verbo, World.TravessiaDoJuiz.Rotulo, AbaSkills,
 			Cargo(World.TravessiaDoJuiz.Cargo).Ou(Fato(Fatos.VoltaDoOutroMundo, "vivo no Outro Mundo, com a volta guardada")),
 			"só o King Yemma"),
+
+		// (2026-10-23) O RITUAL MISTICO DO VELHO KAIOHSHIN -- o que entrou no kit do Kaioshin no lugar da skill do Mistico (o dono). E do
+		// TRONO, como a travessia logo acima; e quem esta NO MEIO de um ritual (o alvo tambem) ve o botao enquanto ele dura -- e o que o
+		// interrompe. Ver `GameServer.RitualDoKaioshin.cs`.
+		new(PrefixoDeHabilidade + Ranks.RitualDoKaioshin.Verbo, Ranks.RitualDoKaioshin.Nome, AbaSkills,
+			Cargo(Ranks.RitualDoKaioshin.Cargo).Ou(Fato(Fatos.RitualDoKaioshin, "no meio de um Ritual Místico")),
+			"só o Kaioshin"),
 
 		// ---------------------------------------------------------- Tecla E: o mainframe de androides
 		// A MAQUINA E DE HUMANO: instalar o laboratorio e converter o proprio corpo pedem a raca

@@ -69,7 +69,7 @@ public partial class MenuJogo : CanvasLayer
 	private static readonly string[] Fixas =
 	[
 		"Stats", "Equip", "Body", "Forms", "Ki",
-		"People", "World", "Cargos", "Skills", "Other", "Learning", "Tech",
+		"People", "World", "Cargos", "Skills", "Passivas", "Other", "Learning", "Tech",
 	];
 
 	private Control _raiz = null!;
@@ -649,7 +649,7 @@ public partial class MenuJogo : CanvasLayer
 			// provar que cada uma e necessaria. Elas NAO passam pelo `comum`: ele carregava `f.Estado`
 			// (ate 2026-10-19), cujos bits altos sao a direcao do corpo, e virar pra esquerda com a arvore
 			// aberta remontava a pagina e jogava a rolagem de volta pro topo.
-			"Learning" or "Skills" => AssinaturaDeSkills(aba),
+			"Learning" or "Skills" or "Passivas" => AssinaturaDeSkills(aba),
 			// A PROFICIENCIA DA DISCIPLINA ENTRA AQUI porque a aba passou a DESENHA-LA: as quatro
 			// formas divinas relatam a proficiencia da skill no lugar da maestria, e sem este pedaco
 			// a barra delas ficaria congelada na tela enquanto sobe de verdade no servidor.
@@ -1051,6 +1051,7 @@ public partial class MenuJogo : CanvasLayer
 			case "Cargos": AbaCargos(); break;
 			case "Nav": AbaNav(); break;
 			case "Skills": Sabidas(); break;
+			case "Passivas": Passivas(); break;
 			case Verbos.Outros: AbaOutros(); break;
 			case Verbos.Admin: AbaAdmin(); break;
 			case "Tech": AbaTech(); break;

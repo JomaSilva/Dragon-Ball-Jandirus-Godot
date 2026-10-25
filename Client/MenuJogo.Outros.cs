@@ -66,6 +66,7 @@ public partial class MenuJogo
 
 		["Toggle Knockback"] = "Combate",
 		["Toggle SSJ Grades"] = "Combate",
+		["Toggle C: Mortal/Divine Forms"] = "Combate",   // (2026-10-23) o irmao dos graus: por onde o C duplo sobe
 		["Clear Buffs"] = "Combate",
 
 		["Who"] = "Sociedade",

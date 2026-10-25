@@ -672,6 +672,31 @@ public partial class LocalPlayer : Node2D
 		&& c.Atributos.Esmagamento >= Jandirus.Core.Stats.Esmagamento.RazaoQuePrende;
 
 	/// <summary>
+	/// (2026-10-23) SO A GRAVIDADE ME SEGURA, E EU ME ARRASTO -- o desmaiado pelo esmagamento e o prensado de pe (dono). Quem sabe e o
+	/// SERVIDOR (o porque do desmaio nao viaja), pelo bit da ficha (`SheetState.SoRasteja`); o passo e o `SpeedStat` da MESMA ficha, ja no
+	/// quarto -- as duas pontas pelo mesmo numero, sem correcao. Abre so o passo: sem corrida, e o corpo deitado nao vira.
+	/// </summary>
+	private bool SoRasteja => _ultimaFicha?.SoRasteja == true && !RastejoIgnoradoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagrastejo`): o cliente ignora o bit -- caido ou prensado pela gravidade, nao tenta o passo (o jogo de
+	/// antes de 2026-10-23). Lido pelo <see cref="SoRasteja"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RastejoIgnoradoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagrastejo`): quem se arrasta pede a corrida com o SHIFT, e o servidor a recusa -- o passo local sairia no
+	/// dobro do que ele confere (correcao por pacote). Lido pela linha do `querCorrer`, no `_Process`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RastejoCorreDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagrastejo`): o desmaiado que se arrasta vira o olhar pro lado da tecla. Lido pela linha do olhar, no
+	/// `_Process`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DeitadoViraNoRastejoDeTeste;
+
+	/// <summary>
 	/// O QUE O MEU CORPO PERDEU -- a conta de bracos e pernas do `DebuffsDeMembro`, refeita a cada `S2C.Corpo`
 	/// (<see cref="OnCorpo"/>) e nao a cada quadro. E a MESMA conta que o servidor faz no `PodeMexerOCorpo` e na
 	/// corrida: as duas pontas decidem pelo mesmo corpo e pela mesma funcao, que e o que impede este cliente de
@@ -862,6 +887,21 @@ public partial class LocalPlayer : Node2D
 	public static bool TravaDaTecnicaSoNoServidorDeTeste;
 
 	/// <summary>
+	/// (2026-10-23) NO RITUAL MISTICO DO VELHO KAIOHSHIN -- o efeito `ritual_kaioshin` que o servidor manda aos dois enquanto o ritual
+	/// dura (`GameServer.RitualDoKaioshin.cs`): nenhum dos dois se move (o dono), e o cliente avisado nem preve o passo que o servidor
+	/// recusa. O mesmo remedio do torneio e da tecnica, logo acima.
+	/// </summary>
+	private static bool PresoNoRitual =>
+		!TravaDoRitualSoNoServidorDeTeste
+		&& GameClient.Instance?.EfeitosAtivos.Contains(Jandirus.Core.Ranks.RitualDoKaioshin.EfeitoDaTrava) == true;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagritualkai`): o cliente ignora a trava do ritual e preve o passo. Lido pela propria
+	/// <see cref="PresoNoRitual"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TravaDoRitualSoNoServidorDeTeste;
+
+	/// <summary>
 	/// O EIXO DO RAIO QUE ESTE CORPO SEGURA COM AS MAOS -- a disputa de guarda, do lado sem feixe (nulo fora dela).
 	///
 	/// ============================ O UNICO EMBATE EM QUE O CORPO DA PASSO (dono, 2026-10-12) ============================
@@ -947,7 +987,8 @@ public partial class LocalPlayer : Node2D
 		: Observando                             ? "observando a nave de fora (E pra voltar ao corpo)"
 		: Possuido                               ? "possuido por um Neo Tuffle (voce so assiste)"
 		: _empurrado                             ? "arremessado"
-		: _caido                                 ? "caido (nocaute ou morte)"
+		// (2026-10-23) ...menos quem SO A GRAVIDADE segura: o desmaiado por ela e o prensado de pe se arrastam (`SoRasteja`)
+		: _caido && !SoRasteja                   ? "caido (nocaute ou morte)"
 		: _agarrado                              ? "agarrado (a tecla de andar e a luta pra se soltar)"
 		: _estrangulando && !EstranguladorAndaDeTeste ? "estrangulando alguem (afrouxe o aperto pra andar)"
 		: _enterrado                             ? "enterrado (saia da terra pra andar -- e a conta dos 5 min zera)"
@@ -957,9 +998,10 @@ public partial class LocalPlayer : Node2D
 		// (segurando um raio com as maos o corpo NAO esta plantado: ele da o passo de lado -- `EixoDoRaioQueSeguro`)
 		: GameClient.Instance?.EmClash == true && EixoDoRaioQueSeguro == null ? "num embate"
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
-		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
+		: Prensado && !SoRasteja                  ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
 		: PresoPelaTecnica                        ? "preso pela tecnica (a Genkidama, a Death Ball, uma rajada)"
+		: PresoNoRitual                           ? "no Ritual Mistico do Velho Kaiohshin (o botao do ritual o interrompe)"
 		: NaveSemCombustivel                      ? "a nave esta sem combustivel (E > Abastecer)"
 		: NavePousada                             ? "a nave esta pousada (suba pra decolar)"
 		: ParadoNoEspaco                          ? MotivoNoEspaco
@@ -1276,7 +1318,8 @@ public partial class LocalPlayer : Node2D
 		// pede -- andar no passo de corrida sem ela seria uma correcao por pacote. Quem segura o SHIFT le o porque.
 		if (_shift && tentandoAndar && SemPernaPraCorrer)
 			AvisarDoMembro(Jandirus.Core.Combat.DebuffsDeMembro.AvisoDeCorrida);
-		bool querCorrer = _shift && tentandoAndar && !_carregando
+		// (2026-10-23) ...e QUEM SE ARRASTA NAO CORRE: o servidor recusa (`GameServer.Rastejo.cs`), entao este cliente nem pede.
+		bool querCorrer = _shift && tentandoAndar && !_carregando && (!SoRasteja || RastejoCorreDeTeste)
 			&& (_altitude > 0f || (_temKiPraCorrer && !SemPernaPraCorrer));
 		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, RemotePlayer.VolumeDoArranque);
 		_correndo = querCorrer;
@@ -1398,7 +1441,8 @@ public partial class LocalPlayer : Node2D
 		{
 			// O OLHAR QUE O SERVIDOR CRAVOU (o tiro no marcado) NAO E REESCRITO PELO PASSO ate o prazo vencer.
 			if (_olharCravadoPor > 0) _olharCravadoPor -= delta;
-			else if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
+			// (2026-10-23) O DESMAIADO QUE SE ARRASTA NAO VIRA: desliza como caiu, como o servidor o mostra aos outros (`GameServer.Rastejo.cs`).
+			else if (tentandoAndar && (!_caido || DeitadoViraNoRastejoDeTeste)) _facing = MoveRules.FacingFrom(dir, _facing);
 			// A POSE DE ANDAR dura um minimo depois de comecar (um toque na tecla mostra um passo, e nao um
 			// deslize) e anda no ritmo do corpo (o pesado da o passo devagar). Ver `PassoSegurado`.
 			_visual.RitmoDoPasso = MoveRules.RitmoDoPasso(SpeedStat);
@@ -1994,6 +2038,8 @@ public partial class LocalPlayer : Node2D
 		_atividade = Protocol.Activity.Meditando;
 		GameClient.Instance?.SendActivity(Protocol.Activity.Meditando);
 		if (escolha == EscolhaDaMeditacao.Profunda) GameClient.Instance?.SendHabilidade("mente");
+		// (2026-10-25) E QUEM ESCOLHEU ESTUDAR liga o estudo de cabeca -- no mesmo canal ordenado, depois da atividade (o servidor ja o ve meditando)
+		if (escolha == EscolhaDaMeditacao.Estudando) GameClient.Instance?.SendTech("estudar_meditando");
 	}
 
 	/// <summary>Eu era fera no quadro passado? A virada e o que derruba a atividade -- ver <see cref="LerAtividade"/>.</summary>

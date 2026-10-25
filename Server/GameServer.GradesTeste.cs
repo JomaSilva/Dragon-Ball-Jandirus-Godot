@@ -56,6 +56,7 @@ public partial class GameServer
 			APorcentagemDeBpEfetivo(pl, Checa);
 			OsStatsDosGradesNoCorpo(pl, Checa);
 			APreferenciaNoSsj1CruENoDisco(pl, Checa, Ouvido);
+			OTempoNoGradeTreinaOSsj1(pl, Checa);
 		}
 		finally
 		{
@@ -148,11 +149,16 @@ public partial class GameServer
 				  Math.Abs(inteiro - 1) < 1e-9, $"{inteiro:0.#########}");
 
 			// ---------------------------------------------------------------- 2. AS DUAS PONTAS
+			// (2026-10-24) O KI SO TIRA PODER ABAIXO DA METADE do tanque (o dono, `Fighter.RazaoDoKiNoPoder`): a ponta de baixo e 40%, e os
+			// 60% entram como o contraste -- ali a % ja nao cai.
 			double a60 = Com(0.6);
-			Checa("[efetiva] Ki a 60%: a % CAI abaixo de 100 (a ponta de baixo)",
-				  a60 < 1 - 1e-9, $"{a60:0.######}");
-			Checa("[efetiva] ...e vale o proprio 60% (o `kiratio` no piso, e mais nada)",
-				  Math.Abs(a60 - 0.6) < 1e-9, $"{a60:0.#########}");
+			Checa("[efetiva] Ki a 60%: a % NAO cai -- da metade do tanque pra cima o Ki nao tira poder (dono, 2026-10-24)",
+				  Math.Abs(a60 - 1) < 1e-9, $"{a60:0.######}");
+			double a40 = Com(0.4);
+			Checa("[efetiva] Ki a 40%: a % CAI abaixo de 100 (a ponta de baixo)",
+				  a40 < 1 - 1e-9, $"{a40:0.######}");
+			Checa("[efetiva] ...e vale a razao do Ki abaixo da metade (0,6 + 0,4 x 40%/50% = 92%), e mais nada",
+				  Math.Abs(a40 - 0.92) < 1e-9 && Math.Abs(a40 - Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(0.4, 1)) < 1e-9, $"{a40:0.#########}");
 
 			double a150 = Com(1.5);
 			Checa("[efetiva] Ki a 150%: a % PASSA de 100 -- o pedido do dono",
@@ -164,7 +170,8 @@ public partial class GameServer
 			//
 			// DUAS PONTAS NAO DISTINGUEM RAMPA DE DEGRAU, e um teto que morde so em 200% passaria nas
 			// duas checagens acima. A serie e o que fecha o intervalo.
-			double[] razoes = [0.6, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0];
+			// (2026-10-24) A SERIE TEM TRES TRECHOS agora: SOBE abaixo da metade, e PLANA (100%) da metade ate o cheio, SOBE acima do cheio.
+			double[] razoes = [0.1, 0.3, 0.49, 0.5, 0.75, 1.0, 1.1, 1.25, 1.5, 2.0];
 			double[] vistos = new double[razoes.Length];
 			for (int k = 0; k < razoes.Length; k++) vistos[k] = Com(razoes[k]);
 			GD.Print("  --   " + string.Join("  ", razoes.Zip(vistos,
@@ -173,10 +180,13 @@ public partial class GameServer
 			bool subiuSempre = true, ladoCerto = true;
 			for (int k = 0; k < razoes.Length; k++)
 			{
-				if (k > 0 && vistos[k] <= vistos[k - 1]) subiuSempre = false;
+				bool plano = razoes[k] >= Jandirus.Core.Stats.Fighter.LimiarDoKiNoPoder && razoes[k] <= 1;
+				if (plano && Math.Abs(vistos[k] - 1) > 1e-9) subiuSempre = false;
+				bool vizinhoPlano = k > 0 && razoes[k - 1] >= Jandirus.Core.Stats.Fighter.LimiarDoKiNoPoder && razoes[k] <= 1;
+				if (k > 0 && !vizinhoPlano && vistos[k] <= vistos[k - 1]) subiuSempre = false;
 				if (razoes[k] > 1 != vistos[k] > 1) ladoCerto = false;
 			}
-			Checa($"[efetiva] a serie de Ki e monotonica nos {razoes.Length} pontos (60% -> 200%)",
+			Checa($"[efetiva] a serie de Ki nos {razoes.Length} pontos (10% -> 200%): SOBE abaixo da metade, e PLANA em 100% da metade ate o cheio, SOBE acima dele",
 				  subiuSempre, string.Join(" ", vistos.Select(v => $"{v:0.###}")));
 			Checa("[efetiva] ...e cada ponto cai do lado certo dos 100% (nenhum teto, nenhum piso)",
 				  ladoCerto, string.Join(" ", vistos.Select(v => $"{v:0.###}")));
@@ -1005,5 +1015,93 @@ public partial class GameServer
 		// O ARQUIVO VOLTA A SER VALIDO: a bancada mexeu no .json de uma conta viva, e deixa-lo sem o
 		// campo faria o proximo save-por-cima parecer bom enquanto o disco continuava de ontem.
 		Persistir(pl);
+	}
+
+	// =====================================================================
+	// 4. O TEMPO NO GRADE TREINA O SSJ1 (dono, 2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// O pedido de um jogador que o dono trouxe -- *"grade 2 and 3 mastery into ssj1 ... grade 2 and 3 require ssj mastery so you have no
+	/// real point to use grade 2"* -- e a regra do dono por cima: *"grade 2 e grade 3 ainda teriam a maestria propria q subiria mais
+	/// rapido q a do ssj normal, q so serviria pra diminuir um pouco o custo delas por segundo de ki"*. Pelo tique de producao
+	/// (`TickDaForma`), cem segundos em cada grade:
+	///   (a) a maestria do SSJ1 sobe no ritmo da escada (`FormaDef.TreinaTambem`);
+	///   (b) a do grade sobe no dele, tres vezes mais rapido (`Catalogo.RitmoDosGrades`);
+	///   (c) e ela baixa o Ki que o grade cobra: aos 100%, 20% a menos que no zero, no mesmo tique.
+	/// E os contra-exemplos, o jogo de antes: sem o treino do SSJ1 (`GradeNaoTreinaOSsj1DeTeste`) a regua (a) REPROVA; no ritmo da
+	/// escada (`GradeNoRitmoDaEscadaDeTeste`), a (b).
+	/// </summary>
+	private void OTempoNoGradeTreinaOSsj1(ServerPlayer pl, Action<string, bool, string> Checa)
+	{
+		// o ritmo da escada pra ESTE corpo, pelos mesmos fatores do funil (`SubirMaestriaDaZona`: a zona e o corpo)
+		double escada = 100 * Catalogo.MaestriaPorSegundo * Math.Max(pl.Ficha.zoneMasteryMult, 0) * FatorDeMaestriaDoCorpo(pl);
+		static bool Perto(double obtido, double esperado) => esperado > 0 && Math.Abs(obtido - esperado) <= esperado * 0.01;
+
+		void NoGrade(string grade, double maestriaDele)
+		{
+			pl.Forma.Maestria.Por("ssj1", Catalogo.Grade3Pct);   // abre os dois grades, longe dos 100% do SSJ1
+			pl.Forma.Maestria.Por(grade, maestriaDele);
+			pl.Forma.Entrar(grade);
+			AplicarForma(pl);
+		}
+		void NaBase()
+		{
+			pl.Forma.Entrar(Catalogo.IdBase);
+			AplicarForma(pl);
+		}
+
+		(double Ssj1, double Grade, string Detalhe) CemSegundos(string grade, bool semSsj1 = false, bool ritmoDaEscada = false)
+		{
+			GradeNaoTreinaOSsj1DeTeste = semSsj1;
+			GradeNoRitmoDaEscadaDeTeste = ritmoDaEscada;
+			try
+			{
+				NoGrade(grade, 0);
+				double ssj1 = pl.Forma.Maestria.De("ssj1"), propria = pl.Forma.Maestria.De(grade);
+				for (int t = 0; t < 100; t++) { pl.Ficha.Ki = pl.Ficha.MaxKi; TickDaForma(pl, 1.0); }
+				bool ficou = pl.Forma.Atual == grade;
+				double dSsj1 = pl.Forma.Maestria.De("ssj1") - ssj1, dGrade = pl.Forma.Maestria.De(grade) - propria;
+				return (ficou ? dSsj1 : double.NaN, ficou ? dGrade : double.NaN,
+						$"ficou no {grade} {ficou}; SSJ1 +{dSsj1:0.####}, {grade} +{dGrade:0.####} (a escada da +{escada:0.####} em 100 s)");
+			}
+			finally
+			{
+				GradeNaoTreinaOSsj1DeTeste = false;
+				GradeNoRitmoDaEscadaDeTeste = false;
+				NaBase();
+			}
+		}
+
+		foreach (string grade in new[] { "grade2", Catalogo.IdGrade3 })
+		{
+			var certo = CemSegundos(grade);
+			Checa($"[grade] (a) cem segundos no {grade} sobem a maestria do SSJ1 no ritmo da escada (*\"grade 2 and 3 mastery into ssj1\"*)",
+				  Perto(certo.Ssj1, escada), certo.Detalhe);
+			Checa($"[grade] (b) ...e a do proprio {grade} sobe tres vezes mais rapido (*\"subiria mais rapido q a do ssj normal\"*)",
+				  Perto(certo.Grade, escada * Catalogo.RitmoDosGrades), certo.Detalhe);
+
+			// (c) o Ki de UM tique no grade, com a maestria dele no zero e nos 100%
+			double KiDeUmSegundo(double maestriaDele)
+			{
+				try
+				{
+					NoGrade(grade, maestriaDele);
+					pl.Ficha.Ki = pl.Ficha.MaxKi;
+					TickDaForma(pl, 1.0);
+					return pl.Ficha.MaxKi - pl.Ficha.Ki;
+				}
+				finally { NaBase(); }
+			}
+			double cru = KiDeUmSegundo(0), dominado = KiDeUmSegundo(100);
+			Checa($"[grade] (c) a maestria do {grade} so baixa o Ki que ele cobra: aos 100%, 20% a menos que no zero (*\"diminuir um pouco o custo delas por segundo de ki\"*)",
+				  cru > 0 && Math.Abs(dominado / cru - 0.8) < 0.005, $"Ki de um segundo: {cru:0.###} no zero, {dominado:0.###} aos 100%");
+		}
+
+		var semTreino = CemSegundos("grade2", semSsj1: true);
+		Checa("[grade] (defeito injetado: o grade que nao treina o SSJ1, o jogo de antes) o SSJ1 fica parado -- a regua (a) REPROVA",
+			  !Perto(semTreino.Ssj1, escada), semTreino.Detalhe);
+		var noRitmoDaEscada = CemSegundos("grade2", ritmoDaEscada: true);
+		Checa("[grade] (defeito injetado: o grade no ritmo da escada, o jogo de antes) a maestria dele sobe como a do SSJ1 -- a regua (b) REPROVA",
+			  !Perto(noRitmoDaEscada.Grade, escada * Catalogo.RitmoDosGrades), noRitmoDaEscada.Detalhe);
 	}
 }

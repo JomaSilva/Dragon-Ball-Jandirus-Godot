@@ -45,6 +45,12 @@ public static class StatCurves
     /// expoente fracionario, que nem numero e. Confirmado pela conta: com expoente 1,2
     /// (o valor antigo, ainda citado no comentario do DM) a razao 1/1000 da exatamente a
     /// "metade do BP" que o comentario promete. Com o 1,6 de hoje da ~0,31.
+    ///
+    /// (2026-10-23) O BONUS TEM TETO: +25% com a maestria no teto (500x) num chao de 1x -- o dono, *"no maximo 25% quando vc tem 500x
+    /// gravidade masterizada e nao 100%"* (ver `GainKnobs.AclimatacaoMaxima`). A MESMA curva, com duas mudancas: a razao trava no teto
+    /// da maestria (acima dele o bonus nao cresce) e o divisor sai do bonus maximo -- `ln(500)^2 / 0,25` = 154,5, no lugar do `40` do
+    /// DM (`base.dm:98`, que dava +96,6% a 500x). O `gravBalance` (o botao de admin do DM, sempre 1 aqui) divide por cima como antes.
+    /// A penalidade (o ramo de baixo) nao muda.
     /// </summary>
     public static double GravFelt(double maestria, double gravidadeLocal, double gravBalance = 1)
     {
@@ -52,11 +58,19 @@ public static class StatCurves
 
         if (g > 1)
         {
-            double v = DmMath.Pow(DmMath.Ln(g), 2);
+            double teto = GainKnobs.GravityCap;
+            double v = DmMath.Pow(DmMath.Ln(AclimatacaoDoDmDeTeste ? g : Math.Min(g, teto)), 2);
             if (v == 0) return 1;
-            return v / (40 * gravBalance) + 1;
+            double divisor = AclimatacaoDoDmDeTeste ? 40 : DmMath.Pow(DmMath.Ln(teto), 2) / GainKnobs.AclimatacaoMaxima;
+            return v / (divisor * gravBalance) + 1;
         }
 
         return 1 / (DmMath.Pow(-DmMath.Ln(g), 1.6) / 10 + 1);
     }
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--gravmetateste`): a aclimatacao volta a do DM -- sem teto e com o divisor 40, +96,6% a 500x
+    /// dominada (o jogo de antes de 2026-10-23). Lido pelo <see cref="GravFelt"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool AclimatacaoDoDmDeTeste;
 }

@@ -365,7 +365,9 @@ public partial class GameServer
 	/// <summary>
 	/// O KI DIVINO DESPERTA NESTE CORPO -- o unico lugar do servidor que faz isso. A ficha e escrita pelo
 	/// `DespertarDivino.Despertar` (o `get_godki()` do DM, com o que veio e o que nao veio dito la); aqui e
-	/// o que so o servidor pode fazer: recalcular o poder, contar ao jogador e a quem esta em volta, e gravar.
+	/// o que so o servidor pode fazer: contar ao jogador e a quem esta em volta, e gravar. (O poder NAO muda no
+	/// despertar desde 2026-10-23 -- os 2,5x pra sempre do DM sairam, ver `Fighter.GodKiFactor` --, e por isso
+	/// nao ha conta a refazer aqui.)
 	///
 	/// NAO HA CINEMATICA DE DESPERTAR pra reusar: as cenas do `Cinematicas.cs` sao das FORMAS, e a do Super
 	/// Saiyajin God (com o clarao do `do_first_godki_appearance`) toca quando ele subir nela pela primeira
@@ -380,16 +382,9 @@ public partial class GameServer
 		ResultadoDoDespertar r = DespertarDivino.Despertar(pl.Ficha);
 		if (!r.Despertou) return false;
 
-		// O PODER MUDA AGORA (o `godki_give_mult`): a conta e refeita ja, e nao no proximo tique de ficha --
-		// quem desperta no meio de uma luta ja bate com o poder novo no golpe seguinte.
-		pl.Ficha.PowerLevel(agoraMs: NowMs());
-		MandarFicha(pl);
-
 		Avisar(pl, "O KI DIVINO DESPERTOU EM VOCÊ. O seu corpo guarda agora uma energia que não se sente de fora -- "
 				   + "calma, imensa, e sua.");
-		if (r.BonusDeBp > 0)
-			Avisar(pl, $"o seu poder passa a valer x{r.BonusDeBp:0.##}, pra sempre -- transformado ou não.");
-		else if (pl.Ficha.SaiyanLineage == Oozaru.LinhagemPrimal)
+		if (pl.Ficha.SaiyanLineage == Oozaru.LinhagemPrimal)
 			Avisar(pl, "o seu sangue Primal não bebe desse poder: nele o ki divino só abre o caminho do Limit Breaker.");
 		if (r.Marco > 0)
 			Avisar(pl, $"MARCO DE PODER! o seu corpo rompeu um novo patamar: todo ganho agora é x{r.Marco:0.##}.");
@@ -400,7 +395,7 @@ public partial class GameServer
 
 		AnunciarODespertar(pl);
 		GD.Print($"[godki] {pl.Name} DESPERTOU o ki divino ({fonte}) | BP base {pl.Ficha.BP:N0} "
-				 + $"(requisito {RequisitoDeGodKi(pl):N0}) | bonus x{r.BonusDeBp:0.##} | marco x{r.Marco:0.##} | maestria {r.Maestria:0}%");
+				 + $"(requisito {RequisitoDeGodKi(pl):N0}) | marco x{r.Marco:0.##} | maestria {r.Maestria:0}%");
 
 		// O SAVE VAI NO PROXIMO TIQUE DESTE SISTEMA, e nao aqui: o despertar pode acontecer no meio da
 		// resolucao de um golpe, e gravar a foto de um corpo com o golpe pela metade nao e gravar o despertar.
@@ -484,7 +479,7 @@ public partial class GameServer
 							? $"maestria divina {marco:0}%: o seu corpo agora aguenta o Kaio-ken por cima do Blue."
 							: $"o seu ki divino amadurece ({marco:0}%).",
 			_ => prodigial
-				? $"o seu ki divino amadurece ({marco:0}%): o Místico agora expressa o poder inteiro dele."
+				? $"o seu ki divino amadurece ({marco:0}%): o Potential Unleashed agora expressa o poder inteiro dele."
 				: $"o seu ki divino amadurece ({marco:0}%): o degrau seguinte das formas divinas está ao seu alcance.",
 		});
 		GD.Print($"[godki] {pl.Name} cruzou {marco:0}% de maestria divina");

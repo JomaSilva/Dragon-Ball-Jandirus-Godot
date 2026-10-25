@@ -37,12 +37,22 @@ public sealed partial class Fighter
         return m;
     }
 
-    /// <summary>Marcos de ASCENSAO, pras racas que nao tem forma: o degrau e o proprio BPBoost.</summary>
+    /// <summary>
+    /// Marcos de ASCENSAO, pras racas que nao tem forma: o degrau e o proprio BPBoost.
+    ///
+    /// (2026-10-23) NAS PORTAS DA RAMPA DO DONO, e nao nos 5/10/20 do DM (`LinearGain.dm:48-51`). Os valores sao os do DM (x2, x3, x4 --
+    /// as etiquetas tambem, que vao pro save); o que mudou foi ONDE eles caem, e por decisao minha: os 5/10/20 eram calibrados pra
+    /// Ascensao do DM, que chegava a 5x logo depois da porta do SSJ1 (~1,7 milhao). Na rampa do dono (`Races.Ascensao`) o 5x so viria
+    /// aos ~646 milhoes, o 10x a ~1,08 bilhao e o 20x nunca (o teto e 16x) -- a raca sem escada treinaria a x1 enquanto o Saiyajin do
+    /// mesmo BP ja treina a x2. Nas portas da rampa os marcos caem onde caem os do Saiyajin: x2 na do SSJ1 (o `ssj`), x3 na do SSJ2
+    /// (o `ssj2`), x4 na do SSJ3 (o `ssj3`) -- o "proporcionalmente" do pedido, no ganho.
+    /// </summary>
     public double CheckAscensionMilestone()
     {
-        if (BPBoost >= 20) return ReachMilestone("asc20");
-        if (BPBoost >= 10) return ReachMilestone("asc10");
-        if (BPBoost >= 5) return ReachMilestone("asc5");
+        bool doDm = Races.Ascensao.MarcosNoDegrauDoDmDeTeste;
+        if (BPBoost >= (doDm ? 20 : Races.Ascensao.NaPortaDoSsj3)) return ReachMilestone("asc20");
+        if (BPBoost >= (doDm ? 10 : Races.Ascensao.NaPortaDoSsj2)) return ReachMilestone("asc10");
+        if (BPBoost >= (doDm ? 5 : Races.Ascensao.NaPortaDoSsj1)) return ReachMilestone("asc5");
         return 0;
     }
 
@@ -55,6 +65,7 @@ public sealed partial class Fighter
     /// </summary>
     public void TrainGain(Random rng, double mult = 1)
     {
+        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) peso acima de 8x o limite do corpo: o T nao rende nada
         if (mult == 0) mult = 1;
         mult *= GainKnobs.GlobalTrainGain * zoneGainMult * racialGanhoDeTreino;   // (v0.4.0) o Persistence -- `Fighter.racialGanhoDeTreino`
 
@@ -95,6 +106,7 @@ public sealed partial class Fighter
     /// <summary>Meditar. Rende menos por tick que treinar, mas nao custa folego.</summary>
     public void MedGain(Random rng, double multi = 1)
     {
+        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) ...nem a meditacao
         if (multi == 0) multi = 1;
         double lugar = FatorDaGravidade();   // (2026-10-16) a gravidade multiplica a meditacao tambem (a atividade) -- ver `FatorDaGravidade`
 
@@ -124,6 +136,7 @@ public sealed partial class Fighter
     /// </summary>
     public void AttackGain(Random rng, double mult = 1)
     {
+        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) ...nem a luta
         if (mult == 0) mult = 1;
         mult *= GainKnobs.GlobalSparGain * zoneGainMult;
 
@@ -160,6 +173,7 @@ public sealed partial class Fighter
     /// </summary>
     public void BlastGain(Random rng, double mult = 1, bool ignoreMinuteshot = false)
     {
+        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) ...nem o ki
         if (mult == 0) mult = 1;
         mult *= zoneGainMult;
 
@@ -304,7 +318,7 @@ public sealed partial class Fighter
         // o teto de aclimatacao so sobe encarando gravidade ACIMA dele
         if (gravidade > GravMastered)
         {
-            // a maestria de gravidade nao e BP: o ganho de BP ficou 20x menor (2026-10-16), ela segue no ritmo do DM
+            // a maestria de gravidade nao e BP: o ganho de BP ficou 20x menor (2026-10-16) e depois 2x (2026-10-23), ela segue no ritmo do DM
             GravMastered += 0.001 + GainKnobs.BPTickDoDm * 10 * gravidade * GravMod * GainKnobs.GlobalGravGain * 0.02;
             GravMastered = Math.Min(Math.Min(gravidade, GravMastered), GainKnobs.GravityCap);
         }
@@ -338,9 +352,13 @@ public sealed partial class Fighter
     /// original, e copia-lo aqui seria construir a camada 2 inteira e continuar sem a unica coisa que
     /// o dono pediu -- ver o multiplicador. O <see cref="zoneGainMult"/> entra na conta.
     /// ======================================================================================
+    ///
+    /// (2026-10-23) ZERO COM PESO DEMAIS: acima de 8x o limite do corpo o treino nao rende nada (<see cref="PesoDemaisPraTreinar"/>), e o
+    /// painel diz o que o tique paga -- o `weight` continua 8 (ele divide o poder), mas o "8x pesos" seria mentira.
     /// </summary>
     public double MultiplicadorDeGanho()
     {
+        if (PesoDemaisPraTreinar()) return 0;
         double gmult = FatorDaGravidade();   // o MESMO fator que o tique paga (2026-10-16)
 
         // O PESO MULTIPLICA O TREINO, e so pra cima: `weight` nasce em 1 e o `WeightTick` ja o
@@ -376,6 +394,20 @@ public sealed partial class Fighter
             BPrestriction = 1;
         }
     }
+
+    /// <summary>
+    /// PESO DEMAIS PRA TREINAR? A razao do peso acima de <see cref="GainKnobs.RazaoQueImpedeOTreino"/> (8x o limite do corpo) -- e ai nada
+    /// do treino rende: nem o T, nem a meditacao, nem a luta, nem o ki (o BP, o potencial oculto, o Ki, o folego maximo e a maestria de
+    /// gravidade da luta; a do chao continua a cada passe, <see cref="GravGain"/>). O dono (2026-10-23): *"usar pesos acima de 8x seu
+    /// limite corporal, vc nem conseguiria treinar assim"*. O servidor recusa (ou derruba) o treino e a meditacao com o aviso
+    /// (`TreinoEMeditacao.PorQueNao`), e o painel diz 0x (<see cref="MultiplicadorDeGanho"/>).
+    ///
+    /// O `weight` NAO zera: ele continua dividindo o poder (`deBuff`), cobrando o vigor do treino e freando o passo -- o resto do peso
+    /// fica como era, e o esmagamento tambem (a 8x o corpo ja esta preso no chao). E E SO O PESO: o `weight_ratio` leva a gravidade, mas
+    /// so existe com peso vestido; gravidade alta sem peso nenhum continua sendo treino (e castigo). Metodo, e nao propriedade: a ficha
+    /// vai inteira pro save, e uma propriedade publica entraria nele.
+    /// </summary>
+    public bool PesoDemaisPraTreinar() => weight_ratio > GainKnobs.RazaoQueImpedeOTreino && !GainKnobs.PesoDemaisTreinaDeTeste;
 
     // =====================================================================
     // O ACUMULADOR DE QUEM NAO ESTA TREINANDO
@@ -486,6 +518,34 @@ public sealed partial class Fighter
     /// <summary>BP alem do qual o corpo nao arranca mais forca das derrotas.</summary>
     public double ZenkaiCeiling() => ssj3LearnReq > 0 ? ssj3LearnReq : ssj3at * GainKnobs.ZenkaiCapSSJ3Mid;
 
+    /// <summary>
+    /// O ZENKAI DESTE CORPO NAO SE APOSENTA. So a classe Kaio -- o corpo Saiyajin que o Kaioshin toma pelo desejo das esferas
+    /// (`GameServer.Desejos.VestirCorpoSaiyajin`; no DM, `combatgains.dm:36`, o `Class != "Kaio"`). (2026-10-24) O dono: *"o unico q n
+    /// deveria ter cap de zenkai é o kaioshin q roubou corpo de saiyajin pelas esferas"* -- o Legendary e todo o resto tem o teto.
+    /// </summary>
+    public bool ZenkaiSemTeto => Class == Forms.Catalogo.ClasseRose && !KaioSeAposentaDeTeste;
+
+    /// <summary>
+    /// (2026-10-24) QUANTO DO TETO DO ZENKAI SOBRA NESTE BP: 1 no BP zero, 0 no requisito pessoal do SSJ3, em linha reta entre os
+    /// dois -- o dono: *"faca o zenkai tb ir perdendo forca (o teto de 3x e 2x vao caindo) lentamente ao se aproximar do requisito do
+    /// ssj3, ate zerar"*, e na pergunta de desde quando: "linha reta desde o zero". Com 10% do requisito o teto e 1,9x (2,8x com o corpo
+    /// em farrapos); com a metade, 1,5x (2x); no requisito, nada. Sem requisito (0, quem chama sem saber) fica o teto cheio de antes.
+    /// </summary>
+    public static double FatorDoTetoDoZenkai(double bp, double requisitoDoSsj3) =>
+        requisitoDoSsj3 <= 0 || ZenkaiSemMinguaDeTeste ? 1 : Math.Clamp(1 - bp / requisitoDoSsj3, 0, 1);
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--v030teste`): o teto do Zenkai volta a ser cheio (2x e 3x) ate a aposentadoria -- o jogo de antes de
+    /// 2026-10-24. Lido pelo <see cref="FatorDoTetoDoZenkai"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool ZenkaiSemMinguaDeTeste;
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--desejoteste`): a classe Kaio se aposenta no teto como todo Saiyajin -- o jogo de antes de
+    /// 2026-10-24. Lido pelo <see cref="ZenkaiSemTeto"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool KaioSeAposentaDeTeste;
+
     /// <summary>Por que o Zenkai nao veio desta vez. Vazio = veio.</summary>
     public enum ZenkaiResult { Concedido, SemDnaSaiyajin, InimigoMaisFraco, Aposentado, EmRecarga, Morto }
 
@@ -497,21 +557,30 @@ public sealed partial class Fighter
     /// <paramref name="poderInimigo"/> e o poder EFETIVO do inimigo, nao o BP base: um inimigo
     /// transformado conta como mais forte mesmo com base menor.
     /// O teto e sobre o BP FINAL: um Zenkai comum no maximo DOBRA a base; com o corpo em
-    /// farrapos, no maximo TRIPLICA.
+    /// farrapos, no maximo TRIPLICA. (2026-10-24) E os dois MINGUAM em linha reta ate o requisito
+    /// pessoal do SSJ3 (<paramref name="requisitoDoSsj3"/>), onde zeram -- ver
+    /// <see cref="FatorDoTetoDoZenkai"/>. E a recarga e proporcional ao multiplicador
+    /// (`GainKnobs.RecargaProporcionalMs`).
     /// </summary>
-    public ZenkaiResult GainZenkai(double poderInimigo, long agoraMs, bool muitoFerido = false, bool classeKaio = false)
+    public ZenkaiResult GainZenkai(double poderInimigo, long agoraMs, bool muitoFerido = false, double requisitoDoSsj3 = 0)
     {
         double meuPoder = Math.Max(expressedBP, BP);
         if (poderInimigo <= 0 || poderInimigo <= meuPoder) return ZenkaiResult.InimigoMaisFraco;
         if (dead) return ZenkaiResult.Morto;
         if (!HasZenkai()) return ZenkaiResult.SemDnaSaiyajin;
 
-        // a classe Kaio (corpo do desejo divino) tem Zenkai sem limite
-        if (BP >= ZenkaiCeiling() && !classeKaio) return ZenkaiResult.Aposentado;
+        // a classe Kaio (corpo do desejo divino) tem Zenkai sem limite. (2026-10-24) Era um parametro `classeKaio` que nenhum chamador
+        // passava: o Kaio se aposentava no mesmo teto de todo Saiyajin. Ver `ZenkaiSemTeto`.
+        if (BP >= ZenkaiCeiling() && !ZenkaiSemTeto) return ZenkaiResult.Aposentado;
+
+        // (2026-10-24) O TETO MINGUA ATE O REQUISITO DO SSJ3: o que passa de 1x (o +100% do comum, o +200% do corpo em farrapos) cai em
+        // linha reta do BP zero ate o requisito pessoal, e la o Zenkai se aposenta. O Kaio, sem teto (`ZenkaiSemTeto`), nao mingua.
+        double fator = ZenkaiSemTeto ? 1 : FatorDoTetoDoZenkai(BP, requisitoDoSsj3);
+        if (fator <= 0) return ZenkaiResult.Aposentado;
         if (agoraMs < zenkaiReady) return ZenkaiResult.EmRecarga;
 
         double pct = muitoFerido ? GainKnobs.ZenkaiPctInjured : GainKnobs.ZenkaiPct;
-        double capmult = muitoFerido ? 3 : 2;
+        double capmult = 1 + (muitoFerido ? 2 : 1) * fator;
 
         double bruto = pct * poderInimigo;
         double teto = BP * (capmult - 1);
@@ -519,7 +588,9 @@ public sealed partial class Fighter
         UltimoZenkaiNoTeto = bruto >= teto;
 
         BP += UltimoZenkai;
-        zenkaiReady = agoraMs + GainKnobs.ZenkaiCooldownMs;
+        // (2026-10-24) A RECARGA E PROPORCIONAL AO MULTIPLICADOR (dono): 2,5 h por "x" -- o que dobra deixa 5 h, o que triplica 7,5 h.
+        zenkaiReady = agoraMs + (GainKnobs.RecargaFixaDeTeste ? GainKnobs.RecargaFixaMs
+                                                               : GainKnobs.RecargaProporcionalMs(BP - UltimoZenkai, BP));
         return ZenkaiResult.Concedido;
     }
 

@@ -22,6 +22,8 @@ namespace Jandirus.Server;
 ///   5. (2026-10-18) O TETO DO SCOUTER E O KI DIVINO -- `GameServer.SentidosDivinoTeste.cs`;
 ///   6. (2026-10-19) O ANDROIDE NAO TEM KI: os dois tipos do jogador e o NPC da saga do Cell, fora do Sense e do scouter --
 ///      `GameServer.SentidosAndroideTeste.cs`.
+///   7. (2026-10-24) O SENSE NO NIVEL 4 SENTE O PROPRIO PODER: sem scouter, a ficha do dono leva o BP e o expresso, e as frases do proprio
+///      poder dizem o numero; no nivel 3 nao; o poder dos outros continua so no scouter. Contra-exemplo `SenseNaoSenteOProprioDeTeste`.
 ///
 /// CORPOS FORJADOS, sem cliente, como as bancadas vizinhas (`ForjarComSkills`, `CorredorLivre`); cada um
 /// com a PROPRIA conta, porque "conhecido" e por assinatura e a forja de projetil da a mesma conta a todos.
@@ -73,6 +75,8 @@ public partial class GameServer
 			OScouterTemTetoEKiDivino();   // (2026-10-18) ver `GameServer.SentidosDivinoTeste.cs`
 			LimparTudoDaBancada();
 			OsAndroidesSemKi();   // (2026-10-19) ver `GameServer.SentidosAndroideTeste.cs`
+			LimparTudoDaBancada();
+			OSenseSenteOProprioPoder();   // (2026-10-24) a familia 7, logo abaixo
 		}
 		catch (Exception e)
 		{
@@ -87,6 +91,55 @@ public partial class GameServer
 
 		// O PLACAR E A ULTIMA LINHA, e e ela que o `.bat` espera: a partir daqui o processo e dele.
 		GD.Print($"[sentidos] ================ {_snOk} passaram, {_snFalhou} falharam ================");
+	}
+
+	// =====================================================================
+	// 7. (2026-10-24) O SENSE NO NIVEL 4 SENTE O PROPRIO PODER
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"faça com quem tenha sense lvl 4 ou mais consiga sentir o PROPRIO bp sem scouter, nao o bp dos outros"*. Pelas funcoes de
+	/// producao (`FichaVisivel`, `ScouterMostra`), num corpo SEM scouter e com o piso da arvore da Mente fora da conta: no nivel 3 (o planeta)
+	/// a ficha continua sem o proprio BP; no 4 (o sistema) e no 5 (o universo) ela leva os dois numeros, e a frase do proprio poder diz o
+	/// numero -- a de outro corpo, nao. O defeito devolve o jogo de antes.
+	/// </summary>
+	private void OSenseSenteOProprioPoder()
+	{
+		GD.Print("[sentidos] -- 7) O SENSE NO NIVEL 4 SENTE O PROPRIO PODER, SEM SCOUTER; O DOS OUTROS NAO (dono, 2026-10-24)");
+		const string sense = Jandirus.Core.Skills.SenseEmNiveis.Path;
+		Vec2 c = CorredorLivre(28);
+		ServerPlayer eu = StCorpo("Sentinela", c, 40_000, sense: true);
+		ServerPlayer outro = StCorpo("Outro", Em(c, 2, 0), 70_000);
+		eu.Ficha.kiawarenessskill = 0;   // o piso da arvore da Mente fora da conta: o nivel e o da skill
+		eu.Niveis.Por(sense, Jandirus.Core.Skills.SenseEmNiveis.Planeta);
+		SheetState no3 = FichaVisivel(eu);
+		AfirmarSn("no nivel 3 (o planeta), sem scouter, a ficha do dono continua SEM o proprio BP (NaN nos dois)",
+				  TemSense(eu) && !TemScouter(eu) && NivelDoSense(eu) == 3 && double.IsNaN(no3.BP) && double.IsNaN(no3.ExpressedBP),
+				  $"nivel {NivelDoSense(eu)}, scouter {TemScouter(eu)}, BP {no3.BP}, expresso {no3.ExpressedBP}");
+
+		eu.Niveis.Por(sense, Jandirus.Core.Skills.SenseEmNiveis.Sistema);
+		SheetState no4 = FichaVisivel(eu);
+		AfirmarSn("**O SENSE NO NIVEL 4 SENTE O PROPRIO PODER** (dono, 2026-10-24): sem scouter, a ficha do dono leva o BP e o expresso, inteiros",
+				  NivelDoSense(eu) == 4 && no4.BP == eu.Ficha.BP && no4.ExpressedBP == eu.Ficha.expressedBP,
+				  $"nivel {NivelDoSense(eu)}, BP {no4.BP} (de {eu.Ficha.BP}), expresso {no4.ExpressedBP} (de {eu.Ficha.expressedBP})");
+		AfirmarSn("**...E A FRASE DO PROPRIO PODER DIZ O NUMERO** (o View Session, os desejos): `ScouterMostra` com o dono no lugar do leitor",
+				  ScouterMostra(eu, eu, eu.Ficha.BP));
+		AfirmarSn("...e o poder DOS OUTROS continua so no scouter: a frase com o numero de outro corpo nao sai",
+				  !ScouterMostra(eu, outro, outro.Ficha.BP));
+
+		SenseNaoSenteOProprioDeTeste = true;
+		try
+		{
+			SheetState semRegra = FichaVisivel(eu);
+			AfirmarSn("   (defeito injetado: `SenseNaoSenteOProprioDeTeste`, o jogo de antes) no nivel 4 a ficha volta sem o proprio BP e a frase sem o "
+					  + "numero -- as reguas de cima REPROVAM",
+					  double.IsNaN(semRegra.BP) && double.IsNaN(semRegra.ExpressedBP) && !ScouterMostra(eu, eu, eu.Ficha.BP));
+		}
+		finally { SenseNaoSenteOProprioDeTeste = false; }
+
+		eu.Niveis.Por(sense, Jandirus.Core.Skills.SenseEmNiveis.Universo);
+		SheetState no5 = FichaVisivel(eu);
+		AfirmarSn("...e no nivel 5 (o universo) tambem: \"4 ou mais\"", NivelDoSense(eu) == 5 && no5.BP == eu.Ficha.BP,
+				  $"nivel {NivelDoSense(eu)}, BP {no5.BP}");
 	}
 
 	// =====================================================================

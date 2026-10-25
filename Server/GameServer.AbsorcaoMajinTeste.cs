@@ -63,6 +63,7 @@ public partial class GameServer
 			QuemViuSeEnfurece();
 			NaoHaAtalhoPraFora();
 			SobreAAguaCaiNaMargem();
+			ONpcDevoradoFicaAoSair();
 		}
 		catch (Exception e)
 		{
@@ -73,6 +74,8 @@ public partial class GameServer
 			AbsorcaoMajin.GuardiaoVencidoNaoSoltaDeTeste = false;
 			AbsorcaoMajin.NocauteNaoSoltaDeTeste = false;
 			ClasseDePredio.QuemVoaAtravessaDeTeste = false;
+			SairCospeOsDevoradosDeTeste = LoginSemDevoradosDeTeste = DevoradosSoNaSessaoDeTeste = ListaDoMajinCaladaNoLoginDeTeste = false;
+			EscutaDaListaDoMajin = null;
 			LimparABancadaDoMajin();
 		}
 
@@ -594,8 +597,10 @@ public partial class GameServer
 		(ServerPlayer majin2, ServerPlayer vitima2) = CenaMj("o Majin sai do jogo");
 		ApertarAbsorver(majin2);
 		DesfazerAAbsorcaoAoSair(majin2);
-		AfirmarMj("o MAJIN que sai do jogo cospe todo mundo, de pe", !DentroDeUmMajin(vitima2) && !vitima2.Ficha.KO);
-		AfirmarMj("...e o poder emprestado nao vai pro disco", majin2.Ficha.majin_absorb_bp == 0);
+		AfirmarMj("o MAJIN que sai do jogo cospe o JOGADOR que segurava, de pe", !DentroDeUmMajin(vitima2) && !vitima2.Ficha.KO);
+		// (dono, 2026-10-23: o NPC devorado fica -- a familia 15; o JOGADOR continua saindo, e o poder dele junto)
+		AfirmarMj("...e o poder emprestado DELE nao vai pro disco", majin2.Ficha.majin_absorb_bp == 0 && majin2.Ficha.majin_devorados == null,
+				  $"{majin2.Ficha.majin_absorb_bp}, {majin2.Ficha.majin_devorados?.Count ?? 0} devorado(s) na ficha");
 
 		// o servidor caiu com gente dentro: o save diz "interior de um Majin" e "bonus 999"
 		ServerPlayer orfao = ForjarMj("bancada: ficou pra tras", PracaDoMajin(), 300_000);
@@ -604,7 +609,9 @@ public partial class GameServer
 		orfao.Ficha.majin_absorb_bp = 999;
 		AcordarSemAbsorcao(orfao);
 		AfirmarMj("login de quem ficou dentro de um Majin que nao existe mais: acorda em terra firme", !DentroDeUmMajin(orfao), orfao.Zone.ToString());
-		AfirmarMj("...e sem poder emprestado", orfao.Ficha.majin_absorb_bp == 0);
+		// (dono, 2026-10-23) o poder emprestado do login sai da LISTA dos devorados: o numero gravado sozinho e derivado, e nao vale
+		AfirmarMj("...e sem poder emprestado: o NUMERO solto no disco (999, sem a lista dos devorados) nao volta",
+				  orfao.Ficha.majin_absorb_bp == 0 && AbsorvidosPor(orfao.Id).Count == 0, $"{orfao.Ficha.majin_absorb_bp}");
 		ZoneList(orfao.Zone.Hash).Add(orfao);
 	}
 
@@ -783,5 +790,240 @@ public partial class GameServer
 				  !DentroDeUmMajin(vitima) && mapa.EhAguaEm(aFrente) && mapa.ServeDeChao(cx, cy) && !mapa.EhAgua(cx, cy), $"celula ({cx},{cy})");
 		AfirmarMj("...o mais proximo da frente dele (a rede de todo pouso do port, `PontoLivrePerto`)", Vec2.Distance(vitima.Pos, margem) < 0.5f,
 				  $"caiu a {Vec2.Distance(vitima.Pos, margem):0} px do ponto esperado, a {Vec2.Distance(vitima.Pos, majin.Pos) / ZoneCollision.TileSize:0.#} tiles do Majin");
+	}
+
+	// =====================================================================
+	// 15. O NPC DEVORADO FICA AO SAIR DO JOGO (dono, 2026-10-23)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"bp de majin absorvido de npcs n saem ao sair do jogo mais, players tao reclamando mt disso, player ainda sai ao sair do
+	/// jogo"* -- e a decisao: o NPC devorado FICA dentro depois de sair do jogo (o poder dele e a linha do menu de expelir), o JOGADOR
+	/// absorvido continua sendo cuspido na saida, e o nocaute e o Expelir tiram tudo como sempre.
+	///
+	/// PELO CAMINHO DE PRODUCAO: o verb de absorver (dois NPC devorados e um jogador selado); a saida do jogo (o
+	/// `DesfazerAAbsorcaoAoSair` que o `Drop` chama antes do save); o DISCO -- o que o `Persistir` grava (`AccountStore.DeJogador` com a
+	/// `FichaSemOsBuffs`) num `AccountStore` de verdade, numa pasta temporaria, e de volta; o login na ordem do `Entrar` (`ParaJogador`, a
+	/// zona do save, o `AcordarSemAbsorcao` ANTES de o corpo entrar no mundo); e as duas portas que continuam tirando tudo, o Expelir
+	/// (`UsarHabilidade`) e o nocaute (`TickDoMajin`). E o salvamento AUTOMATICO, sem a saida -- o servidor que cai no meio da sessao.
+	/// Os codigos "15a."... sao os que o ciclo de contraprova procura.
+	/// </summary>
+	private void ONpcDevoradoFicaAoSair()
+	{
+		GD.Print("[majin] --- 15. sair do jogo com NPC devorado dentro: o jogador sai, o NPC FICA e volta no login (dono, 2026-10-23) ---");
+		const double BpDoNpc1 = 80_000, BpDoNpc2 = 50_000, BpDoJogador = 400_000;
+		double bonusDosNpc = AbsorcaoMajin.BonusDeBpDeNpc(BpDoNpc1) + AbsorcaoMajin.BonusDeBpDeNpc(BpDoNpc2);
+		double bonusDoJogador = AbsorcaoMajin.BonusDeBp(BpDoJogador);
+		string pasta = Path.Combine(Path.GetTempPath(), "jandirus_majinnpc_" + Guid.NewGuid().ToString("N"));
+		var loja = new AccountStore(pasta);
+
+		// UM MAJIN COM DOIS NPC DEVORADOS E UM JOGADOR SELADO, um de cada vez (so o caido e alvo), pelo verb de producao.
+		(ServerPlayer Majin, ServerPlayer Jogador, List<string> Nomes) Cena(string rotulo)
+		{
+			Vec2 praca = PracaDoMajin();
+			ServerPlayer majin = ForjarMj($"bancada: o Majin ({rotulo})", praca, 1_000_000, majin: true);
+			ServerPlayer npc1 = ForjarMj($"bancada: o 1o devorado ({rotulo})", praca + new Vec2(ZoneCollision.TileSize, 0), BpDoNpc1, pessoa: false);
+			ServerPlayer npc2 = ForjarMj($"bancada: o 2o devorado ({rotulo})", praca + new Vec2(-ZoneCollision.TileSize, 0), BpDoNpc2, pessoa: false);
+			ServerPlayer jogador = ForjarMj($"bancada: o jogador selado ({rotulo})", praca + new Vec2(0, ZoneCollision.TileSize), BpDoJogador);
+			DerrubarMj(npc1);
+			ApertarAbsorver(majin);
+			DerrubarMj(npc2);
+			ApertarAbsorver(majin);
+			DerrubarMj(jogador);
+			ApertarAbsorver(majin);
+			return (majin, jogador, [.. AbsorvidosPor(majin.Id).Where(r => r.Quem == 0).Select(r => r.Nome)]);
+		}
+
+		// O QUE O `Persistir` GRAVA: a ficha sem os buffs, numa conta de verdade.
+		void Gravar(ServerPlayer corpo)
+		{
+			CharacterSave salvo = AccountStore.DeJogador(corpo, NowMs());
+			salvo.Ficha = FichaSemOsBuffs(corpo);
+			var conta = new AccountSave { Conta = corpo.Conta };
+			conta.Slots[0] = salvo;
+			loja.Gravar(conta);
+		}
+
+		// O FIM DO `Drop`: o corpo sai do mundo (o `Persistir` ja aconteceu).
+		void SairDoMundo(ServerPlayer corpo)
+		{
+			_players.Remove(corpo.Id);
+			ZoneList(corpo.Zone.Hash).Remove(corpo);
+			_dentroDoMajin.Remove(corpo.Id);
+		}
+
+		// O LOGIN, na ordem do `Entrar`: o save vira corpo (`ParaJogador`, com um id NOVO), a zona sai do save, o `AcordarSemAbsorcao`
+		// ANTES de o corpo entrar no mundo, e o corpo no mundo (`PorNoMundo`: o `PrepararCombate` e as listas).
+		ServerPlayer? Logar(string conta)
+		{
+			CharacterSave? volta = loja.Carregar(conta)?.Slots[0];
+			if (volta == null) return null;
+			var novo = new ServerPlayer
+			{
+				Id = IdBaseDoMajinDeTeste + _mjCorpos++, Peer = null, Conta = conta, Slot = 0,
+				Livro = new Jandirus.Core.Skills.SkillBook(),
+			};
+			AccountStore.ParaJogador(volta, novo);
+			novo.Zone = new ZoneKey(volta.ZonaTipo, volta.Zona, volta.ZonaSeed);
+			AcordarSemAbsorcao(novo);
+			PorNoMundo(novo);
+			novo.Ficha.Tick(agoraMs: NowMs());
+			return novo;
+		}
+
+		// AS DUAS REGUAS DA FAMILIA, as mesmas pro jogo e pro defeito injetado.
+		static bool FicaramNaFicha(ServerPlayer m, List<string> nomes, double bonus) =>
+			m.Ficha.majin_devorados is { } l && l.Select(d => d.Nome).SequenceEqual(nomes)
+			&& Math.Abs(m.Ficha.majin_absorb_bp - bonus) < 0.5;
+		bool VoltaramNoLogin(ServerPlayer? m, List<string> nomes, double bonus) =>
+			m != null && AbsorvidosPor(m.Id) is { } recs && recs.Count == nomes.Count && recs.All(r => r.Quem == 0 && r.Guardiao == 0)
+			&& recs.Select(r => r.Nome).SequenceEqual(nomes) && Math.Abs(m.Ficha.majin_absorb_bp - bonus) < 0.5;
+		string Estado(ServerPlayer? m) => m == null ? "o disco nao devolveu nada"
+			: $"registros [{string.Join(", ", AbsorvidosPor(m.Id).Select(r => $"{r.Nome}{(r.Quem == 0 ? "" : " (jogador)")}"))}], "
+			  + $"emprestado {m.Ficha.majin_absorb_bp:0}, ficha [{string.Join(", ", m.Ficha.majin_devorados?.Select(d => $"{d.Nome}={d.BonusDeBp:0}") ?? [])}]";
+
+		try
+		{
+			// ---- 15a) a montagem, e a ficha que ja acompanha o registro no meio da sessao ----
+			(ServerPlayer majin, ServerPlayer jogador, List<string> nomes) = Cena("relog");
+			AfirmarMj("15a. (montagem) dois NPC devorados e um jogador selado: tres registros, e os tres bonus somados",
+					  nomes.Count == 2 && AbsorvidosPor(majin.Id).Count == 3 && DentroDeUmMajin(jogador)
+					  && Math.Abs(majin.Ficha.majin_absorb_bp - (bonusDosNpc + bonusDoJogador)) < 0.5, Estado(majin));
+			AfirmarMj("15a. a FICHA (o que vai pro disco) ja leva os dois devorados, na ordem em que entraram -- e so eles (o jogador nao)",
+					  majin.Ficha.majin_devorados is { Count: 2 } f && f.Select(d => d.Nome).SequenceEqual(nomes)
+					  && Math.Abs(DevoradoPeloMajin.Soma(f) - bonusDosNpc) < 0.5, Estado(majin));
+
+			// ---- 15b) o SERVIDOR QUE CAI no meio da sessao: o salvamento automatico, sem a saida ----
+			Gravar(majin);
+			ServerPlayer? daQueda = Logar(majin.Conta);
+			AfirmarMj("15b. **O SERVIDOR QUE CAI NO MEIO DA SESSAO**: o salvamento automatico ja levava os dois devorados, e o login os devolve "
+					  + "com o poder DELES -- o do jogador que estava dentro (gravado no numero) nao volta",
+					  VoltaramNoLogin(daQueda, nomes, bonusDosNpc), Estado(daQueda));
+			if (daQueda != null) SairDoMundo(daQueda);
+
+			// ---- 15c) A SAIDA: o jogador e cuspido, os NPC ficam ----
+			int idDaImagem = ImagemDe(majin, jogador)?.Id ?? 0;
+			DesfazerAAbsorcaoAoSair(majin);
+			AfirmarMj("15c. o JOGADOR selado e cuspido na saida do Majin, de pe e ao lado dele (a regra de sempre), e a imagem dele some",
+					  !DentroDeUmMajin(jogador) && jogador.Zone.Equals(majin.Zone) && !jogador.Ficha.KO && !_players.ContainsKey(idDaImagem),
+					  $"{jogador.Zone}, KO {jogador.Ficha.KO}");
+			AfirmarMj("15c. **OS NPC DEVORADOS FICAM** (dono, 2026-10-23): a ficha os leva pro disco, e o poder emprestado e so o deles",
+					  FicaramNaFicha(majin, nomes, bonusDosNpc), Estado(majin));
+			AfirmarMj("15c. ...e o registro da SESSAO sai com ela (o id de sessao nao volta: quem volta e a lista da ficha)",
+					  AbsorvidosPor(majin.Id).Count == 0);
+
+			// ---- 15d) o disco, e o login ----
+			Gravar(majin);
+			SairDoMundo(majin);
+			ServerPlayer? volta = Logar(majin.Conta);
+			AfirmarMj("15d. **O LOGIN DEVOLVE OS DOIS DEVORADOS**: dois registros de NPC (sem imagem), com os nomes de antes, e o poder deles de volta",
+					  VoltaramNoLogin(volta, nomes, bonusDosNpc), Estado(volta));
+			if (volta == null) return;
+			volta.Ficha.PowerLevel();
+			double com = volta.Ficha.expressedBP;
+			volta.Ficha.majin_absorb_bp = 0;
+			volta.Ficha.PowerLevel();
+			double sem = volta.Ficha.expressedBP;
+			volta.Ficha.majin_absorb_bp = bonusDosNpc;
+			volta.Ficha.PowerLevel();
+			// (a soma entra na base junto de outras somas da raca: a regua pede ao menos METADE do que o bonus sozinho daria)
+			AfirmarMj("15d. ...e ele ENTRA NO PODER EXPRESSO, somado na base, como na sessao",
+					  sem > 0 && com > sem * (1 + 0.5 * bonusDosNpc / volta.Ficha.BP),
+					  $"expresso {sem:0} sem o emprestado, {com:0} com ({com / Math.Max(sem, 1):0.####}x; o bonus sozinho daria {(volta.Ficha.BP + bonusDosNpc) / volta.Ficha.BP:0.####}x)");
+
+			// A LISTA DE QUEM ESTA DENTRO SAI PRO CLIENTE NO LOGIN: os botoes de expelir (o `Entrar` a chama depois do `JoinAccepted`, e a 16d
+			// da `--sagamajinteste` confere esse lugar no fonte; o robo `--diagsagamajin` ve o botao depois do relog de verdade)
+			EscutaDaListaDoMajin = [];
+			try
+			{
+				ListaDoMajinNoLogin(volta);
+				bool saiu = EscutaDaListaDoMajin.Contains((volta.Id, nomes.Count));
+				EscutaDaListaDoMajin.Clear();
+				ListaDoMajinCaladaNoLoginDeTeste = true;
+				try { ListaDoMajinNoLogin(volta); }
+				finally { ListaDoMajinCaladaNoLoginDeTeste = false; }
+				AfirmarMj("15d. ...e a LISTA de quem esta dentro sai pro cliente no login (os dois devorados: os botoes de expelir)", saiu,
+						  $"{EscutaDaListaDoMajin.Count} lista(s) com o defeito");
+				AfirmarMj("15d. (defeito injetado: o login calado) a lista nao sai -- o Majin ficaria sem os botoes: a regua de cima REPROVA",
+						  EscutaDaListaDoMajin.Count == 0);
+			}
+			finally { EscutaDaListaDoMajin = null; }
+
+			// o mesmo save, pelo login de antes: e a regua de cima que reprova
+			LoginSemDevoradosDeTeste = true;
+			ServerPlayer? deAntes;
+			try { deAntes = Logar(majin.Conta); }
+			finally { LoginSemDevoradosDeTeste = false; }
+			AfirmarMj("15d. (defeito injetado: o login de antes) o MESMO save volta sem ninguem dentro e sem o poder -- a regua de cima REPROVA",
+					  deAntes != null && !VoltaramNoLogin(deAntes, nomes, bonusDosNpc) && AbsorvidosPor(deAntes.Id).Count == 0
+					  && deAntes.Ficha.majin_absorb_bp == 0, Estado(deAntes));
+			if (deAntes != null) SairDoMundo(deAntes);
+
+			// ---- 15e) o EXPELIR e o NOCAUTE continuam tirando, e a ficha acompanha ----
+			AbsorvidoPeloMajin? primeiro = AbsorvidosPor(volta.Id).FirstOrDefault();
+			UsarHabilidade(volta, $"expelir:{primeiro?.Numero ?? -1}");
+			AfirmarMj("15e. EXPELIR um devorado que voltou do disco: o poder dele sai, fica o do outro -- e a ficha passa a levar so o outro",
+					  primeiro != null && AbsorvidosPor(volta.Id).Count == 1 && FicaramNaFicha(volta, [nomes[1]], AbsorcaoMajin.BonusDeBpDeNpc(BpDoNpc2)),
+					  Estado(volta));
+			DerrubarMj(volta);
+			TickDoMajin(Protocol.TickSeconds);
+			AfirmarMj("15e. o NOCAUTE tira o que sobrou, como sempre: nenhum registro, nenhum poder emprestado, e a ficha vazia",
+					  AbsorvidosPor(volta.Id).Count == 0 && volta.Ficha.majin_absorb_bp == 0 && volta.Ficha.majin_devorados == null, Estado(volta));
+			Gravar(volta);
+			SairDoMundo(volta);
+			ServerPlayer? vazio = Logar(majin.Conta);
+			AfirmarMj("15e. ...e relogar depois do nocaute nao traz ninguem de volta",
+					  vazio != null && AbsorvidosPor(vazio.Id).Count == 0 && vazio.Ficha.majin_absorb_bp == 0, Estado(vazio));
+			if (vazio != null) SairDoMundo(vazio);
+
+			// ---- 15f) os defeitos da saida e da ficha, cada um numa cena propria ----
+			(ServerPlayer m2, _, List<string> nomes2) = Cena("a saida de antes");
+			SairCospeOsDevoradosDeTeste = true;
+			try { DesfazerAAbsorcaoAoSair(m2); }
+			finally { SairCospeOsDevoradosDeTeste = false; }
+			AfirmarMj("15f. (defeito injetado: a saida de antes) o Majin sai sem os devorados na ficha e sem o poder deles -- a regua da 15c REPROVA",
+					  !FicaramNaFicha(m2, nomes2, bonusDosNpc) && m2.Ficha.majin_devorados == null && m2.Ficha.majin_absorb_bp == 0, Estado(m2));
+
+			ServerPlayer m3;
+			List<string> nomes3;
+			DevoradosSoNaSessaoDeTeste = true;
+			try
+			{
+				(m3, _, nomes3) = Cena("a lista so na sessao");
+				Gravar(m3);
+			}
+			finally { DevoradosSoNaSessaoDeTeste = false; }
+			ServerPlayer? daQueda3 = Logar(m3.Conta);
+			AfirmarMj("15f. (defeito injetado: a lista so na sessao) o salvamento automatico nao leva ninguem, e o login da queda volta vazio -- a regua da 15b REPROVA",
+					  nomes3.Count == 2 && !VoltaramNoLogin(daQueda3, nomes3, bonusDosNpc) && daQueda3 != null && AbsorvidosPor(daQueda3.Id).Count == 0,
+					  Estado(daQueda3));
+			if (daQueda3 != null) SairDoMundo(daQueda3);
+			UsarHabilidade(m3, "expelir");
+
+			// ---- 15g) a VAGA RECICLADA nao herda (controle: a lista mora na ficha do personagem) ----
+			(ServerPlayer m4, _, List<string> nomes4) = Cena("a vaga que recicla");
+			DesfazerAAbsorcaoAoSair(m4);
+			Gravar(m4);
+			SairDoMundo(m4);
+			AfirmarMj("15g. (montagem) o personagem que deixa a vaga foi gravado com os dois devorados",
+					  loja.Carregar(m4.Conta)?.Slots[0]?.Ficha.majin_devorados?.Select(d => d.Nome).SequenceEqual(nomes4) == true);
+			PurgarAssinatura(ServerPlayer.AssinaturaDe(m4.Conta, 0));
+			ServerPlayer herdeiro = ForjarMj("bancada: o novo da vaga", PracaDoMajin(), 1_000, majin: true);
+			herdeiro.Conta = m4.Conta;
+			herdeiro.Ficha = Nascer(new Jandirus.Core.Races.CharacterDraft { Name = herdeiro.Name, Race = "Majin", Age = 18 }, herdeiro.Name);
+			Gravar(herdeiro);
+			SairDoMundo(herdeiro);
+			ServerPlayer? novoDaVaga = Logar(m4.Conta);
+			AfirmarMj("15g. (controle) A VAGA RECICLADA NAO HERDA: o personagem novo da mesma conta e vaga (a ficha do nascimento) entra sem ninguem dentro "
+					  + "e sem poder emprestado -- os devorados eram do personagem que saiu",
+					  novoDaVaga != null && AbsorvidosPor(novoDaVaga.Id).Count == 0 && novoDaVaga.Ficha.majin_absorb_bp == 0
+					  && novoDaVaga.Ficha.majin_devorados == null, Estado(novoDaVaga));
+		}
+		finally
+		{
+			SairCospeOsDevoradosDeTeste = LoginSemDevoradosDeTeste = DevoradosSoNaSessaoDeTeste = ListaDoMajinCaladaNoLoginDeTeste = false;
+			EscutaDaListaDoMajin = null;
+			try { if (Directory.Exists(pasta)) Directory.Delete(pasta, recursive: true); }
+			catch (IOException) { }
+		}
 	}
 }

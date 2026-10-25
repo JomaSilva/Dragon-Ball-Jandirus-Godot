@@ -183,11 +183,27 @@ public static class Alem
 	/// <summary>O Enma Daioh do DM senta em (176,134,6) (`SkyNPCs.dm:59`), a 30 tiles da mesa onde os mortos chegam: e a fila.</summary>
 	public const int EnmaDaiohX = 176, EnmaDaiohY = 134;
 
-	/// <summary>`ZENI_REVIVE_COST = 1000000` (`SkyNPCs.dm:92`).</summary>
-	public const double PrecoDoReviveDoEnma = 1_000_000;
+	/// <summary>
+	/// (2026-10-23) O PRECO DA VOLTA PAGA: 200.000 zeni -- o dono: *"diminua o preco de reviver no ceu pra 200k zeni"*. O DM cobra
+	/// `ZENI_REVIVE_COST = 1000000` (`SkyNPCs.dm:92`), que foi o preco daqui ate a v0.4.4. Quem foi apagado por Hakai paga o dobro
+	/// (`KitDoDeus.HakaiPrecoDoRevive`). O botao da mesa do Enma (`Interacoes`, "Voltar a vida (...)") escreve o numero A MAO, porque o
+	/// rotulo e a chave do ingles: a `--alemteste` (familia 8) confere que os dois dizem o mesmo.
+	/// </summary>
+	public const double PrecoDoReviveDoEnma = 200_000;
 
-	/// <summary>`zeni_revive_debuff_until = world.realtime + 36000` (`SkyNPCs.dm:194`): uma hora com o BP expresso em 25%.</summary>
+	/// <summary>
+	/// A REGRA DE ANTES (ate a v0.4.4): `zeni_revive_debuff_until = world.realtime + 36000` (`SkyNPCs.dm:194`) -- a volta paga deixava o
+	/// BP expresso em 25% por uma hora. Saiu em 2026-10-23 (o dono: *"faca com q ao reviver n tenha mais o debuff de bp"*); so o defeito
+	/// injetado logo abaixo a arma e a aplica.
+	/// </summary>
 	public const long MsDoDebuffDoEnma = 3_600_000;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--alemteste` familia 8, `--diagreviver`): a regra de antes de 2026-10-23 -- o Enma arma o prazo de uma hora
+	/// (`GameServer.EnmaReviverPorZeni`) e o BP expresso fica em 25% ate ele vencer (`Fighter.PowerLevel`, a familia 3). As duas linhas
+	/// da regra velha o leem; sem ele, o prazo gravado no save de quem pagou o Enma ate a v0.4.4 nao corta nada. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DebuffDoEnmaComoAntesDeTeste;
 
 	/// <summary>
 	/// (v0.3.0) A FRACAO DO PODER QUE A REENCARNACAO LEVAVA: o `Reincarnate(0.1)` do Enma (`SkyNPCs.dm:204`) -- o proximo

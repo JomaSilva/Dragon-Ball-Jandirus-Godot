@@ -129,6 +129,41 @@ public sealed partial class GameServer
 						   naTaxaDoDm > 0 && Math.Abs(daBola / naTaxaDoDm - 5) < 1e-6,
 						   $"bola {daBola:0.##} contra {naTaxaDoDm:0.##} na taxa do DM; o beam (Efusao 25, {ateOBeam:N0} de exp) sai em {Math.Ceiling(ateOBeam / daBola):N0} bolas desta ficha, contra {Math.Ceiling(ateOBeam / naTaxaDoDm):N0}");
 
+			// ------------------------------------------------------------ E2) o ataque CUSTOM tambem sobe a Efusao (dono, 2026-10-25)
+			// *"permita q ataques custom permitam upar skills e nao so ataques pre feitos tipo upar effusion"*. A bola inventada na mesa
+			// (tipo Blast), disparada pelo funil de producao (`UsarTecnicaCustomizada`), rende na Efusao o mesmo que a bola basica -- o
+			// `blastcounter` dela --, e a teleguiada rende mais (o `guidedcounter` do disco por cima).
+			GD.Print("[niveis] -- E2) o ataque custom tambem sobe a Efusao (dono, 2026-10-25) --");
+			{
+				var bolaCustom = new TecnicaCustomizada { Id = 1, Nome = "Bola da Bancada", Criada = true };
+				bolaCustom.PorTipo(Jandirus.Core.Combat.TipoDeProjetil.Blast);
+				var guiadaCustom = new TecnicaCustomizada { Id = 2, Nome = "Guiada da Bancada", Criada = true };
+				guiadaCustom.PorTipo(Jandirus.Core.Combat.TipoDeProjetil.Guided);
+				pl.Customizadas.Clear();
+				pl.Customizadas.Add(bolaCustom);
+				pl.Customizadas.Add(guiadaCustom);
+				Pronto();
+				double c0 = Exp(Efusao);
+				bool saiuABola = UsarTecnicaCustomizada(pl, bolaCustom.Verbo);
+				double daBolaCustom = Exp(Efusao) - c0;
+				Pronto();
+				double c1 = Exp(Efusao);
+				UsarTecnicaCustomizada(pl, guiadaCustom.Verbo);
+				double daGuiadaCustom = Exp(Efusao) - c1;
+				AfirmarNv("**O ATAQUE CUSTOM TAMBEM SOBE A EFUSAO** (o pedido do dono): a bola inventada rende o mesmo que a bola basica (o "
+						  + "`blastcounter`), e a teleguiada rende mais (o `guidedcounter` do disco por cima)",
+						  saiuABola && daBolaCustom > 0 && Math.Abs(daBolaCustom - daBola) < 1e-9 && daGuiadaCustom > daBolaCustom,
+						  $"bola custom {daBolaCustom:0.#####} (a basica: {daBola:0.#####}); teleguiada {daGuiadaCustom:0.#####}");
+				Pronto();
+				CustomSemContadorDeTeste = true;
+				double semContador;
+				try { double c2 = Exp(Efusao); UsarTecnicaCustomizada(pl, bolaCustom.Verbo); semContador = Exp(Efusao) - c2; }
+				finally { CustomSemContadorDeTeste = false; }
+				AfirmarNv("(defeito injetado: o custom sem os contadores, o jogo de antes) a bola inventada nao rende nada na Efusao -- a regua "
+						  + "de cima REPROVA", semContador == 0, $"{semContador}");
+				pl.Customizadas.Clear();
+			}
+
 			// ------------------------------------------------------------ M) o morto de pe (2026-10-18)
 			// A INVESTIGACAO, escrita: nenhuma porta da exp pergunta o `dead` cru. O tiro recusa so o CADAVER (`PodeAtirar`, desde 2026-10-15 -- o
 			// dono: *"n ta dando pra usar ataques de ki tb como morto"*), o funil dos contadores so pergunta se e jogador (`CreditarContador`) e o tique

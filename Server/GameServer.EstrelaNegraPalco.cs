@@ -81,5 +81,24 @@ public partial class GameServer
 		_sets.RemoveAll(s => s.Id == IdDoSetDoPalcoEN);
 		_esferas.RemoveAll(e => e.Set == IdDoSetDoPalcoEN);
 		EspalharAsNegras(anunciar: false);
+		// (2026-10-23) o planeta que o desejo do robo partiu volta a existir, e o ceu de fim do mundo sai (ver `PalcoEN_AbrirOPalcoDasMortes`)
+		_palcoEN?.Dispose();
+		_palcoEN = null;
 	}
+
+	/// <summary>
+	/// (2026-10-23) O PALCO DAS MORTES DO ROBO: o desejo de verdade dele (a Danca, N7) parte o planeta onde foi feito -- a Terra do campo.
+	/// Aberto antes do pedido e fechado no <see cref="PalcoEN_Encerrar"/>: a contagem fica so na memoria (o `planetas-mortos.json` nao e
+	/// escrito) e o ceu volta limpo no fim. O robo acaba muito antes dos 310 s.
+	/// </summary>
+	private PalcoDeMortes? _palcoEN;
+
+	internal void PalcoEN_AbrirOPalcoDasMortes() => _palcoEN ??= PalcoDeMortesDeBancada();
+
+	/// <summary>(2026-10-23) O corpo sabe a Danca da Fusao? (N7, lido no livro do servidor.)</summary>
+	internal bool PalcoEN_SabeDancar(int id) => _players.TryGetValue(id, out ServerPlayer? pl) && SabeDancar(pl);
+
+	/// <summary>(2026-10-23) O planeta onde o corpo esta entrou nos 310 s da destruicao? (N7.)</summary>
+	internal bool PalcoEN_PlanetaSeParte(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) && MorteDaZona(pl.Zone) is { Fase: FaseDaMorte.Explodindo };
 }

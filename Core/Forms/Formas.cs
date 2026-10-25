@@ -202,6 +202,17 @@ public enum LinhaDeForma
 	/// ==================================================================================================
 	/// </summary>
 	Tensao,
+
+	/// <summary>
+	/// ============================ (2026-10-23) O SUPER MAJIN -- O MAJIN QUE NAO E CORRUPTED ============================
+	/// UMA entrada, e ela e a linha inteira: 2x subindo ate 16x pela maestria, que sobe bem devagar e TRAVA pelo BP base (o pedido do
+	/// dono). A regra e os numeros moram em <see cref="SuperMajin"/>; quem abre a linha e o `AbrirLinhas` (so o Majin, e nao o
+	/// Corrupted -- a escada dele e a saga).
+	///
+	/// NO FIM DO ENUM pelo mesmo motivo das tres de cima: os valores anteriores nao mudam de numero.
+	/// ==================================================================================================================
+	/// </summary>
+	SuperMajin,
 }
 
 /// <summary>
@@ -488,6 +499,20 @@ public sealed class FormaDef
 
 	/// <summary>Fracao do Ki maximo drenada por segundo, por degrau de maestria.</summary>
 	public double[] Dreno = [0];
+
+	/// <summary>
+	/// (dono, 2026-10-24) QUANTAS VEZES MAIS RAPIDO A MAESTRIA DESTA FORMA SOBE que a da escada (<see cref="Catalogo.MaestriaPorSegundo"/>).
+	/// 1 = o ritmo de sempre. Os grades: *"grade 2 e grade 3 ainda teriam a maestria propria q subiria mais rapido q a do ssj normal, q
+	/// so serviria pra diminuir um pouco o custo delas por segundo de ki"* -- e o <see cref="Dreno"/> deles que desce com ela.
+	/// </summary>
+	public double RitmoDaMaestria = 1;
+
+	/// <summary>
+	/// (2026-10-24) A FORMA CUJA MAESTRIA TAMBEM SOBE enquanto esta e sustentada, no ritmo da escada. Vazio = so a propria. Os grades
+	/// treinam o SSJ1 -- o pedido de um jogador que o dono trouxe, *"grade 2 and 3 mastery into ssj1"*: eles pedem a maestria do SSJ1
+	/// pra abrir, e quem ficava neles parava de treinar a forma de onde saem.
+	/// </summary>
+	public string TreinaTambem = "";
 
 	// ================================ PORTAS ================================
 
@@ -1451,6 +1476,16 @@ public enum FolhaColada
 	/// ki divino COM Super Saiyajin por baixo (`godki.dm:295`). Tambem ja colorida.
 	/// </summary>
 	DeusAzul,
+
+	/// <summary>
+	/// (2026-10-23) `Electric_Majin.dmi` -- as faiscas do Majin, o `/obj/overlay/effects/MajinEffect` (`Majin.dm:20-23`) que o buff
+	/// `Majin` do DM cola no corpo (`:40`). Quem a veste aqui e o Super Majin (o visual que o dono escolheu: o corpo de sempre, a aura
+	/// rosa e estas faiscas). Folha de UMA animacao, 40 quadros de 32x32 com o desenho em 8 deles (a faisca estala e some, no ritmo do
+	/// original), e JA COLORIDA -- carmesim e branco (`ff0033`, `cc0033`, `ffffff`): nao se tinge.
+	///
+	/// NO FIM DO ENUM: os valores anteriores nao mudam de numero.
+	/// </summary>
+	FaiscaMajin,
 }
 
 /// <summary>
@@ -1793,6 +1828,10 @@ public static class Catalogo
 		// com `color = rgb(190, 80, 255)` (`GodOfDestruction.dm:388-391`), vestida no `Buff()` (`:399`) e tirada no
 		// `DeBuff()` (`:407`). O proprio DM a chama de *"a aura colada no corpo"*.
 		LinhaDeForma.DeusDaDestruicao => [new(FolhaColada.Ameacadora, Ranks.KitDoDeus.RoxoDaFury)],
+
+		// (2026-10-23) O SUPER MAJIN -- as faiscas do `Electric_Majin`, sem tinta (a folha ja e carmesim). E a metade "com faiscas" do
+		// visual que o dono escolheu ("corpo de sempre + aura rosa"); a aura rosa e a chama dele (`FormaDef.Aura`).
+		LinhaDeForma.SuperMajin => [new(FolhaColada.FaiscaMajin)],
 
 		_ => [],
 	};
@@ -2254,8 +2293,8 @@ public static class Catalogo
 			LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal => VerdeDoOlhoSuperSaiyajin,
 
 			// AS DUAS ESCADAS DIVINAS, no mesmo corte que a folha de aura e o contorno usam. Abaixo
-			// dele esta o SSG, e o SSG e VERMELHO nas duas -- e o mesmo `e2331c` que o cabelo e o
-			// rabo dele ja recebem, buscado e nao repetido.
+			// dele esta o SSG, e o SSG e VERMELHO nas duas -- e a mesma tinta (`VermelhoDoCabeloDivino`)
+			// que o cabelo e o rabo dele ja recebem, buscada e nao repetida.
 			LinhaDeForma.GodKi     => d.Ordem >= OrdemDoKiSobreOSuperSaiyajin
 										? AzulDoOlhoDivino : CorDoCabelo(d),
 			LinhaDeForma.GodKiRose => d.Ordem >= OrdemDoKiSobreOSuperSaiyajin
@@ -2891,9 +2930,14 @@ public static class Catalogo
 	/// original eles sao variaveis que skills reescrevem (a Heran sobe o do SSJ1 pra 3; a arvore
 	/// Legendary multiplica o dela por 1,5). Ver os campos la.
 	///
-	/// As linhas DIVINAS ficam em 1,0 -- conferido: `godki.dm`, `Mystic.dm`, `UltraInstinct.dm` e
+	/// As linhas DIVINAS ficam em 1,0 no DM -- conferido: `godki.dm`, `Mystic.dm`, `UltraInstinct.dm` e
 	/// `UltraEgo.dm` nao tem uma unica escrita de teto de Ki. O Oozaru esta desligado de proposito
 	/// (`Oozaru.dm:126`) e o Kaioken so LE o `KiMod`.
+	///
+	/// (2026-10-25) **MENOS AS DIVINAS DO SUPER SAIYAJIN**, pelo dono: *"faz as formas divinas do ssj tb dobrarem o Ki"*. As linhas GodKi
+	/// (SSG, Blue, Blue Evolution) e GodKiRose (o SSG da classe Kaio, Rose, Rose 2) dobram o tanque como o SSJ1
+	/// (<see cref="KiDasDivinasDoSaiyajin"/>) -- DIVERGENCIA DECLARADA do DM. O Ultra Instinto e o Ultra Ego nao sao do Super Saiyajin e ficam
+	/// em 1,0.
 	///
 	/// TETO CONHECIDO, igual ao de `NasceDaRaiva`: um degrau inserido entre duas `Ordem` existentes
 	/// herda o teto do vizinho sem avisar. Quem inserir que decida de novo.
@@ -2940,8 +2984,20 @@ public static class Catalogo
 			// 1% do Ki por segundo com o tanque errado dura o tempo errado.
 			LinhaDeForma.BioAndroide => f.ssjenergymod,
 
-			_ => 1,                                 // GodKi, Rose, Prodigial, UI, UE, Oozaru, Frost
+			// (2026-10-25) AS DIVINAS DO SUPER SAIYAJIN DOBRAM O TANQUE -- o dono; ver o cabecalho
+			LinhaDeForma.GodKi or LinhaDeForma.GodKiRose when !DivinasSemKiDobradoDeTeste => KiDasDivinasDoSaiyajin,
+
+			_ => 1,                                 // Prodigial, UI, UE, Oozaru, Frost
 		};
+
+	/// <summary>(2026-10-25) O TETO DE KI DAS DIVINAS DO SUPER SAIYAJIN: o dobro, como o SSJ1 -- o dono. Ver <see cref="TetoDeKi"/>.</summary>
+	public const double KiDasDivinasDoSaiyajin = 2;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `formas` do pipeline): as divinas do Super Saiyajin voltam ao tanque de sempre -- o jogo de antes de 2026-10-25.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool DivinasSemKiDobradoDeTeste;
 
 	/// <summary>
 	/// ============================ ESTA FORMA NASCE DA RAIVA? ============================
@@ -3283,6 +3339,20 @@ public static class Catalogo
 
 	/// <summary>Fatores dos grades sobre a base do SSJ1. `SSJ_GRADE2_FACTOR` / `_GRADE3_FACTOR`.</summary>
 	public const double Grade2Fator = 1.5, Grade3Fator = 2;
+
+	/// <summary>
+	/// (dono, 2026-10-24) O RITMO DA MAESTRIA PROPRIA DOS GRADES (<see cref="FormaDef.RitmoDaMaestria"/>): tres vezes o da escada -- uma
+	/// hora dentro do grade, e nao as ~3 h do SSJ1. Ela so mexe no Ki que o grade cobra (o `Dreno` dele: 10% a menos aos dois tercos,
+	/// 20% a menos aos 100%); o poder dele e o de sempre. O tres e meu -- o dono pediu "mais rapido q a do ssj normal".
+	/// </summary>
+	public const double RitmoDosGrades = 3;
+
+	/// <summary>
+	/// (dono, 2026-10-25) O RITMO DA MAESTRIA DO LEGENDARY (<see cref="FormaDef.RitmoDaMaestria"/>): o dobro do da escada -- *"reduz o tempo de
+	/// maestria do lssj pela metade"*, e, perguntado qual, *"as duas linhas"*: a Legendary (Wrathful, C-Type, Full Power) e a do Primal (o C-Type
+	/// Z e os Legendary Super Saiyajin 1 a 4). As dez formas das duas linhas carregam este campo.
+	/// </summary>
+	public const double RitmoDoLegendary = 2;
 
 	/// <summary>
 	/// ============================ OS STATS DOS GRADES -- E O DM NAO OS TEM ============================
@@ -3910,17 +3980,26 @@ public static class Catalogo
 	private const string RosaDoCabeloDivino = "d15694";
 
 	/// <summary>
-	/// `rgb(226,51,28)` -- `HairObject.dm:73-75`, o `gdki_me()` do `/obj/overlay/hairs/hair`.
+	/// O VERMELHO DO SSG -- `e00a14` desde 2026-10-24, e nao mais o `rgb(226,51,28)` (`e2331c`) do DM
+	/// (`HairObject.dm:73-75`, o `gdki_me()` do `/obj/overlay/hairs/hair`).
 	///
-	/// LARANJA-TIJOLO, e nao o `ff4d6a` rosado que o port usava: aquele valor foi escolhido por mim
-	/// quando o SSG ainda era "um Blue vermelho". Este e o do arquivo.
+	/// O DONO PEDIU MAIS VERMELHO: *"deixe o ssj deus mais vermelho e a aura dele tb"*. O do DM e
+	/// LARANJA-TIJOLO (matiz de 7 graus), e a soma no penteado preto o levava pro CORAL nos tons claros
+	/// (`#ff5c45`, `#ff755e`). Este fica a 3 graus do vermelho puro, com o verde e o azul quase zerados,
+	/// e os tons claros saem `#ff333d` e `#ff4c56` -- vermelho com brilho, e nao laranja. A MESMA tinta
+	/// pinta o rabo e o olho (<see cref="CorDoRabo"/>, <see cref="CorDoOlho"/>). A AURA NAO: ela foi junto no
+	/// mesmo dia e voltou no seguinte -- o dono viu as fotos: *"a aura anterior tava melhor do ssj god, o
+	/// cabelo atual ta top"*. O fogo (`ChamaDeAura.PaletaDe`) e a cor da forma (o `Aura` do SSG) sao os de antes.
+	///
+	/// (E antes do DM: o `ff4d6a` rosado que o port usava foi escolhido por mim quando o SSG ainda era
+	/// "um Blue vermelho"; o do arquivo o substituiu.)
 	///
 	/// AS DUAS VARIANTES POR CARGO DO DM FICARAM DE FORA -- Anjo (`rgb(245,245,245)`, `:64-66`) e Deus
 	/// da Destruicao (`rgb(163,0,136)`, `:69-70`). Elas nao sao da FORMA, sao do CARGO: o mesmo SSG
 	/// muda de cor conforme a assinatura de quem o veste, e o catalogo nao conhece cargo. Ficam pra
 	/// quando o sigilo de cargo chegar ao visual.
 	/// </summary>
-	private const string VermelhoDoCabeloDivino = "e2331c";
+	private const string VermelhoDoCabeloDivino = "e00a14";
 
 	/// <summary>
 	/// `rgb(190,196,208)` -- `UltraInstinct.dm:263`, o `Blend(..., ICON_ADD)` do `ui_eye_icon()`.
@@ -4169,21 +4248,25 @@ public static class Catalogo
 				Nome = "Super Saiyajin Grade 2", NumeroDm = 1.5, Intensidade = 2,
 				Marco = Stats.Milestones.SsjGrau2,   // o `ussj` do `Ultra_SSj()` (`:404`), repartido pelo dono -- ver `Milestones.ValorDoGrau2`
 				Mult = [Ssj1Base * Grade2Fator], MultDiluido = [Ssj1BaseDiluido * Grade2Fator],
-				Dreno = [0.035], Mods = Grade2Mods,
+				// (2026-10-24) a maestria dele, que sobe 3x, so baixa o dreno: 10% a menos aos dois tercos, 20% aos 100% -- e o tempo nele
+				// treina o SSJ1 (ver `RitmoDosGrades` e `FormaDef.TreinaTambem`)
+				Dreno = [0.035, 0.0315, 0.028], Mods = Grade2Mods, RitmoDaMaestria = RitmoDosGrades, TreinaTambem = "ssj1",
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat", PedeMaestria = Grade2Pct, ForaDoTronco = true,
 				Aura = "ffcf3a", SufixoDoCabelo = "USSj", Corpo = CorpoDeForma.Musculoso,
 				Desc = "Musculatura inchada: soca um pouco mais forte e fica um pouco mais lento. "
-					 + "Nao se compra: abre com 50% de maestria no SSJ1." },
+					 + "Nao se compra: abre com 50% de maestria no SSJ1. "
+					 + "O tempo nele treina o SSJ1, e a maestria dele so baixa o Ki que ele cobra." },
 
 		new() { Id = IdGrade3, IdRede = 16, Linha = LinhaDeForma.Saiyajin, Ordem = 16,
 				Nome = "Super Saiyajin Grade 3", NumeroDm = 1.5, Intensidade = 2,
 				Marco = Stats.Milestones.SsjGrau3,   // idem: o topo dos graus vale o que o USSJ valia
 				Mult = [Ssj1Base * Grade3Fator], MultDiluido = [Ssj1BaseDiluido * Grade3Fator],
-				Dreno = [0.05], Mods = Grade3Mods,
+				Dreno = [0.05, 0.045, 0.04], Mods = Grade3Mods, RitmoDaMaestria = RitmoDosGrades, TreinaTambem = "ssj1",   // idem
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat", PedeMaestria = Grade3Pct, ForaDoTronco = true,
 				Aura = "ffc21f", SufixoDoCabelo = "USSj", Corpo = CorpoDeForma.Musculoso,
 				Desc = "Poder bruto no limite do corpo: soco muito mais pesado, mas lento, "
-					 + "desajeitado e facil de acertar. Abre com 70% de maestria no SSJ1." },
+					 + "desajeitado e facil de acertar. Abre com 70% de maestria no SSJ1. "
+					 + "O tempo nele treina o SSJ1, e a maestria dele so baixa o Ki que ele cobra." },
 
 		new() { Id = "ssj2", IdRede = 20, Linha = LinhaDeForma.Saiyajin, Ordem = 20,
 				// RAIOS = 1 (leve): o `if(2)` do DM acende UMA folha de eletricidade. O SSJ3 acende
@@ -4317,7 +4400,7 @@ public static class Catalogo
 				Nome = "Wrathful", NumeroDm = 1, Intensidade = 2,
 				Marco = Stats.Milestones.Lssj1,   // `Restrained_SSj()`, `lssjbuff.dm:196` e `:210`
 				Como = Curva.Rampa, Mult = [1.5, 10], BonusDeCombate = 0.2,
-				Dreno = [0.02, 0.015, 0.01],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.02, 0.015, 0.01],
 				PortaBp = LimiaresPessoais.RestSsjatInicial, ChaveDoLimiar = "restssjat",
 				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:68`
 				// ============================ O WRATHFUL NAO MEXE NO CABELO NEM NO RABO ============================
@@ -4356,7 +4439,7 @@ public static class Catalogo
 				Nome = "Super Saiyajin C-Type", NumeroDm = 2, Intensidade = 3,
 				Marco = Stats.Milestones.Lssj2,   // `Unrestrained_SSj()`, `lssjbuff.dm:299`, `:313` e `:372`
 				Como = Curva.Rampa, Mult = [12, 20], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
-				Dreno = [0.04, 0.03, 0.02],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.04, 0.03, 0.02],
 				PortaBp = LimiaresPessoais.UnrestSsjatInicial, ChaveDoLimiar = "unrestssjat",
 				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:94`
 				// O C-TYPE E DOURADO, E ISSO NAO E DESCUIDO: `HairObject.dm:211-212` da a ele
@@ -4426,7 +4509,7 @@ public static class Catalogo
 				Nome = "Super Saiyajin Full Power", NumeroDm = 3, Intensidade = 4,
 				Marco = Stats.Milestones.Lssj3,   // `LSSj()`, `lssjbuff.dm:395`, `:407` e `:430`
 				Como = Curva.Rampa, Mult = [25, 50], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
-				Dreno = [0.07, 0.05, 0.035],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.07, 0.05, 0.035],
 				PortaBp = LimiaresPessoais.LssjatInicial, ChaveDoLimiar = "lssjat",
 				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:102`
 				// ============================ AQUI O VERDE E DO CABELO, E NAO SO DA AURA ============================
@@ -4458,7 +4541,7 @@ public static class Catalogo
 		new() { Id = "primal_c_type", IdRede = 210, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 10,
 				Nome = "Super Saiyajin C-Type (Z)", NumeroDm = 1, Intensidade = 2,
 				Marco = Stats.Milestones.Ssj,   // o Primal usa a `mob/var/ssj`: `ssj=1` pela `SSj()` (`supersaiyanbuff.dm:341`)
-				Mult = [3], BonusDeCombate = 0.2, Dreno = [0.025, 0.015, 0],
+				Mult = [3], BonusDeCombate = 0.2, RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.025, 0.015, 0],
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat",
 				AgioNaRaivaComum = AgioComumDoSaiyajin,   // `Class` "Legendary Primal Saiyan" NAO e "Legendary": cai no bloco comum (`supersaiyan.dm:105`), pela `SSj()` (`:112`)
 				// DOURADO PURO, e e o unico degrau da linha Primal que nao tenta ser verde:
@@ -4484,7 +4567,7 @@ public static class Catalogo
 				Nome = "Legendary Super Saiyajin", NumeroDm = 2, Intensidade = 3,
 				Marco = Stats.Milestones.Ssj2,   // `ssj=2` pela `SSj2()` (`supersaiyanbuff.dm:427` e `:460`)
 				Como = Curva.Rampa, Mult = [6, 9], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
-				Dreno = [0.045, 0.03, 0.015],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.045, 0.03, 0.015],
 				PortaBp = PortaSsj2, ChaveDoLimiar = "ssj2at",
 				AgioNaRaivaComum = AgioComumDoSaiyajin,   // idem, pela `SSj2()`: `supersaiyan.dm:129`
 				// SPRITE DE SSJ1 + VERDE. `HairObject.dm:184` passa o `ssjhair` -- a folha de SSJ1, e nao
@@ -4506,7 +4589,7 @@ public static class Catalogo
 				Nome = "Legendary Super Saiyajin 2", NumeroDm = 3, Intensidade = 3, Raios = 2,
 				Marco = Stats.Milestones.Ssj3,   // `ssj=3` pela `SSj3()` (`supersaiyanbuff.dm:523`)
 				Como = Curva.Rampa, Mult = [9, 12], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
-				Dreno = [0.06, 0.045, 0.03],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.06, 0.045, 0.03],
 				PortaBp = PortaSsj3, ChaveDoLimiar = "ssj3at",
 				AgioNaRaivaComum = AgioComumNoLimiarDoSsj3,   // o `"Angry"` do `supersaiyan.dm:155`
 				// `HairObject.dm:185`: `/obj/overlay/hairs/ssj/ssj2` -- o cabelo de SSJ2, verde.
@@ -4523,7 +4606,7 @@ public static class Catalogo
 				Raios = 2,
 				Nome = "Legendary Super Saiyajin 3", NumeroDm = 3.5, Intensidade = 4,
 				Marco = Stats.Milestones.Ssj3,   // `LSSj3_Primal()`, `supersaiyanbuff.dm:555`: la o comentario diz que ele equivale ao SSJ3
-				Mult = [18], BonusDeCombate = 0.2, PisoSobreAnterior = 2, Dreno = [0.075, 0.05, 0.03],
+				Mult = [18], BonusDeCombate = 0.2, PisoSobreAnterior = 2, RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.075, 0.05, 0.03],
 				PortaBp = PortaSsj3, ChaveDoLimiar = "ssj3at", PedeMaestria = 100,
 				// `HairObject.dm:186`: `/obj/overlay/hairs/ssj/ssj3` -- o cabelo LONGO de SSJ3, verde.
 				Aura = "2bff3a", Cabelo = VerdeDoCabeloLendario, SufixoDoCabelo = "SSj3",
@@ -4533,7 +4616,7 @@ public static class Catalogo
 				Nome = "Legendary Super Saiyajin 4", NumeroDm = 4, Intensidade = 4,
 				Marco = Stats.Milestones.Ssj4,   // `ssj=4` pela `SSj4()` (`supersaiyanbuff.dm:792`)
 				Como = Curva.Rampa, Mult = [22, 44], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
-				Dreno = [0.06],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.06],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				// MESMA PORTA DO SSJ4 COMUM, e tem que ser: o Legendary Primal chega ao degrau 4
 				// pela MESMA fera. Deixar so `PedeFormaDespertada` aqui daria ao Legendary um SSJ4
@@ -4548,14 +4631,14 @@ public static class Catalogo
 				Nome = "Legendary Super Saiyajin 4 Full Power", NumeroDm = 5, Intensidade = 5,
 				Marco = Stats.Milestones.Ssj4FullPower,   // `ssj=5` pela `SSj4FP()` (`supersaiyanbuff.dm:820`)
 				Como = Curva.Rampa, Mult = [34, 52], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
-				Dreno = [0.07],
+				RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.07],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				PedeLinhagem = Oozaru.LinhagemPrimal, PedeMaestria = 100,
 				Aura = "6aff1a", SufixoDoCabelo = "SSJ4", Corpo = CorpoDeForma.Ssj4, Desc = "34x a 52x." },
 
 		new() { Id = "primal_legendary4_limit_breaker", IdRede = 260, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 60,
 				Nome = "Legendary Super Saiyajin 4 Limit Breaker", NumeroDm = 6, Intensidade = 5,
-				Mult = [60], BonusDeCombate = 0.2, PisoSobreAnterior = 2, Dreno = [0.085],
+				Mult = [60], BonusDeCombate = 0.2, PisoSobreAnterior = 2, RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.085],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				// (2026-10-16) KI DIVINO DESPERTO, e nao 50% de maestria -- o dono: *"limit breaker era pra liberar quando o personagem
 				// libera o god ki e domina 100% do full power"*; e o `God_Ki()` do Primal no DM (`godki.dm:191-195`). Os 50% nunca chegavam: a
@@ -4573,7 +4656,7 @@ public static class Catalogo
 		// 0% = SSG, 33% = Blue/Rose, 50% = Blue Evolution/Rose 2.
 		new() { Id = "ssg", IdRede = 300, Linha = LinhaDeForma.GodKi, Ordem = 10,
 				Nome = "Super Saiyajin God", NumeroDm = -1, Intensidade = 4,
-				Mult = [22], Absoluta = true, Dreno = [0.03],
+				Mult = [22], Absoluta = true, Dreno = [0.03, 0.02, 0.01],   // (2026-10-25) dominado, MENOS que o SSJ2 dominado (0,015) -- o dono
 				PedeGodKi = 0, PedeOrigemUmaDe = OrigemDoKiDivino, PedeClasseUmaDe = ClassesDoKiDivino,
 				PedeFormaAtual = [IdBase],   // `if(ssj == 0 && lssj == 0) return 22` -- SSG e o ki divino SEM SSJ
 				// ============================ O SSG NAO ERGUE O CABELO: ELE O PINTA ============================
@@ -4583,7 +4666,10 @@ public static class Catalogo
 				// o overlay do penteado NORMAL. O `AddHair()` so chega no `/hairs/hair` quando
 				// `!ssj && !lssj` (`:179-180`), e SSG e exatamente isso: ki divino com a escada zerada.
 				//
-				// E o `ff4d6a` era rosa-avermelhado escolhido por mim. O do arquivo e laranja-tijolo.
+				// E o `ff4d6a` era rosa-avermelhado escolhido por mim. O do arquivo e laranja-tijolo -- e o dono
+				// pediu MAIS VERMELHO em 2026-10-24 (ver `VermelhoDoCabeloDivino`): o cabelo ficou, e a cor da forma
+				// (a luz, o contorno, o banho do ritual) foi a `ff1e2a` e VOLTOU no dia seguinte, com o fogo da aura
+				// (*"a aura anterior tava melhor do ssj god, o cabelo atual ta top"*).
 				// ==========================================================================================
 				Aura = "ff4d6a", Cabelo = VermelhoDoCabeloDivino,
 				Desc = "22x. O ki divino sobre a forma BASE -- cabelo e aura vermelhos." },
@@ -4591,7 +4677,7 @@ public static class Catalogo
 		new() { Id = "blue", IdRede = 310, Linha = LinhaDeForma.GodKi, Ordem = 20,
 				Nome = "Super Saiyajin Blue", NumeroDm = -1, Intensidade = 4,
 				Marco = Stats.Milestones.Blue,   // a `SSj()` com o ki divino aceso (`supersaiyanbuff.dm:342`)
-				Mult = [32], Absoluta = true, Dreno = [0.045],
+				Mult = [32], Absoluta = true, Dreno = [0.045, 0.0325, 0.02],   // (2026-10-25) dominado, ENTRE o SSJ (0) e o SSJ3 (0,03) -- o dono
 				PedeGodKi = GodkiBluePct, PedeOrigemUmaDe = OrigemDoKiDivino,
 				PedeClasseUmaDe = ClassesDoKiDivino, ProibidoParaClasse = [ClasseRose],
 				PedeFormaAtual = ["ssj1"],   // SSJ + ki divino
@@ -4634,7 +4720,7 @@ public static class Catalogo
 		// (godki_mod > 1)". Entao Rose nao e uma forma a mais -- e a variante da classe.
 		new() { Id = "rose_ssg", IdRede = 301, Linha = LinhaDeForma.GodKiRose, Ordem = 10,
 				Nome = "Super Saiyajin God", NumeroDm = -1, Intensidade = 4,
-				Mult = [22], Absoluta = true, Dreno = [0.03],
+				Mult = [22], Absoluta = true, Dreno = [0.03, 0.02, 0.01],   // (2026-10-25) dominado, MENOS que o SSJ2 dominado (0,015) -- o dono
 				PedeGodKi = 0, PedeClasseUmaDe = [ClasseRose], PedeFormaAtual = [IdBase],
 				// IDENTICO AO `ssg`, E NO DM ELE NEM EXISTE COMO CASO: `godki_mod` (a variavel do Rose)
 				// e lida em dois lugares -- `SaiyanObjects.dm:13` e `:104` -- e os DOIS estao dentro de
@@ -4646,7 +4732,7 @@ public static class Catalogo
 		new() { Id = "rose", IdRede = 311, Linha = LinhaDeForma.GodKiRose, Ordem = 20,
 				Nome = "Super Saiyajin Rose", NumeroDm = -1, Intensidade = 4,
 				Marco = Stats.Milestones.Blue,   // a mesma `SSj()` (`:342`): o Rose e a COR da classe, nao outra proc
-				Mult = [32], Absoluta = true, Dreno = [0.045],
+				Mult = [32], Absoluta = true, Dreno = [0.045, 0.0325, 0.02],   // (2026-10-25) dominado, ENTRE o SSJ (0) e o SSJ3 (0,03) -- o dono
 				PedeGodKi = GodkiBluePct, PedeClasseUmaDe = [ClasseRose], PedeFormaAtual = ["ssj1"],
 				// A MESMA RECEITA DO BLUE com o outro hexa -- `SaiyanObjects.dm:13-16`, o ramo
 				// `if(container.godki_mod > 1)`. Mesmo sprite, so muda a cor.
@@ -4692,9 +4778,13 @@ public static class Catalogo
 		// A primeira versao deste catalogo tinha so o Beast, pendurado depois do Blue Evolution --
 		// e o Prodigial nunca chegava nele, porque a porta era uma forma que ele nao pode ter. A
 		// bancada pegou subindo a linha inteira.
+		//
+		// (2026-10-23) O NOME NA TELA E "POTENTIAL UNLEASHED", no jogo todo e nas duas linguas (o dono) -- e o RITUAL agora existe: e o
+		// Ritual Mistico do Velho Kaiohshin (`RitualDoKaioshin`), feito por outro Kaioshin, que o concede; o cargo nao o da mais. Os ids
+		// ficam (`IdMistico`, a rede 305, a `LinhaDeForma.Mistico`): sao chave de save, de maestria e de robo, e o jogador nao os le.
 		// ==========================================================================================
 		new() { Id = IdMistico, IdRede = 305, Linha = LinhaDeForma.Mistico, Ordem = 10,
-				Nome = "Mistico", NumeroDm = -1, Intensidade = 4,
+				Nome = "Potential Unleashed", NumeroDm = -1, Intensidade = 4,
 				Mult = [16], Absoluta = true, Dreno = [0.03],
 				SoPorConcessao = true,
 				EscalaComGodKi = new(Origens: [ClasseProdigial], SemGodKi: 18,
@@ -5279,6 +5369,24 @@ public static class Catalogo
 				Aura = "e6f0ff",
 				Desc = "32x, o patamar do Super Saiyajin Blue. A tensão de um Humano que despertou o ki divino -- e é nela que ele "
 					+ "amadurece esse ki." },
+
+		// ==================================================================================
+		// (2026-10-23) O SUPER MAJIN -- o Majin que nao e Corrupted (o pedido do dono)
+		// ==================================================================================
+		// A IDEIA DO FUTURE SUPER SAIYAJIN (`future_ssj`, la em cima): degraus de 2x pela maestria, a mesma porta (a do SSJ1, `ssjat` -- o
+		// Majin nao sorteia limiar nenhum, entao vale o de fabrica) e o mesmo dreno. O que o dono pos por cima mora em `SuperMajin`: a
+		// maestria dez vezes mais lenta e o TETO pelo BP base (6x no nivel do SSJ1, 10x no do SSJ2, 100% = 16x no do SSJ3). Sem raiva (a
+		// linha cai no `_` do `DespertaPelaRaiva`), sem marco de ganho (nao ha proc do DM pra citar), sem corpo nem cabelo proprio (o visual
+		// escolhido e o corpo de sempre); a aura e rosa e as faiscas sao a colada do `Electric_Majin` (`Coladas`). Intensidade 3 -- a do
+		// SSJ3, onde ela termina: ESCOLHA MINHA, como a cena (o surto curto das formas sem proc no DM, `Cinematicas.SuperMajin`).
+		new() { Id = SuperMajin.Id, IdRede = SuperMajin.IdRede, Linha = LinhaDeForma.SuperMajin, Ordem = 10,
+				Nome = "Super Majin", NumeroDm = -1, Intensidade = 3,
+				Mult = SuperMajin.Mult, Limiares = SuperMajin.Limiares, Dreno = SuperMajin.Dreno,
+				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat",
+				Aura = SuperMajin.AuraRosa,
+				Desc = "2x, subindo de 2x em 2x até 16x com a maestria -- que sobe bem devagar e trava no seu poder base: até 6x no nível do "
+					+ "Super Saiyajin, até 10x no do Super Saiyajin 2, e só perto do Super Saiyajin 3 chega a 100% (16x). O corpo continua o "
+					+ "seu; a aura fica rosa e faíscas estalam na pele." },
 	];
 
 	// ==================================================================================
@@ -5638,7 +5746,7 @@ public static class Catalogo
 	}
 
 	/// <summary>
-	/// UM BIT POR LINHA, na pilha. `LinhaDeForma` tem 18 valores (0..17) e o `ulong` tem 64. Passar disso seria
+	/// UM BIT POR LINHA, na pilha. `LinhaDeForma` tem 19 valores (0..18) e o `ulong` tem 64. Passar disso seria
 	/// um defeito CALADO -- em C# o deslocamento de 64 da a volta e acenderia o bit de outra linha --, entao o
 	/// `Add` reprova em voz alta.
 	/// </summary>
@@ -5692,6 +5800,9 @@ public static class Catalogo
 		// (v0.4.0) O HUMANO GANHOU A ESCADA DELE -- a da Tensao, pela lista do amigo do dono. Na MESMA cascata das linhas raciais e
 		// pelo mesmo motivo: ela e a escada da raca, e nao se soma a outra.
 		else if (EhDaRaca(p.Raca, RacaHumano)) abertas.Add(LinhaDeForma.Tensao);
+		// (2026-10-23) O MAJIN QUE NAO E CORRUPTED GANHOU O SUPER MAJIN (o pedido do dono), na MESMA cascata e pelo mesmo motivo. O
+		// Corrupted segue sem escada nenhuma aqui -- a dele e a saga -- e cai pelos `else` de baixo, que nao o pegam. Ver `SuperMajin`.
+		else if (SuperMajin.AbreALinha(p.Raca, p.Classe)) abertas.Add(LinhaDeForma.SuperMajin);
 
 		// O BIO-ANDROIDE entra na MESMA cascata, e nao por simetria: a Super Perfeita e a escada
 		// Saiyajin brigam pela mesma vaga no original (as duas escrevem `mob/var/ssj`). Aqui elas
@@ -5720,7 +5831,8 @@ public static class Catalogo
 		// **O QUE SE PERDE, DITO EM VOZ ALTA:** as racas que nao tem transformacao no DM ficam sem
 		// transformacao nenhuma aqui -- Majin, Bio-Androide, Gray, Makyo, Demonio, Android, Kai,
 		// Tsujin, Meta, Kanassa, Yardrat, Arlian, Shapeshifter, Spirit Doll, Saibaman e Demigod (o Humano estava nesta lista ate a
-		// v0.4.0, quando ganhou a linha da Tensao -- ver o ramo dele logo acima). Isso E
+		// v0.4.0, quando ganhou a linha da Tensao -- ver o ramo dele logo acima; e o Majin que nao e Corrupted ate 2026-10-23, quando
+		// ganhou o Super Majin). Isso E
 		// o DM (nenhuma delas tem `slot=sFORM` na propria arvore alem do que ficou de fora deste porte),
 		// mas ate ontem elas tinham a escada Saiyajin de graca, e quem estava jogando com elas VAI
 		// notar. As que tem forma no original e ainda nao a tem aqui estao nomeadas no relatorio desta
@@ -6031,6 +6143,30 @@ public static class Catalogo
 
 		return d.Dreno[idx] * DrenoPorCiclo * CiclosPorSegundo;
 	}
+
+	/// <summary>
+	/// (2026-10-25) O DRENO COM O PODER ABAIXADO -- o dono: *"caso o personagem abaixe seu poder de luta propositalmente, ele diminui a perda de
+	/// energia das transformacoes, a depender da maestria delas [...] ao chegar em 10% ou menos eu teria o consumo dela masterizada, entao em uma
+	/// forma de 50% de maestria, eu consigo usar 50% do meu poder com o consumo de ki dela masterizada (nao multiplicador, apenas consumo), quando
+	/// masterizo a forma quer dizer q ela vai ter o menor consumo em qualquer % de liberacao"*.
+	///
+	/// Com a maestria em M (0 a 1) e a barra em L (o `powerMod`, 0,01 a 1): com L ate M, o consumo e o da forma DOMINADA (o ultimo degrau do
+	/// <see cref="FormaDef.Dreno"/>); de M ate 100%, ele sobe em linha reta ate o de hoje (o degrau da maestria). Dominada, o menor em qualquer
+	/// L. So o consumo: o multiplicador nao olha a barra aqui.
+	/// </summary>
+	public static double DrenoPorSegundo(string id, Maestrias m, double liberacao)
+	{
+		double agora = DrenoPorSegundo(id, m);
+		FormaDef? d = Def(id);
+		if (d == null || d.Id == IdBase || d.Dreno.Length == 0 || DrenoSemLiberacaoDeTeste) return agora;
+		double dominado = Math.Min(agora, d.Dreno[^1] * DrenoPorCiclo * CiclosPorSegundo);
+		double mm = Math.Clamp(m.De(d.Id) / 100.0, 0, 1), l = Math.Clamp(liberacao, 0, 1);
+		if (mm >= 1 || l <= mm) return dominado;
+		return dominado + (agora - dominado) * (l - mm) / (1 - mm);
+	}
+
+	/// <summary>DEFEITO INJETADO (bancadas `formas` e `--poderteste`): a barra volta a nao mexer no consumo -- o jogo de antes de 2026-10-25. Falso em jogo, sempre.</summary>
+	public static bool DrenoSemLiberacaoDeTeste;
 
 	/// <summary>O ciclo do BuffLoop do DM, que e a moeda do <see cref="FormaDef.Dreno"/>: 40% do numero por ciclo, 0,8 ciclo por segundo.</summary>
 	private const double DrenoPorCiclo = 0.4, CiclosPorSegundo = 0.8;

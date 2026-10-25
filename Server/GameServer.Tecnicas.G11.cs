@@ -88,8 +88,8 @@ public sealed partial class GameServer
 		Vivo("Expand_Body", ExpandirCorpoG11);
 		Vivo("Majin", MajinG11);
 		Vivo("Shackle", GrilhaoG11);
-		Vivo("Devil_Bringer", (pl, arg) => TeleporteDePlanetaG11(pl, arg, DestinosDoDevilBringerG11, "Devil_Bringer", demoniaco: true));
-		Vivo("Kai_Kai", (pl, arg) => TeleporteDePlanetaG11(pl, arg, DestinosDoKaiKaiG11, "Kai_Kai", demoniaco: false));
+		Vivo("Devil_Bringer", DevilBringerG11);
+		Vivo("Kai_Kai", KaiKaiG11);   // (2026-10-23) a tela dos planetas conhecidos -- ver GameServer.KaiKai.cs
 		Vivo("Instant_Transmission", TeletransporteG11);
 		Vivo("Flip", CambalhotaG11);
 		Vivo("Self_Destruct", AutodestruirG11);
@@ -483,7 +483,10 @@ public sealed partial class GameServer
 		GD.Print($"[G11] {pl.Name} grilhou {alvo.Name} (-{debuff:0.##} Tspeed por {prazoS:0}s)");
 	}
 
-	/// <summary>Os doze do Kai Kai (`kai.dm:117`): onze mundos mais o Ceu.</summary>
+	/// <summary>
+	/// Os doze do Kai Kai (`kai.dm:117`): onze mundos mais o Ceu. Desde 2026-10-23 sao a primeira parte da tela do Kai Kai (os mundos
+	/// gerados que algum jogador ja pisou vem depois) -- ver `GameServer.KaiKai.cs`.
+	/// </summary>
 	private static readonly string[] DestinosDoKaiKaiG11 =
 	[
 		"Earth", "Namek", "Vegeta", "Icer", "Arconia", "Desert", "Arlia",
@@ -494,40 +497,38 @@ public sealed partial class GameServer
 	private static readonly string[] DestinosDoDevilBringerG11 = [.. DestinosDoKaiKaiG11.Where(d => d != "Heaven")];
 
 	/// <summary>
-	/// O SALTO DE PLANETA COM CARONA -- os dois verbs sao o mesmo corpo com listas e falas diferentes
-	/// (`demon.dm:174-201` e `kai.dm:112-139` sao copia um do outro), e o corpo e o
-	/// <see cref="SaltarDePlaneta"/> que o RiftTeleport e o Atalho Sagrado tambem usam: a porta
-	/// (`:176`/`:114` muda, `:177`/`:115` fala: "You need full ki and total concentration"), o preco
-	/// `usr.Ki = 0` (`:181`/`:119`), a carona `for(var/mob/V in oview(1))` (`:185-194`/`:123-132`) e a
-	/// chegada no spawn (o `GotoPlanet` do DM cai no spawn do planeta tambem). Os sons
-	/// (`demonteleport.wav`, `Instant_Pop.wav`) vao como efeito pro cliente pelo id do verb.
+	/// O DEVIL BRINGER -- o salto de planeta com carona do demonio (`demon.dm:174-201`), sobre o <see cref="SaltarDePlaneta"/> que o
+	/// RiftTeleport e o Atalho Sagrado tambem usam: a porta (`:176` muda, `:177` fala: "You need full ki and total concentration"),
+	/// o preco `usr.Ki = 0` (`:181`), a carona `for(var/mob/V in oview(1))` (`:185-194`) e a chegada no spawn (o `GotoPlanet` do DM
+	/// cai no spawn do planeta tambem). O som (`demonteleport.wav`) vai como efeito pro cliente pelo id do verb.
+	///
+	/// ERA TAMBEM O CORPO DO KAI KAI (`kai.dm:112-139` e copia deste), ate o Kai Kai ganhar a tela dos planetas conhecidos e o clarao
+	/// do Instant Transmission (2026-10-23, `GameServer.KaiKai.cs`). O Devil Bringer nao foi pedido e fica como era.
 	/// </summary>
-	private void TeleporteDePlanetaG11(ServerPlayer pl, string destino, string[] lista, string verbo, bool demoniaco)
+	private void DevilBringerG11(ServerPlayer pl, string destino)
 	{
 		if (RecusarPelaMenteFragmentada(pl)) return;
 		// `demon.dm` nao tem o Ceu na lista, e a recusa e propria: um poder demoniaco nao entra la.
-		if (demoniaco && destino.Equals("Heaven", StringComparison.OrdinalIgnoreCase))
+		if (destino.Equals("Heaven", StringComparison.OrdinalIgnoreCase))
 		{
 			Avisar(pl, "um poder demoniaco como este nao entra no Ceu.");
 			return;
 		}
 
-		// O "parece estar se concentrando..." (`:180`/`:118`) e o grito sao um emote so: no DM havia
-		// um `sleep` entre os dois, e sem ele as duas frases sairiam no mesmo instante de qualquer jeito.
-		if (!SaltarDePlaneta(pl, destino, lista, demoniaco ? "o poder demoniaco" : "o Kai Kai", verbo,
+		// O "parece estar se concentrando..." (`:180`) e o rasgo sao um emote so: no DM havia um `sleep` entre os dois, e sem ele as
+		// duas frases sairiam no mesmo instante de qualquer jeito.
+		if (!SaltarDePlaneta(pl, destino, DestinosDoDevilBringerG11, "o poder demoniaco", "Devil_Bringer",
 							 kiCheio: true, comCarona: true,
-							 emote: demoniaco
-								 ? "parece estar se concentrando... rasga um buraco na realidade e some!"
-								 : "parece estar se concentrando... grita 'Kai Kai!' e some!",
+							 emote: "parece estar se concentrando... rasga um buraco na realidade e some!",
 							 fraseDaCarona: "te leva junto no teleporte.", pontoDeChegada: null,
 							 out string escolhido, out int levou))
 			return;
 
-		MandarEfeito(pl, demoniaco ? "devilbringer" : "kaikai", RecargaDoSaltoMs);
+		MandarEfeito(pl, "devilbringer", RecargaDoSaltoMs);
 		Avisar(pl, levou == 0
 			? $"voce reaparece em {escolhido}, sem uma gota de energia."
 			: $"voce reaparece em {escolhido} com {levou} pessoa{(levou == 1 ? "" : "s")} a tiracolo, sem uma gota de energia.");
-		GD.Print($"[G11] {pl.Name} usou {verbo} ate {escolhido} (+{levou} de carona)");
+		GD.Print($"[G11] {pl.Name} usou Devil_Bringer ate {escolhido} (+{levou} de carona)");
 	}
 
 	// =====================================================================
@@ -939,6 +940,7 @@ public sealed partial class GameServer
 		if (alvo.Ficha.unlockPotential >= 1) { Avisar(pl, $"o potencial de {alvo.Name} ja foi despertado!"); return; }
 
 		_ofertasDePotencialG11[alvo.Conta] = (pl.Conta, NowMs() + PrazoDaOfertaDePotencialMsG11);
+		_ofertasDeRitual.Remove(alvo.Conta);   // (2026-10-23) um convite so por alvo: o do ritual usa este cartao (RitualDoKaioshin.cs)
 		Avisar(pl, $"voce oferece a {alvo.Name} despertar o potencial adormecido. Agora e com {alvo.Name}.");
 		Avisar(alvo, $"{pl.Name} quer despertar os seus poderes escondidos. "
 				   + $"(aceite ou recuse na aba Other, em {PrazoDaOfertaDePotencialMsG11 / 1000}s)");
@@ -947,6 +949,8 @@ public sealed partial class GameServer
 	/// <summary>A resposta a oferta -- chamada do roteador dos cargos (`potencial_aceitar` / `potencial_recusar`).</summary>
 	private void ResponderPotencialG11(ServerPlayer pl, bool aceitou)
 	{
+		// (2026-10-23) O CONVITE DO RITUAL MISTICO e respondido pelos MESMOS botoes: aceitar comeca o ritual. Ver `RitualDoKaioshin.cs`.
+		if (ResponderAoRitual(pl, aceitou)) return;
 		if (!_ofertasDePotencialG11.TryGetValue(pl.Conta, out (string Quem, long Ate) o) || NowMs() > o.Ate)
 		{
 			_ofertasDePotencialG11.Remove(pl.Conta);

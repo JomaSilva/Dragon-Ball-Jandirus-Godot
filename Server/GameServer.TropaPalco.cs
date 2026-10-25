@@ -32,6 +32,9 @@ public partial class GameServer
 		return (l.Count, l.Count(s => s.Visual.Roupa.Exists(r => r.Caminho.Contains("Armor", StringComparison.OrdinalIgnoreCase))));
 	}
 
+	/// <summary>(2026-10-24) Os ids dos soldados da tropa no mundo agora -- o robo le no CLIENTE a folha de cada um que esta na tela (R3b).</summary>
+	internal List<int> PalcoT_IdsDaTropa() => EloComTropa() is { } elo ? SoldadosDoElo(elo.Id).Select(s => s.Id).ToList() : [];
+
 	/// <summary>
 	/// O FOTOGRAFO NUM CANTO VAZIO DE NAMEK (terra firme, ninguem a trinta tiles), e o Freeza deitado por dez minutos. Devolve se deu.
 	/// </summary>

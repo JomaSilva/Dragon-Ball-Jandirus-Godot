@@ -134,6 +134,38 @@ public partial class RoboDasAbas
 			Checa("o regenerador solto leva a pilula 'solta'; a macieira plantada (que nao tem parafuso) nao leva pilula nenhuma",
 				  pilulas.Count == 1 && pilulas[0] == "solta", string.Join(", ", pilulas));
 
+			// (2026-10-25) LIBERAR / TRANCAR (o pedido 74 do dono): cada linha minha tem o botao, que pede a troca ao servidor pelo id da obra; a
+			// obra LIBERADA (o pacote diz) troca o rotulo pra "Trancar" e ganha a pilula -- e a foto mostra as duas linhas assim
+			static List<Button> BotoesDeLiberar(Node onde) => [.. Todos(onde).OfType<Button>().Where(b => b.HasMeta("liberar"))];
+			List<Button> botoes = obras == null ? [] : BotoesDeLiberar(obras);
+			string? pediu = null;
+			GameClient.EspiaoDeTech = (cmd, arg) => { if (cmd == "liberar") pediu = arg; return false; };
+			try { botoes.FirstOrDefault(b => b.GetMeta("liberar").AsInt32() == meuTanque.Id)?.EmitSignal(BaseButton.SignalName.Pressed); }
+			finally { GameClient.EspiaoDeTech = null; }
+			Checa("**LIBERAR PRA TODOS** (o dono, 2026-10-25): cada linha minha tem o botao 'Liberar', e ele pede a troca ao servidor pelo id da obra",
+				  botoes.Count == 2 && botoes.All(b => b.Text == MenuJogo.RotuloDeLiberar) && pediu == meuTanque.Id.ToString(),
+				  $"{botoes.Count} botao(oes): {string.Join(", ", botoes.Select(b => b.Text))}; pediu {pediu ?? "(nada)"}");
+			int iTanque = cli.Obras.IndexOf(meuTanque);
+			if (iTanque >= 0) cli.Obras[iTanque] = meuTanque with { Liberada = true };
+			menu.ForcarRedesenho();
+			await Quadros(2);
+			obras = CartaoDasObras(menu.PaginaDeTeste("Tech")!);
+			Button? doTanque = obras == null ? null : BotoesDeLiberar(obras).FirstOrDefault(b => b.GetMeta("liberar").AsInt32() == meuTanque.Id);
+			List<string> pilulasDaLiberada = obras == null ? [] : Pilulas(obras);
+			Checa("...e a obra LIBERADA (o pacote diz) troca o botao pra 'Trancar' e ganha a pilula 'liberada'",
+				  doTanque?.Text == MenuJogo.RotuloDeTrancar && pilulasDaLiberada.Contains(MenuJogo.PilulaDeLiberada),
+				  $"{doTanque?.Text ?? "(sem botao)"} | {string.Join(", ", pilulasDaLiberada)}");
+			if (obras != null && Ancestral<ScrollContainer>(obras) is { } rolDaLiberada)
+			{
+				rolDaLiberada.EnsureControlVisible(obras);
+				await Quadros(3);
+			}
+			await Guardar("depois-12d-tech-liberada", await Foto());
+			if (iTanque >= 0) cli.Obras[iTanque] = meuTanque;
+			menu.ForcarRedesenho();
+			await Quadros(2);
+			obras = CartaoDasObras(menu.PaginaDeTeste("Tech")!);
+
 			Jandirus.Core.Tech.Interacoes.TudoPedeParafusoDeTeste = true;
 			menu.ForcarRedesenho();
 			await Quadros(2);
@@ -154,7 +186,7 @@ public partial class RoboDasAbas
 		{
 			Jandirus.Core.Tech.Interacoes.TudoPedeParafusoDeTeste = false;
 			MenuJogo.ObrasDeTodosNaAbaDeTeste = false;
-			cli.Obras.Remove(meuTanque);
+			cli.Obras.RemoveAll(o => o.Id == meuTanque.Id);   // (2026-10-25) pelo id: a linha liberada (acima) e outro registro
 			cli.Obras.Remove(minhaArvore);
 			menu.ForcarRedesenho();
 			await Quadros(2);

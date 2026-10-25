@@ -215,16 +215,12 @@ public partial class GameServer
 
 		if (chegaram != null) ContarOQueOCargoDeu(pl, chegaram);
 
-		// ============================ E O MISTICO, QUE ERA UM VERBO ESCRITO E ORFAO ============================
-		// A `--cargovivo` deixou a acusacao por escrito: *"o painel do cargo anuncia o Mistico como
-		// PRONTO"* e a forma continua trancada, porque `ConcederMistico`
-		// (`GameServer.Formas.cs:273`) -- o gancho, documentado em vinte linhas -- **nao tinha um
-		// unico chamador de producao**. E a mesma familia de defeito que o sigilo de BP e a
-		// `RankDef.Concede` ja custaram a este projeto: API escrita e 100% orfa.
-		//
-		// AQUI E A PORTA, e ela nao e "um evento de virou Kaioshin" pelo argumento do cabecalho
-		// desta funcao. Ver <see cref="ReconciliarODomDoMistico"/>.
-		ReconciliarODomDoMistico(pl);
+		// ============================ E O MISTICO -- QUE O CARGO NAO DA MAIS (2026-10-23) ============================
+		// Ate 2026-10-23 a forma do Mistico DERIVAVA da skill `kai/Mystic` do kit: quem tinha a skill ganhava a forma, quem a
+		// perdia a perdia. O dono trocou a skill pelo Ritual Mistico do Velho Kaiohshin, e a forma (o Potential Unleashed) virou um
+		// DIREITO GRAVADO que ninguem tira por tique. O que sobra aqui e a migracao de quem ainda tem a skill no livro -- e ela entra
+		// por esta porta pelo argumento do cabecalho desta funcao. Ver <see cref="ReconciliarODomDoMistico"/>.
+		if (ReconciliarODomDoMistico(pl)) mudou = true;
 
 		// O TRAJE DO DEUS DA DESTRUICAO (dono, 2026-10-11): quem ganha o titulo -- por qualquer porta -- recebe a
 		// peca na mochila, uma vez por personagem. Ver `GameServer.Bills.ReconciliarOTrajeDoDeus`.
@@ -265,65 +261,71 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// A SKILL QUE, NO DM, **E** A FORMA. `/datum/skill/kai/Mystic` (`Race Trees/kai.dm:12-32`).
-	///
-	/// La ela nao "permite aprender o Mistico": o `after_learn()` dela faz UMA coisa --
-	/// `assignverb(/mob/keyable/verb/Mystic)` --, e esse verb (`Magic/Mystic.dm:9-18`) e o proprio
-	/// liga/desliga do buff da forma. Ter a skill e ter a forma; o `before_forget()` tira o verb e
-	/// leva a forma junto.
+	/// DEFEITO INJETADO (bancadas `--v030teste`, familia D, e `--ritualkaiteste`): a forma volta a SEGUIR a skill -- quem a tem sem a
+	/// skill no livro (o desejo do Namekuseijin, o ritual) a perde no tique seguinte, o defeito de antes de 2026-10-23. Lido pela linha 1
+	/// do <see cref="ReconciliarODomDoMistico"/>. Falso em jogo, sempre.
 	/// </summary>
-	private const string SkillDoMistico = "/datum/skill/kai/Mystic";
+	internal static bool FormaSegueASkillDeTeste;
 
 	/// <summary>
-	/// O DOM DO MISTICO SEGUE O LIVRO -- **o chamador de producao que faltava**.
-	///
-	/// ============================ POR QUE ELE E DERIVADO, E NAO UM EVENTO ============================
-	/// Neste port a forma do Mistico e `SoPorConcessao` (ver `FormaDef`), e quem a abre e
-	/// <see cref="ConcederMistico"/>. O gancho existia desde a sessao das formas, documentado,
-	/// testado pela `--formasteste` -- e sem um unico chamador fora de bancada. O resultado era o
-	/// pior formato de divida que este projeto acumula: o Kaioshin recebia a skill, o painel do cargo
-	/// anunciava *"o cargo te entrega: Mystic"*, e apertar C nao levava a lugar nenhum.
-	///
-	/// A pergunta certa nao e "virou Kaioshin?" e sim **"o livro tem a skill?"**, e sao coisas
-	/// diferentes em dois casos que existem: (1) `/datum/skill/kai/Mystic` tem `teacher = TRUE` no DM,
-	/// entao um Kaioshin pode ENSINAR o Mistico a alguem sem cargo nenhum -- e quem foi ensinado nao
-	/// perde (o <see cref="DadivaDeCargo.Revogavel"/> ja poupa o `wastaught`); (2) quem perde o cargo
-	/// **offline** nunca dispara evento algum, e volta com a skill ja revogada pelo passo 1 desta
-	/// mesma funcao.
-	///
-	/// Derivar do livro faz os dois cairem no lugar sem uma linha pra cada, e e a mesma escolha (pelo
-	/// mesmo argumento) que o cabecalho da <see cref="ReconciliarDadiva"/> defende.
-	///
-	/// ============================ O RECUO E OBRIGATORIO, E NAO CORTESIA ============================
-	/// Quem perde a skill ESTANDO no Mistico tem que sair dele. Sem isso o ex-Kaioshin fica com o
-	/// multiplicador de uma forma que ele nao pode mais assumir, e nada o tira de la -- exatamente o
-	/// defeito que a <see cref="ReconciliarDadiva"/> ja evitou uma vez ao chamar `AplicarEstilo`
-	/// ("escrever o corte nao e aplicar o corte").
-	/// ============================================================================================
+	/// DEFEITO INJETADO (bancada `--ritualkaiteste`): a skill do Mistico que o cargo deu FICA no livro, e a forma com ela -- o Kaioshin
+	/// de antes da regra continua com o Potential Unleashed sem ritual nenhum. Lido pela linha 3 do <see cref="ReconciliarODomDoMistico"/>.
+	/// Falso em jogo, sempre.
 	/// </summary>
-	private void ReconciliarODomDoMistico(ServerPlayer pl)
+	internal static bool MisticoDoCargoFicaDeTeste;
+
+	/// <summary>
+	/// ============================ A FORMA DO MISTICO E UM DIREITO GRAVADO (dono, 2026-10-23) ============================
+	/// A HISTORIA: no DM a skill `/datum/skill/kai/Mystic` (`Race Trees/kai.dm:12-32`) ERA a forma -- o `after_learn()` dela da o verb
+	/// que liga o buff (`Magic/Mystic.dm:9-18`), e o `before_forget()` o tira. Este port fazia o mesmo por DERIVACAO, aqui, a 1 Hz: quem
+	/// tinha a skill (o kit do Kaioshin, uma copia ensinada, a heranca do bio) ganhava a forma, e quem tinha a forma SEM a skill a perdia
+	/// no tique seguinte.
+	///
+	/// O DEFEITO QUE A DERIVACAO ESCONDIA: a forma dada SEM a skill -- a do desejo do Namekuseijin (`DesejoDePotencial`) -- sumia um
+	/// segundo depois do desejo. As bancadas do desejo nao ticavam depois dele, e nao viram.
+	///
+	/// A REGRA DE AGORA (o dono): o Kaioshin perdeu a skill e ganhou o Ritual Mistico do Velho Kaiohshin (`GameServer.RitualDoKaioshin.cs`),
+	/// e a forma -- o Potential Unleashed -- deixou de seguir a skill: e um DIREITO GRAVADO no `Forma.Liberadas` (que vai pro save), dado
+	/// pelo ritual ou pelo desejo, e NINGUEM o tira por tique. O que sobra aqui e a MIGRACAO de quem ainda tem a skill, idempotente (roda a
+	/// 1 Hz, como toda a reconciliacao, e so age enquanto a skill estiver no livro):
+	///   1. SEM A SKILL, NADA A FAZER -- o caso de quase todo mundo, numa consulta ao livro;
+	///   2. A COPIA ENSINADA FICA (o dono: "quem tem fica"): a forma ja e dela (a derivacao de antes a abriu), e a skill no livro nao faz
+	///      mais nada -- nem se ensina (`EnsinoDeSkill.SoPeloRitual`);
+	///   3. A COPIA QUE NINGUEM ENSINOU SAI -- a do kit de antes (ou um `Dar` de fusao) -- E LEVA A FORMA: *"o Kaioshin cuja forma vinha
+	///      so do cargo a perde quando a skill sai"*. Ele volta a ela pelo ritual de OUTRO Kaioshin.
+	///
+	/// O RECUO E OBRIGATORIO: quem perde a forma ESTANDO nela sai dela primeiro, senao `AplicarForma` recalcularia com um id que o
+	/// `Avaliar` ja recusa ("escrever o corte nao e aplicar o corte", o mesmo do `AplicarEstilo` da reconciliacao).
+	/// ============================================================================================================================
+	/// </summary>
+	/// <returns>Se o livro mudou (a skill saiu) -- quem chama manda as skills de novo.</returns>
+	private bool ReconciliarODomDoMistico(ServerPlayer pl)
 	{
-		if (pl.Livro == null) return;
-
-		bool sabe = pl.Livro.Sabe(SkillDoMistico);
-		bool tem = pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico);
-
-		if (sabe && !tem) { ConcederMistico(pl, "o cargo de Kaioshin"); return; }
-		if (!sabe && !tem) return;
-		if (sabe) return;
-
-		// PERDEU A SKILL E AINDA TEM O DOM: tira os dois, nesta ordem -- primeiro o corpo sai da
-		// forma (senao `AplicarForma` recalcularia com um id que o `Avaliar` ja recusa), depois o
-		// dom sai da lista.
-		if (string.Equals(pl.Forma.Atual, Jandirus.Core.Forms.Catalogo.IdMistico,
-						  StringComparison.OrdinalIgnoreCase))
+		if (pl.Livro == null) return false;
+		// 1. A FORMA NAO SEGUE MAIS A SKILL: sem ela no livro, nada a reconciliar (o conserto do desejo que sumia).
+		if (!pl.Livro.Sabe(RitualDoKaioshin.SkillDoMistico) && !FormaSegueASkillDeTeste) return false;
+		// 2. A COPIA ENSINADA FICA, e a forma com ela.
+		if (pl.Livro.FoiEnsinada(RitualDoKaioshin.SkillDoMistico)) return false;
+		// 3. A SKILL QUE O CARGO DEU SAI -- e leva a forma.
+		if (MisticoDoCargoFicaDeTeste) return false;
+		bool sabia = pl.Livro.Sabe(RitualDoKaioshin.SkillDoMistico);
+		pl.Livro.Esquecer(RitualDoKaioshin.SkillDoMistico);
+		if (pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico))
 		{
-			pl.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);
-			AplicarForma(pl);
+			if (string.Equals(pl.Forma.Atual, Jandirus.Core.Forms.Catalogo.IdMistico, StringComparison.OrdinalIgnoreCase))
+			{
+				pl.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);
+				AplicarForma(pl);
+			}
+			pl.Forma.Liberadas.Remove(Jandirus.Core.Forms.Catalogo.Rede(Jandirus.Core.Forms.Catalogo.IdMistico));
+			ReapresentarOCorpo(pl);   // o potencial na pele sai junto com a forma (`Catalogo.PotencialMarcaAPele`)
+			Avisar(pl, "o cargo de Kaioshin não abre mais o Potential Unleashed: a forma que ele te deu se fecha. Agora ela só "
+					   + "desperta pelo Ritual Místico do Velho Kaiohshin, feito por outro Kaioshin.");
+			GD.Print($"[server] {pl.Name} PERDEU o POTENTIAL UNLEASHED (a skill do cargo saiu do livro: so o ritual a da agora)");
 		}
-		pl.Forma.Liberadas.Remove(Jandirus.Core.Forms.Catalogo.Rede(Jandirus.Core.Forms.Catalogo.IdMistico));
-		Avisar(pl, "o potencial que o cargo abriu em voce se fecha: o Mistico nao e mais seu.");
-		GD.Print($"[server] {pl.Name} PERDEU o MISTICO (a skill do cargo saiu do livro)");
+		// (Sem `Persistir` aqui, como na derivacao de antes: a gravacao periodica e a do logout levam o livro e as formas pro disco --
+		// e as bancadas que emprestam o `Peer` do host gravariam o corpo forjado por cima do personagem dele.)
+		return sabia;
 	}
 
 	/// <summary>
@@ -393,6 +395,9 @@ public partial class GameServer
 		// (2026-10-19) OS VINCULOS DE APRENDIZ DE KAIOSHIN: o que caiu com o mestre fora do trono, e o convite vencido. Ver
 		// `GameServer.AprendizDeKaioshin.cs`.
 		TickDosAprendizes();
+
+		// (2026-10-23) O RITUAL MISTICO DO VELHO KAIOHSHIN: o que o quebra, os minutos no chat e o fim. Ver `GameServer.RitualDoKaioshin.cs`.
+		TickDosRituais();
 
 		TickDoDuelo();
 

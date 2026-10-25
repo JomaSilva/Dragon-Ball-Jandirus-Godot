@@ -447,8 +447,11 @@ public partial class GameServer
 	// mesa do Enma. Aqui o `!dead` cru trancava tambem o morto do Outro Mundo -- "o morto fica
 	// preso, nao conseguindo andar" (o dono, 2026-09-04). O que continua caido e o CADAVER dos 15 s
 	// (`MortoDePe` e falso fora do Outro Mundo).
-	private bool PodeMexerOCorpo(ServerPlayer pl) =>
-		(!pl.Ficha.dead || pl.MortoDePe) && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
+	// (2026-10-23) `rastejando`: o PASSO de quem so a gravidade segura (o desmaiado pelo esmagamento, o prensado de pe) -- e as duas
+	// recusas DELA que deixam de valer, e so elas: o resto da lista continua de pe. Quem passa `true` e o `AplicarInput`, e so com a
+	// resposta do `SoAGravidadeSegura` (dono: quem cai pela gravidade se arrasta). A IA e os outros portoes nao passam (`GameServer.Rastejo.cs`).
+	private bool PodeMexerOCorpo(ServerPlayer pl, bool rastejando = false) =>
+		(!pl.Ficha.dead || pl.MortoDePe) && (!pl.Ficha.KO || rastejando) && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
 		&& !_emEmbateDeKi.ContainsKey(pl.Id) && !EnraizadoPorKi(pl.Id) && !Paralisado(pl.Id)
 		&& !EmCena(pl)
 		// (2026-10-18) O CORPO POSSUIDO PELO NEO TUFFLE: quem anda e o Tuffle, no corpo que ele veste; o de verdade so vai junto (`GameServer.NeoTuffle.cs`).
@@ -487,7 +490,7 @@ public partial class GameServer
 		// tendo q ficar parado"*). Pelo mesmo funil, e por isso vale pra IA que aperta o pescoco de alguem. Pra
 		// andar (ou arremessar: o passo de quem segura e o arremesso) afrouxa-se o aperto primeiro.
 		&& !(pl.Estrangulando && pl.AgarrandoId != 0 && !EstranguladorAndaDeTeste)
-		&& !PrensadoPelaGravidade(pl)
+		&& (rastejando || !PrensadoPelaGravidade(pl))
 		// SEM AS DUAS PERNAS, NO CHAO (`legsLost >= 2 && !flight`, `movement handler.dm:133` -- a linha logo abaixo
 		// do `gravParalysis` de cima). So o corpo que o DONO dirige: a IA nao passa pelo `unitimer` do DM, e um NPC
 		// sem pernas nao pode virar estatua. Ver `SemPernasNoChao`, `GameServer.Membros.cs`.
@@ -506,6 +509,9 @@ public partial class GameServer
 		// origem, o passo nem acontece -- e o cliente, avisado pelo efeito `torneio_espera`, nem
 		// tenta (`LocalPlayer.PorQueNaoAnda`).
 		&& !PresoNoTorneio(pl.Id)
+		// (2026-10-23) NO RITUAL MISTICO DO VELHO KAIOHSHIN NENHUM DOS DOIS SE MOVE (o dono) -- pelo mesmo funil e com o mesmo aviso ao
+		// cliente (o efeito `ritual_kaioshin`). Ver `GameServer.RitualDoKaioshin.cs`.
+		&& !PresoNoRitual(pl)
 		// A NAVE POUSADA NAO ANDA (v0.2.1, dono: *"ao pilotar ... vc sobe ou desce (ate pousar) com elas"*). Ao leme, quem
 		// anda e a nave, e a nave so anda voando: no chao ela esta estacionada, e pra sair do lugar se decola (a tecla
 		// de subir -- `DecolarANavePousada`). Por ULTIMO na lista: so e perguntado a quem ja passou em tudo acima, e a
@@ -764,6 +770,8 @@ public partial class GameServer
 			MargemDaArena = _rotina.MargemDaArenaTiles,
 			MargemSeguraParaPousar = _rotina.MargemSeguraParaPousarTiles,
 			Arremessado = npc.TiquesDeVoo > 0,
+			// (2026-10-25) o xingamento da arena: quem foi chamado de covarde luta no chao (ver `GameServer.Torneio`)
+			ChamadoDeCovarde = FoiChamadoDeCovarde(npc),
 
 			// A AGUA (ver `Travessia`). `RumoDaMargem` so custa alguma coisa com os pes molhados.
 			NaAgua = PesNaAgua(npc),

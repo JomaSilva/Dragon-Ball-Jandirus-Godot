@@ -54,10 +54,7 @@ public partial class MenuJogo
 		if (k.Desperto)
 		{
 			Linha("Ki divino", "desperto", OuroDivino, corpo);
-			LinhaComBarra("Maestria divina", $"{k.Maestria:0.0}%", k.Maestria / 100.0, OuroDivino, corpo);
-			Nota("A maestria divina cresce USANDO o ki divino, numa forma que o peça -- o dobro em combate. "
-				 + $"Ela abre os degraus seguintes: {Jandirus.Core.Forms.Catalogo.GodkiBluePct:0}%, "
-				 + $"{Jandirus.Core.Forms.Catalogo.GodkiRoyalePct:0}% e {Jandirus.Core.Forms.Catalogo.GodkiUiUePct:0}%.", corpo);
+			LinhasDaMaestriaDivina(k, corpo);
 			return;
 		}
 
@@ -75,6 +72,18 @@ public partial class MenuJogo
 		Linha("Despertar", "o corpo ainda não alcança", Tema.TextoFraco, corpo);
 		Nota("Falta poder de BASE pra o ki divino despertar em você -- forma, raiva e Kaio-ken não contam. "
 			 + "Enquanto isso o tempo aqui não enche nada.", corpo);
+	}
+
+	/// <summary>
+	/// (2026-10-25) A BARRA E A NOTA DA MAESTRIA DIVINA, num lugar so: o cartao "Ki divino" da aba World (logo acima) e o da aba
+	/// Forms (`AbaFormas`, ao lado do Kaio-ken) desenham as mesmas linhas -- e as mesmas frases ja traduzidas.
+	/// </summary>
+	private void LinhasDaMaestriaDivina(GameClient.KiDivinoVisto k, Control corpo)
+	{
+		LinhaComBarra("Maestria divina", $"{k.Maestria:0.0}%", k.Maestria / 100.0, OuroDivino, corpo);
+		Nota("A maestria divina cresce USANDO o ki divino, numa forma que o peça -- o dobro em combate. "
+			 + $"Ela abre os degraus seguintes: {Jandirus.Core.Forms.Catalogo.GodkiBluePct:0}%, "
+			 + $"{Jandirus.Core.Forms.Catalogo.GodkiRoyalePct:0}% e {Jandirus.Core.Forms.Catalogo.GodkiUiUePct:0}%.", corpo);
 	}
 
 	/// <summary>O pedaco do ki divino na assinatura da aba World, nos arredondamentos em que o cartao desenha.</summary>

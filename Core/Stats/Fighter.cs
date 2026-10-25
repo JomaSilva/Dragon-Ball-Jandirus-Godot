@@ -592,14 +592,18 @@ public sealed partial class Fighter
 	// =====================================================================
 	public GodKiState? godki;
 	public bool godki_gt_mode;
-	public double godki_boost = 2.5, gt_boost = 3, godki_give_mult = 0;
+	public double godki_boost = 2.5, gt_boost = 3;   // (2026-10-23) o `godki_give_mult` saiu da ficha -- ver `GodKiFactor`
 	public double ssj = 0, lssj = 0;
 	public bool beast_form, MysticActive;
 
 	// =====================================================================
 	// CASOS ESPECIAIS DE FIM DE CONTA
 	// =====================================================================
-	/// <summary>Revive por Zeni: BP em 25% ate este instante (em ms de relogio real).</summary>
+	/// <summary>
+	/// Revive por Zeni: BP em 25% ate este instante (em ms de relogio real) -- A REGRA DE ANTES. Desde 2026-10-23 (o dono) a volta paga nao
+	/// corta o poder: so o defeito injetado `Alem.DebuffDoEnmaComoAntesDeTeste` escreve e le o campo. Ele FICA porque o save de quem pagou o
+	/// Enma ate a v0.4.4 o traz (o JSON velho carrega igual, e o prazo dele nao corta nada).
+	/// </summary>
 	public long zeni_revive_debuff_until;
 
 	/// <summary>
@@ -876,8 +880,8 @@ public sealed partial class Fighter
 	public double zoneMasteryMult = 1;
 
 	// --- estado do laco de treino (o que o BYOND guardava em tmp) ---------
-	public bool train, med, minuteshot;
-	public int missedtrain, minuteshot_ig_ki;
+	public bool train, med;   // (a janela do tiro, `minuteshot`, e a contagem dela moram em `Fighter.JanelaDoTiro.cs`, fora do save)
+	public int missedtrain;
 	public double tmp_activ_gains;
 	public Facing lastdir = Facing.South, dir = Facing.South;
 
@@ -914,6 +918,12 @@ public sealed partial class Fighter
 	/// (`Nutricao.KiSempreCheio`). E de corpo de NPC: jogador nenhum nasce com ele.
 	/// </summary>
 	public bool KiDeChefe;
+
+	/// <summary>
+	/// (2026-10-24) O TEMPO DE LUTA, em segundos, de todas as aulas com o Whis e com o Bills -- o que o ensino dos principios conta (o
+	/// dono: *"apos alguns treinos ambos whis ou bills começam a ensinar"*). Vai pro disco com a ficha. Ver `GameServer.CreditarAAula`.
+	/// </summary>
+	public double aulaComWhis, aulaComBills;
 
 	/// <summary>
 	/// (2026-10-18) O PISO DO TANQUE DO CHEFE DE SAGA, em Ki -- ver o `Statify`. Com ele o tiro mais caro que um chefe sabe (o Dodon Ray,
@@ -1008,6 +1018,14 @@ public sealed partial class Fighter
 	/// antes de existirem. Zero ali nao e valor de projeto, e variavel nao inicializada.
 	/// </summary>
 	public double kiratio = 1, hpratio = 1, staminaratio = 1;
+
+	/// <summary>
+	/// (2026-10-24) A VIDA QUE PESA NO PODER, 0-100 -- o `hpratio` le ESTA, e nao o `HP`. O dono: *"so começa a perder bp quando membros
+	/// começam a ficar abaixo de 50%"*. Quem a escreve e o corpo, junto da vida (`CombatState.SincronizarVida`, pela
+	/// `DebuffsDeMembro.VidaQuePesaNoPoder`). NEGATIVA = ainda sem corpo (a ficha solta das bancadas de conta): o `PowerLevel` le
+	/// entao o `HP` como se fosse um membro so.
+	/// </summary>
+	public double vidaQuePesa = -1;
 	public double buffBuff, formBuff, deBuff, statusBuff, netBuff, nnetBuff = 1;
 	public double fusionBuff = 1, angerBuff = 1;
 
@@ -1032,6 +1050,7 @@ public sealed partial class Fighter
 		ClampAnger();
 		PowerLevel(gravBalance, agoraMs);
 		WeightTick();   // depende do expressedBP que o PowerLevel acabou de escrever
+		FecharAJanelaDoTiro(agoraMs);   // (2026-10-24) o `spawn(450) minuteshot=0` do Blast_Gain -- ver `Fighter.JanelaDoTiro.cs`
 	}
 
 	/// <summary>

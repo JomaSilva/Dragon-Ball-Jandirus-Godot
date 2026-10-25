@@ -14,8 +14,10 @@ namespace Jandirus.Core.Npc;
 ///
 /// ============================ O QUE NAO E DAQUI ============================
 ///   * A FORCA do vilao e do MOLDE (`npcs.json`, molde <see cref="Molde"/>): o `bpRelativo` o faz nascer em
-///     torno da media de BP dos jogadores online (1.0 = a media, +-15%), com o `bpPiso` por baixo. Mudar a
-///     forca e editar aquelas duas linhas -- e dado, nao codigo.
+///     torno da media de BP dos jogadores VIVOS DO PLANETA onde ele aparece (1.0 = a media, +-15%), com o
+///     `bpPiso` por baixo. Mudar a forca e editar aquelas duas linhas -- e dado, nao codigo. Quem conta a media
+///     e o servidor (`GameServer.MediaDoPlaneta`): ate 2026-10-23 era a do servidor inteiro, e o dono mudou --
+///     *"deveriam escalar com o poder do planeta atual e nao do server, galera novata tava apanhando mt"*.
 ///   * NAO E SAGA. O vilao e um molde do tipo <see cref="TipoDeNpc.Vilao"/>, sem estagios e sem roteiro: nada
 ///     aqui le ou escreve a cadeia de sagas, e um chefe de saga de pe no planeta nao impede nem atrasa um
 ///     vilao.
@@ -47,10 +49,37 @@ public static class VilaoAvulso
 	public const int KarmaPorDerrotar = 10;
 
 	/// <summary>
+	/// (2026-10-25) ...E A REPUTACAO COM O PLANETA em que ele apareceu -- o dono: *"faca vencer viloes q aparecem no planeta ao serem
+	/// derrotados alem de karma ganha reputacao com o planeta"*. 15 e o "amigavel" do planeta numa derrota so
+	/// (`Reputacao.LimiarDeAmigavel`), e o "heroi" (50) depois de quatro; o chefe de saga, que e outra escala de ameaca, vale 100
+	/// (`Reputacao.HeroiPorChefe`).
+	/// </summary>
+	public const double ReputacaoPorDerrotar = 15;
+
+	/// <summary>
 	/// A que distancia de um jogador o vilao aparece, em tiles: longe o bastante pra nao nascer em cima de
 	/// ninguem, perto o bastante pra ser achado (a IA dele persegue quem entra em 20 tiles).
 	/// </summary>
 	public const float DistanciaMinTiles = 10, DistanciaMaxTiles = 30;
+
+	/// <summary>
+	/// (2026-10-23) DE ONDE E O VILAO QUE APARECE NUM MUNDO GERADO. O molde nao crava `racas` -- a raca dele e a de quem nasce no
+	/// planeta (`Bercos.RacasNascidasEm`) --, e num mundo gerado NINGUEM nasce: a tabela do berco so conhece mapa feito a mao. A pool
+	/// vazia estourava o sorteio (o `SorteioDeNpc.Sortear` recusa pool vazia, de proposito) DENTRO do tique dos viloes, a cada 12 a 30
+	/// minutos, em todo mundo gerado com gente: o vilao nunca nascia la, e o resto daquele tique ficava pra tras.
+	///
+	/// Ele vem DE FORA: e o ALIEN, a raca sem lar do DM (os spawnpoints dela sao lugares de passagem -- ver `Bercos.PlanetaNatal`) e a
+	/// de Zarbon, Dodoria, Cui e Appule (ele se veste com a armadura da tropa do Freeza, `RoupaDeNpc`). ESCOLHA MINHA: o dono nao falou
+	/// de mundo gerado. Pra mudar, e esta lista (raca que nao existe no `races.json` e pulada).
+	/// </summary>
+	public static readonly string[] RacasDoForasteiro = ["Alien"];
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--vilaoteste`): o vilao de mundo gerado volta a nascer sem raca -- a pool vazia e o sorteio que
+	/// estoura, o jogo de antes de 2026-10-23. Lido pela propria linha que da a raca do forasteiro (`SorteioDeNpc.Sortear`). Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool ForasteiroSemRacaDeTeste;
 
 	/// <summary>O intervalo sorteado: <paramref name="sorteio"/> e um numero em [0,1).</summary>
 	public static double ProximoIntervaloS(double sorteio) =>

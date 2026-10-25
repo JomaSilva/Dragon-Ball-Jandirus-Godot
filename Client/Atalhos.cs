@@ -22,6 +22,10 @@ namespace Jandirus.Client;
 /// `TransformarPara`, que passa pelo `EstadoDeForma.Avaliar` como qualquer subida, com as recusas
 /// valendo e a mesma frase que o C diria. Ver `GameServer.Formas.TransformarPara`.
 ///
+/// (2026-10-23) E COM A REGRA QUE SO A TECLA TEM, decidida no servidor e nao aqui: a forma divina ja
+/// usada vai direto, e a que tem 50% de maestria nela pula os degraus de antes (o adendo do dono --
+/// ver `EstadoDeForma.VaiDiretoPelaTecla`). Este lado continua so pedindo.
+///
 /// O canal e o `C2S.Verbo` de sempre (comando + argumento). Abrir opcode pra isto seria o erro que
 /// a medicao previu: se precisou de opcode novo, provavelmente errou o caminho.
 /// ============================================================================================

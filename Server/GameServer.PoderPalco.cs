@@ -49,6 +49,18 @@ public partial class GameServer
 		return SabeTecnica(pl, PoderEmUso.VerboDoControle);
 	}
 
+	/// <summary>
+	/// (2026-10-24) O SENSE DA COBAIA NO NIVEL PEDIDO (o palco do Sense, `PalcoSN_Sense`) e a ficha REENVIADA: o `TickFichas` so manda quando
+	/// um numero muda, e a cobaia parada nao muda nada -- sem o reenvio a tela leria a ficha de antes do Sense.
+	/// </summary>
+	public bool PalcoDoPoder_SenseNoNivel(int id, int nivel)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		PalcoSN_Sense(id, nivel);
+		MandarFicha(pl);
+		return TemSense(pl) && NivelDoSense(pl) == nivel;
+	}
+
 	/// <summary>A verdade do servidor sobre o poder em uso deste corpo, ou nulo se ele nao existe.</summary>
 	public (int Porcento, bool Escondido, bool Relaxado, bool SabeBaixar, double Expresso)? PalcoDoPoder_Verdade(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? pl)

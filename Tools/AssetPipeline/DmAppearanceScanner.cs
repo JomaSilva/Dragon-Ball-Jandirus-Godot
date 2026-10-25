@@ -192,7 +192,11 @@ public static class DmAppearanceScanner
     /// ANTES esta lista era CURADA: ficavam de fora o halo, os brincos potara e tudo o que "nao sabe ficar de pe" (o
     /// Mega Buster so tem quadro de ataque). Agora entra tudo. O que continua de fora, e por que:
     ///   * `Tail` e a do Beerus -- o dono tirou pelo nome;
-    ///   * `Eyes_*` -- nao e roupa: e a camada de OLHOS que todo corpo ja tem (a secao `olhos` deste catalogo).
+    ///   * `Eyes_*` -- nao e roupa: e a camada de OLHOS que todo corpo ja tem (a secao `olhos` deste catalogo);
+    ///   * (2026-10-23) os quatro BRINCOS POTARA (`potara`, `Potara-Equipped`, `potaraleft`, `potararight`) -- o dono: os jogadores faziam
+    ///     o "esquerdo" e o "direito" com a Materialize e achavam que era a Potara (*"Doesn't seem to be fusing me and nova"*). Roupa nao
+    ///     funde ninguem; a Potara de verdade e o item que o Kaioshin da (`Core/Items/ParDePotara.cs`). O `potara` continua sendo o
+    ///     brinco que a FUSAO veste -- quem o acha fora do guarda-roupa e a segunda porta do `GameServer.CaminhoDaPecaDeFusao`.
     ///
     /// SO A RAIZ: a pasta `Armor` e outra lista -- ver <see cref="Armaduras"/>.
     /// ====================================================================================
@@ -201,7 +205,7 @@ public static class DmAppearanceScanner
         [.. FolhasDoGuardaRoupa(pastaSprites).Select(f => Path.GetFileNameWithoutExtension(f))];
 
     /// <summary>O que nao entra no guarda-roupa, por pedaco do nome. Ver <see cref="Roupas"/>.</summary>
-    private static readonly string[] ForaDoGuardaRoupa = ["Eyes_", "Tail", "Beerus"];
+    private static readonly string[] ForaDoGuardaRoupa = ["Eyes_", "Tail", "Beerus", "potara"];
 
     private static List<string> FolhasDoGuardaRoupa(string pastaSprites) =>
         Varrer(Path.Combine(pastaSprites, "Clothes"), SearchOption.TopDirectoryOnly, ForaDoGuardaRoupa, soOQueFicaDePe: false);

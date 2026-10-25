@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Jandirus.Core.Forms;
 using Jandirus.Core.Lingua;
+using Jandirus.Core.Skills;
 using Chao = Jandirus.Core.Items.Chao;
 
 namespace Jandirus.Tools;
@@ -24,6 +26,9 @@ namespace Jandirus.Tools;
 ///      portugues dele. E onde o portugues cita uma palavra de comando, o ingles cita a inglesa que o servidor entende.
 ///   3. AS PORTAS DO SERVIDOR, lidas no codigo: nenhum verbo compara o argumento direto com a palavra portuguesa (o
 ///      servidor nao roda aqui -- a leitura e o que alcanca o verbo que voltasse a perguntar so pelo "sim").
+///   4. O QUE O JOGO MONTA PEDACO A PEDACO (o pedido do dono de 2026-10-23): a FICHA de cada skill do catalogo de verdade
+///      (o que a compra e cada nivel dao, como a tela a pinta) e a FALA e a NARRACAO de cada cinematica, como o balao e o chat
+///      as mostram -- nada pode sair parecendo portugues.
 /// ==========================================================================
 ///
 ///     dotnet run --project Tools/AssetPipeline -- lingua [caminho/do/lingua-en.json]
@@ -83,6 +88,8 @@ public static class LinguaBench
 		["neve"] = "snow",
 		["neblina"] = "fog",
 		["Acontece aqui naturalmente: {0}"] = "Happens here naturally: {0}",
+		["o chão começa a tremer."] = "the ground begins to shake.",
+		["escolha única entre:"] = "pick one of:",
 	});
 
 	public static int Rodar(string? caminho)
@@ -155,6 +162,27 @@ public static class LinguaBench
 		Checa("a lista separada por virgula, dentro do molde",
 			  t.Traduzir("Acontece aqui naturalmente: chuva, neve, neblina") == "Happens here naturally: rain, snow, fog",
 			  t.Traduzir("Acontece aqui naturalmente: chuva, neve, neblina"));
+		// (2026-10-23) OS CORTES DA FICHA DE SKILL: o nome do campo com o numero COM SINAL colado no fim -- so o nome se traduz, o
+		// numero fica como veio (virgula decimal e tudo), tambem atras do marcador da tela e dentro do molde --, e a seta que cola
+		// a casa escolhida e a tecnica dela
+		ComContraExemplo("os cortes da ficha: o nome com o numero com sinal no fim ('domínio corporal +0,4', '×1,2', '-1', '−3') e a seta",
+			() => t.Traduzir("domínio corporal +0,4") == "body mastery +0,4" && t.Traduzir("domínio corporal ×1,2") == "body mastery ×1,2"
+				  && t.Traduzir("arma equipada -1") == "weapon equipped -1" && t.Traduzir("domínio corporal −3") == "body mastery −3"
+				  && t.Traduzir("• domínio corporal +1") == "• body mastery +1"
+				  && t.Traduzir("Acontece aqui naturalmente: domínio corporal +2, arma equipada ×1,5")
+					 == "Happens here naturally: body mastery +2, weapon equipped ×1,5"
+				  && t.Traduzir("Treinar → Meditar, Treinar → madrugada") == "Train → Meditate, Train → late night",
+			() => { Tradutor.SemOsCortesDaFichaDeTeste = true; t = Mao(); }, () => { Tradutor.SemOsCortesDaFichaDeTeste = false; t = Mao(); },
+			t.Traduzir("domínio corporal +0,4") + " | " + t.Traduzir("• domínio corporal +1") + " | " + t.Traduzir("Treinar → Meditar, Treinar → madrugada"));
+		Checa("...e o numero SEM sinal no fim nao e cortado (fica com quem ja o traduzia)",
+			  t.Traduzir("domínio corporal 2") == "domínio corporal 2", t.Traduzir("domínio corporal 2"));
+		// (2026-10-23) A PONTUACAO DO FIM QUE E DA FRASE: a narracao da cinematica chega ao chat como "* frase." e a chave do
+		// dicionario tem o ponto; o marcador da ficha, idem com os dois-pontos
+		ComContraExemplo("a borda devolve a pontuacao que e da frase ('* o chão começa a tremer.', '• escolha única entre:')",
+			() => t.Traduzir("* o chão começa a tremer.") == "* the ground begins to shake." && t.Traduzir("• escolha única entre:") == "• pick one of:"
+				  && t.Traduzir("» Treinar:") == "» Train:",
+			() => { Tradutor.BordaComeAPontuacaoDeTeste = true; t = Mao(); }, () => { Tradutor.BordaComeAPontuacaoDeTeste = false; t = Mao(); },
+			t.Traduzir("* o chão começa a tremer.") + " | " + t.Traduzir("• escolha única entre:"));
 		t.Traduzir("uma frase que ninguem traduziu");
 		Checa("o portugues sem traducao entra nas faltas", t.Faltas.Contains("uma frase que ninguem traduziu"));
 		Checa("...e o ingles que veio de fabrica nao", !t.Faltas.Contains("Kamehameha!!"));
@@ -292,7 +320,235 @@ public static class LinguaBench
 		Checa($"os verbos perguntam pela `PalavrasDeComando` ({chamadas} chamadas em {lidos} arquivos de {raiz})", lidos > 0 && chamadas > 0);
 		Checa("...e nenhum compara direto com 'sim', 'tudo', 'nenhuma', 'parar', 'sortear', 'padrao' ou 'aleatorio' (o 'yes' ficaria de fora)",
 			diretas.Count == 0, string.Join(", ", diretas));
+
+		Console.WriteLine("== 4. o que o jogo monta pedaco a pedaco: a ficha de cada skill e a fala de cada cinematica ==");
+		AsFichas(json);
+		AsCinematicas(json);
+		AsTarefasDeCargo(json);
+		OSsj3DoDm(json);
 		return Fim();
+	}
+
+	// =====================================================================
+	// 4. O QUE O JOGO MONTA PEDACO A PEDACO
+	// =====================================================================
+	/// <summary>
+	/// A FICHA DE CADA SKILL, como a tela a pinta -- o pedido do dono de 2026-10-23: *"falta traduzir tb oq cada nivel de kill
+	/// faz"* (o "kill" e "skill": o que cada NIVEL de skill da; o que e letal ja estava no dicionario). A ficha e montada no Core
+	/// (`FichaDeSkill.Montar`) colando pedacos, e o molde de fora ("nivel {0}: {1}") estava no dicionario -- os de dentro nao: o
+	/// nome do campo com o numero ("ataque fisico +0,4"), a "habilidade nova: Kiai", o "gene de ...". Medido antes do conserto,
+	/// com o tradutor de verdade: 294 das 304 linhas por nivel, 403 das 481 da compra, as 59 somas no topo e 272 dos 303 resumos.
+	///
+	/// A REGUA: cada linha da ficha de cada skill do catalogo de verdade (`skills.json` + `niveis.json`, lidos como o cliente os
+	/// le), do jeito que a tela a pinta (o marcador de item ou o recuo da casa da escolha unica -- `MenuJogo.Skills.LinhaDeEfeito` --,
+	/// a nota de como sobe, a soma no topo e o resumo da aba Skills), passa pelo tradutor de verdade e nao pode sair parecendo
+	/// portugues. Contra-exemplo: os cortes da ficha desligados (`Tradutor.SemOsCortesDaFichaDeTeste`) -- a mesma regua
+	/// reprova. Tradutor NOVO a cada medida: ele guarda o que ja traduziu, e o defeito ligado depois leria a memoria.
+	/// </summary>
+	private static void AsFichas(string json)
+	{
+		string dados = Path.Combine("Assets", "Data");
+		string cs = Path.Combine(dados, "skills.json"), ct = Path.Combine(dados, "skilltrees.json"), cn = Path.Combine(dados, "niveis.json");
+		if (!File.Exists(cs) || !File.Exists(ct) || !File.Exists(cn))
+		{
+			Checa("o catalogo de skills existe (skills.json, skilltrees.json, niveis.json, lidos da raiz do repo)", false);
+			return;
+		}
+		SkillCatalog cat = SkillCatalog.Parse(File.ReadAllText(cs), File.ReadAllText(ct));
+		RegrasDoDisco.Carregar(File.ReadAllText(cn));
+
+		var linhas = new List<(string Canal, string Texto)>();
+		foreach (Skill s in cat.Todas.Where(s => !s.Arvore).OrderBy(s => s.Path, StringComparer.Ordinal))
+		{
+			FichaDeSkill.Texto f = FichaDeSkill.Montar(cat, s, RegrasDeNivel.Get(s.Path));
+			foreach (string l in f.NaCompra) linhas.Add(("compra", ComoALinhaDeEfeito(l)));
+			foreach (string l in f.PorNivel) linhas.Add(("por nivel", ComoALinhaDeEfeito(l)));
+			if (f.Progressao.Length > 0) linhas.Add(("como sobe", f.Progressao));
+			if (f.NoTopo.Length > 0) linhas.Add(("no topo", f.NoTopo));
+			if (f.Resumo.Length > 0)
+			{
+				linhas.Add(("resumo", "      " + f.Resumo));
+				// A DICA DO CARTAO (`MenuJogo.Skills`): nome, descricao e o resumo, numa linha so -- o resumo desce um andar a mais
+				// la dentro. So o pedaco do resumo e julgado (ver `NoResumoDaDica`): a descricao e a do DM, em ingles de fabrica.
+				linhas.Add(("dica", s.Nome + (s.Desc.Length > 0 ? "\n" + s.Desc : "") + "\n\n" + f.Resumo));
+			}
+		}
+		string[] canais = ["compra", "por nivel", "como sobe", "no topo", "resumo", "dica"];
+
+		List<(string Canal, string Texto, string Saiu)> Sobras()
+		{
+			Tradutor t = Tradutor.DoJson(json);
+			return [.. linhas.Select(l => (l.Canal, l.Texto, Saiu: NoResumoDaDica(l.Canal, t.Traduzir(l.Texto)))).Where(l => t.ParecePortugues(l.Saiu))];
+		}
+
+		List<(string Canal, string Texto, string Saiu)> agora = Sobras();
+		foreach (string c in canais)
+			Console.WriteLine($"  {c}: {agora.Count(x => x.Canal == c)} de {linhas.Count(x => x.Canal == c)} linhas ainda em portugues");
+		foreach (var x in agora.Take(25)) Console.WriteLine($"    [{x.Canal}] {x.Texto.Trim()}  =>  {x.Saiu.Trim()}");
+		ComContraExemplo($"toda linha da ficha de toda skill sai em ingles ({linhas.Count} linhas de {cat.Todas.Count(s => !s.Arvore)} skills)",
+			() => linhas.Count > 300 && Sobras().Count == 0,
+			() => Tradutor.SemOsCortesDaFichaDeTeste = true, () => Tradutor.SemOsCortesDaFichaDeTeste = false,
+			$"{agora.Count} em portugues");
+
+		// (2026-10-24) A CASA DA RACA ("se a raça for Yardrat: ..."), que a regua de cima deixava passar: o "se for {0}: {1}" de antes nao
+		// tinha letra fixa pra ser molde forte, o corte por pedacos deixava o "se for Yardrat" em portugues -- e o `ParecePortugues` nao o
+		// via ("for" e palavra inglesa). O dono viu no print de um jogador (o Instant Transmission). A regua: nenhuma linha da ficha com a
+		// casa da raca sai com o portugues dela. Contra-exemplo: o dicionario sem a entrada da casa.
+		var daRaca = linhas.Where(l => l.Texto.Contains("se a raça for ", StringComparison.Ordinal)).ToList();
+		string semACasa = Regex.Replace(json, "\n  \"se a raça for \\{0\\}: \\{1\\}\": \"[^\"]*\",", "");
+		string dicDaCasa = json;
+		ComContraExemplo($"a casa da raca da ficha ('se a raça for Yardrat: ...') sai em ingles ({daRaca.Count} linhas)",
+			() =>
+			{
+				Tradutor t = Tradutor.DoJson(dicDaCasa);
+				return daRaca.Count > 0 && semACasa != json
+					&& daRaca.All(l => !Regex.IsMatch(t.Traduzir(l.Texto), "\\bse (a raça )?for\\b"));
+			},
+			() => dicDaCasa = semACasa, () => dicDaCasa = json,
+			string.Join(" | ", daRaca.Take(3).Select(l => Tradutor.DoJson(json).Traduzir(l.Texto).Trim())));
+
+		// AS CONDICOES DE EXP TEM NOME DE GENTE: a que cai no `default` do `NomesLegiveis.Estado` sai com o nome do codigo nas duas
+		// linguas ("Ganha experiencia: ComLaminaDeKi antes do nivel 1") -- as quatro do adendo 18 sairam assim de 2026-10-16 a 2026-10-23
+		RegraDeNivel.Estado[] estados = Enum.GetValues<RegraDeNivel.Estado>();
+		string[] crus = [.. estados.Where(e => NomesLegiveis.Estado(e) == e.ToString()).Select(e => e.ToString())];
+		Checa($"toda condicao de exp da ficha tem nome de gente, e nao o do codigo ({estados.Length} condicoes)", crus.Length == 0,
+			  string.Join(", ", crus));
+	}
+
+	/// <summary>Da dica traduzida, so o resumo (o que vem depois da linha em branco); das outras linhas, a linha inteira.</summary>
+	private static string NoResumoDaDica(string canal, string saiu) =>
+		canal == "dica" && saiu.LastIndexOf("\n\n", StringComparison.Ordinal) is int i and >= 0 ? saiu[(i + 2)..] : saiu;
+
+	/// <summary>A linha de efeito como a ficha a pinta: o marcador, ou o recuo da casa da escolha unica (`MenuJogo.Skills.LinhaDeEfeito`).</summary>
+	private static string ComoALinhaDeEfeito(string linha) =>
+		linha.StartsWith("    ", StringComparison.Ordinal) ? "      " + linha.TrimStart() : "• " + linha;
+
+	/// <summary>
+	/// 4b. AS TAREFAS DE CARGO (dono, 2026-10-24: *"reescreva essas quests de rank de uma forma mais entendivel"*, com o print de um
+	/// jogador que joga em ingles). Todo aviso de tarefa que o servidor manda (`MissoesDeCargo`, no Core) -- cada tipo de tarefa, as duas
+	/// vocacoes do servico, o cargo maligno e o que nao e -- passa pelo tradutor de verdade e nao pode sobrar portugues: nem pela regua
+	/// de sempre, nem pelas palavras das tarefas que ela nao conhece ("fique", "mate-o", "prazo", "falha", "cargo"). Contra-exemplo: o
+	/// dicionario sem as linhas das tarefas (as que comecam pelos verbos delas) reprova a mesma regua.
+	/// </summary>
+	private static void AsTarefasDeCargo(string json)
+	{
+		var avisos = new List<string>();
+		foreach (Jandirus.Core.Ranks.TipoDeTarefa tipo in Enum.GetValues<Jandirus.Core.Ranks.TipoDeTarefa>())
+		{
+			if (tipo == Jandirus.Core.Ranks.TipoDeTarefa.Nenhuma) continue;
+			var f = new Jandirus.Core.Ranks.FichaDeMissao
+			{
+				Tarefa = tipo, Planeta = "Earth", AlvoNome = "Freeza", Progresso = 4, Meta = 15, Falhas = 1, Cumpridas = 2,
+			};
+			foreach (bool outroMundo in new[] { false, true })
+				foreach (bool maligno in new[] { false, true })
+				{
+					avisos.AddRange(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeTarefaNova("Crane Hermit", f, outroMundo, maligno));
+					avisos.Add(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeCumprida("Crane Hermit",
+						Jandirus.Core.Ranks.MissoesDeCargo.NomeCurto(f, outroMundo), f, maligno,
+						Jandirus.Core.Ranks.MissoesDeCargo.TextoDeRenome(f.Cumpridas, !maligno)));
+				}
+			avisos.Add(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeServico("Crane Hermit", f));
+			avisos.Add(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeFalhada("Crane Hermit", f));
+		}
+		avisos.Add(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeAlvoQueSaiu("Crane Hermit"));
+		avisos.Add(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeAscensao("North Kai", Jandirus.Core.Ranks.MissoesDeCargo.TextoDosDegraus("nkai")));
+		avisos = [.. avisos.Distinct()];
+
+		Regex dasTarefas = new(@"\b(ou|fique|jogadores|mate-o|prazo|falhas?|cargo|tarefas?|cumprir|cumprida|apaga|pontos|almas|treinando|vivos?|mortos|libertar|financiar|deposite|planeta|renome|reivindique)\b",
+							   RegexOptions.IgnoreCase);
+		List<string> Sobras(string dic)
+		{
+			Tradutor t = Tradutor.DoJson(dic);
+			return [.. avisos.Select(t.Traduzir).Where(s => t.ParecePortugues(s) || dasTarefas.IsMatch(s))];
+		}
+		// o dicionario sem as linhas das tarefas: as chaves que comecam pelos verbos e pelas molduras delas
+		string semAsTarefas = Regex.Replace(json, @"\n  ""(\{0\}: NOVA TAREFA|Prazo: \{0\}\. Se o prazo|Cumprir paga|ATENDER ALMAS|ENSINAR: estando|CAÇAR o vilão \{0\}:|ESMAGAR o herói \{0\}:|LIBERTAR \{0\}:|FINANCIAR a Terra)[^\n]*", "");
+		string dicDasTarefas = json;
+		List<string> agora = Sobras(json);
+		foreach (string s in agora.Take(8)) Console.WriteLine($"    [tarefa] {s}");
+		ComContraExemplo($"4b. todo aviso de tarefa de cargo sai em ingles ({avisos.Count} avisos: cada tipo, as duas vocacoes, maligno ou nao)",
+			() => avisos.Count > 20 && semAsTarefas != json && Sobras(dicDasTarefas).Count == 0,
+			() => dicDasTarefas = semAsTarefas, () => dicDasTarefas = json,
+			$"{agora.Count} com portugues");
+	}
+
+	/// <summary>
+	/// A FALA E A NARRACAO DE CADA CINEMATICA, como a tela as mostra -- o pedido do dono de 2026-10-23: *"e tb a cinematica do ssj3"*.
+	/// A fala vira BALAO (o texto traduzido inteiro, `Transformacao.Disparar`) e linha de chat ("Voce: ..." pra quem virou, "Fulano:
+	/// ..." pra quem assiste); a narracao vira "* " + o texto, traduzido inteiro pelo `Chat.Sistema`. O "* " e o ponto final
+	/// escondiam a frase do dicionario (a chave tem o ponto, a borda o tirava) -- as narracoes de todas as cenas saiam em
+	/// portugues. Contra-exemplo: a borda que come a pontuacao da frase (`Tradutor.BordaComeAPontuacaoDeTeste`). O BALAO em si
+	/// (que antes recebia a fala crua) e do cliente: quem o prova e o robo `--diaglingua`.
+	/// </summary>
+	private static void AsCinematicas(string json)
+	{
+		var cenas = typeof(Cinematicas).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+			.Where(f => f.FieldType == typeof(Cinematica)).Select(f => (Nome: f.Name, Cena: (Cinematica)f.GetValue(null)!)).ToList();
+
+		(int Falas, int Narras, List<string> Sobras) Medir()
+		{
+			Tradutor t = Tradutor.DoJson(json);
+			int falas = 0, narras = 0;
+			var sobras = new List<string>();
+			foreach ((string nome, Cinematica c) in cenas)
+				foreach (Beat b in c.Beats)
+				{
+					if (b.Fala.Length > 0)
+					{
+						falas++;
+						foreach (string tela in new[] { t.Traduzir(b.Fala), t.Traduzir("Você: " + b.Fala), t.Traduzir("Zyx: " + b.Fala) })
+							if (t.ParecePortugues(tela)) sobras.Add($"{nome}: {tela}");
+					}
+					if (b.Narra.Length > 0)
+					{
+						narras++;
+						string tela = t.Traduzir("* " + b.Narra);
+						if (t.ParecePortugues(tela)) sobras.Add($"{nome}: {tela}");
+					}
+				}
+			return (falas, narras, sobras);
+		}
+
+		(int falas, int narras, List<string> agora) = Medir();
+		foreach (string x in agora.Take(25)) Console.WriteLine("    " + x);
+		ComContraExemplo($"toda fala e toda narracao das {cenas.Count} cinematicas sai em ingles no balao e no chat ({falas} falas, {narras} narracoes)",
+			() => Medir() is var m && cenas.Count >= 50 && m.Falas > 0 && m.Narras > 100 && m.Sobras.Count == 0,
+			() => Tradutor.BordaComeAPontuacaoDeTeste = true, () => Tradutor.BordaComeAPontuacaoDeTeste = false,
+			$"{agora.Count} em portugues");
+	}
+
+	/// <summary>
+	/// (2026-10-25) AS FALAS DO SSJ3 EM INGLES SAO AS DO DM -- onde o original tem o texto em ingles, o jogo em ingles diz o dele, e nao uma
+	/// traducao de volta do portugues. Quatro linhas da cena (`SSJ3Cinematic.dm`): a fala do ascendido (`:32`, com o "what as known" do DM
+	/// acertado pra "what is known"), os punhos (`:52`), o grito (`:65`) e o oceano (`:132`) -- o nome de quem vira e os pontos de
+	/// exclamacao seguem a cena do port (a narracao ja traz o nome na frente; "deste poder" e o "[src]'s immense power" do DM). As quatro
+	/// sao conferidas pela chave que a cena DE VERDADE usa (o beat do `Cinematicas`), e nao por uma copia da frase. Contra-exemplo: o
+	/// dicionario com os quatro ingleses de antes (traducoes livres do portugues) -- a mesma regua reprova.
+	/// </summary>
+	private static void OSsj3DoDm(string json)
+	{
+		(string Pt, string Dm, string Antes)[] quatro =
+		[
+			("E isto... isto é o que se conhece como um Super Saiyajin que ascendeu além de um Super Saiyajin.",
+			 "And this... this is what is known as a Super Saiyan that has ascended past a Super Saiyan.",
+			 "And this... this is what's known as a Super Saiyan who has ascended past a Super Saiyan."),
+			("se encolhe e fecha os punhos ao lado do corpo!", "leans inward and pumps their fists next to their sides!",
+			 "hunches down and clenches their fists at their sides!"),
+			("grita, e uma quantidade inacreditável de energia se solta.", "screams as they release an unbelievable amount of energy!",
+			 "screams, unleashing an unbelievable amount of energy."),
+			("o próprio oceano se afasta deste poder!", "the ocean itself is curling away from this immense power!",
+			 "the ocean itself recoils from this power!"),
+		];
+		var beats = typeof(Cinematicas).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+			.Where(f => f.FieldType == typeof(Cinematica)).SelectMany(f => ((Cinematica)f.GetValue(null)!).Beats).ToList();
+		string antes = json;
+		foreach (var (_, dm, velho) in quatro) antes = antes.Replace("\"" + dm + "\"", "\"" + velho + "\"");
+		string dic = json;
+		bool Regua() => Tradutor.DoJson(dic) is var t && quatro.All(q => t.Traduzir(q.Pt) == q.Dm && beats.Any(b => b.Fala == q.Pt || b.Narra == q.Pt));
+		Tradutor agora = Tradutor.DoJson(json);
+		ComContraExemplo("4c. AS FALAS DO SSJ3 EM INGLES SAO AS DO DM (`SSJ3Cinematic.dm`): o ascendido, os punhos, o grito e o oceano -- e as quatro sao chaves da cena de verdade",
+			Regua, () => dic = antes, () => dic = json, string.Join(" | ", quatro.Select(q => agora.Traduzir(q.Pt))));
 	}
 
 	/// <summary>

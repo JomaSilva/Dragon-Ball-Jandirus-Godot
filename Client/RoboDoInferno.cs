@@ -14,6 +14,10 @@ namespace Jandirus.Client;
 /// no chat. Cada alma e o vilao tem a aureola cobrada NO BONECO da minha tela (`CharacterVisual.AureolaVisivelDeTeste`) e INTEIRA
 /// dentro da janela (<see cref="AureolaNaTela"/>).
 ///
+/// (2026-10-23) E O MAJIN BOO, que no Inferno so cai pela morte por ki (o dono: *"So a morte por ki"*): o soco letal o desfaz em pedacos
+/// e o chat diz a quem bateu que so um golpe de ki letal derrota um Majin (foto 6); o golpe de ki letal o derrota e paga (foto 7). As
+/// regras e os contra-exemplos sao da `--infernoteste` (familia 4); aqui e a tela.
+///
 /// COMO RODAR -- com JANELA (no headless o `GetImage` volta vazio), no segundo monitor e mudo:
 ///
 ///     Godot --path . --host --rede 8438 --horateste 0.5 --semfauna --diaginferno --position 1920,0 --resolution 1280x720 \
@@ -45,7 +49,7 @@ public partial class RoboDoInferno : Node
 	public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
 	private const int PEntrar = 0, PAlem = 1, PFotoDoAlem = 2, PInferno = 3, PFotoDoInferno = 4, PChegada = 5, PVilao = 6, PFora = 7, PDerrota = 8,
-		PFim = 9;
+		PFim = 9, PBoo = 10, PBooSocado = 11, PBooNoKi = 12, PFimDoBoo = 13;
 
 	public override void _Process(double delta)
 	{
@@ -146,9 +150,49 @@ public partial class RoboDoInferno : Node
 				Ir(PFim);
 				break;
 
-			default:
+			case PFim:
 				if (_t < 2.0) return;
 				Conferir(mundo.CorpoDeTeste(_vilao) == null, "o vilao derrotado afundou de volta: saiu da minha tela no tique seguinte");
+				// (2026-10-23) O MAJIN BOO, QUE SO CAI PELA MORTE POR KI -- o dono: *"So a morte por ki"*. Ele volta como o Freeza (sem
+				// cerebro, a dois tiles), leva um SOCO LETAL e um GOLPE DE KI LETAL do corpo local, pelo golpe de producao.
+				_vilao = srv.VilaoNaFotoDoInferno(_eu, "majin_boo", 0);
+				Conferir(_vilao != 0, "(2026-10-23) o MAJIN BOO escapou no Inferno");
+				if (_vilao == 0) { Fechar(); return; }
+				Ir(PBoo);
+				break;
+
+			case PBoo:
+			{
+				if (_t < 6.5) return;   // a cena de chegada acaba
+				var (derrotado, desfeito, _, _) = srv.GolpeNaFotoDoInferno(_eu, letal: true, porKi: false);
+				Conferir(desfeito && !derrotado, "o SOCO LETAL desfaz o Boo em pedacos -- e NAO o derrota (o servidor diz)", $"desfeito {desfeito}, derrotado {derrotado}");
+				Ir(PBooSocado);
+				break;
+			}
+
+			case PBooSocado:
+			{
+				if (_t < 1.5) return;   // os pedacos estouram e o aviso chega
+				Conferir(TemNaTela("golpe de ki letal"), "o chat avisa quem bateu: so um golpe de ki letal derrota um Majin");
+				Conferir(mundo.CorpoDeTeste(_vilao) != null, "...e o Boo continua no Inferno: o evento nao acabou");
+				Fotografar("dinferno-6-boo-socado.png", "6. (2026-10-23) o Majin Boo socado: em pedacos, e o aviso no chat");
+				var (derrotado, _, zeni, karma) = srv.GolpeNaFotoDoInferno(_eu, letal: true, porKi: true);
+				Conferir(derrotado, "o GOLPE DE KI LETAL o derrota -- a segunda morte (o servidor diz)");
+				Nota($"depois do ki: {zeni:N0} zeni no bolso, karma {karma}");
+				Ir(PBooNoKi);
+				break;
+			}
+
+			case PBooNoKi:
+				if (_t < 1.0) return;
+				Conferir(TemNaTela("derrotou Majin Boo"), "o chat diz quem derrotou o Majin Boo -- e o premio caiu na carteira");
+				Fotografar("dinferno-7-boo-no-ki.png", "7. (2026-10-23) o Majin Boo derrotado pelo golpe de ki: o premio no chat");
+				Ir(PFimDoBoo);
+				break;
+
+			default:
+				if (_t < 2.0) return;
+				Conferir(mundo.CorpoDeTeste(_vilao) == null, "o Majin Boo derrotado afundou de volta: saiu da minha tela no tique seguinte");
 				Fechar();
 				break;
 		}

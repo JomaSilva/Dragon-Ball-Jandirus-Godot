@@ -223,8 +223,40 @@ public static class DebuffsDeMembro
 		return Escalar(1 - (1 - Math.Min(hp / 100, 1)) * PesoDaLentidaoDoFerido, escala);
 	}
 
-	/// <summary>O `hpratio` (`base.dm:76`) -- ver <see cref="PisoDoPoderFerido"/>. So a tela usa isto.</summary>
-	public static double FatorDoPoder(double hp) => Math.Max(Math.Min(hp / 100, 1), PisoDoPoderFerido);
+	/// <summary>
+	/// O `hpratio` (`base.dm:76`) -- ver <see cref="PisoDoPoderFerido"/>. So a tela usa isto. (2026-10-24) Ele recebe a VIDA QUE PESA NO
+	/// PODER (<see cref="VidaQuePesaNoPoder"/>), e nao a media dos membros: e o que o `Fighter.PowerLevel` le.
+	/// </summary>
+	public static double FatorDoPoder(double vidaQuePesa) => Math.Max(Math.Min(vidaQuePesa / 100, 1), PisoDoPoderFerido);
+
+	/// <summary>A metade da vida de um membro: dali pra cima ele nao tira poder. Ver <see cref="PesoDoMembroNoPoder"/>.</summary>
+	public const double LimiarDoMembroNoPoder = 0.5;
+
+	/// <summary>
+	/// (2026-10-24) QUANTO UM MEMBRO PESA NA PERDA DE PODER, 0-1. O dono: *"se o torço ta abaixo de 50% de hp vc começa a perder bp, mas se
+	/// seu braço estiver full e tomar dano e continuar acima de 50% vc n perde bp, somente se o membro ficar abaixo de 50%"*. Nada da
+	/// metade da vida dele pra cima; dali ate zerado, em linha reta, ate o peso INTEIRO -- o que um membro zerado ja pesava antes.
+	/// </summary>
+	public static double PesoDoMembroNoPoder(double vidaPct) =>
+		vidaPct >= LimiarDoMembroNoPoder * 100 ? 0 : 1 - Math.Max(vidaPct, 0) / (LimiarDoMembroNoPoder * 100);
+
+	/// <summary>
+	/// (2026-10-24) A VIDA QUE PESA NO PODER, 0-100: 100 menos a MEDIA do peso de cada membro (<see cref="PesoDoMembroNoPoder"/>). E a
+	/// media da vida (`Body.Vida`), membro a membro, com o decepado FORA do denominador pelo mesmo motivo -- e o membro de 50% pra cima
+	/// contando como inteiro. O servidor a da pela ficha (`CombatState.SincronizarVida`); a aba Body a refaz pelo fio (`S2C.Corpo`).
+	/// </summary>
+	public static double VidaQuePesaNoPoder(IEnumerable<(double VidaPct, bool Decepado)> partes)
+	{
+		int n = 0;
+		double peso = 0;
+		foreach ((double vida, bool decepado) in partes)
+		{
+			if (decepado) continue;
+			peso += PesoDoMembroNoPoder(vida);
+			n++;
+		}
+		return n == 0 ? 0 : 100 * (1 - peso / n);
+	}
 
 	// =====================================================================
 	// O QUE A TELA DIZ
@@ -284,7 +316,9 @@ public static class DebuffsDeMembro
 	/// </summary>
 	/// <param name="hp">A vida inteira (a media dos membros), 0-100.</param>
 	/// <param name="raca">A chave da raca: Androide e Majin nao mancam (<see cref="SemAtrasoDeFerimento"/>).</param>
-	public static List<string> EmVigor(Perdas p, double hp, string raca)
+	/// <param name="vidaQuePesa">(2026-10-24) A vida que pesa no poder, 0-100 (<see cref="VidaQuePesaNoPoder"/>) -- a linha do poder sai
+	/// dela. Negativa = nao veio: a `hp` vira um membro so.</param>
+	public static List<string> EmVigor(Perdas p, double hp, string raca, double vidaQuePesa = -1)
 	{
 		var linhas = new List<string>();
 
@@ -307,7 +341,7 @@ public static class DebuffsDeMembro
 		double passo = FatorDoPasso(hp, raca);
 		if (passo < 0.995)
 			linhas.Add($"Seu passo está {Pct(1 - passo)} mais lento (corpo ferido: vida em {hp:0}%).");
-		double poder = FatorDoPoder(hp);
+		double poder = FatorDoPoder(vidaQuePesa >= 0 ? vidaQuePesa : 100 * (1 - PesoDoMembroNoPoder(hp)));
 		if (hp > 0 && poder < 0.995)
 			linhas.Add($"Seu poder rende {Pct(1 - poder)} a menos enquanto o corpo estiver ferido.");
 

@@ -306,6 +306,13 @@ public static class NomesLegiveis
 		// morta no original: ver `RegraDeNivel.Estado.MeditacaoProfunda`
 		RegraDeNivel.Estado.MeditacaoProfunda => "em meditação profunda (nunca acontece: morta no jogo antigo)",
 		RegraDeNivel.Estado.Senao => "senão",
+		// (2026-10-23) AS QUATRO DO ADENDO 18 (2026-10-16) entraram no enum e nao aqui: a ficha da Rapid Movement, do Flying e das
+		// tres ferramentas de Ki da Cultivation dizia "Ganha experiencia: ComLaminaDeKi antes do nivel 1" -- o nome do codigo, nas
+		// duas linguas (o ingles nao tinha o que traduzir)
+		RegraDeNivel.Estado.Virando => "virando o corpo",
+		RegraDeNivel.Estado.ComLaminaDeKi => "com a lâmina de Ki na mão",
+		RegraDeNivel.Estado.ComEspadaDeKi => "com a espada de Ki na mão",
+		RegraDeNivel.Estado.ComEscudoDeKi => "com o escudo de Ki de pé",
 		_ => estado.ToString(),
 	};
 

@@ -93,6 +93,9 @@ public sealed partial class GameServer
 		GD.Print($"[server] {pl.Name} iniciou uma simulacao (BP {sim.Ficha.BP:0})");
 	}
 
+	/// <summary>DEFEITO INJETADO (`--v021teste`, X4b): a copia de uma larva nasce sem o selo dela -- o jogo de antes de 2026-10-25. Falso em jogo, sempre.</summary>
+	internal static bool SimulacaoSemOSeloDaLarvaDeTeste;
+
 	/// <summary>
 	/// O CORPO DA SIMULACAO -- o `mob/npc/Enemy/Simulation` do `Start()` (`Tier2.dm:147-168`): a cara de quem pediu,
 	/// o poder dele ate o teto da maquina, e os atributos EFETIVOS dele como base. O molde do nascimento e o da copia
@@ -131,6 +134,10 @@ public sealed partial class GameServer
 		};
 		Fighter c = sim.Ficha;
 		c.Race = d.Race; c.Class = d.Class; c.Idade = d.Idade;
+		// (2026-10-25) A COPIA DE UMA LARVA E UMA LARVA, selada como ela (`BioAndroids.EmLarva`: o poder expresso em 5, como o de quem pediu).
+		// Sem isto a copia nascia com o poder base inteiro (ate o teto da maquina) contra os 5 da carapaca, e o primeiro golpe dela nocauteava o
+		// bio e desfazia a simulacao -- o relato do dono: *"meu amigo q virou bio n tava conseguindo usar o simulator dps q virou bio androide"*.
+		if (Jandirus.Core.Races.BioAndroids.EmLarva(d) && !SimulacaoSemOSeloDaLarvaDeTeste) { c.bio_lab_born = true; c.bio_larva = true; }
 		// `x.BP=usr.BP` e `if(x.BP>maxbp) x.BP=maxbp`.
 		c.BP = Simulador.SemTetoDeTeste ? Math.Max(d.BP, 1) : Simulador.PoderDaSimulacao(d.BP, teto);
 		c.BPMod = d.BPMod;

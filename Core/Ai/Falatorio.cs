@@ -237,6 +237,20 @@ public sealed class Falatorio
 		"Nao vai me vencer nisso!",
 	];
 
+	/// <summary>
+	/// (2026-10-25) A ARENA: o alvo voa fora da linha, e quem esta no chao nao tem como ir atras -- o dono: *"faca ela comentar algo
+	/// chamando o cara de covarde ou algo do tipo"*. Toda frase diz "covard", e e assim que a bancada as reconhece (`--arenaiateste`,
+	/// familia 7) -- publica pela mesma razao.
+	/// </summary>
+	public static readonly string[] ChamandoDeCovarde =
+	[
+		"Desce dai, covarde!",
+		"Vai ficar voando a luta toda? Covarde!",
+		"Fugindo pro ceu? Que covardia!",
+		"Isso e um torneio, nao um show aereo! Desce, covarde!",
+		"Luta aqui embaixo, covarde, se tiver coragem!",
+	];
+
 	// =====================================================================
 	// ESTADO VIVO -- os dois relogios e as tres histereses
 	// =====================================================================
@@ -376,6 +390,7 @@ public sealed class Falatorio
 		// uma ocasiao que o port precisou nomear porque a arquitetura dele separou o que o DM mistura.
 		// ================================================================================================================
 		Momento.Disparar => Chefe ? 0.45 : 0.25,
+		Momento.ChamarDeCovarde => 1.0,   // (2026-10-25) sempre: quem espaca e o relogio da arena (`Cerebro.PausaDoCovarde`)
 		_ => 0,
 	};
 
@@ -390,6 +405,7 @@ public sealed class Falatorio
 			Momento.Vencer => Vencendo,
 			Momento.Apanhar => Apanhando,
 			Momento.NoFio => NoFio,
+			Momento.ChamarDeCovarde => ChamandoDeCovarde,
 			_ => SoltandoORaio,   // `ContraFeixe` e `Disparar`: as duas sao "solto o raio"
 		};
 		return DaLista(lista, ferido: m is Momento.Apanhar or Momento.NoFio, rng);
@@ -514,6 +530,12 @@ public enum Momento
 	/// emprestadas de dois lugares do DM; nenhuma das duas foi inventada.
 	/// </summary>
 	Disparar,
+
+	/// <summary>
+	/// (2026-10-25) O ALVO VOA FORA DA LINHA DA ARENA e eu nao tenho como ir atras: chamo de covarde -- o dono: *"faca ela comentar
+	/// algo chamando o cara de covarde ou algo do tipo"*. Desenho novo: o DM nao tem fala de arena. Ver `Cerebro.NaArena`.
+	/// </summary>
+	ChamarDeCovarde,
 }
 
 /// <summary>

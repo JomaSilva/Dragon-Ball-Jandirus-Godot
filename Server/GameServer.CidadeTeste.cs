@@ -79,6 +79,7 @@ public sealed partial class GameServer
 		CidBanco();
 		CidRegenerador();
 		CidEstudar();
+		CidEstudarMeditando();
 
 		GD.Print($"\n[cidade] ===== {_cidOk} OK, {_cidFalhou} FALHA(S) =====\n");
 	}
@@ -226,6 +227,86 @@ public sealed partial class GameServer
 		finally
 		{
 			_noChao.Remove(mesa);
+			LimparTudoDaBancada();
+		}
+	}
+
+	/// <summary>
+	/// 6c. (2026-10-25) ESTUDAR MEDITANDO, SEM BANCADA -- o dono: *"faca q tenha como estudar meditando sem research table, mas o ganho de tech
+	/// e 1/4, so pra players em planetas isolados conseguirem sair de la"*. O gesto e o da tecla M (`estudar_meditando`, com a meditacao
+	/// ligada), e o ganho e o do laco de estudo de producao (`TickDoEstudo`), medido contra o da mesa no mesmo corpo.
+	/// </summary>
+	private void CidEstudarMeditando()
+	{
+		GD.Print("\n-- 6c. ESTUDAR MEDITANDO, SEM BANCADA (2026-10-25) --");
+		ServerPlayer pl = ForjarComSkills("Isolado", CorredorLivre(4), bp: 10_000);
+		var mesa = new Obra
+		{
+			Id = 990611, Tipo = "Research_Station",
+			X = pl.Pos.X, Y = pl.Pos.Y,
+			DonoNome = pl.Name, Aparafusada = true,
+		};
+		mesa.PorZona(pl.Zone);
+		try
+		{
+			// O GANHO DE UM TIQUE NA MESA, pra comparar
+			_noChao.Add(mesa);
+			pl.Estudando = true;
+			double xp0 = pl.Ficha.techXp;
+			TickDoEstudo();
+			double daMesa = pl.Ficha.techXp - xp0;
+			_noChao.Remove(mesa);
+			pl.Estudando = false;
+
+			// SEM MESA E SEM MEDITAR: o pedido liga, e o laco o derruba -- dizendo do caminho novo
+			pl.Ficha.med = false;
+			ComandoDeTech(pl, "estudar_meditando", "");
+			List<string> caiu = Ouvir(TickDoEstudo);
+			AfirmarCidade("sem mesa e SEM MEDITAR o estudo nao rende: o laco o derruba, e diz que da pra estudar meditando",
+						  !pl.Estudando && Disse(caiu, "meditando"), Ultimos(caiu));
+
+			// MEDITANDO, SEM MESA: um quarto da mesa
+			pl.Ficha.med = true;
+			List<string> pediu = Ouvir(() => ComandoDeTech(pl, "estudar_meditando", ""));
+			double xp1 = pl.Ficha.techXp;
+			TickDoEstudo();
+			double meditando = pl.Ficha.techXp - xp1;
+			AfirmarCidade("**ESTUDAR MEDITANDO, SEM BANCADA** (o dono: 'faca q tenha como estudar meditando sem research table, mas o ganho de tech "
+						  + "e 1/4'): meditando e sem mesa nenhuma o estudo RENDE -- um QUARTO do que rende na mesa",
+						  pl.Estudando && daMesa > 0 && Math.Abs(meditando - daMesa * FracaoDoEstudoMeditando) < 1e-9 && Disse(pediu, "um quarto"),
+						  $"mesa {daMesa:0.###} xp por tique, meditando {meditando:0.###} xp | {Ultimos(pediu)}");
+			EstudoSoNaMesaDeTeste = true;
+			try
+			{
+				double xp2 = pl.Ficha.techXp;
+				TickDoEstudo();
+				AfirmarCidade("(defeito injetado: so na mesa, o jogo de antes) meditando e sem mesa o estudo cai e nao rende -- a regua de cima REPROVA",
+							  !pl.Estudando && pl.Ficha.techXp == xp2);
+			}
+			finally { EstudoSoNaMesaDeTeste = false; }
+
+			// PAROU DE MEDITAR, O ESTUDO CAI
+			ComandoDeTech(pl, "estudar_meditando", "");
+			pl.Ficha.med = false;
+			TickDoEstudo();
+			AfirmarCidade("...e quem para de meditar longe da mesa para de estudar", !pl.Estudando);
+
+			// E O INGLES do que o estudo meditando diz (o botao e a dica da telinha moram no cliente; as frases, aqui)
+			var ingles = Jandirus.Core.Lingua.Tradutor.DoJson(Godot.FileAccess.GetFileAsString("res://Assets/Data/lingua-en.json"));
+			string[] novas =
+			[
+				FraseDoEstudoMeditando, FraseDoEstudoQueCaiu, "Meditar estudando",
+				"Senta e estuda de cabeça: ganha tecnologia mesmo sem uma Research Station, com um quarto do ganho dela -- pra quem está num planeta "
+				+ "sem bancada conseguir construir o caminho de volta.",
+			];
+			string[] semIngles = [.. novas.Where(s => ingles.Traduzir(s) == s)];
+			AfirmarCidade("...e o que o estudo meditando diz tem ingles no dicionario do jogo", semIngles.Length == 0, string.Join(" | ", semIngles));
+		}
+		finally
+		{
+			_noChao.Remove(mesa);
+			pl.Ficha.med = false;
+			EstudoSoNaMesaDeTeste = false;
 			LimparTudoDaBancada();
 		}
 	}

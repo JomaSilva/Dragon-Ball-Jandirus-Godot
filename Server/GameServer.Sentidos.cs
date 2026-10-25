@@ -81,7 +81,8 @@ namespace Jandirus.Server;
 /// sense em outras pessoas com ki divino"*. DUAS DIVERGENCIAS DECLARADAS das linhas de cima:
 ///   * no SCAN, o BP acima de 100 milhoes vai NaN (a aba escreve "???"), e quem esta com o ki divino em uso NAO entra na lista -- o aparelho
 ///     nao o detecta, seja quem for o dono dele (`KiDivinoEscondido`, `Core/Stats/Scouter.cs`);
-///   * no SENSE, nos tres alcances, o ki divino em uso so e sentido por quem tambem tem ki divino (`AchoAEnergia`, `SenteKiDivino`).
+///   * no SENSE, nos tres alcances, o ki divino em uso so e sentido por quem tambem tem ki divino (`AchoAEnergia`, `SenteKiDivino`) -- e,
+///     desde 2026-10-23, tambem o de quem so o DESPERTOU, mesmo na forma base (`KiDivinoForaDoSense`; o scan nao mudou).
 /// ===========================================================================================================
 ///
 /// ============================ O ANDROIDE NAO TEM KI (dono, 2026-10-19) ============================
@@ -181,14 +182,16 @@ public partial class GameServer
 		(_, List<Protocol.PresencaState> lista) = SentidosDe(pl);
 		byte nivel = scan ? (byte)0 : (byte)NivelDoSense(pl);
 		byte nivelIt = NivelItNoFio(pl);
-		string sig = AssinaturaDosSentidos(scan, nivel, nivelIt, lista);
+		// (2026-10-23) A MAESTRIA DO IT viaja no pacote do nivel, e a assinatura a inclui: subir a maestria remanda o cartao.
+		TransmissaoState it = EstadoDaTransmissao(pl, nivelIt);
+		string sig = AssinaturaDosSentidos(scan, nivel, nivelIt, lista) + AssinaturaDaTransmissao(it);
 		if (_sigSentidos.TryGetValue(pl.Id, out string? antiga) && antiga == sig) return;
 		_sigSentidos[pl.Id] = sig;
 
 		NetDataWriter w = PacoteDeSentidos(scan, nivel, lista);
 		EscutaDeSentidos?.Add((pl.Id, w));
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-		EnviarNivelDaTransmissao(pl, nivelIt);
+		EnviarNivelDaTransmissao(pl, it);
 	}
 
 	/// <summary>O pacote, pronto pro fio: `S2C.Sentidos` + `bool scan` + o nivel do Sense + a lista. Separado pra bancada abrir com o leitor do cliente.</summary>
@@ -199,11 +202,14 @@ public partial class GameServer
 		return w;
 	}
 
-	/// <summary>O nivel do Instant Transmission, no pacote proprio, junto da lista: a aba decide o botao por ele.</summary>
-	private static void EnviarNivelDaTransmissao(ServerPlayer pl, byte nivelIt)
+	/// <summary>
+	/// O nivel do Instant Transmission, no pacote proprio, junto da lista: a aba decide o botao por ele. (2026-10-23) E a maestria
+	/// e o que ela rende, depois do nivel -- o corpo do pacote e o <see cref="FioDaTransmissao"/>.
+	/// </summary>
+	private static void EnviarNivelDaTransmissao(ServerPlayer pl, TransmissaoState it)
 	{
 		NetDataWriter w = Protocol.Begin(Protocol.S2C.NivelDaTransmissao);
-		w.Put(nivelIt);
+		FioDaTransmissao.Escrever(w, it);
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -248,6 +254,23 @@ public partial class GameServer
 		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
 			if (string.Equals(p.Nome, o.Zone.Name, StringComparison.OrdinalIgnoreCase)) return SistemaId.De(p.Pos);
 		return null;
+	}
+
+	/// <summary>
+	/// (2026-10-25) EM QUE ALCANCE DO SENSE `o` CAI PRA `eu` (1 a 5): na mesma zona, a vista (15 tiles), a regiao (60) e o planeta (a zona
+	/// inteira -- no espaco, que e uma zona so pro universo, o sistema ou o universo); fora dela, o sistema (a mesma estrela) ou o universo. E a
+	/// regua da lista da aba Sense (`SentidosDe`) e do convite da Genkidama (`ConvidarDoadoresG12`) -- uma so, pra as duas nao divergirem.
+	/// </summary>
+	internal byte AlcanceDoSense(ServerPlayer eu, ServerPlayer o)
+	{
+		if (o.Zone.Hash == eu.Zone.Hash)
+		{
+			ushort dist = DistanciaEmTiles(eu, o);
+			if (dist <= Jandirus.Core.Skills.SenseEmNiveis.TilesDoCampoDeVisao) return AlcanceVisao;
+			if (dist <= Jandirus.Core.Skills.SenseEmNiveis.TilesDaRegiao) return AlcanceRegiao;
+			if (!Espaco.EhEspaco(eu.Zone)) return AlcancePlaneta;
+		}
+		return SistemaDe(eu) is { } meu && SistemaDe(o) is { } dele && dele == meu ? AlcanceSistema : AlcanceUniverso;
 	}
 
 	/// <summary>(2026-10-18) DE LONGE SO SE SENTE JOGADOR E CHEFE -- o NPC comum, so no campo de visao e na regiao.</summary>
@@ -307,22 +330,17 @@ public partial class GameServer
 
 		// (2026-10-18) OS CINCO NIVEIS -- ver o cabecalho e `SenseEmNiveis`.
 		int nivel = NivelDoSense(eu);
-		SistemaId? meuSistema = nivel >= AlcanceSistema ? SistemaDe(eu) : null;
-		// De longe (alem da regiao): o mesmo sistema ou o universo. Na zona do ESPACO (uma so pro universo inteiro) quem passa da regiao tambem
-		// cai aqui -- o "planeta" de quem esta no espaco nao existe.
-		byte Longe(ServerPlayer o) => meuSistema is { } ms && SistemaDe(o) is { } os && os == ms ? AlcanceSistema : AlcanceUniverso;
+		// O ALCANCE DE CADA UM sai do `AlcanceDoSense` (2026-10-25: o mesmo funil do convite da Genkidama). De longe (alem da regiao): o mesmo
+		// sistema ou o universo -- e na zona do ESPACO (uma so pro universo inteiro) quem passa da regiao tambem, que la o "planeta" nao existe.
 		var vistos = new HashSet<int>();
 
 		// A MESMA ZONA: campo de visao (15 tiles) e regiao (60) com todo mundo, NPC inclusive -- o `current_area.contents` do DM; o planeta
 		// (a zona inteira), so jogador e chefe -- o `player_list` do mesmo z, mais o chefe.
-		bool noEspaco = Espaco.EhEspaco(eu.Zone);
 		foreach (ServerPlayer o in zona)
 		{
 			if (o == eu || o.ECadaver || !AchoAEnergia(eu, o)) continue;
 			ushort dist = DistanciaEmTiles(eu, o);
-			byte alcance = dist <= Jandirus.Core.Skills.SenseEmNiveis.TilesDoCampoDeVisao ? AlcanceVisao
-				: dist <= Jandirus.Core.Skills.SenseEmNiveis.TilesDaRegiao ? AlcanceRegiao
-				: noEspaco ? Longe(o) : AlcancePlaneta;
+			byte alcance = AlcanceDoSense(eu, o);
 			if (alcance > nivel || (alcance > AlcanceRegiao && !GenteOuChefe(o))) continue;
 			vistos.Add(o.Id);
 			achados.Add((Presenca(eu, o, alcance, dist, mx, my), o.Id));
@@ -335,7 +353,7 @@ public partial class GameServer
 			{
 				if (o == eu || o.ECadaver || vistos.Contains(o.Id) || o.Zone.Hash == eu.Zone.Hash) continue;
 				if (!GenteOuChefe(o) || !AchoAEnergia(eu, o)) continue;
-				byte alcance = Longe(o);
+				byte alcance = AlcanceDoSense(eu, o);
 				if (alcance > nivel) continue;
 				vistos.Add(o.Id);
 				(string nome, string sig) = IdentidadePara(eu, o);

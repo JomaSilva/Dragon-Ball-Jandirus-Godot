@@ -158,6 +158,8 @@ public sealed partial class GameServer
 			return;
 		}
 		if (PorQueNaoMexeNoPoder(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
+		// (2026-10-25) E SO NUMA FORMA DOMINADA -- o dono: *"ele so consegue relaxar quando masterizar a forma"*. Ficar pronto nao pede nada.
+		if (PoderEmUso.VaiRelaxar(pl.Ficha) && PorQueNaoRelaxaNaForma(pl) is { Length: > 0 } naForma) { Avisar(pl, naForma); return; }
 
 		bool relaxou = PoderEmUso.AlternarProntidao(pl.Ficha);
 		Avisar(pl, relaxou
@@ -197,6 +199,52 @@ public sealed partial class GameServer
 		Avisar(pl, "você deixa de relaxar: a sua energia volta a aparecer, e sobe aos poucos enquanto você a reúne.");
 		AoMexerNoPoder(pl);
 	}
+
+	// =====================================================================
+	// (2026-10-25) RELAXAR SO NUMA FORMA DOMINADA, E O CONSUMO PELA BARRA
+	// =====================================================================
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--poderteste`): relaxar volta a valer em qualquer forma, dominada ou nao -- o jogo de antes de 2026-10-25. Lido
+	/// pela propria <see cref="PorQueNaoRelaxaNaForma"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool RelaxaEmQualquerFormaDeTeste;
+
+	/// <summary>
+	/// POR QUE ESTE CORPO NAO RELAXA NA FORMA EM QUE ESTA -- vazio = relaxa. O dono (2026-10-25): *"ele so consegue relaxar quando masterizar a
+	/// forma"*. Na base, sempre; numa forma que nao se treina sustentando (as supressoes do Frost Demon -- `Catalogo.SustentarTreina`), sempre;
+	/// numa transformacao, so DOMINADA (100% -- a mesma `Dominou` do nome e do anuncio; nas disciplinas divinas, a proficiencia da skill).
+	/// </summary>
+	private string PorQueNaoRelaxaNaForma(ServerPlayer pl)
+	{
+		if (RelaxaEmQualquerFormaDeTeste || pl.Forma.NaBase || pl.Forma.Def is not { } d
+			|| !Jandirus.Core.Forms.Catalogo.SustentarTreina(d) || Dominou(pl, d.Id)) return "";
+		return $"você só relaxa numa forma dominada: {Jandirus.Core.Forms.Catalogo.NomeDe(d, false)} está em {Math.Floor(MaestriaDaForma(pl, d.Id)):0}% de maestria.";
+	}
+
+	/// <summary>
+	/// QUEM ESTAVA RELAXADO E CAI NUMA FORMA QUE NAO DOMINA FICA PRONTO -- chamado do `AnunciarForma`, o funil de toda troca de forma (subir,
+	/// descer, a raiva, o mestre). Ver <see cref="PorQueNaoRelaxaNaForma"/>.
+	/// </summary>
+	private void AcordarSeAFormaNaoDeixaRelaxar(ServerPlayer pl)
+	{
+		// (2026-10-25) o corpo SEM ficha passa direto: e o forjado da bancada do anuncio (`MedirAlcanceDoAnuncio`), e ele estourava aqui e
+		// abortava o passo 2 inteiro da `--diagforma`, calado. Em jogo todo corpo tem ficha.
+		if (pl.Ficha is not { relaxado: true } || PorQueNaoRelaxaNaForma(pl).Length == 0) return;
+		pl.Ficha.relaxado = false;
+		pl.Ficha.powerMod = PoderEmUso.Cheio;
+		Avisar(pl, "você deixa de relaxar: só se relaxa numa forma dominada.");
+		AoMexerNoPoder(pl);
+	}
+
+	/// <summary>
+	/// QUANTO DO PODER A BARRA LIBERA AGORA (0,01 a 1), pro consumo da forma (`EstadoDeForma.DrenoPorSegundo` com a liberacao). Relaxado e o
+	/// piso -- e so se relaxa numa forma dominada, que ja cobra o menor consumo em qualquer liberacao.
+	/// </summary>
+	private static double LiberacaoDoPoder(ServerPlayer pl) =>
+		pl.Ficha.relaxado ? PoderEmUso.Piso
+		: double.IsFinite(pl.Ficha.powerMod) ? Math.Clamp(pl.Ficha.powerMod, PoderEmUso.Piso, PoderEmUso.Cheio)
+		: PoderEmUso.Cheio;
 
 	// =====================================================================
 	// 3. O TIQUE

@@ -298,6 +298,43 @@ public sealed partial class GameServer
 			finally { HospedeAVistaDeTeste = false; }
 			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o corpo do hospede a vista): o mundo ve dois Vegetas -- a regua do esconderijo REPROVA", aVista);
 
+			// (2026-10-25) A TECH DO HOSPEDE RESPONDE AO TUFFLE DENTRO DELE -- o pedido 74 do dono: *"Faca q personagens q viraram neotuffle ou bio,
+			// consigam usar os itens tech do personagem anterior antes dele ser substituido"*. Um simulador do Vegeta (a conta dele) aos pes do corpo
+			// possuido: o Baby o solta pelo menu E, como o Vegeta faria; a Bulma, no mesmo lugar, ouve que nao e dela.
+			var doVegeta = new Obra
+			{
+				Id = IdDoPalcoDoTuffle + 74, Tipo = Simulador.Tipo, Aparafusada = true,
+				X = baby.Pos.X, Y = baby.Pos.Y, DonoConta = vegeta.Conta, DonoNome = vegeta.Name,
+			};
+			doVegeta.PorZona(baby.Zone);
+			_noChao.Add(doVegeta);
+			Vec2 ondeABulmaEstava = bulma.Pos;
+			try
+			{
+				List<string> soltouDentro = Ouvir(() => ComandoDeInteracao(baby, "aparafusar", ""));
+				bool soltou = !doVegeta.Aparafusada;
+				doVegeta.Aparafusada = true;
+				bulma.Pos = baby.Pos;
+				List<string> daBulmaNaTech = Ouvir(() => ComandoDeInteracao(bulma, "aparafusar", ""));
+				bulma.Pos = ondeABulmaEstava;
+				List<string> semATech;
+				TuffleSemATechDoHospedeDeTeste = true;
+				try { semATech = Ouvir(() => ComandoDeInteracao(baby, "aparafusar", "")); }
+				finally { TuffleSemATechDoHospedeDeTeste = false; }
+				AfirmarTf("**A TECH DO HOSPEDE RESPONDE AO TUFFLE** (o pedido 74): dentro do Vegeta, o Baby SOLTA o simulador do Vegeta pelo menu E, como o "
+					+ "Vegeta faria -- e a Bulma, no mesmo lugar, ouve que nao e dela",
+					soltou && daBulmaNaTech.Exists(x => x.Contains("nao e seu")) && doVegeta.Aparafusada,
+					$"{Ultimos(soltouDentro)} | Bulma: {Ultimos(daBulmaNaTech)}");
+				AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o Tuffle sem a tech do hospede, o jogo de antes): o Baby ouve que o simulador nao e dele -- a regua "
+					+ "de cima REPROVA", semATech.Exists(x => x.Contains("nao e seu")) && doVegeta.Aparafusada, Ultimos(semATech));
+			}
+			finally
+			{
+				TuffleSemATechDoHospedeDeTeste = false;
+				bulma.Pos = ondeABulmaEstava;
+				_noChao.Remove(doVegeta);
+			}
+
 			CravarPosicao(baby, baby.Pos + new Vec2(3 * T, 0));
 			TickDasPosses();
 			AfirmarTf("...E ANDA COM O TUFFLE: o Baby da tres passos, e o corpo de verdade do Vegeta vai junto -- e dele que o dono assiste",

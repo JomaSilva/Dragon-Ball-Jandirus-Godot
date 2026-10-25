@@ -16,6 +16,25 @@ namespace Jandirus.Core.Skills;
 ///     contador (300 nos outros, 500 no Yardrat) continua sendo pericia de custo e de treino, nao de mapa.
 /// O Yardrat concentra mais rapido (<see cref="PressaDoYardrat"/>). O alcance dele a mais, se houver, e o piso
 /// do contador, nao um atalho de raca por fora da escada.
+///
+/// ============================ A MAESTRIA (dono, 2026-10-23) ============================
+/// *"faça o IT ganhar maestria com uso, e com isso ter menos consumo de ki e vigor, podendo ate ser usado em combate, pois
+/// quanto mais maestria, mais rapido vc da IT em pessoas ou inimigos proximos"*. A escolha dele: de 0 a 100%, e ela SO SOBE
+/// USANDO -- +2% por Instant Transmission que CHEGA (o Yardrat +3%). A 100%: o Ki custa um quarto do de sem maestria, a
+/// concentracao cai a um quinto, e em quem esta no CAMPO DE VISAO ela leva 0,2 s -- da pra usar no meio da luta. Mexer
+/// (e o golpe que tira o corpo do lugar) continua cancelando, como antes. Vigor: o IT nunca cobrou, e continua sem cobrar.
+/// Entre 0 e 100% as contas sao RETAS (decisao minha): ver <see cref="KiComMaestria"/> e <see cref="EsperaComMaestria"/>.
+/// O `teleskill` do DM (a maestria escondida, `yardrat.dm:101`) continua por baixo, como era: ele mexe no custo de antes,
+/// e a maestria multiplica o que sobra.
+/// =======================================================================================
+///
+/// ============================ A SAIDA PISCANDO E O CLARAO DA CHEGADA (dono, 2026-10-24) ============================
+/// "Fazer igual no IT": o mesmo par de atrasos do Kai Kai (<see cref="KaiKai"/>). O clarao e o efeito de desviar um golpe,
+/// desenhado NO CORPO, e quem esta perto so o ve com o corpo na tela: vencida a concentracao o corpo PISCA e so
+/// <see cref="AtrasoDaSaidaMs"/> depois some; e na chegada o clarao espera <see cref="AtrasoDoClaraoDaChegadaMs"/> o corpo entrar
+/// no retrato da zona de quem ja esta la. Nesses 0,2 s o corpo esta se desfazendo, como no desvio: nenhum golpe pega
+/// (<see cref="EsquivaDaSaidaMs"/>), mexer nao cancela mais (a concentracao acabou) e ele nao fica preso -- so cair o segura.
+/// =====================================================================================================================
 /// </summary>
 public static class TransmissaoEmNiveis
 {
@@ -79,6 +98,80 @@ public static class TransmissaoEmNiveis
 		long ms = MsPorNivel[n - 1];
 		if (yardrat) ms = (long)(ms * PressaDoYardrat);
 		return ms > TetoDaEsperaMs ? TetoDaEsperaMs : ms;
+	}
+
+	// ---------------------------------------------------------------- a maestria (2026-10-23)
+
+	/// <summary>O teto da maestria, em pontos (%).</summary>
+	public const double MaestriaMaxima = 100;
+
+	/// <summary>Quanto um Instant Transmission que CHEGA soma. Cancelar, ser recusado ou so pedir a lista nao soma nada.</summary>
+	public const double MaestriaPorViagem = 2;
+
+	/// <summary>O mesmo, pro Yardrat -- a raca que nasceu pra isso (o dono: "+3%").</summary>
+	public const double MaestriaPorViagemDoYardrat = 3;
+
+	/// <summary>O custo de Ki na maestria cheia, em fracao do custo sem maestria: um quarto.</summary>
+	public const double KiNaMaestriaCheia = 0.25;
+
+	/// <summary>A concentracao na maestria cheia, em fracao da concentracao sem maestria: um quinto.</summary>
+	public const double EsperaNaMaestriaCheia = 0.2;
+
+	/// <summary>A concentracao em quem esta no campo de visao (<see cref="CampoDeVisao"/>, 15 tiles), na maestria cheia.</summary>
+	public const long EsperaPertoNaMaestriaCheiaMs = 200;
+
+	/// <summary>De quantos em quantos pontos o chat avisa que a maestria subiu (10%, 20%... 100%): dez linhas na vida inteira.</summary>
+	public const double AvisoDaMaestriaACada = 10;
+
+	/// <summary>A maestria em fracao (0 a 1), presa no intervalo -- ficha velha ou mexida a mao nao estoura a conta.</summary>
+	public static double Fracao(double maestria) => Math.Clamp(maestria / MaestriaMaxima, 0, 1);
+
+	/// <summary>
+	/// O CUSTO DE KI COM A MAESTRIA: reto, do custo inteiro (0%) ate <see cref="KiNaMaestriaCheia"/> dele (100%). O custo
+	/// "inteiro" e o de sempre (o `kireq` do DM, com o `teleskill` dentro) -- a maestria nao mexe nele, multiplica o resultado.
+	/// </summary>
+	public static double KiComMaestria(double kiSemMaestria, double maestria) =>
+		kiSemMaestria * (1 - (1 - KiNaMaestriaCheia) * Fracao(maestria));
+
+	/// <summary>
+	/// A CONCENTRACAO COM A MAESTRIA. Longe: reta, da espera inteira (0%) ate <see cref="EsperaNaMaestriaCheia"/> dela (100%).
+	/// No campo de visao: reta da espera inteira (0%) ate <see cref="EsperaPertoNaMaestriaCheiaMs"/> (100%) -- e NUNCA mais lenta
+	/// que a de longe (decisao minha): o Yardrat de nivel 5 ja concentra em 0,6 s, e um quinto disso (0,12 s) ganha dos 0,2 s.
+	/// Com 0% as duas sao a espera de sempre, numero por numero.
+	/// </summary>
+	public static long EsperaComMaestria(long esperaSemMaestria, double maestria, bool noCampoDeVisao)
+	{
+		double m = Fracao(maestria);
+		double ms = esperaSemMaestria * (1 - (1 - EsperaNaMaestriaCheia) * m);
+		if (noCampoDeVisao)
+			ms = Math.Min(ms, esperaSemMaestria + (EsperaPertoNaMaestriaCheiaMs - esperaSemMaestria) * m);
+		return (long)Math.Round(ms);
+	}
+
+	/// <summary>A maestria depois de um Instant Transmission que chegou: +2 (Yardrat +3), nunca acima de 100.</summary>
+	public static double MaestriaDepoisDaViagem(double maestria, bool yardrat) =>
+		Math.Min(MaestriaMaxima, Math.Max(0, maestria) + (yardrat ? MaestriaPorViagemDoYardrat : MaestriaPorViagem));
+
+	// ---------------------------------------------------------------- a saida e a chegada (2026-10-24)
+
+	/// <summary>Quanto o corpo fica PISCANDO antes de sumir, em ms -- o mesmo do Kai Kai (o dono: "Fazer igual no IT").</summary>
+	public const long AtrasoDaSaidaMs = KaiKai.AtrasoDaSaidaMs;
+
+	/// <summary>Quanto o clarao da chegada espera o corpo entrar no retrato da zona de destino, em ms -- o mesmo do Kai Kai.</summary>
+	public const long AtrasoDoClaraoDaChegadaMs = KaiKai.AtrasoDoClaraoDaChegadaMs;
+
+	/// <summary>
+	/// O DESVIO DA SAIDA: quanto o corpo fica intocavel ao comecar a piscar, em ms -- a saida inteira e mais um tique do servidor
+	/// (a carencia cai no tique do combate, e o salto vem no primeiro tique depois dos 0,2 s). Sem isto os 0,2 s seriam uma janela
+	/// NOVA pra apanhar com a viagem ja decidida.
+	/// </summary>
+	public const long EsquivaDaSaidaMs = AtrasoDaSaidaMs + 50;
+
+	/// <summary>O degrau do aviso que a viagem cruzou (10, 20... 100), ou 0 se nao cruzou nenhum.</summary>
+	public static int DegrauDoAviso(double antes, double depois)
+	{
+		int a = (int)Math.Floor(antes / AvisoDaMaestriaACada), d = (int)Math.Floor(depois / AvisoDaMaestriaACada);
+		return d > a ? (int)(d * AvisoDaMaestriaACada) : 0;
 	}
 
 	/// <summary>A regra de nivel -- registrada junto da do Sense (<c>RegrasDeNivel</c>).</summary>

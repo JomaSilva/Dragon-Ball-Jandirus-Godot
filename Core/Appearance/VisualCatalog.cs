@@ -394,6 +394,14 @@ public sealed class VisualCatalog
         // `M.icon = 'NamekOld - Guru Style.dmi'` da fabrica do DM. Ver `Npc.Patriarca.Corpo`.
         if (Npc.Patriarca.FolhaDoCorpo(ap.Corpo) is { } folhaDoPatriarca) return folhaDoPatriarca;
 
+        // (2026-10-24) E A ANDROIDE 18, pelo mesmo caminho: a folha propria dela (ja vestida, com os olhos) num indice reservado -- ver
+        // `Npc.Androides`.
+        if (Npc.Androides.FolhaDoCorpo(ap.Corpo) is { } folhaDa18) return folhaDa18;
+
+        // (2026-10-24) E A TROPA DO FREEZA, pelo mesmo caminho: uma das seis folhas que o dono escolheu, sorteada quando o soldado nasce, numa
+        // faixa reservada -- ver `Npc.FolhasDaTropa`.
+        if (Npc.FolhasDaTropa.FolhaDoCorpo(ap.Corpo) is { } folhaDaTropa) return folhaDaTropa;
+
         // ============================ E O BILLS E O WHIS, UMA FOLHA POR PERSONAGEM ============================
         // A "raca" de cada um (fora do `races.json`, como a do bicho) E a chave da folha dele. A diferenca pro bicho
         // e so a de cima: a do Bills vem sem roupa, e ele VESTE a peca dele pela camada de roupa de todo corpo.
@@ -442,6 +450,8 @@ public sealed class VisualCatalog
         // (2026-10-19) E O SAIBAMAN, pela mesma razao -- ver `OlhosNaFolhaDaRaca`.
         !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca) && !Tech.Companheiros.EhDeFolha(raca)
         && !OlhosNaFolhaDaRaca(raca)
+        // (2026-10-24) E A FOLHA DA ANDROIDE 18, que ja traz os olhos ciano dela -- o mesmo defeito do Saibaman, numa folha so (`Npc.Androides`).
+        && Npc.Androides.FolhaDoCorpo(ap.Corpo) == null
         && (!Races.BioAndroids.EhBio(raca) || Races.BioAndroids.CorpoTemRosto(ap.Corpo));
 
     /// <summary>

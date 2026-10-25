@@ -667,7 +667,7 @@ public partial class RoboDoVelorio : Node
 						   + "`PassoDaMorte` de quem ja esta no alem) -- de pe e sem auréola seria o "
 						   + "par que nunca deve existir junto");
 					Conferir(srv.PagarOEnmaNoVelorioDeTeste(cli.LocalId),
-							 "PAGUEI O ENMA na mesa dele (1.000.000 de zeni) -- o caminho de producao "
+							 "PAGUEI O ENMA na mesa dele (o preco da volta, `Alem.PrecoDoReviveDoEnma`) -- o caminho de producao "
 						   + "da volta, `EnmaReviverPorZeni`");
 					_pagouOEnma = true;
 					_t = 0;
@@ -693,8 +693,10 @@ public partial class RoboDoVelorio : Node
 				Conferir(!NoFio(cli.LocalId), "...sem auréola");
 				Conferir(f.FaltamMs <= 0, "...e com o relogio da morte zerado (o funil nao reexamina "
 										+ "um corpo vivo)");
-				Conferir(f.DebuffDoEnma,
-						 "...e com o debuff do Enma no corpo (`zeni_revive_debuff_until`: 25% do BP por uma hora)");
+				// (2026-10-23) A REGRA DO DONO VIROU: *"faca com q ao reviver n tenha mais o debuff de bp"*. Ate aqui esta linha cobrava o
+				// debuff do DM (25% do BP por uma hora); agora cobra que ele NAO esta no corpo. A conta do poder e a `--alemteste` (8f-8h).
+				Conferir(!f.DebuffDoEnma,
+						 "...e SEM o debuff do Enma no corpo (o dono, 2026-10-23: a volta paga nao arma mais o `zeni_revive_debuff_until`)");
 				Passar();
 				break;
 			}

@@ -773,8 +773,9 @@ public static class Fusao
 	/// 175 (255 menos o `#50` do tom mais claro); 170 fica abaixo dele, e os quatro degraus voltam a
 	/// existir tambem no canal que da nome a cor.
 	///
-	/// **AGORA SAO DOIS VERMELHOS, E E DELIBERADO.** O do SSG continua `e2331c`: aquele e do DM, e o dono
-	/// falou so da fusao. Quem unificar os dois de volta desfaz o pedido.
+	/// **AGORA SAO DOIS VERMELHOS, E E DELIBERADO.** O do SSG era o `e2331c` do DM, e o dono falou so da
+	/// fusao; desde 2026-10-24 ele e o `e00a14`, mais vermelho, tambem a pedido do dono
+	/// (`Catalogo.VermelhoDoCabeloDivino`). Quem unificar os dois de volta desfaz os dois pedidos.
 	/// =====================================================================================================
 	///
 	/// ============================ E ELA SOMA, NAO E MATIZ -- MEDIDO NA FOLHA ============================

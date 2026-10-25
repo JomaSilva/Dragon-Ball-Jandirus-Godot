@@ -350,7 +350,7 @@ public static class Teclas
 			cfg.LigacoesDeTecla.Add(new Settings.LigacaoDeTecla
 			{
 				Acao = a.Id,
-				Tecla = agora.Length > 0 ? agora[0].ToString() : "",
+				Tecla = agora.Length > 0 ? NomeGravado(agora[0]) : "",
 			});
 		}
 
@@ -358,7 +358,7 @@ public static class Teclas
 		foreach ((Key k, Atalho a) in _atalhos)
 			cfg.AtalhosDeTecla.Add(new Settings.AtalhoGravado
 			{
-				Tecla = k.ToString(), Tipo = a.Tipo, Chave = a.Chave, Rotulo = a.Rotulo,
+				Tecla = NomeGravado(k), Tipo = a.Tipo, Chave = a.Chave, Rotulo = a.Rotulo,
 			});
 
 		cfg.Gravar();
@@ -490,6 +490,9 @@ public static class Teclas
 	public static string Nome(Key k)
 	{
 		if (k == Key.None) return "--";
+		// (2026-10-23) O BOTAO DO MOUSE QUE VALE TECLA tem nome proprio ("Mouse 4"): o motor nao conhece o codigo reservado
+		// dele e escreveria o numero cru. Ver `MouseComoTecla`.
+		if (MouseComoTecla.NomeNaTela(k) is { } doMouse) return doMouse;
 
 		// ============================ O PORTAO DO HEADLESS -- ACHADO RODANDO ============================
 		// `KeyboardGetKeycodeFromPhysical` nao existe no servidor grafico nulo, e nao devolve zero: ele
@@ -520,8 +523,12 @@ public static class Teclas
 		return k.Length == 0 ? "-- sem tecla --" : string.Join(" / ", k.Select(Nome));
 	}
 
+	// (2026-10-23) O BOTAO DO MOUSE VAI PRO ARQUIVO PELO NOME ("Mouse4") e volta por ele -- o resto continua sendo o nome do
+	// `Godot.Key`, entao o `config.json` de antes carrega igual. Ver `MouseComoTecla`.
 	private static Key? LerTecla(string s) =>
-		Enum.TryParse(s, ignoreCase: false, out Key k) ? k : null;
+		MouseComoTecla.LerGravado(s) ?? (Enum.TryParse(s, ignoreCase: false, out Key k) ? k : null);
+
+	private static string NomeGravado(Key k) => MouseComoTecla.NomeGravado(k) ?? k.ToString();
 
 	// =====================================================================
 	// A AJUDA DO HUD

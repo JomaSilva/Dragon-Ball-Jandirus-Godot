@@ -481,13 +481,15 @@ public partial class RoboDaV020 : Node
 	// ---------------------------------------------------------------- F9
 	private void F9_AsRoupas()
 	{
-		Nota("--- F9: as roupas da criacao (a pasta inteira, menos a do Beerus e o rabo) ---");
+		Nota("--- F9: as roupas da criacao (a pasta inteira, menos a do Beerus, o rabo e os brincos potara) ---");
 		if (VistosDeGente.Catalogo is not { } cat) { Checa("(montagem) o cliente tem o catalogo de aparencia", false); return; }
 		const string pasta = "res://Assets/Sprites/Clothes";
 		string[] novas = Jandirus.Server.GameServer.RoupasNovasDaV020;
-		Checa($"o catalogo que monta a grade da criacao tem as onze folhas que faltavam ({cat.Roupas.Count} roupas ao todo)",
+		// (2026-10-23) ERAM ONZE: os quatro brincos potara sairam do guarda-roupa (ver `GameServer.BrincosForaDoGuardaRoupa`).
+		Checa($"o catalogo que monta a grade da criacao tem as {novas.Length} folhas que faltavam ({cat.Roupas.Count} roupas ao todo)",
 			  novas.All(n => cat.Roupas.Contains($"{pasta}/{n}.tres")), string.Join(", ", novas.Where(n => !cat.Roupas.Contains($"{pasta}/{n}.tres"))));
-		Checa("...e nao tem o rabo nem a do Beerus", !cat.Roupas.Exists(c => c.EndsWith("/Tail.tres") || c.Contains("Beerus")));
+		Checa("...e nao tem o rabo, a do Beerus nem os brincos potara",
+			  !cat.Roupas.Exists(c => c.EndsWith("/Tail.tres") || c.Contains("Beerus") || c.Contains("potara", StringComparison.OrdinalIgnoreCase)));
 
 		// A FOLHA ABRE COM DESENHO -- e a mesma porta que a previa do boneco usa (`FolhasPresas`).
 		var semDesenho = new List<string>();
@@ -496,7 +498,7 @@ public partial class RoboDaV020 : Node
 			SpriteFrames? f = FolhasPresas.Carregar($"{pasta}/{n}.tres");
 			if (f == null || !f.GetAnimationNames().Any(a => f.GetFrameCount(a) > 0 && f.GetFrameTexture(a, 0) != null)) semDesenho.Add(n);
 		}
-		Checa("**CADA UMA DAS ONZE ABRE COM DESENHO** (as seis que so tinham o PNG ganharam a folha de animacao)", semDesenho.Count == 0,
+		Checa($"**CADA UMA DAS {novas.Length} ABRE COM DESENHO** (as que so tinham o PNG ganharam a folha de animacao)", semDesenho.Count == 0,
 			  string.Join(", ", semDesenho));
 	}
 

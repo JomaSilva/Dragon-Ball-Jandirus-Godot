@@ -42,6 +42,27 @@ public sealed partial class GameServer
 		return ids;
 	}
 
+	/// <summary>
+	/// (2026-10-24) OS ANDROIDES 17 E 18, um em cada CASA, vestidos pela porta dos NPCs (`AparenciaDeNpc`) com os moldes deles -- a arte que
+	/// o dono trouxe. Devolve os dois ids, o 17 primeiro.
+	/// </summary>
+	internal List<int> PalcoCorpos_Androides(int id, (float X, float Y)[] casas)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _moldes == null || casas.Length < 2) return [];
+		float t = ZoneCollision.TileSize;
+		var ids = new List<int>();
+		foreach ((string molde, string genero, int i) in new[] { ("androide_17", "Male", 0), ("androide_18", "Female", 1) })
+		{
+			if (_moldes.Get(molde) is not { } m) continue;
+			ServerPlayer f = FigurantePalcoV21(pl, m.Nome, "Human", new Vec2(casas[i].X * t, casas[i].Y * t), 5_000_000);
+			f.Genero = genero;
+			f.Visual = AparenciaDeNpc(m, "Human", genero, (ulong)(7_000 + i));
+			TrocarAparencias(f);
+			ids.Add(f.Id);
+		}
+		return ids;
+	}
+
 	/// <summary>O primeiro corpo masculino que o catalogo do servidor da a esta raca -- o de repouso de quem nasce dela.</summary>
 	internal string PalcoCorpos_PrimeiroCorpo(string raca) => _visual?.CorposDe(raca).Para("Male").FirstOrDefault() ?? "";
 

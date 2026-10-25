@@ -135,6 +135,14 @@ public enum Fatos : ulong
 	// ---- (2026-10-19) o aprendiz de Kaioshin: o PRIMEIRO bit do `ulong` ----
 	/// <summary>Um Kaioshin se ofereceu pra te tomar como aprendiz (`aprendiz_aceitar`/`aprendiz_recusar`). Ver `GameServer.AprendizDeKaioshin.cs`.</summary>
 	OfertaDeAprendiz = 1ul << 32,
+
+	// ---- (2026-10-23) o Ritual Mistico do Velho Kaiohshin ----
+	/// <summary>
+	/// Esta NO MEIO de um Ritual Mistico do Velho Kaiohshin -- como o Kaioshin ou como o alvo. Os dois estao travados no lugar, e o botao
+	/// do ritual, que e do trono, passa a ser tambem de quem esta nele: e o que o INTERROMPE (o alvo nao fica preso dez minutos sem
+	/// saida). Ver `GameServer.RitualDoKaioshin.cs`.
+	/// </summary>
+	RitualDoKaioshin = 1ul << 33,
 }
 
 /// <summary>

@@ -75,6 +75,9 @@ public static class Esmagamento
 	/// Nao ha campo guardado pra isto de proposito: e uma pergunta sobre o estado ATUAL, e um bit
 	/// guardado seria mais um "ligou e esqueceu de desligar" -- exatamente o que o proprio DM tem que
 	/// desfazer a mao em `Grav_Gain` (`if(testgrav != 3) gravParalysis = 0`) e no `MajinSaga.dm:196`.
+	///
+	/// (2026-10-23) PRESO NAO E MAIS PARADO pro corpo que o jogador dirige: ele se ARRASTA a <see cref="FracaoDoRastejo"/> do
+	/// passo (regra do dono, ver <see cref="PassoDoRastejo"/>). A IA continua presa como no DM.
 	/// </summary>
 	public static bool Prende(Fighter f) => Razao(f) >= RazaoQuePrende;
 
@@ -177,6 +180,34 @@ public static class Esmagamento
 		double r = Razao(f);
 		return r > 1 ? 1 + (r - 1) * PesoDaLentidao : 1;
 	}
+
+	// =====================================================================
+	// O RASTEJO (dono, 2026-10-23)
+	// =====================================================================
+	/// <summary>
+	/// QUANTO DO PASSO SOBRA A QUEM SO A GRAVIDADE SEGURA: um quarto. O dono (2026-10-23): *"personagem ao cair por gravidade ainda
+	/// consiga se mover lentamente se arrastando"* -- e, perguntado, "1/4 da velocidade a pe", nos DOIS estados: quem DESMAIOU pela
+	/// gravidade (ou pelo peso) se arrasta deitado, e quem esta PRESO de pe (<see cref="Prende"/>) anda. So o passo: nem corrida, nem
+	/// voo, nem golpe novo. REGRA NOVA: no DM nao ha rastejar (o `gravParalysis` zera o `mobTime`, `movement handler.dm:132`).
+	/// </summary>
+	public const double FracaoDoRastejo = 0.25;
+
+	/// <summary>
+	/// O PASSO DE QUEM SE ARRASTA: um quarto do passo que o corpo daria andando SEM a gravidade. O que e do CORPO fica -- o atraso do
+	/// peso vestido e o do ferimento (<see cref="AtrasoDoPeso"/>) --; o <see cref="Freio"/> do esmagamento SAI, e o quarto entra no
+	/// lugar dele e nao por cima: por cima, a razao 4 daria 1/16. A conta: `AtrasoDoPeso(f, vida) * 0,25`. Na razao 4 ela e o mesmo
+	/// `AtrasoDoPeso / 4` que o freio ja dava ali (o passo nao salta quando o corpo cruza a linha da prisao); acima de 4 o freio
+	/// continuaria encolhendo (1/r) e o quarto nao.
+	/// </summary>
+	/// <param name="fatorDeVida">O mesmo do <see cref="FatorDePasso"/>: quanto do acumulador sobra ao corpo ferido. 1 = inteiro.</param>
+	public static double PassoDoRastejo(Fighter f, double fatorDeVida = 1) =>
+		AtrasoDoPeso(f, fatorDeVida) * FracaoDoRastejo / (RastejoComOFreioDeTeste ? Freio(f) : 1);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--rastejoteste`): o freio do esmagamento volta a valer POR CIMA do quarto -- na razao 8 o passo seria
+	/// 1/32, e nao 1/4. Lido pelo <see cref="PassoDoRastejo"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RastejoComOFreioDeTeste;
 
 	// =====================================================================
 	// O QUE A TELA MOSTRA

@@ -175,6 +175,13 @@ public readonly struct Comando
 	/// </summary>
 	public string? Falar { get; init; }
 
+	/// <summary>
+	/// (2026-10-25) NESTE TIQUE O CORPO CHAMOU O ALVO DE COVARDE -- a frase da arena (`Falatorio.ChamandoDeCovarde`) ja vai no
+	/// <see cref="Falar"/>. Quem le e o servidor: ele marca o alvo (`GameServer.MarcarComoCovarde`), e a IA xingada volta pra dentro da
+	/// linha e luta no chao (`Percepcao.ChamadoDeCovarde`). Ver `Cerebro.NaArena`.
+	/// </summary>
+	public bool ChamouDeCovarde { get; init; }
+
 	/// <summary>O comando de quem nao vai fazer nada neste tique. Nao e "parar": e "nenhuma tecla".</summary>
 	public static readonly Comando Nenhum = new();
 }

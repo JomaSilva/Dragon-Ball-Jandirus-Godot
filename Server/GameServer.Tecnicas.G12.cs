@@ -241,10 +241,10 @@ public sealed partial class GameServer
 	{
 		switch (cmd)
 		{
-			case "splitform_seguir": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.Seguir); return true;
-			case "splitform_parar": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.Parado); return true;
-			case "splitform_alvo": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.AtacarAlvo); return true;
-			case "splitform_perto": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.AtacarPerto); return true;
+			case "splitform_seguir": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.Seguir, arg); return true;
+			case "splitform_parar": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.Parado, arg); return true;
+			case "splitform_alvo": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.AtacarAlvo, arg); return true;
+			case "splitform_perto": OrdenarSplitformsG12(pl, FuncaoDeSplitformG12.AtacarPerto, arg); return true;
 			case "splitform_destruir": DestruirSplitformsG12(pl); return true;
 			case "genkidama_doar": ResponderGenkidamaG12(pl, aceitou: true); return true;
 			case "genkidama_negar": ResponderGenkidamaG12(pl, aceitou: false); return true;
@@ -1072,25 +1072,36 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// `for(var/mob/M in player_list) if(M.client && M.med && M.z == usr.z && M != usr)` (`:78-79`) -- o convite. (v0.3.2) Pra todo mundo
-	/// do planeta, meditando ou nao; e o POVO doa sozinho a quem ele gosta.
+	/// `for(var/mob/M in player_list) if(M.client && M.med && M.z == usr.z && M != usr)` (`:78-79`) -- o convite. (v0.3.2) Meditando ou nao; e
+	/// o POVO doa sozinho a quem ele gosta.
+	///
+	/// (2026-10-25) E NAO MAIS "O PLANETA": o convite vai a TODO JOGADOR AO ALCANCE DO SENSE de quem forma -- o dono: *"genkidama manda pedido de
+	/// doacao pra todos aqueles q estao dentro do seu sense (menos os mortos q estao no outro mundo), assim com sense 5, vc pode pedir energia pra
+	/// todos os jogadores vivos do universo"*. O alcance e o mesmo da aba Sense (`AlcanceDoSense` contra o `NivelDoSense`): a vista (15 tiles),
+	/// a regiao (60), o planeta, o sistema e o universo. O povo continua sendo o do planeta (a reputacao e com ele).
 	/// </summary>
 	private void ConvidarDoadoresG12(ServerPlayer pl, EstadoDaGenkidamaG12 g)
 	{
 		int convidados = 0;
-		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+		int nivel = NivelDoSense(pl);
+		IEnumerable<ServerPlayer> quem = GenkidamaConvidaOPlanetaDeTeste ? ZoneList(pl.Zone.Hash) : _players.Values;
+		foreach (ServerPlayer o in quem.ToList())
 		{
 			// "GENTE" AQUI E QUEM TEM FICHA PROPRIA: jogador (com tela) ou corpo de bancada; nunca um NPC do mundo (nem bicho) nem o
 			// reflexo da mente. (v0.3.2) MEDITANDO OU NAO -- o dono: *"todos q estao no planeta recebem um pedido ao qual podem aceitar pra
 			// doar pra genkidama (n precisa meditar mais)"*. No DM so quem meditava (`M.med`, `:79`).
 			if (o == pl || o.Papel != null || o.DonoDoClone != 0 || (GenkidamaSoConvidaQuemMeditaDeTeste && !o.Ficha.med)
 				|| EhCadaver(o) || o.Ficha.KO) continue;
+			// (2026-10-25) os mortos que estao no Outro Mundo, nao -- e ninguem alem de onde o Sense de quem forma alcanca
+			if (o.Ficha.dead && Jandirus.Core.World.Alem.EhOAlem(o.Zone) && !GenkidamaConvidaOsMortosDeTeste) continue;
+			if (!GenkidamaConvidaOPlanetaDeTeste && AlcanceDoSense(pl, o) > nivel) continue;
 			_ofertasDeGenkidamaG12[o.Id] = pl.Id;
 			Avisar(o, $"{pl.Name} esta formando uma GENKIDAMA. Doar custa um decimo do seu Ki e soma o seu poder inteiro a ela -- "
 					  + "responda na aba Other (Doar a Genkidama / Negar).");
 			convidados++;
 		}
-		if (convidados > 0) Avisar(pl, $"{convidados} pessoa(s) neste mundo sentem a Genkidama e podem doar energia.");
+		if (convidados > 0)
+			Avisar(pl, $"{convidados} pessoa(s) ao alcance do seu Sense ({Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(nivel)}) sentem a Genkidama e podem doar energia.");
 
 		// (v0.3.2) O POVO DOA SOZINHO A QUEM ELE GOSTA -- o dono, 2026-10-16: *"se vc tem uma boa reputaçao no planeta, todos os npcs
 		// doariam o bp deles pra genkidama tb, assim pessoas do bem teriam uma genkidama mais poderosa"*. Com reputacao AMIGAVEL ou melhor
@@ -1139,7 +1150,7 @@ public sealed partial class GameServer
 		g.DoacoesPendentes++;
 		g.Doadores++;
 		Avisar(pl, "voce sente um decimo da sua energia escapar.");
-		Avisar(quem, "voce acaba de receber mais energia de algum ponto do planeta!");
+		Avisar(quem, "voce acaba de receber mais energia de alguem ao alcance do seu Sense!");
 	}
 
 	/// <summary>
@@ -1251,6 +1262,12 @@ public sealed partial class GameServer
 
 	/// <summary>DEFEITO INJETADO (`--g12teste`): a pergunta da doacao volta a ir so pra quem medita. Falso em jogo, sempre.</summary>
 	internal static bool GenkidamaSoConvidaQuemMeditaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): o convite volta a ir pro PLANETA de quem forma, sem olhar o Sense -- o jogo de antes de 2026-10-25. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaConvidaOPlanetaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): os mortos que estao no Outro Mundo tambem recebem o convite. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaConvidaOsMortosDeTeste;
 
 	/// <summary>
 	/// (v0.3.2) O CORACAO PURO DA GENKIDAMA: a forma base, sem transformacao nenhuma -- nem a fera (o Oozaru). O dono, 2026-10-16: *"so
@@ -1646,7 +1663,9 @@ public sealed partial class GameServer
 	/// e com `prob(50/(Splitformskill*5))` o skill sobe (e a maestria +0,2). A copia e um `/mob/npc`
 	/// com `hasAI = 0`: fica PARADA ate o dono clicar nela e escolher Follow / Stop / Attack Target /
 	/// Attack Nearest / Destroy (`:28-68`). Aqui o clique virou cinco verbos da aba Other, e a ordem vale
-	/// pra TODAS as suas copias de uma vez (o port nao tem clique em NPC).
+	/// pra TODAS as suas copias de uma vez -- e (2026-10-24) o clique VOLTOU: o dono procurou o menu na copia
+	/// (*"Eu clicava na copia como no DM e nao aparecia nada"*), e o clique nela abre as ordens DELA
+	/// (`World.CliqueNaCopia`, `OrdenarSplitformsG12` com o id).
 	///
 	/// O DM nao confere o Ki antes de cobrar (`:97`) e deixa negativo; aqui cobra-se o que se confere,
 	/// como o Guided Ball. O icone do Bio (Cell Jr) e do Tsujin (androide) nao entrou: a copia veste a
@@ -1673,13 +1692,14 @@ public sealed partial class GameServer
 		f.splitformCount = vivas + 1;
 		f.Statify();
 		RepercutirPoder(pl);
+		MandarMinhasCopiasG12(pl);
 
 		if (_rng.NextDouble() * 100 < 50.0 / (skill * 5))   // `prob(50/(Splitformskill*5))`
 		{
 			f.splitformMastery += 0.2 * FatorDeMaestriaDoCorpo(pl);   // (2026-10-16) o Echoed Insanity, ver `FatorDeMaestriaDoCorpo`
 			Avisar(pl, "sua pericia de divisao aumentou.");
 		}
-		Avisar(pl, "voce divide o seu corpo em dois! (ordens na aba Other: seguir, parar, atacar o alvo, atacar o mais perto, desfazer)");
+		Avisar(pl, "voce divide o seu corpo em dois! (clique na copia pras ordens dela; na aba Other, as ordens valem pra todas)");
 		Falar(pl, Protocol.Fala.Emote, "se divide em dois!");
 		Persistir(pl);
 		GD.Print($"[server] {pl.Name} criou a copia '{copia.Name}' (id {copia.Id}, BP {copia.Ficha.BP:0})");
@@ -1875,6 +1895,39 @@ public sealed partial class GameServer
 		dono.Ficha.splitformCount = _splitformsG12.Values.Count(s => s.Master == master);
 		dono.Ficha.Statify();
 		RepercutirPoder(dono);
+		MandarMinhasCopiasG12(dono);
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--g12teste` e `--diagverbs`): a ordem do clique volta a valer pra TODAS as copias -- o id que vem
+	/// no argumento e ignorado, o jogo de antes de 2026-10-24. Lido pelo <see cref="OrdenarSplitformsG12"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool OrdemDaCopiaPraTodasDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--g12teste` e `--diagverbs`): o `S2C.MinhasCopias` nao sai -- o cliente nao sabe quais corpos sao
+	/// copias dele, e o clique nelas nao abre nada. Lido pelo <see cref="MandarMinhasCopiasG12"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool CopiasCaladasDeTeste;
+
+	/// <summary>SO PRA BANCADA (`--g12teste`): cada `S2C.MinhasCopias` que saiu, com o id de quem o recebeu. Nulo em jogo.</summary>
+	internal static List<(int Para, byte[] Fio)>? EscutaDeCopiasG12;
+
+	/// <summary>
+	/// (2026-10-24) `S2C.MinhasCopias` pro DONO: as copias de pe dele, a lista inteira. Sai de toda porta que muda a contagem -- a
+	/// divisao (`DividirOCorpoG12`) e o desfazer (`AtualizarContagemDeSplitformsG12`, por onde passam o Destroy, o prazo, a copia que
+	/// cai e o dono que troca de zona) --, e e o que o clique do cliente le pra abrir o menu de ordens numa copia (`World.CliqueNaCopia`).
+	/// Nada de poder no pacote.
+	/// </summary>
+	private void MandarMinhasCopiasG12(ServerPlayer dono)
+	{
+		if (CopiasCaladasDeTeste) return;
+		List<int> ids = [.. _splitformsG12.Where(kv => kv.Value.Master == dono.Id).Select(kv => kv.Key)];
+		var w = Protocol.Begin(Protocol.S2C.MinhasCopias);
+		w.Put(ids.Count);
+		foreach (int id in ids) w.Put(id);
+		EscutaDeCopiasG12?.Add((dono.Id, w.CopyData()));
+		dono.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>
@@ -1884,15 +1937,30 @@ public sealed partial class GameServer
 	/// primeiro": o dono lia a recusa, e as copias ja estavam em Attack Target -- paradas, esperando, e partiam
 	/// pra cima de quem ele marcasse depois (o alvo e lido a cada tique, `GuiarSplitformG12`). Um pedido
 	/// recusado nao muda nada.
+	///
+	/// (2026-10-24) A ORDEM DO CLIQUE VEM COM O ID DA COPIA CLICADA, e vale SO pra ela -- o `src` do `Click()` (`:28-68`): o menu que o
+	/// clique abre (`MenuDeInteracao.AbrirNaCopia`) manda o id no argumento. Sem argumento (os verbos da aba Other), todas, como sempre.
 	/// </summary>
-	private void OrdenarSplitformsG12(ServerPlayer pl, FuncaoDeSplitformG12 funcao)
+	private void OrdenarSplitformsG12(ServerPlayer pl, FuncaoDeSplitformG12 funcao, string arg = "")
 	{
-		List<SplitformG12> minhas = [.. _splitformsG12.Values.Where(sf => sf.Master == pl.Id)];
+		int soEsta = !OrdemDaCopiaPraTodasDeTeste && int.TryParse(arg, out int id) ? id : 0;
+		List<SplitformG12> minhas = [.. _splitformsG12.Where(kv => kv.Value.Master == pl.Id && (soEsta == 0 || kv.Key == soEsta)).Select(kv => kv.Value)];
 		if (OrdemAntesDaRecusaDeTeste) foreach (SplitformG12 sf in minhas) sf.Funcao = funcao;
 		int n = minhas.Count;
-		if (n == 0) { Avisar(pl, "voce nao tem nenhuma copia de pe."); return; }
+		if (n == 0) { Avisar(pl, soEsta != 0 ? "essa copia ja se desfez." : "voce nao tem nenhuma copia de pe."); return; }
 		if (funcao == FuncaoDeSplitformG12.AtacarAlvo && pl.AlvoId == 0) { Avisar(pl, "marque um alvo primeiro (duplo clique)."); return; }
 		foreach (SplitformG12 sf in minhas) sf.Funcao = funcao;
+		if (soEsta != 0)
+		{
+			Avisar(pl, funcao switch
+			{
+				FuncaoDeSplitformG12.Seguir => "a copia passa a seguir voce.",
+				FuncaoDeSplitformG12.AtacarAlvo => "a copia ataca o seu alvo.",
+				FuncaoDeSplitformG12.AtacarPerto => "a copia ataca quem estiver mais perto.",
+				_ => "a copia para.",
+			});
+			return;
+		}
 		Avisar(pl, funcao switch
 		{
 			FuncaoDeSplitformG12.Seguir => $"sua(s) {n} copia(s) passa(m) a seguir voce.",

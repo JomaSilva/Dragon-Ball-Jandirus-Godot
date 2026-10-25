@@ -33,7 +33,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE ELA REUSA, E POR QUE ISSO IMPORTA ============================
 /// Nada aqui e um segundo caminho de fusao. O convite, a revalidacao no aceite, a distancia de UM tile,
-/// a recarga de 1 h e **a cinematica** sao os mesmos do resto do sistema -- e o mais importante: o
+/// a recarga (proporcional desde 2026-10-24, ver o passo 6) e **a cinematica** sao os mesmos do resto do sistema -- e o mais importante: o
 /// `TickDaCenaDeFusao` ja tem as quatro guardas de "entre o aceite e a consumacao" (saiu do mundo,
 /// morreu, caiu, mudou de zona) e delas **nao sai fusao nenhuma, nem estragada**. A regra que o dono
 /// exigiu pra N3 -- *"se o alvo cair/desconectar/morrer entre o aceite e a consumacao, a fusao NAO
@@ -87,7 +87,7 @@ public sealed partial class GameServer
 	///      metade das duas;
 	///   2. o bonus entra no dono (BP, stats, skills, Super Namekuseijin);
 	///   3. o absorvido some -- o NPC sai do mundo, o jogador perde o personagem e cai;
-	///   4. a recarga de 1 h e cobrada de quem absorveu (`Fusion.dm:320`).
+	///   4. a recarga e cobrada de quem absorveu (`Fusion.dm:320`) -- 2,5 h por "x" do multiplicador desde 2026-10-24.
 	/// ==========================================================================================
 	/// </summary>
 	private void AbsorverNamekuseijin(ServerPlayer dono, ServerPlayer absorvido)
@@ -189,7 +189,13 @@ public sealed partial class GameServer
 		// ---- 6. A RECARGA -- `Fusion.dm:320` -------------------------------------------------------
 		// SO DE QUEM ABSORVEU. O `Separar` cobra dos dois porque os dois voltam a existir; aqui o outro
 		// nao volta, e cobrar recarga de um personagem apagado nao quer dizer nada.
-		CobrarARecargaDeFusao(dono, NowMs());
+		//
+		// (2026-10-24) E ELA E PROPORCIONAL AO MULTIPLICADOR, como a do Zenkai (dono: *"o mesmo pra fusao namek"*): 2,5 h por "x" do BP de
+		// agora sobre o de antes -- absorver um Namekuseijin do mesmo poder (4x) deixa 10 h, e um NPC (ate +5%) pouco mais de 2,5 h. Era
+		// a hora fixa de toda fusao (`Fusao.RecargaSegundos`). Ver `GainKnobs.RecargaProporcionalMs`.
+		CobrarARecargaDeFusao(dono, NowMs(), Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste
+			? Fusao.RecargaSegundos
+			: Jandirus.Core.Stats.GainKnobs.RecargaProporcionalMs(bpAntes, dono.Ficha.BP) / 1000.0);
 
 		// ---- 7. O ABSORVIDO SOME --------------------------------------------------------------------
 		// E NINGUEM SE ENFURECE POR ISTO (dono, 2026-10-11: *"fusao namek n deveria dar o trigger na raiva"*): a

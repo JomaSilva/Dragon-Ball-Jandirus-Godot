@@ -1,3 +1,4 @@
+using Jandirus.Core.Combat;
 using Jandirus.Core.Npc;
 using Jandirus.Core.World;
 
@@ -36,6 +37,10 @@ public partial class GameServer
 				  : z.Name == Alem.ZonaDoInferno ? PortaoDoInferno(z)
 				  : PontoDeNascimento(z);
 		MoveToZone(pl.Id, z, onde);
+		// (2026-10-23) ACLIMATADO AO LUGAR, como as almas que nascem nele: o morto de pe passou a sentir o chao (dono), e no Inferno (10x) quem
+		// fotografa ficaria preso e se machucando -- e, passados ~30 s, a segunda morte o levaria a mesa do Enma no meio da sessao. O assunto
+		// desta foto nao e a gravidade (essa e da `--gravmetateste`).
+		pl.Ficha.GravMastered = Math.Max(pl.Ficha.GravMastered, Jandirus.Core.Stats.Esmagamento.Gravidade(pl.Ficha));
 		MandarFicha(pl);
 		return true;
 	}
@@ -137,6 +142,26 @@ public partial class GameServer
 		AoPerderALuta(vilao, pl, morreu: false);
 		MandarFicha(pl);
 		return (_vilaoDoInferno?.Derrotado == true, pl.Ficha.Zeni, pl.Karma);
+	}
+
+	/// <summary>
+	/// (2026-10-23) O GOLPE DE VERDADE NO VILAO, com o corpo local como quem bate -- a foto do Majin Boo que so cai pela morte por ki: o dano
+	/// pronto do soco ou do tiro num NUCLEO (`MeleeResolver.AplicarDanoPronto`, o `porKi` separa um do outro) e o desfecho pelo
+	/// `ResolverDesfecho`, o mesmo par do projetil. O vilao em pedacos (o Majin socado) e refeito ANTES, na hora -- o relogio de 30 s e da
+	/// `--v030teste`, e em pedacos ele e intocavel. Devolve se ele esta derrotado, se esta em pedacos, e o zeni e o karma de quem fotografa.
+	/// </summary>
+	internal (bool Derrotado, bool Desfeito, double Zeni, int Karma) GolpeNaFotoDoInferno(int id, bool letal, bool porKi)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _vilaoDoInferno is not { } v
+			|| !_players.TryGetValue(v.Npc, out ServerPlayer? vilao)) return default;
+		if (vilao.Combate.Desfeito || vilao.Ficha.KO) vilao.Combate.Curar();
+		foreach (BodyPart p in vilao.Combate.Corpo.Partes)
+			if (p.Papel != Vitalidade.Nucleo) p.Chance = 0;
+		MarcarAgressao(vilao, pl);
+		GolpeResultado r = MeleeResolver.AplicarDanoPronto(vilao.Combate, 1e9, letal, _rng, "cabeca", porKi);
+		ResolverDesfecho(pl, vilao, r);
+		MandarFicha(pl);
+		return (_vilaoDoInferno?.Derrotado == true, vilao.Combate.Desfeito, pl.Ficha.Zeni, pl.Karma);
 	}
 
 	/// <summary>Tira do mundo o que a foto pos (as almas e o vilao) e devolve o corpo local a vida, pelo `Renascer` de producao.</summary>

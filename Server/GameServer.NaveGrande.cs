@@ -71,7 +71,7 @@ public partial class GameServer
 		// (2026-10-19) A ESFERA DO DRAGAO NAO EMBARCA (dono): o interior da nave nao e o planeta. Ver `GameServer.EsferasNaMochila.cs`.
 		if (PorQueAsEsferasPrendem(pl) is { Length: > 0 } presas) { Avisar(pl, presas); return; }
 
-		bool dono = string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase);
+		bool dono = MexeNaNaveComoDono(n, pl, semDonoEDeTodos: false);   // (2026-10-25) a liberada embarca sem o codigo, como o dono
 		if (!dono && n.Senha.Length > 0)
 		{
 			// A SENHA NAO E PERGUNTADA AQUI, e sim DIGITADA ANTES. O menu deste port nao encadeia
@@ -122,7 +122,8 @@ public partial class GameServer
 
 		if (!int.TryParse(arg, out int codigo) || codigo < 0) { Avisar(pl, "código inválido."); return; }
 
-		if (!string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		// (2026-10-25) o codigo e trava do dono de verdade (ou do Neo Tuffle no corpo dele): a nave liberada nao o da -- ver `EDaContaDona`
+		if (!EDaContaDona(n.DonoConta, pl))
 		{
 			_codigoNaMao[pl.Id] = codigo;
 			Avisar(pl, "código anotado. Aperte E na nave e escolha \"Embarcar\".");

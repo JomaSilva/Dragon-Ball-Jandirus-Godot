@@ -215,6 +215,19 @@ public static class ArteDeKiNoCliente
 		public float Brancura { get; init; } = 0.5f;
 
 		/// <summary>
+		/// (2026-10-23) A ESFERA DO HAKAI, de 0 a 1 (o uniform `hakai`): o miolo quase branco com raios de luz, o corpo de plasma
+		/// magenta, a BORDA ESCURA, os ARCOS escuros orbitando, o halo magenta grande e os graos escuros -- a imagem que o dono
+		/// mandou. So os dois tiros do kit do Deus da Destruicao a tem; zero em toda outra bola, e o shader nao muda nada nelas.
+		/// </summary>
+		public float Hakai { get; init; }
+
+		/// <summary>
+		/// (2026-10-23) O RITMO dos arcos e dos graos do Hakai (o uniform `giro`): 1 na Destroyer Sphere, mais na Fury -- a menor
+		/// gira mais depressa. So o bloco do Hakai le.
+		/// </summary>
+		public float Giro { get; init; } = 1f;
+
+		/// <summary>
 		/// NAO GIRA COM O RUMO. So o disco: ele e uma serra DEITADA vista de cima, e uma coisa deitada
 		/// aparece larga na horizontal da tela pra onde quer que voe (a folha do Kienzan nao tinha
 		/// direcao nenhuma, e era por isso).
@@ -229,9 +242,10 @@ public static class ArteDeKiNoCliente
 
 		/// <summary>
 		/// (v0.3.0) A ARTE TEM A COR DELA: a tinta do ki de quem atira NAO entra nos tons (o shader recebe os tons como estao), e a
-		/// LUZ e o estouro saem desta cor. Diferente do <see cref="SemTinta"/>, que apaga a luz junto (chumbo nao brilha). Hoje e
-		/// so a Genkidama: a energia do planeta, e no DM a imagem dela nunca levava `icon += rgb` (`SpiritBomb.dm:45-54`) -- ela e
-		/// azul na mao de qualquer um, como no anime. Quem obedece e o `ProjetilDesenhado.Vestir` e o `PintorDeKi.MaterialDeBola`.
+		/// LUZ e o estouro saem desta cor. Diferente do <see cref="SemTinta"/>, que apaga a luz junto (chumbo nao brilha). A
+		/// Genkidama: a energia do planeta, e no DM a imagem dela nunca levava `icon += rgb` (`SpiritBomb.dm:45-54`) -- ela e
+		/// azul na mao de qualquer um, como no anime. E (2026-10-23) a esfera do Hakai: roxa na mao do Bills e de quem tem o
+		/// titulo, qualquer que seja o ki. Quem obedece e o `ProjetilDesenhado.Vestir` e o `PintorDeKi.MaterialDeBola`.
 		/// </summary>
 		public Color? CorPropria { get; init; }
 
@@ -252,6 +266,20 @@ public static class ArteDeKiNoCliente
 	/// manto vermelho vivo e o nucleo quase branco -- o desenho de toda arte guarda o miolo claro.
 	/// </summary>
 	public static readonly Rampa TonsDoLimite = Rampa.De("b00000", "ff2a1a", "ffd6cc");
+
+	/// <summary>
+	/// (2026-10-23) OS TONS DA ESFERA DO HAKAI, tirados da imagem do dono: a casca VIOLETA, o manto MAGENTA e o miolo
+	/// BRANCO-ROSADO. Entram sem a tinta de quem atira (`CorPropria`). O preto-arroxeado da borda e dos arcos nao e um quarto
+	/// tom: o shader o tira da casca (`EsferaDeKi.gdshader`, o bloco do Hakai), porque a casca tambem acende o halo -- pintada
+	/// de preto, ela apagaria o halo junto.
+	/// </summary>
+	public static readonly Rampa TonsDoHakai = Rampa.De("8c1ee6", "ff3cf0", "fff0ff");
+
+	/// <summary>
+	/// (2026-10-23) A COR DA ESFERA DO HAKAI -- a da luz que ela lanca no chao e a do estouro. Um roxo-magenta entre a casca e o
+	/// manto; o `rgb(160, 60, 220)` que o DM somava na esfera (`GodOfDestruction.dm:317`) e o mesmo roxo, um pouco mais escuro.
+	/// </summary>
+	public static readonly Color CorDoHakai = new("d23cff");
 
 	// =====================================================================
 	// OS RAIOS
@@ -392,6 +420,25 @@ public static class ArteDeKiNoCliente
 			// (v0.3.0) O RAIO MORA NO CORE: o servidor tambem o le, pra por a bola em cima da cabeca e solta-la na frente do corpo.
 			Raio = ArteDeProjetil.RaioDaGenkidama, Calma = 1, Brancura = 0.8f, CorPropria = new Color("5fd8ff"),
 			Tons = Rampa.De("28c6ee", "a8f2ff", "ffffff"),
+		},
+
+		// ============================ A ESFERA DO HAKAI (2026-10-23, com a imagem do dono) ============================
+		// Os dois tiros do kit do Deus da Destruicao, do Bills e de quem tem o titulo (`ArteDeProjetil`, a tabela): o desenho
+		// e o bloco do Hakai do `EsferaDeKi.gdshader`, os tons os da imagem, e a cor e da arte (`CorPropria`), e nao do ki.
+		// OS TAMANHOS SAO ESCOLHA (o dono deixou: "a esfera maior, a Fury menor"):
+		//   * a DESTROYER SPHERE tem o raio do IMPACTO de uma bola (`Projetil.RaioDeImpacto`, meio tile): o que se ve e o
+		//     que acerta, e ela e a maior das duas;
+		//   * a FURY tem 10 px e gira o dobro (`Giro`): a menor, e a mais agitada. A VELOCIDADE do tiro nao mudou -- e regra,
+		//     e no DM os dois andam igual (`walk(A, A.dir, 2)`, `GodOfDestruction.dm:286` e `:329`).
+		// Nenhuma das duas tem rastro: a esfera da imagem e redonda, e a borda escura contornaria o rabo do cometa.
+		// ==============================================================================================================
+		[ArteDeKi.HakaiEsfera] = new()
+		{
+			Raio = Projetil.RaioDeImpacto, Hakai = 1, Brancura = 0.7f, CorPropria = CorDoHakai, Tons = TonsDoHakai,
+		},
+		[ArteDeKi.HakaiFuria] = new()
+		{
+			Raio = 10f, Hakai = 1, Giro = 2f, Brancura = 0.7f, CorPropria = CorDoHakai, Tons = TonsDoHakai,
 		},
 
 		// ============================ AS BALAS (v0.2.1, as armas de fogo) ============================

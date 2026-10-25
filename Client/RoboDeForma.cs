@@ -40,6 +40,9 @@ public partial class RoboDeForma : Node
 	private int _passo;
 	private bool _acabou;
 
+	/// <summary>(2026-10-25) O passo 2 correu ate o fim (a ultima linha dele o marca) -- ver o fecho da rodada.</summary>
+	private bool _passoDoCorpoInteiro;
+
 	private readonly List<string> _falhas = [];
 	private readonly List<string> _passos = [];
 
@@ -261,6 +264,7 @@ public partial class RoboDeForma : Node
 				Posar("primal_legendary2");
 				World.InstantaneaSecaDeTeste = false;   // (2026-10-19) as duas regras do brilho da forma voltam -- ver o comeco do passo
 				CargaVisual.CargaPorCimaDaCenaDeTeste = false;
+				_passoDoCorpoInteiro = true;   // (2026-10-25) ver o fecho da rodada
 				break;
 			// DUAS FOTOS, e a segunda e a que prova alguma coisa. O SSJ3 tem aura quase branca
 			// (`fff08a`): uma foto so dele nao distingue "o halo esta na cor da forma" de "o halo e
@@ -973,8 +977,11 @@ public partial class RoboDeForma : Node
 			// COMO REPROVA SE A REGRA SUMIR: tire o funil do `Cinematica.Beats` e as doze cenas antigas
 			// caem na hora; escreva `| Efeito.Cratera` num beat de meio de cena e ele cai na (2).
 			// =============================================================================================
+			// (2026-10-25) MENOS NA CENA QUE NAO ABRE O CHAO (`Cinematica.OChaoAbre`): o -Sign- e o Perfected -- o dono: *"so ultra ego q cria
+			// cratera, ui e ui perfeito nao criam"*. Ali, nenhuma.
 			int crateras = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera));
-			Conferir(crateras == 1, $"cena de '{rotulo}': UMA cratera, e uma so ({crateras})");
+			Conferir(crateras == (c.OChaoAbre ? 1 : 0),
+					 $"cena de '{rotulo}': {(c.OChaoAbre ? "UMA cratera, e uma so" : "NENHUMA cratera (a cena nao abre o chao)")} ({crateras})");
 			Conferir(c.Beats.All(b => !b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera)
 								   || b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Assumir)),
 					 $"cena de '{rotulo}': a cratera cai NO beat que assume a forma, e em nenhum outro");
@@ -1692,8 +1699,9 @@ public partial class RoboDeForma : Node
 			if (d.Id == Jandirus.Core.Forms.Catalogo.IdBase) continue;
 			var cheiaDela = Jandirus.Core.Forms.Cinematicas.Para(d)!;
 			if (Jandirus.Core.Forms.Cinematicas.NoDegrau(d, Jandirus.Core.Forms.DegrauDeCena.Nenhuma) != null) erros++;
+			// (2026-10-24) a estreia e a cena cheia -- menos a do SSJ2, que e ela com o preludio do dono na frente (`Cinematicas.DaEstreia`)
 			if (!ReferenceEquals(Jandirus.Core.Forms.Cinematicas.NoDegrau(
-					d, Jandirus.Core.Forms.DegrauDeCena.Estreia), cheiaDela)) erros++;
+					d, Jandirus.Core.Forms.DegrauDeCena.Estreia), Jandirus.Core.Forms.Cinematicas.DaEstreia(d))) erros++;
 			var kd = Jandirus.Core.Forms.Cinematicas.NoDegrau(d, Jandirus.Core.Forms.DegrauDeCena.Curta);
 			if (kd == null || ReferenceEquals(kd, cheiaDela) || kd.SegundosPreso >= cheiaDela.SegundosPreso) erros++;
 		}
@@ -1878,6 +1886,9 @@ public partial class RoboDeForma : Node
 		("tensao_extrema",                  "forma nova (v0.4.0), sem par no DM: o surto curto"),
 		("tensao_divina",                   "forma nova (v0.4.0), sem par no DM: o surto curto"),
 
+		// (2026-10-23) O SUPER MAJIN do Majin que nao e Corrupted: no DM era uma skill de buff (aposentada), sem proc de cena. O surto curto.
+		("super_majin",                     "forma nova (2026-10-23, pedido do dono), sem par no DM: o surto curto"),
+
 		// (2026-10-16) A FORMA PURA INSANA nao tem cena no DM -- a insanidade e do sistema do amigo do dono. E o surto curto, e em jogo
 		// ela nem toca (o corpo enlouquece sem cena, `semCena`); ela existe pela regra de que toda forma tem cena propria.
 		("majin_pura_insana",               "a insanidade e do sistema do amigo do dono: nao ha cena no DM -- o surto curto"),
@@ -1986,9 +1997,13 @@ public partial class RoboDeForma : Node
 				continue;
 			}
 			double doDm = tiques / TiquesPorSegundoNoDm;
-			Conferir(Math.Abs(c.SegundosPreso - doDm) <= ToleranciaDoDm,
+			// (2026-10-24) o preludio do port na frente da cena (o fundo da estreia do SSJ2, `Cinematica.PreludioNaFrente`) nao e da
+			// proc do DM: fica fora da conta
+			double daCena = c.SegundosPreso - c.PreludioNaFrente;
+			string fora = c.PreludioNaFrente > 0 ? $", fora o preludio de {c.PreludioNaFrente:0.##}s" : "";
+			Conferir(Math.Abs(daCena - doDm) <= ToleranciaDoDm,
 					 $"'{cena}' dura os {tiques} tiques do DM = {doDm:0.##}s "
-				   + $"(esta com {c.SegundosPreso:0.##}s) -- {origem}");
+				   + $"(esta com {daCena:0.##}s{fora}) -- {origem}");
 		}
 
 		// ============================ 2. A TABELA COBRE O CATALOGO INTEIRO ============================
@@ -3028,8 +3043,8 @@ public partial class RoboDeForma : Node
 			// um nao devia trocar NEM pintar, o outro devia pintar SEM trocar.
 			VesteAConfere("wrathful", trocaSprite: false, hexaEsperado: null,
 						  "cabelo BASE, sem tinta (HairObject.dm:209)");
-			VesteAConfere("ssg", trocaSprite: false, hexaEsperado: "e2331c",
-						  "cabelo BASE tingido de vermelho (HairObject.dm:73)");
+			VesteAConfere("ssg", trocaSprite: false, hexaEsperado: "e00a14",
+						  "cabelo BASE tingido de vermelho (HairObject.dm:73; o tom mais vermelho e o pedido do dono de 2026-10-24)");
 			VesteAConfere("ssj1", trocaSprite: true, hexaEsperado: null,
 						  "arte propria e NENHUMA tinta (o veto do dono)");
 			VesteAConfere("legendary", trocaSprite: true, hexaEsperado: "7ba81f",
@@ -4154,9 +4169,9 @@ public partial class RoboDeForma : Node
 		// funcao. Ficam com o hexa LITERAL e o motivo escrito, porque uma delas ja voltou uma vez.
 		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("wrathful")) == null,
 				 "o Wrathful NAO pinta o rabo (o `lssj == 1` nem aparece na tabela do DM)");
-		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("ssg")) == "e2331c",
+		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("ssg")) == "e00a14",
 				 "o rabo do SSG e VERMELHO, a mesma tinta do cabelo (era AZUL)");
-		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("rose_ssg")) == "e2331c",
+		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("rose_ssg")) == "e00a14",
 				 "e o SSG da linha Rose e IGUAL ao SSG comum (era ROSA)");
 		Conferir(Jandirus.Core.Forms.Catalogo.CorDoRabo(Jandirus.Core.Forms.Catalogo.Def("base")) == null,
 				 "na base o rabo NAO se pinta");
@@ -6568,6 +6583,8 @@ public partial class RoboDeForma : Node
 					? [new(FolhaColada.Ameacadora, Rosa)] : [new(FolhaColada.Deus)],
 				// A FURY do Deus da Destruicao (2026-10-11): a aura dela no DM E a `god - grey` roxa colada.
 				LinhaDeForma.DeusDaDestruicao => [new(FolhaColada.Ameacadora, RoxoDaFury)],
+				// O SUPER MAJIN (2026-10-23): as faiscas do `Electric_Majin`, ja carmesim -- o visual que o dono escolheu.
+				LinhaDeForma.SuperMajin => [new(FolhaColada.FaiscaMajin)],
 				_ => [],
 			};
 
@@ -6654,6 +6671,8 @@ public partial class RoboDeForma : Node
 			(FolhaColada.Deus,          false, "ja vem LARANJA (`gkoverlay`, AuraObject.dm:14)"),
 			(FolhaColada.DeusAzul,      false, "ja vem AZUL (`sgkoverlay`, AuraObject.dm:16)"),
 			(FolhaColada.PoderLendario, false, "ja vem no verde-limao da fagulha"),
+			// (2026-10-23) o Super Majin: o branco do nucleo da faisca conta como cinza (18% medidos), o resto e carmesim
+			(FolhaColada.FaiscaMajin,   false, "ja vem CARMESIM (`Electric_Majin.dmi`, o `MajinEffect` do Majin.dm:20-23)"),
 		];
 
 		foreach ((FolhaColada f, bool deveSerCinza, string oque) in arte)
@@ -6957,6 +6976,7 @@ public partial class RoboDeForma : Node
 				{
 					FolhaColada.Deus => "QUENTE",
 					FolhaColada.DeusAzul => "FRIA",
+					FolhaColada.FaiscaMajin => "CARMESIM",
 					_ => "LIMAO",
 				};
 				porCor[cor] = porCor.GetValueOrDefault(cor) + 1;
@@ -6964,6 +6984,9 @@ public partial class RoboDeForma : Node
 				{
 					FolhaColada.Deus => EhQuente(saiu),
 					FolhaColada.DeusAzul => EhFria(saiu),
+					// (2026-10-23) A FAISCA DO SUPER MAJIN: `#ff0033`, o vermelho bem acima dos outros dois -- e nao o `EhQuente`, em que a
+					// `god` (laranja, G alto) tambem passa: aqui o G tem de estar la embaixo.
+					FolhaColada.FaiscaMajin => saiu.R > saiu.G + 0.30f && saiu.R > saiu.B + 0.30f,
 					// A FAGULHA: `#d3ff26`, verde-limao. A forma dela e o G bem acima do B, e NAO o
 					// `EhVerde` -- ela passa nele raspando (G-R = 0,17), o que a tornaria indistinguivel da
 					// cinza tingida de verde, que e a camada ao lado dela no MESMO Legendary.
@@ -6990,13 +7013,13 @@ public partial class RoboDeForma : Node
 				 $"e as {Enum.GetValues<FolhaColada>().Length} folhas apareceram em alguma camada ({vistas.Count})");
 		Conferir(pintadas > 0 && cruas > 0,
 				 $"e os DOIS estados de tinta existem no jogo ({pintadas} pintadas, {cruas} cruas)");
-		// CINCO FORMAS DE COR, e nao quatro: as duas tintas (verde e rosa) mais as tres artes que ja vem
-		// pintadas (quente, fria, limao) -- a cinza aparece nas duas primeiras porque quem a pinta e a
-		// LINHA. Um jogo em que todas as coladas sairem da mesma cor passaria em cada linha de forma de
-		// cor acima e cairia aqui, que e o unico lugar que olha o conjunto.
-		Conferir(porCor.Count == 5,
-				 "e as CINCO formas de cor sairam todas -- verde e rosa (as duas tintas), quente, fria e "
-			   + $"limao (as tres artes ja coloridas) ({porCor.Count}: {string.Join("/", porCor.Keys.Order())})");
+		// SEIS FORMAS DE COR: as duas tintas (verde e rosa) mais as quatro artes que ja vem pintadas (quente,
+		// fria, limao e, desde 2026-10-23, a carmesim da faisca do Super Majin) -- a cinza aparece nas duas
+		// primeiras porque quem a pinta e a LINHA. Um jogo em que todas as coladas sairem da mesma cor passaria
+		// em cada linha de forma de cor acima e cairia aqui, que e o unico lugar que olha o conjunto.
+		Conferir(porCor.Count == 6,
+				 "e as SEIS formas de cor sairam todas -- verde e rosa (as duas tintas), quente, fria, limao e "
+			   + $"carmesim (as quatro artes ja coloridas) ({porCor.Count}: {string.Join("/", porCor.Keys.Order())})");
 
 		// ============================ E A CAMADA TEM QUE TER O MATERIAL QUE LE A TINTA ============================
 		// O elo que faltava entre as duas metades: o `Modulate` so vira pixel porque o material da camada e
@@ -7843,6 +7866,13 @@ public partial class RoboDeForma : Node
 	/// COMO REPROVA SE A REGRA SUMIR: mande a `DeusRosa` pro desenho da `DeusFrio` no `ChamaDeAura.Estilo` (cai a segunda),
 	/// ou devolva a folha dela ao `SpriteDeAura.CaminhoDa` (cai a terceira).
 	/// </summary>
+	/// <summary>
+	/// (2026-10-24) VERMELHO VIVO: a menos de 6 graus do vermelho puro, e saturado. O laranja-tijolo do DM (`e2331c`, 7 graus), o
+	/// rosado de antes (`ff4d6a`, 10 graus) e o laranja do fogo antigo (`ffae2e`, 36 graus) ficam de fora. Ver o `2b` do
+	/// <see cref="AAuraDoRose"/>.
+	/// </summary>
+	private static bool VermelhoVivo(Color c) => (c.H * 360f < 6f || c.H * 360f > 354f) && c.S > 0.85f;
+
 	private void AAuraDoRose(SpriteDeAura desenho)
 	{
 		// --- 1. O SIMBOLO, forma a forma ---
@@ -7871,6 +7901,19 @@ public partial class RoboDeForma : Node
 					 $"e a beirada acende em VERMELHO vivo (#{aro.ToHtml(false)})");
 		Conferir(!ChamaDeAura.PaletaDe(FolhaDeAura.DeusRosa, new Color("3ad2ff")).Meio.IsEqualApprox(new Color("3ad2ff")),
 					 "e a paleta do Rose e DELE, e nao a cor que vier de fora (um Blue azul daria um Rose azul)");
+
+		// --- 2b. O CABELO DO DEUS VERMELHO, E O FOGO O DE SEMPRE (2026-10-24/25) ---
+		// O dono pediu o SSG *"mais vermelho e a aura dele tb"* e, vistas as fotos, voltou atras na aura: *"a aura anterior tava melhor
+		// do ssj god, o cabelo atual ta top"*. Entao o fogo e o de antes -- miolo claro e o meio LARANJA (o `ffae2e`, perto dos 36
+		// graus), e nao o vermelho de um dia -- e os dois SSG (o comum e o da linha Rose) continuam com a tinta do cabelo (que e tambem
+		// a do rabo e a do olho) num vermelho vivo.
+		var (mioloDoDeus, meioDoDeus, _, _) = ChamaDeAura.PaletaDe(FolhaDeAura.DeusQuente, Colors.White);
+		Conferir(meioDoDeus.H * 360f is > 25f and < 45f && meioDoDeus.S > 0.7f && mioloDoDeus.V > 0.9f,
+					 $"**O FOGO DO SSG E O DE ANTES** (o dono: \"a aura anterior tava melhor do ssj god\"): o meio e LARANJA "
+				   + $"(#{meioDoDeus.ToHtml(false)}, {meioDoDeus.H * 360f:0} graus) e o miolo claro (#{mioloDoDeus.ToHtml(false)})");
+		foreach (string id in new[] { "ssg", "rose_ssg" })
+			Conferir(Jandirus.Core.Forms.Catalogo.Def(id) is { } doDeus && doDeus.Cabelo is { } tintaDoDeus && VermelhoVivo(new Color(tintaDoDeus)),
+						 $"...e o cabelo do `{id}` continua VERMELHO VIVO (\"o cabelo atual ta top\"): #{Jandirus.Core.Forms.Catalogo.Def(id)?.Cabelo}");
 
 		// --- 3. O SPRITE MUDO, PELO SIMBOLO ---
 		desenho.DefinirFolha(FolhaDeAura.DeusRosa);
@@ -9748,9 +9791,9 @@ public partial class RoboDeForma : Node
 		("primal_legendary4_limit_breaker", ModoCabelo.Trocar,           null,     "40a060"),
 
 		// --- KI DIVINO: os dois SSG so PINTAM (o penteado fica), e o vermelho vai pro rabo tambem ---
-		// E PRO OLHO, pela mesma derivacao: o `e2331c` do SSG responde por cabelo, rabo E olho, e
+		// E PRO OLHO, pela mesma derivacao: o vermelho do SSG (`e00a14` desde 2026-10-24) responde por cabelo, rabo E olho, e
 		// esta escrito UMA vez no catalogo. Ver o cabecalho do `Catalogo.CorDoOlho`.
-		("ssg",                             ModoCabelo.Tingir,           "e2331c", "e2331c"),
+		("ssg",                             ModoCabelo.Tingir,           "e00a14", "e00a14"),
 		// OS QUATRO DIVINOS QUE TROCAM O SPRITE SAIRAM DOS HEXAS DO DM, e a razao esta em
 		// `Catalogo.AzulDoCabeloDivino`: eles caem na arte DOURADA de Super Saiyajin, onde a soma dava
 		// BRANCO. O `blue_evolution` ainda ganhou um azul PROPRIO -- pedido do dono, e o DM nao
@@ -9762,7 +9805,7 @@ public partial class RoboDeForma : Node
 		// divino pra um `CorDoCabelo(d)` seco.
 		("blue",                            ModoCabelo.TrocarETingir,    "3392c7", "1f6ae8"),
 		("blue_evolution",                  ModoCabelo.TrocarETingir,    "082b8d", "1f6ae8"),
-		("rose_ssg",                        ModoCabelo.Tingir,           "e2331c", "e2331c"),
+		("rose_ssg",                        ModoCabelo.Tingir,           "e00a14", "e00a14"),
 		("rose",                            ModoCabelo.TrocarETingir,    "d15694", "e0409a"),
 		("rose2",                           ModoCabelo.TrocarETingir,    "d15694", "e0409a"),
 
@@ -9867,6 +9910,10 @@ public partial class RoboDeForma : Node
 		("alta_tensao",                     ModoCabelo.Base,             null,     null),
 		("tensao_extrema",                  ModoCabelo.Base,             null,     null),
 		("tensao_divina",                   ModoCabelo.Base,             null,     null),
+
+		// (2026-10-23) O SUPER MAJIN: o visual escolhido pelo dono e o corpo de sempre -- nao encosta em cabelo (o Majin nao tem), rabo
+		// nem olho. O que ele poe e a chama rosa e a colada das faiscas.
+		("super_majin",                     ModoCabelo.Base,             null,     null),
 	];
 
 	/// <summary>
@@ -10418,6 +10465,11 @@ public partial class RoboDeForma : Node
 		OCabeloPlenoNoRosterInteiro();
 
 		// =====================================================================
+		// 4-ter. O CABELO DE SSJ3 NO ROSTER INTEIRO (dono, 2026-10-24)
+		// =====================================================================
+		OCabeloDoSsj3NoRosterInteiro();
+
+		// =====================================================================
 		// 5. OS EFEITOS DE CENA: O ROTEIRO CONTRA O DM, E NAO CONTRA SI MESMO
 		// =====================================================================
 		AsCenasDasQuatroContraODm(asQuatro);
@@ -10797,6 +10849,65 @@ public partial class RoboDeForma : Node
 	}
 
 	/// <summary>
+	/// O CABELO DE SSJ3 NO ROSTER INTEIRO: quem nao tem folha propria veste a do GOKU, como no DM.
+	///
+	/// O dono (2026-10-24): *"tem cabelo q no ssj3 n muda nada, se o cabelo n tem versao ssj3 (pode ver no dm quais tinham) vc usa o
+	/// do goku ssj3 mesmo"*. A pasta tem UMA folha de SSJ3 e a `Herdar` mandava o resto pro `SSj2`/`SSj` -- o SSJ3 saia igual ao SSJ1,
+	/// ou so pintado.
+	///
+	/// A TABELA ESPERADA E A DO DM, ESCRITA AQUI A MAO, e nao a do resolvedor: o quinto argumento do `SetHair` no `HairChoose.dm`
+	/// (`:300` o Alucard, `:348` o Afro, `:384` o Trump; o resto e `Hair_GokuSSj3`). Duas linhas, pelas duas metades da regra:
+	///   * quem nao tem SSJ3 proprio veste o do Goku -- cai se a `Herdar` voltar a descer pro `SSj2`/`SSj`;
+	///   * e as tres excecoes do DM ficam com a delas -- o contra-exemplo: cai se o Goku virar a resposta de TODO mundo.
+	/// </summary>
+	private void OCabeloDoSsj3NoRosterInteiro()
+	{
+		const string dados = "res://Assets/Data/visual.json";
+		if (!Godot.FileAccess.FileExists(dados))
+		{ Conferir(false, "o catalogo visual pra a varredura do SSJ3"); return; }
+		var cat = Jandirus.Core.Appearance.VisualCatalog.Parse(Godot.FileAccess.GetFileAsString(dados));
+		string[] roster = [.. cat.Cabelos.Where(c => !string.IsNullOrEmpty(c.Sprite)).Select(c => c.Sprite!)];
+		Conferir(roster.Length >= 40, $"SSJ3: o roster de penteados jogaveis tem gente ({roster.Length})");
+		if (roster.Length == 0) return;
+
+		const string pasta = "res://Assets/Sprites/Hair/SSJ Hairs/";
+		const string doGoku = pasta + "Hair_GokuSSj3.tres";
+		// as tres do DM que nao vestem o Goku (nulo e "o penteado fica", que e o Trump)
+		var excecoes = new Dictionary<string, string?>
+		{
+			["Hair Alucard"] = pasta + "Hair_RaditzSSjFP.tres",
+			["Hair Afro"] = pasta + "Hair AfroSSJ.tres",
+			["Hair_Trump"] = null,
+		};
+
+		int noGoku = 0, excecoesVistas = 0;
+		var desviados = new List<string>();
+		var excecoesErradas = new List<string>();
+		foreach (string penteado in roster)
+		{
+			string nome = penteado.GetFile().GetBaseName();
+			string? ssj3 = CabelosDeForma.De(penteado, "SSj3");
+			if (excecoes.TryGetValue(nome, out string? daTabela))
+			{
+				excecoesVistas++;
+				if (ssj3 != daTabela)
+					excecoesErradas.Add($"{nome} -> {ssj3?.GetFile() ?? "o penteado"} (o DM: {daTabela?.GetFile() ?? "o penteado"})");
+			}
+			else if (ssj3 == doGoku) noGoku++;
+			else desviados.Add($"{nome} -> {ssj3?.GetFile() ?? "o penteado"}");
+		}
+		_passos.Add($"  --     SSJ3: {noGoku} no cabelo do Goku, {excecoesVistas} excecoes do DM, {desviados.Count} desviados "
+				  + $"(de {roster.Length})");
+
+		Conferir(desviados.Count == 0 && noGoku >= 40,
+				 $"SSJ3 DO GOKU PRA QUEM NAO TEM O PROPRIO (dono, 2026-10-24; o DM, `HairChoose.dm`): {noGoku} penteados vestem o "
+			   + $"`Hair_GokuSSj3` ({desviados.Count} desviados: {string.Join(" | ", desviados.Take(4))})");
+		Conferir(excecoesVistas == 3 && excecoesErradas.Count == 0,
+				 $"SSJ3: e AS TRES EXCECOES DO DM ficam com a delas -- o Alucard o Raditz de Full Power, o Afro o proprio SSJ e o Trump "
+			   + $"o penteado ({excecoesVistas} no roster; {string.Join(" | ", excecoesErradas)})");
+	}
+
+	/// <summary>
 	/// OS EFEITOS DE CENA DAS QUATRO, COBRADOS CONTRA O DM.
 	///
 	/// ============================ A DIFERENCA PRO BLOCO VIVO ============================
@@ -10839,10 +10950,11 @@ public partial class RoboDeForma : Node
 		foreach (string id in cenas.Keys)
 		{
 			Jandirus.Core.Forms.Beat cl = Climax(id);
+			// (2026-10-25) a cratera so onde a cena abre o chao: o Ultra Instinto nao abre (o dono) -- ver `Cinematica.OChaoAbre`
 			Conferir(cl.Faz.HasFlag(Jandirus.Core.Forms.Efeito.ClaraoDeTela)
 					 && cl.Faz.HasFlag(Jandirus.Core.Forms.Efeito.AnelDeChoque)
-					 && cl.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera),
-					 $"`{id}`: o climax traz clarao, anel e cratera ({cl.Faz})");
+					 && cl.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Cratera) == cenas[id].OChaoAbre,
+					 $"`{id}`: o climax traz clarao, anel e {(cenas[id].OChaoAbre ? "cratera" : "NENHUMA cratera")} ({cl.Faz})");
 		}
 
 		// --- 2. O EGO NAO CONHECE SILENCIO -----------------------------------
@@ -15835,10 +15947,10 @@ public partial class RoboDeForma : Node
 				 $"e 200/200 em SSJ1 volta pra 100/100 na base ({pl.Ficha.Ki:0.0}/{pl.Ficha.MaxKi:0.0})");
 
 		// ============================ A VARREDURA: TETOS DIFERENTES x RAZOES DIFERENTES ============================
-		// Os tetos vem do `Catalogo.TetoDeKi` e sao propositalmente desiguais: 2,0x no SSJ1, 3,5x no
-		// SSJ3, 4,5x no SSJ4 e **1,0x** nas divinas. O Blue esta na lista justamente por ser o caso em
-		// que o tanque NAO muda -- ele e o unico que distingue "a razao e reposta" de "o Ki nao foi
-		// tocado", porque nele as duas coisas dao o mesmo numero em todas as outras formas.
+		// Os tetos vem do `Catalogo.TetoDeKi` e sao propositalmente desiguais: 2,0x no SSJ1 e no Blue (2026-10-25: as divinas do Super
+		// Saiyajin dobram o tanque, o dono), 3,5x no SSJ3, 4,5x no SSJ4 e **1,0x** no Ultra Instinto. O Perfected esta na lista justamente
+		// por ser o caso em que o tanque NAO muda -- ele e o unico que distingue "a razao e reposta" de "o Ki nao foi tocado", porque nele as
+		// duas coisas dao o mesmo numero em todas as outras formas (era o Blue, ate o Blue passar a dobrar).
 		//
 		// ============================ A RAZAO DA SOBRECARGA E DERIVADA, E ISSO NASCEU DE UM ERRO MEU ============================
 		// A terceira razao existe pra matar o corte antigo: ele aparava o Ki em
@@ -15863,7 +15975,7 @@ public partial class RoboDeForma : Node
 
 		foreach ((string id, double teto) in new[]
 		{
-			("ssj1", 2.0), ("ssj3", 3.5), ("ssj4", 4.5), ("blue", 1.0),
+			("ssj1", 2.0), ("ssj3", 3.5), ("ssj4", 4.5), ("blue", 2.0), ("ui_perfected", 1.0),
 		})
 		{
 			Ir(Base);
@@ -17422,6 +17534,10 @@ public partial class RoboDeForma : Node
 		// tenha checagem propria. E a unica linha desta bancada que cobre o codigo que ainda nao
 		// foi escrito.
 		// ================================================================================
+		// (2026-10-25) O PASSO 2 TEM QUE CORRER ATE O FIM: ele roda num quadro so, e uma excecao no meio dele (a do anuncio de forma de um
+		// corpo sem ficha, das 09:02 as 13:20 deste dia) calava o resto -- o tanque de Ki, as tintas, os canais da forma -- sem uma FALHA.
+		Conferir(_passoDoCorpoInteiro, "o passo 2 (o do corpo, das tintas e do Ki) correu ate o fim -- uma excecao no meio dele calava o resto");
+
 		Conferir(Transformacao.TetosDeTeste == 1,
 				 $"na RODADA INTEIRA o teto disparou uma vez so, e foi a cena que o obriga "
 			   + $"({Transformacao.TetosDeTeste} aviso(s) no total)");

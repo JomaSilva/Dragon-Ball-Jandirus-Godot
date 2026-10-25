@@ -655,15 +655,16 @@ public partial class GameServer
 				   bombas.Count == 3 && TrazOPoder(comDefeito, bombas[2]), Ultimos(comDefeito));
 		LimparTudoG12();
 
-		// ---- COM UM DOADOR (v0.3.2: todo mundo do planeta e convidado, meditando ou nao) ----
+		// ---- COM UM DOADOR (v0.3.2: meditando ou nao; 2026-10-25: quem o Sense de quem forma alcanca -- aqui, o planeta inteiro) ----
 		ServerPlayer dono = ForjarG12("Goku2", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
+		dono.Niveis.Por(SenseEmNiveis.Path, SenseEmNiveis.Planeta);
 		ServerPlayer doador = ForjarG12("Krillin", CorredorLivre(24), bp: 20_000);
 		ServerPlayer longe = ForjarG12("Yamcha", CorredorLivre(24), bp: 20_000);
 		MoveToZone(longe.Id, ZoneKey.Premade("Namek"), PontoDeNascimento(ZoneKey.Premade("Namek")));   // em outro planeta
 		double kiDoador = doador.Ficha.Ki, bpDoador = doador.Ficha.expressedBP;
 		ApertarEOuvir(dono, "SpiritBomb");
 		TiquesG12(TiquesDeG12(3.1));
-		AfirmarG12("**AO FORMAR, TODO MUNDO DO PLANETA E CONVIDADO** (*\"todos q estao no planeta recebem um pedido [...] n precisa meditar mais\"*): quem esta de pe, sem meditar, recebe a pergunta; quem esta em outro planeta, nao",
+		AfirmarG12("**AO FORMAR, QUEM O SENSE ALCANCA E CONVIDADO** -- com o Sense no planeta, o planeta inteiro -- meditando ou nao (*\"[...] n precisa meditar mais\"*): quem esta de pe, sem meditar, recebe a pergunta; quem esta em outro planeta, nao",
 				   !doador.Ficha.med && _ofertasDeGenkidamaG12.ContainsKey(doador.Id) && !_ofertasDeGenkidamaG12.ContainsKey(longe.Id));
 		EstadoDaGenkidamaG12 g2 = _genkidamaG12[dono.Id];
 		double bpAntes = g2.BpAcumulado;
@@ -711,6 +712,7 @@ public partial class GameServer
 
 		// ---- (v0.3.2) OS DOIS JOGOS DE ANTES: a pergunta so pra quem medita, e a doacao pelo Ki absoluto ----
 		ServerPlayer dono3 = ForjarG12("Goku4", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
+		dono3.Niveis.Por(SenseEmNiveis.Path, SenseEmNiveis.Planeta);   // (2026-10-25) o doador esta ao alcance: so o defeito o tira da lista
 		ServerPlayer doador3 = ForjarG12("Krillin4", CorredorLivre(24), bp: 20_000);
 		double kiDoador3 = doador3.Ficha.Ki, bpDoador3 = doador3.Ficha.expressedBP;
 		GenkidamaSoConvidaQuemMeditaDeTeste = true;
@@ -733,6 +735,87 @@ public partial class GameServer
 		}
 		finally { GenkidamaSoConvidaQuemMeditaDeTeste = false; GenkidamaDoacaoComoODmDeTeste = false; }
 		LimparTudoG12();
+
+		// ---- (2026-10-25) O CONVITE VAI ATE ONDE O SENSE DE QUEM FORMA ALCANCA -- e nao aos mortos do Outro Mundo ----
+		// O dono: *"genkidama manda pedido de doacao pra todos aqueles q estao dentro do seu sense (menos os mortos q estao no outro mundo), assim
+		// com sense 5, vc pode pedir energia pra todos os jogadores vivos do universo"*. A mesma Genkidama, formada com o Sense em tres niveis, e
+		// quatro corpos parados: a 6 tiles (a vista), a 35 (a regiao), em outro planeta, e um MORTO no Outro Mundo.
+		{
+			const float TGs = ZoneCollision.TileSize;
+			Vec2 pontoGs = CorredorLivre(24);
+			ServerPlayer formadorGs = ForjarG12("GokuDoSense", pontoGs, bp: 50_000, skills: [PathSpiritBombG12]);
+			ServerPlayer pertoGs = ForjarG12("NaVista", pontoGs + new Vec2(6 * TGs, 0), bp: 20_000);
+			ServerPlayer meioGs = ForjarG12("NaRegiao", pontoGs + new Vec2(35 * TGs, 0), bp: 20_000);
+			ServerPlayer foraGs = ForjarG12("NoutroPlaneta", CorredorLivre(24), bp: 20_000);
+			MoveToZone(foraGs.Id, ZoneKey.Premade("Namek"), PontoDeNascimento(ZoneKey.Premade("Namek")));
+			ServerPlayer mortoGs = ForjarG12("NoOutroMundo", CorredorLivre(24), bp: 20_000);
+			ZoneKey alemGs = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+			MoveToZone(mortoGs.Id, alemGs, PontoDeNascimento(alemGs));
+			mortoGs.Ficha.dead = true;
+			ServerPlayer[] todosGs = [pertoGs, meioGs, foraGs, mortoGs];
+
+			// FORMA A GENKIDAMA COM O SENSE NESTE NIVEL e devolve quem recebeu o convite -- e a desfaz em seguida, antes de sair (a que se desfaz
+			// antes de sair nao arma a recarga de uma hora)
+			string ConvidadosGs(int nivel)
+			{
+				formadorGs.Niveis.Por(SenseEmNiveis.Path, nivel);
+				formadorGs.Ficha.Ki = formadorGs.Ficha.MaxKi;
+				ApertarEOuvir(formadorGs, "SpiritBomb");
+				TiquesG12(TiquesDeG12(3.1));
+				string listaGs = string.Join(",", todosGs.Where(o => _ofertasDeGenkidamaG12.TryGetValue(o.Id, out int d) && d == formadorGs.Id).Select(o => o.Name));
+				if (_genkidamaG12.TryGetValue(formadorGs.Id, out EstadoDaGenkidamaG12? gGs))
+				{
+					if (gGs.Bola is { Vivo: true }) Matar(gGs.Bola, FimDeProjetil.Nenhum);
+					EncerrarGenkidamaG12(formadorGs, gGs, null);
+				}
+				return listaGs;
+			}
+
+			AfirmarG12("(montagem) os quatro estao onde a familia precisa: a 6 e a 35 tiles de quem forma, em Namek, e o morto no Outro Mundo",
+					   DistanciaEmTiles(formadorGs, pertoGs) <= SenseEmNiveis.TilesDoCampoDeVisao
+					   && DistanciaEmTiles(formadorGs, meioGs) is > SenseEmNiveis.TilesDoCampoDeVisao and <= SenseEmNiveis.TilesDaRegiao
+					   && foraGs.Zone.Name == "Namek" && mortoGs.Zone.Name == Alem.ZonaDoOutroMundo && mortoGs.Ficha.dead,
+					   $"{DistanciaEmTiles(formadorGs, pertoGs)} e {DistanciaEmTiles(formadorGs, meioGs)} tiles; {foraGs.Zone.Name}; {mortoGs.Zone.Name}");
+			string c1Gs = ConvidadosGs(SenseEmNiveis.CampoDeVisao), c3Gs = ConvidadosGs(SenseEmNiveis.Planeta), c5Gs = ConvidadosGs(SenseEmNiveis.Universo);
+			AfirmarG12("**O CONVITE VAI ATE ONDE O SENSE ALCANCA** (o dono: 'genkidama manda pedido de doacao pra todos aqueles q estao dentro do seu "
+					   + "sense'): com o Sense no campo de visao, so quem esta a 6 tiles recebe a pergunta -- quem esta a 35, nao",
+					   c1Gs == "NaVista", c1Gs);
+			AfirmarG12("...com o Sense no planeta, quem esta a 35 tiles tambem -- e quem esta em outro planeta, nao", c3Gs == "NaVista,NaRegiao", c3Gs);
+			AfirmarG12("**COM O SENSE 5, TODO JOGADOR VIVO DO UNIVERSO** (*\"com sense 5, vc pode pedir energia pra todos os jogadores vivos do "
+					   + "universo\"*): o de outro planeta tambem -- e o MORTO QUE ESTA NO OUTRO MUNDO, nao (*\"menos os mortos q estao no outro mundo\"*)",
+					   c5Gs == "NaVista,NaRegiao,NoutroPlaneta", c5Gs);
+
+			// OS DOIS JOGOS DE ANTES: o convite pro planeta (sem o Sense), e o morto do Outro Mundo convidado
+			GenkidamaConvidaOPlanetaDeTeste = true;
+			try
+			{
+				string p1Gs = ConvidadosGs(SenseEmNiveis.CampoDeVisao), p5Gs = ConvidadosGs(SenseEmNiveis.Universo);
+				AfirmarG12("(defeito injetado: o convite pro planeta, o jogo de antes) com o Sense no campo de visao o de 35 tiles TAMBEM e convidado, "
+						   + "e com o Sense 5 o de outro planeta NAO -- as reguas do alcance REPROVAM",
+						   p1Gs.Contains("NaRegiao") && !p5Gs.Contains("NoutroPlaneta"), $"{p1Gs} / {p5Gs}");
+			}
+			finally { GenkidamaConvidaOPlanetaDeTeste = false; }
+			GenkidamaConvidaOsMortosDeTeste = true;
+			try
+			{
+				string m5Gs = ConvidadosGs(SenseEmNiveis.Universo);
+				AfirmarG12("(defeito injetado: os mortos do Outro Mundo tambem) com o Sense 5 o morto e convidado -- a regua do universo REPROVA",
+						   m5Gs.Contains("NoOutroMundo"), m5Gs);
+			}
+			finally { GenkidamaConvidaOsMortosDeTeste = false; }
+
+			// E O INGLES do que o convite passou a dizer (o dono: *"N esqueca de fazer versao ingles de tudo"*)
+			var inglesGs = Jandirus.Core.Lingua.Tradutor.DoJson(Godot.FileAccess.GetFileAsString("res://Assets/Data/lingua-en.json"));
+			string[] novasGs =
+			[
+				$"3 pessoa(s) ao alcance do seu Sense ({SenseEmNiveis.NomeDoAlcance(SenseEmNiveis.Universo)}) sentem a Genkidama e podem doar energia.",
+				"voce acaba de receber mais energia de alguem ao alcance do seu Sense!",
+			];
+			string[] semInglesGs = [.. novasGs.Where(s => inglesGs.ParecePortugues(inglesGs.Traduzir(s)))];
+			AfirmarG12("...e o que o convite passou a dizer tem ingles no dicionario do jogo", semInglesGs.Length == 0,
+					   string.Join(" | ", novasGs.Select(inglesGs.Traduzir)));
+			LimparTudoG12();
+		}
 
 		// ---- (v0.3.2) SO NA FORMA BASE: o coracao puro (dono, 2026-10-16) ----
 		Vec2 praca = CorredorLivre(24);
@@ -919,8 +1002,26 @@ public partial class GameServer
 	}
 
 	/// <summary>Aperta um verb de MENU (`C2S.Verbo`) pelo funil de producao e diz se a resposta trouxe o trecho.</summary>
-	private bool ApertarVerboG12(ServerPlayer pl, string cmd, string trecho)
-		=> Disse(Ouvir(() => Verbo(pl, cmd, "")), trecho);
+	private bool ApertarVerboG12(ServerPlayer pl, string cmd, string trecho, string arg = "")
+		=> Disse(Ouvir(() => Verbo(pl, cmd, arg)), trecho);
+
+	/// <summary>O ultimo `S2C.MinhasCopias` que este jogador recebeu, aberto (os ids). Nulo se nenhum.</summary>
+	private static List<int>? UltimasCopiasG12(int para)
+	{
+		if (EscutaDeCopiasG12 == null) return null;
+		for (int i = EscutaDeCopiasG12.Count - 1; i >= 0; i--)
+		{
+			(int quem, byte[] fio) = EscutaDeCopiasG12[i];
+			if (quem != para || fio.Length == 0 || fio[0] != (byte)Protocol.S2C.MinhasCopias) continue;
+			var r = new LiteNetLib.Utils.NetDataReader(fio);
+			r.GetByte();
+			int n = r.GetInt();
+			var ids = new List<int>(n);
+			for (int k = 0; k < n; k++) ids.Add(r.GetInt());
+			return ids;
+		}
+		return null;
+	}
 
 	// =====================================================================
 	// 6) SOUL ABSORB
@@ -1120,22 +1221,24 @@ public partial class GameServer
 		double PoderAgora() { f.Statify(); RepercutirPoder(tien); return f.expressedBP; }
 
 		// ---- CAUSA 1: O KI QUE A DIVISAO COBROU ----
-		// A copia viva fica FIXA (contagem 1 nos dois lados); so o tanque muda.
+		// A copia viva fica FIXA (contagem 1 nos dois lados); so o tanque muda. (2026-10-24) O Ki so tira poder ABAIXO DA METADE do tanque
+		// (o dono, `Fighter.RazaoDoKiNoPoder`): a divisao de um tanque cheio para na metade e nao custa nada -- custa quando o leva abaixo
+		// dela. A bancada poe o tanque em 30% (o que a segunda divisao seguida deixaria) e o devolve.
+		f.Ki = f.MaxKi * 0.3;
 		double comKiGasto = PoderAgora();
 		f.Ki = f.MaxKi;
 		double comKiCheio = PoderAgora();
-		AfirmarG12("CAUSA 1 -- o Ki cobrado pela divisao derruba o poder expresso pelo `kiratio`: com a MESMA copia viva de pe, devolver o tanque levanta o numero de volta",
-				   comKiCheio > comKiGasto, $"Ki {kiDepoisDaDivisao:0} -> poder {comKiGasto:0}; Ki cheio -> poder {comKiCheio:0}");
+		AfirmarG12("CAUSA 1 -- o Ki cobrado pela divisao derruba o poder expresso pelo `kiratio` quando leva o tanque ABAIXO DA METADE: com a MESMA copia viva de pe, devolver o tanque levanta o numero de volta",
+				   comKiCheio > comKiGasto, $"Ki 30% -> poder {comKiGasto:0}; Ki cheio -> poder {comKiCheio:0} (a divisao deixou {kiDepoisDaDivisao:0})");
 
-		// O CONTRA-EXEMPLO DA CAUSA 1 e o proprio defeito que ela teve: o `kiratio` tem PISO 0,6, e
-		// abaixo dele gastar Ki nao move poder nenhum. Num corpo em jejum esta causa e INVISIVEL -- foi
-		// num corpo desses que a prova antiga ficou vermelha e o mecanismo morto apareceu.
-		f.Ki = f.MaxKi * 0.5;
-		double noPiso = PoderAgora();
-		f.Ki = f.MaxKi * 0.1;
-		double bemAbaixoDoPiso = PoderAgora();
-		AfirmarG12("...e o CONTRA-EXEMPLO dela: abaixo do piso de 0,6 do `kiratio`, gastar MAIS Ki nao move o poder -- a causa 1 so e mensuravel num corpo com tanque",
-				   Math.Abs(noPiso - bemAbaixoDoPiso) < 0.5, $"Ki 50% -> {noPiso:0}; Ki 10% -> {bemAbaixoDoPiso:0}");
+		// O CONTRA-EXEMPLO DA CAUSA 1: (2026-10-24) da METADE do tanque pra cima gastar Ki nao move poder nenhum -- e e ali que a divisao de
+		// um tanque cheio para. (Antes o trecho sem efeito era o de baixo, sob o piso de 0,6 do `kiratio`; hoje o piso so chega no vazio.)
+		f.Ki = f.MaxKi * 0.9;
+		double acimaDaMetade = PoderAgora();
+		f.Ki = f.MaxKi * 0.55;
+		double renteAMetade = PoderAgora();
+		AfirmarG12("...e o CONTRA-EXEMPLO dela: da metade do tanque pra cima gastar MAIS Ki nao move o poder -- a divisao de um tanque cheio (que para na metade) nao custa nada",
+				   Math.Abs(acimaDaMetade - renteAMetade) < 0.5, $"Ki 90% -> {acimaDaMetade:0}; Ki 55% -> {renteAMetade:0}");
 
 		// ---- CAUSA 2: A COPIA VIVA ----
 		// Agora o Ki fica CHEIO nos dois lados e so a contagem muda. Este e o corte que nao existia.
@@ -1231,6 +1334,71 @@ public partial class GameServer
 			TiquesG12(TiquesDeG12(1.1));
 			AfirmarG12("a copia nocauteada com 8 de vida ou menos e desfeita (`HP<=8 && KO`)", !_players.ContainsKey(terceira.Id));
 		}
+
+		// ---- (2026-10-24) O CLIQUE NUMA COPIA SO: o `Click()` da copia (`Split Forms.dm:28-68`) ----
+		// O dono: *"Eu clicava na copia como no DM e nao aparecia nada"*. O clique do cliente abre o menu na copia clicada, e a ordem
+		// sai com o id DELA: so ela obedece. Os verbos da aba Other (sem argumento) seguem valendo pra todas. E o cliente so sabe quais
+		// corpos sao copias dele pelo `S2C.MinhasCopias`, que sai a cada copia que nasce ou se desfaz.
+		EscutaDeCopiasG12 = [];
+		try
+		{
+			f.splitformMastery = Math.Max(f.splitformMastery, 0.2);   // skill 2: duas copias de pe
+			foreach (int c in _splitformsG12.Where(kv => kv.Value.Master == tien.Id).Select(kv => kv.Key).ToList()) DesfazerSplitformG12(c);
+			f.Ki = f.MaxKi;
+			Ouvir(() => DividirOCorpoG12(tien));   // direto: o gesto e o da ordem, e nao o da tecla
+			f.Ki = f.MaxKi;
+			Ouvir(() => DividirOCorpoG12(tien));   // direto: o gesto e o da ordem, e nao o da tecla
+			List<int> duas = [.. _splitformsG12.Where(kv => kv.Value.Master == tien.Id).Select(kv => kv.Key)];
+			AfirmarG12("(montagem) com skill 2 o dono tem DUAS copias de pe", duas.Count == 2, $"{duas.Count} copia(s)");
+			List<int>? contadas = UltimasCopiasG12(tien.Id);
+			AfirmarG12("**O DONO RECEBE A LISTA DAS COPIAS DELE** (`S2C.MinhasCopias`): o ultimo pacote, depois da segunda divisao, traz as duas -- e so elas",
+					   contadas != null && contadas.Count == 2 && duas.All(contadas.Contains),
+					   contadas == null ? "nenhum pacote" : string.Join(",", contadas));
+			if (duas.Count == 2)
+			{
+				int a = duas[0], b = duas[1];
+				bool SoAClicada()
+				{
+					ApertarVerboG12(tien, "splitform_parar", "para");
+					ApertarVerboG12(tien, "splitform_seguir", "segui", a.ToString());
+					return _splitformsG12[a].Funcao == FuncaoDeSplitformG12.Seguir && _splitformsG12[b].Funcao == FuncaoDeSplitformG12.Parado;
+				}
+				AfirmarG12("**A ORDEM DO CLIQUE E SO DA COPIA CLICADA** (dono, 2026-10-24): 'Follow' com o id dela -- ela segue, a irma continua parada",
+						   SoAClicada(), $"{_splitformsG12[a].Funcao} / {_splitformsG12[b].Funcao}");
+				OrdemDaCopiaPraTodasDeTeste = true;
+				try
+				{
+					AfirmarG12("(defeito injetado: a ordem do clique vale pra todas, o jogo de antes) a mesma regua REPROVA -- a irma segue junto",
+							   !SoAClicada(), $"{_splitformsG12[a].Funcao} / {_splitformsG12[b].Funcao}");
+				}
+				finally { OrdemDaCopiaPraTodasDeTeste = false; }
+				ApertarVerboG12(tien, "splitform_parar", "para");
+				ApertarVerboG12(tien, "splitform_seguir", "seguir");
+				AfirmarG12("...e a aba Other continua mandando em TODAS: 'Follow' sem argumento, as duas seguem",
+						   _splitformsG12[a].Funcao == FuncaoDeSplitformG12.Seguir && _splitformsG12[b].Funcao == FuncaoDeSplitformG12.Seguir);
+				AfirmarG12("...e a ordem pro id de uma copia que ja se desfez e recusada, e nao cai nas outras",
+						   ApertarVerboG12(tien, "splitform_parar", "ja se desfez", "999999")
+						   && _splitformsG12[a].Funcao == FuncaoDeSplitformG12.Seguir && _splitformsG12[b].Funcao == FuncaoDeSplitformG12.Seguir);
+
+				ApertarVerboG12(tien, "splitform_destruir", "reabsorve", a.ToString());
+				List<int>? depois = UltimasCopiasG12(tien.Id);
+				AfirmarG12("**'Destroy Splitforms' (o do DM: todas)**, mesmo do menu de uma: as duas se desfazem, e a lista que chega ao dono vem VAZIA",
+						   !_players.ContainsKey(a) && !_players.ContainsKey(b) && depois is { Count: 0 },
+						   depois == null ? "nenhum pacote" : string.Join(",", depois));
+			}
+
+			CopiasCaladasDeTeste = true;
+			try
+			{
+				int antes = EscutaDeCopiasG12.Count;
+				f.Ki = f.MaxKi;
+				Ouvir(() => DividirOCorpoG12(tien));   // direto: o gesto e o da ordem, e nao o da tecla
+				AfirmarG12("(defeito injetado: o pacote das copias calado) a copia nasce e NENHUMA lista sai -- a regua do pacote REPROVARIA",
+						   CopiaDeG12(tien) != null && EscutaDeCopiasG12.Count == antes);
+			}
+			finally { CopiasCaladasDeTeste = false; }
+		}
+		finally { EscutaDeCopiasG12 = null; }
 		LimparTudoG12();
 	}
 

@@ -1323,7 +1323,40 @@ public partial class MenuJogo
 	}
 
 	// =====================================================================
-	// A ABA SKILLS -- o que eu ja sei
+	// A ABA SKILLS -- o que eu USO
+	// =====================================================================
+	/// <summary>
+	/// AS ACOES: os botoes das skills que ja tem efeito (os verbs da categoria Skills), em duas colunas. (2026-10-24) SO ELAS -- o dono,
+	/// com o print de um jogador (*"separate tab for passives? my shit is cluttered ... gotta scroll to the bottom"*): *"separar skills
+	/// ativas de passivas nas abas"*. O que eu ja sei, por arvore, foi pra aba Passivas (<see cref="Passivas"/>); as acoes ficavam no fim
+	/// de uma lista que so crescia.
+	/// </summary>
+	private void Sabidas()
+	{
+		if (PassivasNaAbaDeSkillsDeTeste) Passivas();
+
+		// os verbs registrados por skills que ja tem EFEITO implementado
+		var acoes = Verbos.Da(Verbos.Skills).ToList();
+		if (acoes.Count == 0)
+		{
+			Nota("Nenhuma ação ainda. O que você já aprendeu está na aba Passivas.", Cartao("Ações  (0)"));
+			return;
+		}
+		VBoxContainer cartaoDeAcoes = Cartao($"Ações  ({acoes.Count})");
+		// EM DUAS COLUNAS quando ha mais de um, como os verbs da aba Other: cada botao continua um
+		// `Button` com o nome do verb (contrato das bancadas), com a frase do que faz embaixo.
+		Control pai = acoes.Count >= 2 ? Colunas(cartaoDeAcoes) : cartaoDeAcoes;
+		foreach (Verbo v in acoes) pai.AddChild(BotaoComDescricao(BotaoDe(v), v.Descricao));
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagabas`, F15): o que eu sei volta pra aba Skills, por cima das acoes -- o jogo de antes da aba Passivas.
+	/// Lido pela <see cref="Sabidas"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PassivasNaAbaDeSkillsDeTeste;
+
+	// =====================================================================
+	// A ABA PASSIVAS -- o que eu ja sei
 	// =====================================================================
 	/// <summary>
 	/// O QUE EU JA SEI, agrupado pela arvore de onde veio, com o tier e O QUE CADA UMA FAZ.
@@ -1339,8 +1372,10 @@ public partial class MenuJogo
 	/// A ULTIMA SECAO E A INTERESSANTE: o que NAO pende de nenhuma arvore sua so pode ter chegado
 	/// por ensino. E a mesma leitura que o Core faz em <see cref="SkillBook.PenduraEmArvoreDe"/>
 	/// ("skill solta e ensinada, nao comprada"): Kaio-ken e Genkidama vem do Senhor Kaioh.
+	///
+	/// (2026-10-24) ERA A ABA SKILLS INTEIRA, com as acoes no fim -- elas ficaram la (<see cref="Sabidas"/>) e isto virou a aba Passivas.
 	/// </summary>
-	private void Sabidas()
+	private void Passivas()
 	{
 		SkillCatalog? cat = Catalogo();
 		if (cat == null) { Aviso("catálogo de skills não encontrado (rode o AssetPipeline: comando 'skills')."); return; }
@@ -1386,15 +1421,6 @@ public partial class MenuJogo
 					+ "ou de um caminho que só se abre jogando.", corpo);
 			}
 		}
-
-		// os verbs registrados por skills que ja tem EFEITO implementado
-		var acoes = Verbos.Da(Verbos.Skills).ToList();
-		if (acoes.Count == 0) return;
-		VBoxContainer cartaoDeAcoes = Cartao($"Ações  ({acoes.Count})");
-		// EM DUAS COLUNAS quando ha mais de um, como os verbs da aba Other: cada botao continua um
-		// `Button` com o nome do verb (contrato das bancadas), com a frase do que faz embaixo.
-		Control pai = acoes.Count >= 2 ? Colunas(cartaoDeAcoes) : cartaoDeAcoes;
-		foreach (Verbo v in acoes) pai.AddChild(BotaoComDescricao(BotaoDe(v), v.Descricao));
 	}
 
 	/// <summary>

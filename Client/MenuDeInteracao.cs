@@ -249,6 +249,9 @@ public partial class MenuDeInteracao : CanvasLayer
 
 	public override void _Process(double delta)
 	{
+		// (2026-10-24) A COPIA DO MENU ABERTO SE DESFEZ (o prazo de 100 s, um golpe, o Destroy, o dono que mudou de zona): o menu dela fecha.
+		if (_naCopia != 0 && (GameClient.Instance is not { } dono || !dono.MinhasCopias.Contains(_naCopia))) Fechar();
+
 		// A DICA SEGUE O QUE ESTA POR PERTO, e some quando o menu abre (o menu ja e a resposta).
 		// SOME TAMBEM NO MODO DE CONSTRUIR: ali a tecla E abre a paleta de blocos, entao "[E] Sua porta" mentiria
 		// -- e a dica da porta ou da maquina vizinha caia em cima da linha de motivo da barra de construir.
@@ -475,6 +478,16 @@ public partial class MenuDeInteracao : CanvasLayer
 	/// </summary>
 	public override void _Input(InputEvent evento)
 	{
+		// (2026-10-24) O DUPLO CLIQUE CUJO PRIMEIRO CLIQUE ABRIU O MENU DE UMA COPIA (`World.CliqueNaCopia`): o gesto era o duplo -- marcar o
+		// alvo, a piscada do Zanzoken. O menu fecha AQUI, antes da interface ver o clique, e ele segue pro mundo -- em vez de cair num botao
+		// do menu que acabou de abrir em cima dele (o menu tapa a tela inteira).
+		if (_naCopia != 0 && !DuploDeixaOMenuDaCopiaDeTeste && evento is InputEventMouseButton { Pressed: true, DoubleClick: true, ButtonIndex: MouseButton.Left }
+			&& Time.GetTicksMsec() - _copiaAbertaEm < JanelaDoDuplo)
+		{
+			Fechar();
+			return;
+		}
+
 		if (EscSoDepoisDaPausaDeTeste || !NaTela || Foco.Digitando) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
 		if (PauseMenu.Instancia is { Aberto: true }) return;
@@ -561,6 +574,46 @@ public partial class MenuDeInteracao : CanvasLayer
 	/// <summary>O menu aberto e o do veiculo montado, e nao o de um objeto do chao.</summary>
 	private bool _noVeiculo;
 
+	// =====================================================================
+	// A COPIA DO SPLIT FORM -- o menu que o CLIQUE abre (dono, 2026-10-24)
+	// =====================================================================
+	/// <summary>A copia do Split Form cujo menu esta aberto (0 = nenhuma): as ordens saem com o id dela. Ver <see cref="AbrirNaCopia"/>.</summary>
+	private int _naCopia;
+
+	/// <summary>Quando o menu da copia abriu (ms do relogio do motor): o duplo clique cujo primeiro clique o abriu o fecha. Ver `_Input`.</summary>
+	private ulong _copiaAbertaEm;
+
+	/// <summary>A janela do duplo clique, em ms: a do Windows e de 500 por padrao e vai ate 900 no painel -- um pouco acima, por folga.</summary>
+	private const ulong JanelaDoDuplo = 1000;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagverbs`, F10): o duplo clique deixa aberto o menu que o primeiro clique abriu numa copia -- e o
+	/// segundo clique cai no menu (num botao, se houver um ali). Lido pelo `_Input`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DuploDeixaOMenuDaCopiaDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) O MENU DE ORDENS DE UMA COPIA MINHA DO SPLIT FORM -- o `Click()` do `/mob/npc/Splitform` (`Split Forms.dm:28-68`), que
+	/// o dono procurou: *"Eu clicava na copia como no DM e nao aparecia nada; nao achei onde dar as ordens"*. Quem chama e o clique no
+	/// mundo (`World.CliqueNaCopia`), de qualquer distancia, como no DM. As acoes sao a tabela (`Interacoes.De(Interacoes.TipoDaCopia)`), e
+	/// cada ordem sai com o id DESTA copia (`Escolher`): so ela obedece -- o Destroy Splitforms desfaz todas, como o do DM.
+	/// </summary>
+	public void AbrirNaCopia(int id, string nome)
+	{
+		FecharTeclado();
+		_pagina = "";
+		_perguntando = null;
+		_noVeiculo = false;
+		_noCadaver = false;
+		_naPorta = false;
+		_naCopia = id;
+		_copiaAbertaEm = Time.GetTicksMsec();
+		_tipoDoAlvo = Interacoes.TipoDaCopia;
+		_nomeDoAlvo = nome.Length > 0 ? nome : "Split Form";
+		Desenhar(Interacoes.TipoDaCopia);
+		_raiz.Visible = true;
+	}
+
 	/// <summary>
 	/// ABRE O MENU DO QUE ESTA AO ALCANCE.
 	///
@@ -580,6 +633,7 @@ public partial class MenuDeInteracao : CanvasLayer
 		_perguntando = null;
 
 		_naPorta = false;
+		_naCopia = 0;
 
 		if (VeiculoMontado() is { Length: > 0 } v)
 		{
@@ -797,7 +851,8 @@ public partial class MenuDeInteracao : CanvasLayer
 					GameClient.Instance?.SendVerbo(acao.Verbo, rumo);
 					World.Instancia?.SoltarPiloto();
 				}
-				else GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
+				// (2026-10-24) no menu de uma copia do Split Form a ordem leva o id DELA: so ela obedece (`AbrirNaCopia`)
+				else GameClient.Instance?.SendVerbo(acao.Verbo, _naCopia != 0 ? _naCopia.ToString() : acao.Arg);
 				Fechar();
 				break;
 		}
@@ -878,6 +933,7 @@ public partial class MenuDeInteracao : CanvasLayer
 		_noVeiculo = false;
 		_noCadaver = false;
 		_naPorta = false;
+		_naCopia = 0;
 	}
 
 	// =====================================================================
@@ -901,6 +957,9 @@ public partial class MenuDeInteracao : CanvasLayer
 	/// (`b.Pressed += ...`) que pode estar faltando.
 	/// </summary>
 	public bool NaTela => IsInstanceValid(_raiz) && _raiz.Visible;
+
+	/// <summary>(2026-10-24) A copia do Split Form cujo menu esta na tela (0 = nenhuma, ou o menu aberto e de outra coisa).</summary>
+	public int CopiaAbertaDeTeste => NaTela ? _naCopia : 0;
 
 	/// <summary>O titulo desenhado no alto do menu aberto -- vazio quando nao ha menu.</summary>
 	public string TituloDesenhado => NaTela && IsInstanceValid(_titulo) ? _titulo.Text : "";

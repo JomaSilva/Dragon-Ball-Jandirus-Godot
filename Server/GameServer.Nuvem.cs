@@ -66,6 +66,9 @@ public partial class GameServer
 		/// <summary>Pra onde esta zona derruba. Ver <see cref="ClasseDeNuvem.DestinoDaQueda"/>.</summary>
 		public Func<string, (string Zona, int Bx, int By)?> Destino = ClasseDeNuvem.DestinoDaQueda;
 
+		/// <summary>(2026-10-25) O castelo do Rei Vegeta, que cai em Vegeta e nao na Terra. Ver <see cref="ClasseDeNuvem.DestinoNoCastelo"/>.</summary>
+		public Func<string, Vec2, (string Zona, int Bx, int By)?> Castelo = ClasseDeNuvem.DestinoNoCastelo;
+
 		/// <summary>
 		/// ESTA ZONA DERRUBA, OU SO BARRA? -- lida do PLANO gravado, e nao do nome.
 		///
@@ -81,6 +84,12 @@ public partial class GameServer
 		/// o pedido do dono em uma frase (*"nao pode ficar preso nem cair dentro de parede"*).
 		/// </summary>
 		public bool UsarFunilDePouso = true;
+
+		/// <summary>
+		/// (2026-10-25) O CASTELO POUSA PELA ESCADA? Falso e o defeito *"o corpo cai em Vegeta, mas no ponto livre mais perto da coordenada
+		/// (dois tiles ao lado), e nao onde a saida do castelo leva"* -- a r1 do agente `castelonuvem`, medida.
+		/// </summary>
+		public bool PousarPelaEscadaDoCastelo = true;
 	}
 
 	/// <summary>
@@ -179,6 +188,11 @@ public partial class GameServer
 		SondasDaNuvem sn = SondasNuvem;
 		if (sn.Destino(origem) is not { } destino) return;
 
+		// (2026-10-25) O CASTELO DO REI VEGETA, no canto do Templo, cai em Vegeta: no pe da escada, onde a saida do castelo leva. E a
+		// unica nuvem do jogo em que o destino nao e o da zona -- ver `ClasseDeNuvem.DestinoNoCastelo`.
+		bool doCastelo = false;
+		if (sn.Castelo(origem, pl.Pos) is { } castelo) { destino = castelo; doCastelo = true; }
+
 		// A ZONA DE DESTINO PRECISA EXISTIR. Uma queda pra zona inexistente poria o corpo no vazio --
 		// pior que nao cair. Mesma recusa que o `CarregarPassagens` faz com passagem orfa, e aqui ela
 		// e ainda mais barata: sao duas zonas, conferidas no boot pela bancada.
@@ -201,6 +215,10 @@ public partial class GameServer
 		// `UsarFunilDePouso` e SEMPRE verdadeiro em jogo -- ver `SondasDaNuvem`. O falso e o defeito
 		// *"quem cai chega dentro de parede"*, e ele so existe pra a bancada poder ficar vermelha.
 		Vec2 onde = sn.UsarFunilDePouso && chegada.Mapa is { } mc ? mc.PontoLivrePerto(desejado) : desejado;
+		// (2026-10-25) ...E O CASTELO POUSA ONDE A ESCADA DE SAIDA DELE DEIXA O CORPO -- *"no pe da escada do castelo (onde a saida do castelo
+		// leva)"*: o mesmo funil das passagens (`ChegadaDaPassagem`), e nao o pouso perto do ponto, que fugia da beirada do mapa e saia dois
+		// tiles ao lado (a r1 deste conserto, medida).
+		if (doCastelo && sn.PousarPelaEscadaDoCastelo && SaidaDoCastelo(origem, destino.Zona) is { } escada) onde = ChegadaDaPassagem(origem, escada);
 
 		// O VOO CAI JUNTO, e a palavra do dono e "CAI": chegar do outro lado ainda planando faria a
 		// queda parecer um teleporte. Quem nao voava (a unica gente que chega aqui) tambem nao tem
@@ -209,9 +227,15 @@ public partial class GameServer
 		pl.Altitude = 0f;
 		pl.Nadando = false;
 
-		Avisar(pl, ClasseDeNuvem.AvisoDaQueda(origem));
+		Avisar(pl, ClasseDeNuvem.AvisoDaQueda(origem, destino.Zona));
 		GD.Print($"[server] {pl.Name}: caiu pela nuvem {origem} -> {destino.Zona}");
 
 		ViajarVoluntario(pl, ZoneKey.Premade(destino.Zona), onde);
 	}
+
+	/// <summary>(2026-10-25) A escada de saida do castelo do Rei Vegeta: a passagem do Templo que leva a Vegeta (`VCastleExit1`).</summary>
+	private Passagem? SaidaDoCastelo(string origem, string zonaDeDestino) =>
+		_passagens.TryGetValue(origem, out List<Passagem>? bocas)
+			? bocas.Find(b => string.Equals(b.Zona, zonaDeDestino, StringComparison.OrdinalIgnoreCase))
+			: null;
 }

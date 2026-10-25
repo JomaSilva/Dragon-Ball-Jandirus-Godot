@@ -780,6 +780,13 @@ public sealed class ServerPlayer
 
 	/// <summary>Em que forma esta e quanto domina de cada uma.</summary>
 	public Jandirus.Core.Forms.EstadoDeForma Forma = new();
+
+	/// <summary>
+	/// (2026-10-24) A FORMA DESTE CORPO NAO APARECE: o servidor a aplica (multiplicador, passivas), e nenhum cliente a recebe -- nem o
+	/// anuncio, nem a sincronia de quem chega (`GameServer.AnunciarForma`, `PacotesDeEstado`). E o Ultra Instinto Perfeito do Whis (o dono:
+	/// *"sem efeito visual nenhum"*). Estado vivo: quem o liga e o nascimento dele (`GameServer.VestirAFormaDoWhis`).
+	/// </summary>
+	public bool FormaSemVisual;
 	public string SigSkills = "";
 
 	/// <summary>
@@ -955,6 +962,13 @@ public sealed class ServerPlayer
 	/// 2 s e o CADAVER, e o cadaver fica no mundo dos vivos. Ver <see cref="MortoDePe"/>.
 	/// </summary>
 	public bool Deitado => Ficha.KO || (Ficha.dead && !MortoDePe) || TiquesDeVoo > 0;
+
+	/// <summary>
+	/// (2026-10-23) SO A GRAVIDADE SEGURA ESTE CORPO, E ELE SE ARRASTA -- a resposta do `GameServer.SoAGravidadeSegura` na ultima conta do
+	/// passo: quem a escreve e o `RecalcularVelocidade`, junto do `SpeedStat` que ela explica. So a ficha le (o bit 2 do `Estado3`); quem
+	/// decide o passo de verdade pergunta de novo, na hora (`AplicarInput`). Ver `GameServer.Rastejo.cs`.
+	/// </summary>
+	public bool SoRasteja;
 
 	/// <summary>
 	/// DE ONDE VEIO O ULTIMO GOLPE QUE ENCOSTOU -- o vetor do soco, apontando pra longe de quem bateu.
@@ -1986,7 +2000,9 @@ public sealed class ServerPlayer
 		// (v0.3.2) E o de passagem pela Transmissao, que tambem esta de pe entre os vivos.
 		Estado3 = (byte)((EmVisita || EmPassagem ? 1 : 0)
 							  // (2026-10-17) a larva enterrada: o cliente a desenha meio transparente sobre o montinho de terra e nao tenta andar
-							  | (EnterradoDesde >= 0 ? 2 : 0)),
+							  | (EnterradoDesde >= 0 ? 2 : 0)
+							  // (2026-10-23) so a gravidade me segura: o passo vale, a 1/4 (o `SpeedStat` desta ficha) -- ver `GameServer.Rastejo.cs`
+							  | (SoRasteja ? 4 : 0)),
 		// (v0.4.0) o que as passivas e ativas raciais estao fazendo agora (o HUD as poe nos avisos do corpo)
 		Raciais = RaciaisNaFicha,
 	};
@@ -3531,6 +3547,7 @@ public partial class GameServer : Node
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--drillteste") >= 0) RodarBancadaDaDrill();
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--melhoriasteste") >= 0) RodarBancadaDasMelhorias();   // (2026-10-19) `--melhoriasteste`: a maquina recolhida leva as melhorias, o teto delas pela tecnologia e a forca no teto do mundo; colada nas duas de cima pelo mesmo motivo (corpos forjados, maquinas pelo funil). Ver `GameServer.MelhoriasTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--gravtravateste") >= 0) RodarBancadaDaGravTrava();   // (2026-10-21) `--gravtravateste`: a simulacao copia a maestria de gravidade, e a trava da camara desliga no desmaio. Ver `GameServer.GravTravaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--rastejoteste") >= 0) RodarBancadaDoRastejo();   // (2026-10-23) `--rastejoteste`: quem cai ou fica preso pela gravidade se arrasta a 1/4. Ver `GameServer.RastejoTeste.cs`.
 
 			// `--macieirateste`: A SEMENTE DE MACIEIRA -- a fruta que deixa semente e a semente que vira arvore.
 			// No boot pelo mesmo motivo da vizinha: o corpo e forjado, e o que ela precisa (a Terra com
@@ -4146,10 +4163,12 @@ public partial class GameServer : Node
 		switch (id)
 		{
 			case Protocol.C2S.Login: Login(peer, reader.GetString(24), reader.GetString(64)); break;
-			case Protocol.C2S.PickSlot: PickSlot(peer, reader.GetByte()); break;
+			// (2026-10-24) o "Jogar" pela porta que tambem responde a excecao -- ver `GameServer.CriacaoRecusada.cs`
+			case Protocol.C2S.PickSlot: EntrarOuRecusar(peer, reader); break;
 			case Protocol.C2S.DeleteChar: DeleteChar(peer, reader.GetByte(), reader.GetString(32)); break;
 			case Protocol.C2S.CreateChar:
-				CreateChar(peer, reader.GetByte(), reader.GetDraft(), reader.GetAppearance()); break;
+				// (2026-10-23) pela porta que RESPONDE ate a excecao com uma recusa -- ver `GameServer.CriacaoRecusada.cs`
+				CriarOuRecusar(peer, reader); break;
 			case Protocol.C2S.InputState: Input(peer, reader); break;
 			case Protocol.C2S.Activity:
 			{
@@ -4825,6 +4844,8 @@ public partial class GameServer : Node
 		ResgatarDeInteriorMorto(pl);
 
 		// ...E QUEM FICOU DENTRO DE UM MAJIN quando o servidor caiu: o bolsao nao atravessa a sessao.
+		// (2026-10-23) E O MAJIN VOLTA COM OS NPC QUE DEVOROU -- ANTES do `PrepararOMajinPuroNoLogin` la embaixo: com alguem dentro, o
+		// Corrupted volta fora da Forma Pura (o "Conta" do dono). Ver `AcordarSemAbsorcao`.
 		AcordarSemAbsorcao(pl);
 		AcordarVisivel(pl);   // ...nem o OCULTO (de um embate, de uma tecnica): gravado, ele relogava a vista de todos com o poder preso em 5 -- ver GameServer.SaidaDoEmbate.cs
 		AcordarComOPoderInteiro(pl);   // ...nem o PODER CONTIDO (`powerMod` e `tmp` no DM): quem saiu relaxado relogava a 1% do poder, sem nada na tela que dissesse -- ver GameServer.PoderEmUso.cs
@@ -5356,6 +5377,7 @@ public partial class GameServer : Node
 		// do personagem anterior desta sessao de cliente.
 		MandarMochila(pl, forcar: true);
 		MandarRadio(pl);   // a frequencia do scouter, que mora na ficha -- ver GameServer.Radio.cs
+		ListaDoMajinNoLogin(pl);   // (2026-10-23) os NPC devorados que voltaram com o Majin: os botoes de expelir -- ver GameServer.AbsorcaoMajin.cs
 
 		TrocarAparencias(pl);
 		TrocarFeridas(pl);
@@ -5927,7 +5949,11 @@ public partial class GameServer : Node
 		// andar?", responde "quem manda nele?". Pro jogador possuido e recusa; pra a IA e a licenca.
 		// Somar as duas numa funcao so faria a IA recusar a si mesma.
 		// ==========================================================================================
-		if (!PodeMexerOCorpo(pl) || SemAsRedeas(pl))
+		// (2026-10-23) ...MENOS O PASSO DE QUEM SO A GRAVIDADE SEGURA: o desmaiado pelo esmagamento e o prensado de pe se ARRASTAM, a 1/4
+		// (dono). Licenca SO do passo do jogador, aqui -- e nao um furo no funil: agarrar, cavar, investir e a IA continuam pela recusa
+		// de sempre. Ver `GameServer.Rastejo.cs`.
+		bool soRasteja = SoAGravidadeSegura(pl);
+		if (!PodeMexerOCorpo(pl, rastejando: soRasteja) || SemAsRedeas(pl))
 		{
 			pl.LastInputMs = NowMs();
 
@@ -5975,7 +6001,9 @@ public partial class GameServer : Node
 		// =======================================================================================
 		MarchaDeVoo(pl, querCorrer);
 		// (e SEM UMA PERNA nao ha corrida no chao -- `speedy.dm:36`; ver `SemPernaPraCorrer`, `GameServer.Membros.cs`)
-		bool correndo = querCorrer && moving && (pl.Voando || (!SemPernaPraCorrer(pl) && PodeCorrer(pl, dt)));
+		// (2026-10-23) ...e QUEM SE ARRASTA NAO CORRE (dono): o desmaiado ja nao corria (`PodeCorrer`); o prensado de pe, sim.
+		bool correndo = querCorrer && moving && (!soRasteja || RastejoCorreDeTeste)
+						&& (pl.Voando || (!SemPernaPraCorrer(pl) && PodeCorrer(pl, dt)));
 
 		// ============================ NO VOO, O SERVIDOR SOLTA ============================
 		// Enquanto o corpo esta sendo ARREMESSADO, quem o move e o servidor -- e o cliente esta
@@ -5992,7 +6020,10 @@ public partial class GameServer : Node
 		// A DIRECAO DA QUEDA E A ULTIMA DE PE. So chega aqui quem esta em pe -- o guarda de
 		// nocaute la em cima ja devolveu quem caiu --, entao guardar a cada passo deixa
 		// congelado, no instante do nocaute, exatamente pra onde ele encarava (ja em CABECA: ver `CabecaDeQuemCaiOlhando`).
-		pl.FacingDaQueda = ServerPlayer.CabecaDeQuemCaiOlhando(facing);
+		// (2026-10-23) ...MENOS O DESMAIADO QUE SE ARRASTA, que tambem chega aqui: ele DESLIZA como caiu, sem virar -- nem a cabeca
+		// deitada nem o olhar seguem o passo (nada de pose nova que ninguem pediu). Ver `GameServer.Rastejo.cs`.
+		if (pl.Ficha.KO && !DeitadoViraNoRastejoDeTeste) facing = pl.Facing;
+		else pl.FacingDaQueda = ServerPlayer.CabecaDeQuemCaiOlhando(facing);
 
 		if (pl.TiquesDeVoo > 0)
 		{
@@ -6327,6 +6358,7 @@ public partial class GameServer : Node
 		// ninguem online -- e ela e MUNDO, entao nao tem (e nao pode ter) porta de plateia.
 		TickDosRelogiosDoCorpo(Protocol.TickSeconds);
 		TickDasExecucoesDoBio();   // (2026-10-17) a absorcao de EXECUCAO do bio: 5 s parado junto do caido, e um passo desfaz -- ver `GameServer.Absorcao.cs`
+		TickDasTransmissoesProntas();   // (2026-10-23) o Instant Transmission com maestria concentra em 0,2 s: vence no tique cheio, e nao no de 5 Hz -- ver `GameServer.MaestriaDaTransmissao.cs`
 		TickDosSonos();   // (2026-10-18) o SLEEP do Majin: 5 s deitado, e qualquer incomodo acorda -- ver `GameServer.SonoDoMajin.cs`
 		TickDeBills(Protocol.TickSeconds);   // BILLS E WHIS (dono, 2026-10-11): a visita a Terra, quem existe, e as lutas da casa -- DEPOIS dos relogios do corpo (a precisao do Whis volta ao cheio logo apos drenar). Ver `GameServer.Bills.cs`
 
@@ -6449,6 +6481,9 @@ public partial class GameServer : Node
 		// custa de 27 ms (352 tiles) a ~220 ms (1000), e fazer isso aqui dentro parava o servidor
 		// inteiro por causa de UM jogador encostando num planeta novo. Aqui so se colhe.
 		TickDasGeracoes();
+		// (2026-10-23) O KAI KAI EM CURSO, logo depois da colheita: o mundo gerado que nasceu neste tique ja leva quem o pediu, e o
+		// clarao da saida e o da chegada tem relogio de quadro. Ver `GameServer.KaiKai.cs`.
+		TickDoKaiKai();
 		// AS ROCHAS DE MINERIO, logo depois: quem acabou de chegar num planeta recebe as dele, e o mundo
 		// gerado que nasceu neste tique ja tem mapa pra elas. Ver `GameServer.Rochas.cs`.
 		TickDasRochas();
@@ -6773,17 +6808,15 @@ public partial class GameServer : Node
 		// de patamar precisa ser AVISADO -- o DM manda `to_chat` de dentro do `bp_milestone_reach`
 		// (`LinearGain.dm:44`).
 		//
-		// ============ ISTO ESTA DORMENTE HOJE, E DE PROPOSITO -- LEIA ANTES DE APAGAR ============
-		// `BPBoost` nasce 1 (`Fighter.cs:368`) e NENHUM caminho de producao escreve nele: a Ascensao
-		// (`Auto_Gain`, `NPCAscension`) nao foi portada -- `FormasDeFrost.cs:305` e `MoldeDeNpc.cs:291`
-		// ja registram isso por escrito. Com `BPBoost` cravado em 1 os tres `if` sao falsos e isto
-		// devolve 0 sempre.
-		//
-		// A chamada fica AQUI mesmo assim porque o defeito recorrente deste projeto e o inverso --
-		// regra escrita e nunca aplicada --, e porque no dia em que a Ascensao entrar ela vai entrar
-		// escrevendo `BPBoost`, nao procurando quem chama o marco. A bancada `--ligadosteste` levanta
-		// o `BPBoost` na mao e exige o marco: se esta linha sumir, ela reprova.
+		// ============ (2026-10-23) E A ASCENSAO ENTROU: O ESCRITOR VEM LOGO ANTES DO MARCO ============
+		// A regra do dono (as racas sem transformacao, pelo BP base, nos degraus do Saiyajin) escreve o
+		// `BPBoost` de todo JOGADOR aqui, no mesmo laco que o `Auto_Gain()` do DM -- treinando ou nao -- e o
+		// marco de baixo ja le o valor deste tique. Ver `GameServer.Ascensao.cs` e `Core/Races/Ascensao.cs`.
+		// A bancada `--ascensaoteste` sobe o BP de jogadores de verdade e cobra o bonus e o marco pelo tique
+		// de producao; a `--ligadosteste` continua levantando o `BPBoost` na mao num corpo SEM dono (que o
+		// escritor nao toca) e exige o marco: se esta linha ou a do marco sumirem, elas reprovam.
 		// =========================================================================================
+		AfirmarAAscensao(pl);
 		if (f.CheckAscensionMilestone() is var marco && marco > 0)
 			Avisar(pl, $"MARCO DE PODER! seu corpo rompeu um novo patamar: todo ganho agora e x{marco:0.##}.");
 
@@ -6863,7 +6896,7 @@ public partial class GameServer : Node
 		if (!Cansaco.AguentaTreinar(f, SegundosPorFicha))
 		{
 			f.train = false;
-			Avisar(pl, "você está exausto: o treino para. Descanse -- ou medite -- até o vigor voltar.");
+			Avisar(pl, Cansaco.FraseDoTreinoQueParou(f));   // (2026-10-24) sem o "ou medite", e com a comida -- ver `GameServer.VigorDoTreino.cs`
 			return false;
 		}
 		f.stamina -= Cansaco.VigorDoTreino(f, SegundosPorFicha);
@@ -6874,6 +6907,15 @@ public partial class GameServer : Node
 	public void MoveToZone(int playerId, ZoneKey destino, Vec2 spawn)
 	{
 		if (!_players.TryGetValue(playerId, out ServerPlayer? pl)) return;
+
+		// (2026-10-24) O BILLS E O WHIS NAO SAEM DO PLANETA (o dono: *"eles devem ficar sempre dentro do planeta"*). As portas que levam alguem
+		// junto ja perguntam (`PorQueNaoSaiDaqui`); esta e a rede de toda viagem que ninguem escolheu por eles. Eles nunca viajam por aqui por
+		// conta propria: nascem e somem no lugar (`NascerODivino`, `RetirarODivino`).
+		if (!Jandirus.Core.Npc.BillsEWhis.DivinoSaiDoPlanetaDeTeste && DivinoDe(pl) is { } divino && !destino.Equals(divino.Zona))
+		{
+			GD.Print($"[server] {pl.Name} nao sai do planeta: a viagem pra {destino.Name} foi recusada");
+			return;
+		}
 
 		// TIRADO DA MENTE POR FORA (um admin trazendo, o torneio transportando, um selo, uma fusao): o transe
 		// FECHA antes da viagem -- o corpo de verdade volta, a faxina roda e o corpo largado some. Quem sai

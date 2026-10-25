@@ -204,6 +204,21 @@ public enum ArteDeKi : ushort
 
 	/// <summary>`Missile.dmi` (`Icons/Bullets`): o foguete do lanca-foguetes, corpo cinza e fogo amarelo (`Guns.dm:345`).</summary>
 	Missil = 47,
+
+	// =====================================================================
+	// A ESFERA DO HAKAI (2026-10-23) -- arte NOVA, sem folha no DM
+	// =====================================================================
+	// O dono mandou uma imagem e pediu: *"faca bills usar skills de hakai q tem esse efeito nos ataques de ki dele como na
+	// imagem"* -- uma esfera roxa de miolo claro, borda escura, arcos escuros orbitando e halo magenta. Decidiu que sao OS
+	// DOIS TIROS DO KIT do Deus da Destruicao, do Bills e de quem carrega o titulo (a arte e do TIRO). Nao ha `.dmi` pra
+	// citar: o desenho e so shader (`EsferaDeKi.gdshader`, o bloco do Hakai). Duas entradas e nao uma porque o tamanho e da
+	// arte (o servidor manda escala 1 nos dois, e escala e regra: alcance do impacto e da explosao) -- a esfera e maior.
+
+	/// <summary>A Destroyer Sphere (`God_Destroyer_Sphere`): a esfera do Hakai inteira, do tamanho do impacto.</summary>
+	HakaiEsfera = 48,
+
+	/// <summary>O Destruction God's Fury (`God_Fury_Beam`): a mesma esfera, menor e mais agitada.</summary>
+	HakaiFuria = 49,
 }
 
 /// <summary>
@@ -405,13 +420,17 @@ public static class ArteDeProjetil
 		["Ki_Targets"] = new(Fonte.Literal, ArteDeKi.Blast14),
 
 		// ---------------------------------------------------------------
-		// OS DOIS TIROS DO DEUS DA DESTRUICAO (`Ranks/GodOfDestruction.dm`)
+		// OS DOIS TIROS DO DEUS DA DESTRUICAO (`Ranks/GodOfDestruction.dm`) -- A ESFERA DO HAKAI (dono, 2026-10-23)
 		// ---------------------------------------------------------------
-		// `A.icon = '12.dmi'` nos dois (`:272` e `:316`). A TINTA FIXA do DM -- `A.icon += rgb(255, 215, 0)` no
-		// feixe (`:273`), `rgb(160, 60, 220)` na esfera (`:317`) -- NAO veio: neste port o tiro leva a cor do ki
-		// de quem atira (ver `ReceitaDeProjetil.Nome`), e a folha e a mesma `12.dmi` cinza. Divergencia declarada.
-		[Ranks.KitDoDeus.TiroDaFuria] = new(Fonte.Literal, ArteDeKi.Blast12),
-		[Ranks.KitDoDeus.TiroDaEsfera] = new(Fonte.Literal, ArteDeKi.Blast12),
+		// No DM os dois sao a `12.dmi` com TINTA FIXA: `A.icon += rgb(255, 215, 0)` no feixe (`:272-273`) e `rgb(160, 60, 220)`
+		// na esfera (`:316-317`). Ate 2026-10-23 este port os desenhava como o dardo `12.dmi` cinza na cor do ki de quem atira.
+		// O dono mandou uma imagem (*"faca bills usar skills de hakai q tem esse efeito nos ataques de ki dele como na imagem"*)
+		// e decidiu: "os tiros do kit" -- os dois saem como a esfera roxa dela, e "o titulo tambem" (a arte e do TIRO: o Bills
+		// e o jogador com o titulo soltam a mesma). A cor volta a ser do tiro, como a tinta fixa do DM ja era (`CorPropria` no
+		// cliente): o roxo da Destruicao nos dois -- o dourado do feixe NAO veio, porque a imagem e uma so. Os tamanhos sao da
+		// arte (`ArteDeKiNoCliente`): a esfera do tamanho do impacto, a Fury menor.
+		[Ranks.KitDoDeus.TiroDaFuria] = new(Fonte.Literal, ArteDeKi.HakaiFuria),
+		[Ranks.KitDoDeus.TiroDaEsfera] = new(Fonte.Literal, ArteDeKi.HakaiEsfera),
 
 		// ---------------------------------------------------------------
 		// AS ARMAS DE FOGO (`Tech/Guns.dm`, v0.2.1) -- a chave e `ArmasDeFogo.PrefixoDeVerbo` + o id da arma
@@ -452,9 +471,16 @@ public static class ArteDeProjetil
 		{
 			Fonte.BolaRacial => Bola(raca, classe),
 			Fonte.SorteioDeKamehameha => SorteioDoKamehameha(semente),
-			_ => r.Fixa,
+			_ => DardoNosTirosDoDeusDeTeste && r.Fixa is (ArteDeKi.HakaiEsfera or ArteDeKi.HakaiFuria) ? ArteDeKi.Blast12 : r.Fixa,
 		};
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diaghakaibills` e `--godkitteste`): os dois tiros do kit do Deus da Destruicao voltam ao dardo
+	/// `12.dmi` -- o jogo de antes de 2026-10-23. Lido pela linha que devolve a arte LITERAL da tabela (o `De`), que e por onde
+	/// as duas linhas do kit chegam ao tiro. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DardoNosTirosDoDeusDeTeste;
 
 	// ============================ NAO HA `Conhece`, `Verbos` NEM `RegraDe` ============================
 	// Escrevi os tres ("pra a bancada varrer a tabela") e apaguei os tres, porque a bancada NAO os
@@ -543,6 +569,12 @@ public static class ArteDeProjetil
 		ArteDeKi.Bala => ("Misc", "Bullet"),
 		ArteDeKi.Chumbo => ("Bullets", "Bullet 3"),
 		ArteDeKi.Missil => ("Bullets", "Missile"),
+
+		// --- (2026-10-23) a esfera do Hakai: arte deste port, sem arquivo no DM (o desenho e so shader). A "pasta" e um rotulo FORA
+		//     das tres da mesa (`Beams`, `Blasts`, `Techniques`), pra tecnica customizada nao alcanca-la -- e o tiro do titulo; o
+		//     "arquivo" e o nome do verb que a solta ---
+		ArteDeKi.HakaiEsfera => ("Hakai", "Destroyer Sphere"),
+		ArteDeKi.HakaiFuria => ("Hakai", "Destruction God's Fury"),
 
 		_ => ("", ""),
 	};

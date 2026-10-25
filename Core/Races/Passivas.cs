@@ -117,10 +117,21 @@ public static class Passivas
 	public static double BonusVeterano(int pagas) => Math.Min(pagas * BonusPorFormaVeterana, TetoDoVeterano);
 
 	/// <summary>
-	/// Warrior Race: com o TRONCO ou a CABECA abaixo de 20% da propria vida, ataque fisico +20% e defesa fisica +30%. (2026-10-19) O dono:
-	/// *"mudar de 20% de vida pra 20% do tronco ou cabeça"* -- era a vida do corpo inteiro (`GuerreiroPelaVidaDeTeste`).
+	/// Warrior Race: com o TRONCO ou a CABECA abaixo de METADE da propria vida, ataque fisico +20% e defesa fisica +30%. (2026-10-19) O
+	/// dono: *"mudar de 20% de vida pra 20% do tronco ou cabeça"* -- era a vida do corpo inteiro (`GuerreiroPelaVidaDeTeste`). (2026-10-24) E
+	/// o limiar subiu: *"aumentar o warrior race de 20% de hp pra 50% de hp na cabeça ou torso"* -- o Saiyajin acende bem antes de estar nas
+	/// ultimas. <see cref="GuerreiroNos20DeTeste"/> devolve os 20% de antes.
 	/// </summary>
-	public const double VidaDoGuerreiro = 0.20, AtaqueDoGuerreiro = 1.20, DefesaDoGuerreiro = 1.30;
+	public static double VidaDoGuerreiro => GuerreiroNos20DeTeste ? 0.20 : 0.50;
+
+	/// <summary>O que o Warrior Race da quando acende: ataque fisico +20% e defesa fisica +30%.</summary>
+	public const double AtaqueDoGuerreiro = 1.20, DefesaDoGuerreiro = 1.30;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--passivasteste`): o limiar de antes de 2026-10-24, 20% do tronco ou da cabeca -- a parte a 35% deixa de
+	/// acender. Lido pelo <see cref="VidaDoGuerreiro"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool GuerreiroNos20DeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--passivasteste`): o Warrior Race pela vida do corpo INTEIRO, a regra de antes de 2026-10-19 -- a vida

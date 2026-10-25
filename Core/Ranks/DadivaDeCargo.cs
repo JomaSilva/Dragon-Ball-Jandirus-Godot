@@ -197,10 +197,14 @@ public static class DadivaDeCargo
 			"/datum/skill/rank/Restore_Youth", "/datum/skill/rank/Revive", "/datum/skill/rank/KaiPermission",
 			"/datum/skill/rank/Ritual_of_Might",
 		],
+		// (2026-10-23) O KAIOSHIN PERDEU A SKILL DO MISTICO (`kai/Mystic`, `OtherworldRanks.dm:92`) -- DIVERGENCIA DELIBERADA, do dono. No
+		// lugar dela ele faz o Ritual Mistico do Velho Kaiohshin, que nao e skill de livro: e do TRONO, como a travessia do King Yemma (ver
+		// `RitualDoKaioshin`). A forma deixou de vir do cargo -- so o ritual a da, feito por OUTRO Kaioshin, e a copia que este kit deu sai
+		// do livro de quem a tinha (`GameServer.ReconciliarODomDoMistico`).
 		["kaioshin"] =
 		[
 			"/datum/skill/style/GodStyle", "/datum/skill/rank/Keep_Body", "/datum/skill/rank/Dead",
-			"/datum/skill/kai/Mystic", "/datum/skill/rank/Reincarnate", "/datum/skill/rank/Revive",
+			"/datum/skill/rank/Reincarnate", "/datum/skill/rank/Revive",
 			"/datum/skill/general/observe", "/datum/skill/rank/KaiPermission", "/datum/skill/rank/Ritual_of_Might",
 			"/datum/skill/ki/Heal", "/datum/skill/rank/Kaioshin_Apprenticeship",
 		],
@@ -295,8 +299,11 @@ public static class DadivaDeCargo
 	/// **comentado** na criacao de personagem (`CharacterCreation.dm:81-87`) -- e mesmo descomentado
 	/// era por RACA (`if(Race=="Kai")`), nao por cargo. Ou seja: a fusao Potara e inalcancavel no
 	/// BYOND. O dono disse como quer (*"Kaioshins ganham ao virar do rank Kaioshin"*), e entregar por
-	/// aqui faz a insignia herdar de graca as duas propriedades do kit de skills: ela e IDEMPOTENTE e
-	/// ela VOLTA quando o cargo vai embora.
+	/// aqui faz a insignia herdar de graca a propriedade do kit de skills que importa: ela e IDEMPOTENTE.
+	///
+	/// (2026-10-23) E ELA NAO VOLTA MAIS QUANDO O CARGO VAI EMBORA: o dono quer que o Kaioshin DE o par
+	/// (*"Kaioshin entrega o par"*), e quem o recebe fica com ele -- o cargo entrega um par por dia, e o
+	/// de quem nao e Kaioshin se gasta na fusao. Ver `Items.ParDePotara` e `GameServer.ReconciliarOsBrincos`.
 	/// ======================================================================================================
 	/// </summary>
 	private static readonly Dictionary<string, string[]> Insignias =

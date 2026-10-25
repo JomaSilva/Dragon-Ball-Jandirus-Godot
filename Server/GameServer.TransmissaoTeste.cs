@@ -36,6 +36,8 @@ public sealed partial class GameServer
 		TransmissaoChegaAPeNoEspacoDeTeste = false;
 		TransmissaoSemPassagemDeTeste = false;
 		TransmissaoSemIdNoFioDeTeste = false;
+		DesligarDefeitosDaMaestria();   // (2026-10-23) a familia M -- ver GameServer.MaestriaDaTransmissaoTeste.cs
+		DesligarDefeitosDaSaida();      // (2026-10-24) a familia S -- ver GameServer.SaidaDaTransmissaoTeste.cs
 	}
 
 	public void RodarBancadaDaTransmissao()
@@ -60,12 +62,17 @@ public sealed partial class GameServer
 			ItOIdNoFio();
 			ItOCusto();
 			ItMexerCancela();
+			// (2026-10-23) A MAESTRIA, por ultimo: os corredores das familias de cima continuam os mesmos -- ver GameServer.MaestriaDaTransmissaoTeste.cs
+			ItAMaestria();
+			// (2026-10-24) A SAIDA PISCANDO E O CLARAO DA CHEGADA, depois da maestria -- ver GameServer.SaidaDaTransmissaoTeste.cs
+			ItASaida();
 		}
 		finally
 		{
 			DesligarDefeitosDaTransmissao();
 			EscutaDaTransmissao = null;
 			_transmissaoG11.Clear();
+			EsquecerAsTransmissoesDeTeste();
 			LimparTudoDaBancada();
 			GD.Print($"[teleporte] ================ {_itOk} OK, {_itFalhou} FALHA(S) ================");
 		}
@@ -86,13 +93,16 @@ public sealed partial class GameServer
 		return pl;
 	}
 
-	/// <summary>O verbo, e a concentracao vencida na hora (o relogio de parede nao anda na bancada).</summary>
+	/// <summary>
+	/// O verbo, e a concentracao vencida na hora (o relogio de parede nao anda na bancada). (2026-10-24) E a viagem inteira: a saida
+	/// piscando e o clarao da chegada tambem vencem aqui -- quem mede os dois tempos e a familia S.
+	/// </summary>
 	private (bool Comecou, List<string> Falas) ItViajar(ServerPlayer pl, string arg)
 	{
 		List<string> falas = Ouvir(() => TeletransporteG11(pl, arg));
 		if (!_transmissaoG11.TryGetValue(pl.Id, out TransmissaoG11? t)) return (false, falas);
 		t.QuandoMs = NowMs() - 1;
-		falas.AddRange(Ouvir(() => TickDaTransmissaoG11(pl, t, NowMs())));
+		falas.AddRange(Ouvir(() => { TickDaTransmissaoG11(pl, t, NowMs()); TerminarATransmissaoDeTeste(pl.Id); }));
 		return (true, falas);
 	}
 
@@ -101,6 +111,7 @@ public sealed partial class GameServer
 	private void ItLimpar()
 	{
 		_transmissaoG11.Clear();
+		EsquecerAsTransmissoesDeTeste();
 		LimparTudoDaBancada();
 	}
 

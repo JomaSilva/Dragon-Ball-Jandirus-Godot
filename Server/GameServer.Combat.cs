@@ -235,7 +235,11 @@ public partial class GameServer
 		if (ficha != null && Jandirus.Core.Races.BioAndroids.EhBio(raca) && !Jandirus.Core.Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste)
 		{
 			(string doSangue, double regDoSangue) = Jandirus.Core.Races.SangueDoBio.RegeneracaoDoBio(ficha, RegeneracaoDaRaca);
-			return PerfilDeRegen.De(doSangue, regDoSangue + ficha.RegenerationDeSkill);
+			// (2026-10-23) A PERGUNTA DA MORTE VEM JUNTO COM A REGENERACAO: o bio que herdou a do Kai morre como o Kai -- o dono, nas sobras
+			// do dia: *"O bio com sangue Kai tambem morre"* (no empate com Yardrat, Meta ou Tsujin, todos 10, fica o Kai --
+			// `SangueDoBio.RegeneracaoDoBio`). Com sangue Majin a regeneracao e a do Majin (100), e manda a semi-imortalidade dele. Ver
+			// `PerfilDeRegen.MorreComoComum`.
+			return PerfilDeRegen.De(doSangue, regDoSangue + ficha.RegenerationDeSkill).DoCorpo(BioKaiEmComaDeTeste ? raca : doSangue);
 		}
 		double reg = RegeneracaoDaRaca(raca);
 		// A PARTE DAS SKILLS SOMA POR CIMA DA RACA -- `genome.add_to_stat("Regeneration", 10)` da
@@ -243,8 +247,18 @@ public partial class GameServer
 		// Ricardo (Bodybuilding.dm:254). O `assign_regen()` do DM relê o genoma inteiro; aqui o
 		// `AplicarEfeitos` chama isto de novo e reescreve o perfil do corpo.
 		if (ficha != null) reg += ficha.RegenerationDeSkill;
-		return PerfilDeRegen.De(raca, reg);
+		// (2026-10-23) E O CORPO DESTA RACA: o Kai refaz membro e MORRE como todo mundo -- o dono: *"Toda a raca Kai morre normal"*. Toda
+		// porta que monta um corpo passa por aqui (o `PrepararCombate`, a skill que muda a regen, a posse do Neo Tuffle, o corpo largado
+		// do transe), e toda porta da morte le o mesmo `Body.RegeneraDecepado`. Ver `PerfilDeRegen.MorreComoComum`.
+		return PerfilDeRegen.De(raca, reg).DoCorpo(raca);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`, familia M): o bio-androide volta a responder a pergunta da morte pela raca gravada
+	/// (BioAndroid), e o que herdou o sangue Kai cai em coma -- a r1 de 2026-10-23, antes da decisao do dono. Lido pelo
+	/// <see cref="EixoDeRegen"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool BioKaiEmComaDeTeste;
 
 	/// <summary>
 	/// O `misc_stats["Regeneration"]` DO PROTO DESTA RACA (o `races.json`); 1 quando ela nao tem proto. O Half-Saiyan nao tem
@@ -1332,9 +1346,9 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O ALVO MARCADO, se ainda valer a pena. Devolve nulo quando ninguem foi marcado ou
-	/// quando o marcado saiu de cena (morreu, trocou de zona, virou intocavel) -- e ai o
-	/// combate volta a escolher pelo cone, sozinho.
+	/// O ALVO MARCADO, se ainda valer a pena. Devolve nulo quando ninguem foi marcado, quando o
+	/// marcado saiu da zona (e ai a marca cai) ou quando ele esta intocavel agora (e ai ela FICA) --
+	/// e o combate volta a escolher pelo cone, sozinho.
 	/// </summary>
 	private ServerPlayer? Marcado(ServerPlayer a)
 	{
@@ -1342,9 +1356,20 @@ public partial class GameServer
 		// O CADAVER CONTINUA MARCADO (dono, 2026-09-05: "corpos mortos ainda sao corpos de personagem"): quem
 		// marcou alguem e o matou pode continuar batendo no corpo. A marca so cai quando o corpo SOME da zona
 		// (enterrado, desfeito, ou a alma que viajou pro Outro Mundo -- o cadaver que fica e OUTRO id).
-		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o || o.Combate.Intocavel)
+		if (CorpoNaMinhaZona(a, a.AlvoId) is not { } o)
 		{
 			a.AlvoId = 0;   // limpa sozinho: quem sumiu da zona nao fica preso na mira pra sempre
+			return null;
+		}
+		// (dono, 2026-10-24) O INTOCAVEL NAO SOLTA A MARCA -- *"se alguem tiver com lock in em vc e vc se transformar entrando na
+		// cinematica o lock in buga mas ainda mostra q ta lockado"*. Ela era apagada aqui, CALADA: a tela de quem marcou nao fica sabendo
+		// (nao ha pacote pra isso), continuava com o anel no corpo, e travar de novo nele nem saia do cliente -- o `SendAlvo` recusa o id
+		// que ele acha que ja e o alvo. Intocavel e sempre um estado de passagem (a cena, os pedacos do Majin, a carencia de quem renasce,
+		// a larva enterrada, o leme, o corpo possuido): o golpe DESTE instante volta ao cone, e o marcado volta a ser o alvo quando o
+		// estado passa. A marca so cai quando o corpo sai da zona -- e ai a tela tambem a solta (o corpo some dela).
+		if (o.Combate.Intocavel)
+		{
+			if (TravaCaiNoIntocavelDeTeste) a.AlvoId = 0;
 			return null;
 		}
 		// A ALTURA VALE ATE PRO MARCADO, e este e o caso que mais precisava: marcar alguem e
@@ -1353,6 +1378,9 @@ public partial class GameServer
 		if (!AlcancaPelaAltura(a, o)) return null;
 		return o;
 	}
+
+	/// <summary>DEFEITO INJETADO (`--escudoteste`, familia 10): o intocavel volta a apagar a marca de quem o marcou -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool TravaCaiNoIntocavelDeTeste;
 
 	/// <summary>
 	/// SOCO NO AR. Anuncia pra zona um golpe que nao achou ninguem -- e o que faz o corte do
@@ -1722,6 +1750,10 @@ public partial class GameServer
 
 	private void TickDoEstomago(ServerPlayer pl, double dt)
 	{
+		// (2026-10-24) O VIGOR NO FUNDO PESA NO PODER: a linha do `CheckNutrition` que faltava (`StaminaDrain.dm:40`), fora da passada
+		// de 3 s e so de jogador (o `if(client)` de la) -- ver `Nutricao.FolegoNoPoder`.
+		if (EhJogador(pl)) Jandirus.Core.Stats.Nutricao.FolegoNoPoder(pl.Ficha);
+
 		double relogio = _relogioDoEstomago.GetValueOrDefault(pl.Id) + dt;
 
 		// O metabolismo acelera as passadas, e nao so aumenta o tanque: quem digere rapido come
@@ -1827,6 +1859,8 @@ public partial class GameServer
 			Gravidade = (float)Jandirus.Core.Stats.Esmagamento.Gravidade(f),
 			// (2026-10-16) A ACLIMATACAO E PODER, e nao treino: o bonus do `gravFelt` (>= 1) -- a linha "Aclimatado" da aba de Formas.
 			Aclimatacao = (float)Math.Max(f.gravBuff, 1),
+			// (2026-10-23) A ASCENSAO, o `BPBoost` que o escritor dela poe (`GameServer.Ascensao.cs`) -- a linha "Ascensão" da aba de Formas.
+			Ascensao = (float)f.BPBoost,
 			PesoMult = (float)Math.Max(f.weight, 1),
 			ZonaMult = (float)f.zoneGainMult,
 			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
@@ -1860,7 +1894,7 @@ public partial class GameServer
 		string sig = $"{a.PhysOff:0.##}|{a.PhysDef:0.##}|{a.KiOff:0.##}|{a.KiDef:0.##}|"
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.MesesDaIdade}|{a.FormaAtual}|"
-				   + $"{a.GanhoDeTreino:0.#}|{a.VigorMult:0.##}|{a.Gravidade:0.#}|{a.Aclimatacao:0.##}|{a.PesoMult:0.##}|"
+				   + $"{a.GanhoDeTreino:0.#}|{a.VigorMult:0.##}|{a.Gravidade:0.#}|{a.Aclimatacao:0.##}|{a.Ascensao:0.##}|{a.PesoMult:0.##}|"
 				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoKg:0}|{a.PesoVestido}|{a.PesoDegrausDoCorpo}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|{a.SkillsRaciais}|{a.SkillsDoSangue}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
@@ -2021,8 +2055,9 @@ public partial class GameServer
 		//     e um dedo quebrado nao costurava o dedo.
 		// E entrou uma que nao existia: `has_regen_energy()` (fome + vigor), tambem dentro do `PodeCurar`.
 		// ======================================================================================================
+		// (2026-10-24) COM O KAIO-KEN ACESO, CADA MEMBRO PARA DE SE COSTURAR NO RITMO DELE -- ver `KaiokenParaACosturaG2`.
 		Regeneracao.Resultado r = Regeneracao.Tique(
-			c.Corpo, c.Corpo.Regen, pl.Ficha, c.EmCombate > 0, ref c.BufferDeMembro, dt, _rng);
+			c.Corpo, c.Corpo.Regen, pl.Ficha, c.EmCombate > 0, ref c.BufferDeMembro, dt, _rng, KaiokenParaACosturaG2(pl));
 
 		if (!r.Curou && r.MembroDeVolta == null) return;
 		c.SincronizarVida();
@@ -2064,7 +2099,7 @@ public partial class GameServer
 	/// **VIDA, MEMBROS, KI E FOLEGO INTEIROS** -- o `Revive()` do DM (`Death.dm:163-173`:
 	/// `SpreadHeal(100,1,1)`, `RegrowLimb` em todo membro, `Ki = MaxKi`, `stamina = maxstamina`).
 	/// A metade que este metodo entregava era o preco da volta GRATUITA por tempo, que morreu junto
-	/// com o `MsNoAlem`: agora quem chama e o Enma (que cobra o milhao e o debuff de uma hora), as
+	/// com o `MsNoAlem`: agora quem chama e o Enma (que cobra `Alem.PrecoDoReviveDoEnma` em zeni), as
 	/// esferas e a tecnica de reviver, e o preco e deles. A morte, por sua vez, deixou de curar
 	/// (ver `IrProAlem`) -- a cura mora AQUI, na volta.
 	/// ====================================================================================================
@@ -2077,9 +2112,9 @@ public partial class GameServer
 	/// tinha num lugar so (`mob/proc/Locate()`).
 	/// ========================================================================================================
 	///
-	/// O ENMA ENTROU (`GameServer.Alem.EnmaReviverPorZeni`): o revive por Zeni com o debuff de uma
-	/// hora chama isto. A reencarnacao a 10% do BP e o Inferno por karma negativo continuam sendo a
-	/// etapa seguinte.
+	/// O ENMA ENTROU (`GameServer.Alem.EnmaReviverPorZeni`): o revive por Zeni chama isto (sem o debuff
+	/// de uma hora do DM desde 2026-10-23). A reencarnacao a 10% do BP e o Inferno por karma negativo
+	/// continuam sendo a etapa seguinte.
 	/// </summary>
 	private void Renascer(ServerPlayer pl)
 	{

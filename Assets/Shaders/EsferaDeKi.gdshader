@@ -48,6 +48,12 @@ uniform float pontos = 8.0;                             // quantos (1 = um satel
 uniform float aro : hint_range(0.0, 1.0) = 0.0;         // um aro de pe em volta do meio
 uniform float pulsar : hint_range(0.0, 1.0) = 0.0;      // incha e murcha
 uniform float brancura : hint_range(0.0, 1.0) = 0.5;
+/// (2026-10-23) A ESFERA DO HAKAI: os dois tiros do kit do Deus da Destruicao, do Bills e de quem tem o titulo. O dono mandou uma
+/// imagem: *"faca bills usar skills de hakai q tem esse efeito nos ataques de ki dele como na imagem"*. Zero em toda outra bola, e
+/// entao nada muda nela. Le: a casca (mais redonda), os blocos "A ESFERA DO HAKAI" e "OS ARCOS E OS GRAOS DO HAKAI" e o halo.
+uniform float hakai : hint_range(0.0, 1.0) = 0.0;
+/// (2026-10-23) O RITMO dos arcos e dos graos do Hakai: 1 na Destroyer Sphere, 2 na Fury. So o bloco dos arcos le.
+uniform float giro = 1.0;
 /// O alcance do halo, em px alem da casca. Finito, e escrito pelo `PintorDeKi` -- ver o `FeixeDeKi.gdshader`.
 uniform float alcance_do_halo = 10.0;
 
@@ -132,6 +138,9 @@ void fragment() {
 				 + fervura * 0.07 * crista(dir * 7.0 + vec2(t * 3.0, -t * 2.0) + semente);
 	// (v0.3.0) A GENKIDAMA E REDONDA: a esfera do anime nao tem a casca torta de uma bola de ki comum -- so um respiro.
 	ondula *= 1.0 - 0.92 * calma;
+	// (2026-10-23) A ESFERA DO HAKAI TAMBEM: a da imagem e uma bola fechada pela borda escura, e a borda contorna a casca --
+	// casca torta viraria contorno torto. Fica um quarto da ondulacao, que e o plasma respirando.
+	ondula *= 1.0 - 0.75 * hakai;
 
 	// ================= a FORMA =================
 	float d;                    // a distancia a casca
@@ -252,6 +261,34 @@ void fragment() {
 		rgb = mix(rgb, g, calma);
 	}
 
+	// ============================ A ESFERA DO HAKAI (2026-10-23, com a imagem do dono) ============================
+	// Da imagem, de dentro pra fora: o MIOLO quase branco (branco-rosado) com RAIOS de luz saindo dele; o CORPO magenta e
+	// violeta, em manchas de plasma; e a BORDA ESCURA, um contorno preto-arroxeado que fecha a bola. Os tons chegam sem a tinta
+	// de quem atira (`EstiloDeBola.CorPropria`): `cor_nucleo` o miolo, `cor_manto` o magenta, `cor_borda` o violeta. O escuro
+	// SAI do violeta, e nao de um tom proprio: a casca tambem acende o halo, e pintada de preto apagaria o halo junto.
+	// Os arcos, os graos e o halo grande vem depois (`OS ARCOS E OS GRAOS DO HAKAI`, e o HALO).
+	// ==================================================================================================================
+	if (hakai > 0.001) {
+		float rr_h = clamp(r / max(R, 0.0001), 0.0, 1.0);   // 0 no centro, 1 na casca
+		vec3 breu_h = cor_borda * 0.12 + vec3(0.03, 0.0, 0.05);
+		// o PLASMA: manchas de violeta e magenta que correm, com os veios por cima
+		float mancha = fbm(q * 2.2 + (dobra - 0.5) * 2.4 + vec2(t * 0.9, -t * 0.6) + semente * 1.7);
+		vec3 g = mix(cor_borda, cor_manto, smoothstep(0.32, 0.68, mancha)) * (0.72 + 0.55 * veio);
+		// os RAIOS de luz: as lascas do `EstouroDeKi.gdshader`, presas ao miolo e girando devagar -- quatorze casas em volta, e
+		// sete em cada dez acesas, cada uma com o seu comprimento
+		float kr = (ang + 3.14159265) / 6.2831853 * 14.0 + t * 0.10;
+		float sorte_r = h21(vec2(mod(floor(kr), 14.0), floor(semente * 17.0) + 3.0));
+		float fio_r = 1.0 - smoothstep(0.0, 1.0, abs(fract(kr) - 0.5) * 2.0 / (0.22 + 0.30 * sorte_r));
+		float ate_r = 0.50 + 0.40 * sorte_r;
+		float raios = step(0.30, sorte_r) * fio_r * (1.0 - smoothstep(ate_r * 0.45, ate_r, rr_h));
+		g = mix(g, mix(cor_manto, cor_nucleo, 0.75), raios * 0.90);
+		// o MIOLO
+		g = mix(g, cor_nucleo, 1.0 - smoothstep(0.08, 0.34, rr_h));
+		// a BORDA ESCURA: a faixa de fora da casca (pelo `fundo`, que segue a casca de verdade)
+		g = mix(g, breu_h, (1.0 - smoothstep(0.03, 0.14, fundo)) * 0.92);
+		rgb = mix(rgb, g, hakai);
+	}
+
 	// SUPERNOVA: a superficie ferve -- granulos claros, veias escuras, e o limbo mais escuro que o meio
 	if (fervura > 0.001) {
 		float gran = fbm(q * 3.4 + (dobra - 0.5) * 2.2 + vec2(t * 0.8, 0.0));
@@ -284,9 +321,10 @@ void fragment() {
 	float alc = alcance_do_halo;
 	float h = clamp(1.0 - max(d, 0.0) / alc, 0.0, 1.0);
 	// (v0.3.0) a Genkidama brilha MACIO e LARGO (`h * h`, e nao o cubo) e mais forte: na imagem o ceu em volta fica ciano.
-	float halo = mix(h * h * h, h * h, calma) * (0.80 + 0.30 * onda * (1.0 - calma));
-	vec3 rgb_halo = mix(cor_borda, cor_manto, 0.35 + 0.25 * calma) * halo;
-	float a_halo = halo * mix(0.32, 0.50, calma);
+	// (2026-10-23) O Hakai tambem, e mais magenta e mais denso: na imagem dele o halo e um roxo grande que apaga no preto.
+	float halo = mix(h * h * h, h * h, max(calma, hakai)) * (0.80 + 0.30 * onda * (1.0 - calma));
+	vec3 rgb_halo = mix(cor_borda, cor_manto, 0.35 + 0.25 * calma + 0.20 * hakai) * halo;
+	float a_halo = halo * (mix(0.32, 0.50, calma) + 0.26 * hakai);
 
 	vec3 saida = rgb * dentro + rgb_halo * (1.0 - dentro);
 	float alfa = dentro + a_halo * (1.0 - dentro);
@@ -355,6 +393,52 @@ void fragment() {
 		luz = clamp(luz, 0.0, 1.0) * eletrico;
 		saida = mix(saida, mix(cor_manto, cor_nucleo, 0.8), luz);
 		alfa = max(alfa, luz);
+	}
+
+	// ============================ OS ARCOS E OS GRAOS DO HAKAI (2026-10-23) ============================
+	// Os ARCOS FINOS ESCUROS da imagem, *"como aneis de eletricidade escura cruzando por cima e por baixo"*: tres orbitas
+	// ACHATADAS (uma orbita em volta da bola, vista de lado), cada uma inclinada pra um lado e girando no seu ritmo (`giro`),
+	// cortadas em arcos (so um trecho corre aceso pela orbita) e tremidas como descarga. A METADE DE TRAS passa por tras da bola,
+	// como o aro do Ogre. A espessura e medida pela distancia de verdade a elipse (o gradiente), e nao pela da elipse
+	// esticada: assim o fio tem a mesma grossura na ponta comprida e na curta.
+	// E os GRAOS: particulas escuras soltas que nascem rente a casca e se afastam pelo halo, apagando.
+	// Escuros, eles COBREM o que esta atras (o halo e o chao): o `alfa` sobe com eles.
+	// ==================================================================================================
+	if (hakai > 0.001) {
+		vec3 breu_a = cor_borda * 0.12 + vec3(0.03, 0.0, 0.05);
+		float tg = tempo * giro;
+		float escuro_a = 0.0;
+		for (int k = 0; k < 3; k++) {
+			float fk = float(k);
+			float inclina = semente * 2.3 + fk * 2.0944 + tg * (0.55 + 0.20 * fk) * (k == 1 ? -1.0 : 1.0);
+			vec2 pk = gira(p, inclina);
+			float rx = R * (1.22 + 0.10 * fk);      // o eixo comprido da orbita
+			float ry = rx * (0.30 + 0.09 * fk);     // o curto: a orbita vista quase de lado
+			vec2 u = vec2(pk.x / rx, pk.y / ry);
+			float lu = max(length(u), 0.0001);
+			float phi = atan(u.y, u.x);
+			vec2 volta = vec2(cos(phi), sin(phi));  // a posicao na orbita, sem a costura do `atan`
+			float trem = 0.06 * (ruido(volta * 4.0 + vec2(semente * 3.0 + fk * 7.0, tg * 9.0)) - 0.5);
+			vec2 grad = vec2(pk.x / (rx * rx), pk.y / (ry * ry)) / lu;
+			float dist = (lu - 1.0 - trem) / max(length(grad), 0.0001);
+			float de = abs(dist) - max(R * 0.035, 0.6);
+			float fio_a = 1.0 - smoothstep(-1.0, 1.0, de / max(fwidth(de), 0.0001));
+			float trecho_a = smoothstep(0.30, 0.55, ruido(volta * 1.3 + vec2(tg * 1.7 + fk * 11.0, semente * 5.0)));
+			float visivel_a = mix(1.0 - dentro, 1.0, step(0.0, pk.y));
+			escuro_a = max(escuro_a, fio_a * trecho_a * visivel_a);
+		}
+		for (int j = 0; j < 9; j++) {
+			float sk = floor(semente * 5.0) + float(j) * 19.0;
+			float ciclo = fract(tg * (0.10 + 0.08 * h21(vec2(sk, 1.0))) + h21(vec2(sk, 2.0)));
+			float a0 = h21(vec2(sk, 3.0)) * 6.2831853 + tg * 0.4 * (h21(vec2(sk, 4.0)) - 0.5);
+			vec2 c = vec2(cos(a0), sin(a0)) * R * (1.15 + 1.10 * ciclo);
+			float tam = max(R * (0.035 + 0.035 * h21(vec2(sk, 5.0))), 0.7);
+			float vida = smoothstep(0.0, 0.15, ciclo) * (1.0 - smoothstep(0.70, 1.0, ciclo));
+			escuro_a = max(escuro_a, (1.0 - smoothstep(tam * 0.5, tam, length(p - c))) * vida * (1.0 - dentro));
+		}
+		escuro_a = clamp(escuro_a, 0.0, 1.0) * hakai;
+		saida = mix(saida, breu_a, escuro_a);
+		alfa = max(alfa, escuro_a);
 	}
 
 	COLOR = vec4(saida, clamp(alfa, 0.0, 1.0));

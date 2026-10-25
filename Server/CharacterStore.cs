@@ -490,6 +490,14 @@ public sealed class CharacterSave
     public bool? GradesLigados;
 
     /// <summary>
+    /// (2026-10-23) O C DUPLO DESTE PERSONAGEM VAI PRIMEIRO PELAS FORMAS DIVINAS (`true`) OU PELAS MORTAIS (`false`)? Ver
+    /// <see cref="Jandirus.Core.Forms.EstadoDeForma.CPelasDivinas"/> e o verb `divinas_c`. A receita do <see cref="GradesLigados"/> logo
+    /// acima, pelos mesmos motivos: ANULAVEL (o nulo e "save de antes do botao", e o login o traduz pro lado de fabrica -- um `bool` cru
+    /// chegaria `false` e mudaria o C de todo mundo que tem ki divino, calado) e GRAVADO em `DeJogador`.
+    /// </summary>
+    public bool? CPelasDivinas;
+
+    /// <summary>
     /// (v0.3.0) O SCOUTER ESTAVA LIGADO na hora do save -- a copia em disco do bit `Poder.Scouter` de
     /// `ServerPlayer.PoderesConcedidos`, que nao vai pro disco. O dono: *"ao sair do server usando scouter, e dps entrar, o
     /// scouter e desequipado"*. No DM o `scouteron` e variavel do mob sem `tmp` (`Inventory.dm:155`) e viaja no save.
@@ -682,6 +690,12 @@ public sealed class AccountStore(string pasta)
 
     public bool Existe(string conta) => File.Exists(Caminho(conta));
 
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--telacinzateste`): a carga da conta deixa o sorteio velho "Icer" como estava -- o jogo de antes, em
+    /// que a vaga sorteada Frost Demon de uma conta de antes da v0.4.3 nunca nascia. Lido pelo <see cref="Carregar"/>. Falso em jogo, sempre.
+    /// </summary>
+    internal static bool SorteioVelhoFicaDeTeste;
+
     public AccountSave? Carregar(string conta)
     {
         string p = Caminho(conta);
@@ -695,6 +709,11 @@ public sealed class AccountStore(string pasta)
             // (v0.3.0) nem a de antes dos sorteios de vaga (o modo de racas aleatorias)
             a.Sorteios ??= new RacaSorteada?[Slots];
             if (a.Sorteios.Length < Slots) Array.Resize(ref a.Sorteios, Slots);
+            // (2026-10-23) ...e o sorteio gravado antes da v0.4.3 ("Icer", a chave velha do Frost Demon) volta com o nome de agora, como o
+            // personagem salvo volta no `ParaJogador`. Sem isto a vaga sorteada Frost Demon era recusada SEMPRE ("raca nao pertence a esse
+            // planeta": `SorteioDeRaca.PlanetaDaRaca("Icer")` e vazio) -- e o jogador caia na tela cinza da criacao, sem raca pra trocar.
+            foreach (RacaSorteada? s in a.Sorteios)
+                if (s != null && !SorteioVelhoFicaDeTeste) s.Raca = Jandirus.Core.Races.FormasDeFrost.Canonica(s.Raca);
             return a;
         }
         catch (Exception e)
@@ -969,6 +988,9 @@ public sealed class AccountStore(string pasta)
         // uma escolha que ninguem fez. Ver `CharacterSave.GradesLigados`.
         GradesLigados = pl.Forma?.GradesLigados,
 
+        // (2026-10-23) A FAMILIA DO C DUPLO, crua pelo mesmo motivo (o nulo de quem nunca opinou). Ver `CharacterSave.CPelasDivinas`.
+        CPelasDivinas = pl.Forma?.CPelasDivinas,
+
         // (v0.3.0) O SCOUTER LIGADO -- a copia do bit que nao vai pro disco. Ver `CharacterSave.ScouterLigado`.
         ScouterLigado = (pl.PoderesConcedidos & Jandirus.Net.Protocol.Poder.Scouter) != 0,
 
@@ -1123,6 +1145,9 @@ public sealed class AccountStore(string pasta)
         pl.Karma = Jandirus.Core.Social.Karma.Somar(Jandirus.Core.Social.Karma.Neutro, s.Karma);
 
         pl.Visual = s.Visual;
+        // (2026-10-23) O BRINCO POTARA DE ROUPA SAI DO CORPO -- ele saiu do guarda-roupa (so enganava: roupa nao funde ninguem), e o da
+        // mochila ja saiu no `Sanear` la de cima. Ver `Items.ParDePotara.TirarOsBrincosDeRoupa`.
+        Jandirus.Core.Items.ParDePotara.TirarOsBrincosDeRoupa(pl.Visual);
         // (2026-10-18) O ANDROIDE CONVERTIDO DE ANTES DAS LISTAS POR RACA: o indice dele e da lista humana, e a do Androide agora tem o
         // `GochekAndroid` na frente -- ele anda um pra continuar com a mesma cara. Uma vez, pela versao. Ver `CharacterSave.CorposVersao`.
         if (s.CorposVersao < CharacterSave.VersaoDasListasPorRaca && s.Raca == "Android" && s.Ficha is { } fichaDeAntes

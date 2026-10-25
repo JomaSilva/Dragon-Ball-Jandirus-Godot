@@ -1,5 +1,6 @@
 using Godot;
 using Jandirus.Core.Ai;
+using Jandirus.Core.Combat;
 using Jandirus.Core.Npc;
 using Jandirus.Core.Social;
 using Jandirus.Core.World;
@@ -17,7 +18,7 @@ namespace Jandirus.Server;
 /// relogio e o `TickDosViloesDoInferno`, e a derrota entra pelo funil unico (`AoPerderALuta`) ou pela segunda morte (`Morrer`).
 ///
 /// Os defeitos injetados: a alma sem aureola, com o relogio da morte solto, fora da conta, indo a mesa do Enma; o vilao com o BP da
-/// saga, pagando a cada queda, sem pagar o zeni.
+/// saga, pagando a cada queda, sem pagar o zeni; e (2026-10-23, familia 27) o vilao pela media do SERVIDOR, e nao a do Outro Mundo.
 ///
 ///     Godot --headless --path . --host --rede 8437 --infernoteste --raca Human --conta bancada_inferno --nome Defunto
 /// </summary>
@@ -62,6 +63,25 @@ public partial class GameServer
 			ServerPlayer? n = NascerNpc(molde, z, PontoDeHabitante(z, lugar), 0x7130_0000UL + lugar);
 			if (n != null) nascidos.Add(n);
 			return n;
+		}
+
+		// (2026-10-23) OUTROS "JOGADORES" pra a media do Outro Mundo: corpos forjados com o `Peer` do host emprestado (e o que faz deles
+		// jogador pro `EhJogador`), devolvido no fim antes de o corpo sair (`RemoverNpc` recusa corpo com dono).
+		List<ServerPlayer> forjados = [];
+		ServerPlayer ForjarGente(string nome, ZoneKey z, double bp, bool morto)
+		{
+			var f = new ServerPlayer
+			{
+				Id = _nextId++, Peer = pl.Peer, Name = nome, Race = "Human", Genero = "Male", Idade = 25,
+				Zone = z, Pos = PontoDeNascimento(z), LastInputMs = NowMs(), Conta = "bancada_inferno_" + nome.ToLowerInvariant(), Slot = 0,
+				Ficha = new Jandirus.Core.Stats.Fighter { Name = nome, Race = "Human", BP = bp, Idade = 25, maxstamina = 100, stamina = 100 },
+				Livro = new Jandirus.Core.Skills.SkillBook(),
+			};
+			f.Ficha.Class = "Normal";
+			PorNoMundo(f);
+			f.Ficha.dead = morto;
+			forjados.Add(f);
+			return f;
 		}
 
 		EstadoDasSagas EstadoCom(params (string Elo, string Molde, FaseDoChefe Fase, int Degrau, double RessurgeEm)[] chefes)
@@ -305,6 +325,17 @@ public partial class GameServer
 			Checa("SEM NINGUEM NO OUTRO MUNDO O RELOGIO PARA (e o primeiro que chegar o recomeca)", _proximoVilaoDoInferno == 0);
 			PorOHostNo(inferno, PontoDeNascimento(inferno));
 
+			// (2026-10-23) A MEDIA E A DO OUTRO MUNDO (dono: *"Pela media do Outro Mundo"*): uma alma de pe no CEU, a 3 milhoes (as tres
+			// zonas contam), e um vivo na TERRA, a 10 mil (fora do Alem: nao conta) -- a media do Outro Mundo (o host e a alma: 2 milhoes)
+			// fica longe da do servidor (os tres: ~1,34 milhao). Nascem DEPOIS do "o relogio para" de cima: a alma no Ceu e gente no Outro
+			// Mundo, e com ela la o relogio nunca pararia.
+			const double mediaDoAlem = 2_000_000;
+			ServerPlayer almaDoCeu = ForjarGente("AlmaDoCeu", ceu, 3_000_000, morto: true);
+			ServerPlayer vivoDaTerra = ForjarGente("VivoDaTerra", ZoneKey.Premade("Earth"), 10_000, morto: false);
+			Checa("(montagem) a alma do Ceu (morta e de pe) e o vivo da Terra sao jogadores, e a media do servidor -- que conta o vivo -- fica longe da do Outro Mundo",
+				  EhJogador(almaDoCeu) && almaDoCeu.MortoDePe && EhJogador(vivoDaTerra) && !vivoDaTerra.Ficha.dead
+				  && Math.Abs(MediaDoServidor() - mediaDoAlem) > 100_000, $"servidor {MediaDoServidor():N0}");
+
 			_sagas = EstadoCom(("freeza_namek", "freeza_namek", FaseDoChefe.Derrotado, 3, 0));
 			TickDosViloesDoInferno();   // o relogio recomeca
 			_proximoVilaoDoInferno = NowMs() - 1;
@@ -319,8 +350,10 @@ public partial class GameServer
 				  $"degrau {vilao.Papel?.Estagio + 1}");
 			Checa("**...MORTO, DE AUREOLA E DE PE**, como todo mundo la",
 				  vilao.Ficha.dead && Alem.TemAureola(vilao.Ficha.dead, vilao.MorteJaViajou) && vilao.MortoDePe && vilao.RelogioDaMorte == long.MaxValue);
-			double esperado = ViloesDoInferno.Bps(freeza, media)[3];
-			Checa($"**COM O BP DA MEDIA DE AGORA** -- o 4o degrau a {esperado:N0}, e nao os {freeza.Estagios[3].Bp:N0} da saga",
+			double esperado = ViloesDoInferno.Bps(freeza, mediaDoAlem)[3];
+			Checa($"**27i. COM O BP DA MEDIA DE AGORA NO OUTRO MUNDO** (dono, 2026-10-23: *\"Pela media do Outro Mundo\"*) -- o 4o degrau a "
+				  + $"{esperado:N0} (25x a media do host e da alma do Ceu, 2 milhoes), e nao os {freeza.Estagios[3].Bp:N0} da saga nem os "
+				  + $"{ViloesDoInferno.Bps(freeza, MediaDoServidor())[3]:N0} da media do servidor",
 				  Math.Abs(vilao.Ficha.BP - esperado) < 1, $"BP {vilao.Ficha.BP:N0}");
 			Checa("...carregando o premio: 250 mil zeni na bolsa", Math.Abs(vilao.Ficha.Zeni - 250_000) < 1, $"{vilao.Ficha.Zeni:N0}");
 			float dist = (vilao.Pos - pl.Pos).Length / ZoneCollision.TileSize;
@@ -410,6 +443,20 @@ public partial class GameServer
 					  pl.Karma == 2 * Karma.PorDerrotarChefe, $"karma {pl.Karma}");
 				TickDosViloesDoInferno();
 			}
+			// (2026-10-23) a media do SERVIDOR, o jogo de antes: o vivo da Terra entra na conta
+			InfernoPelaMediaDoServidorDeTeste = true;
+			try { _proximoVilaoDoInferno = NowMs() - 1; TickDosViloesDoInferno(); }
+			finally { InfernoPelaMediaDoServidorDeTeste = false; }
+			ServerPlayer? peloServidor = VilaoDePe();
+			if (peloServidor != null)
+			{
+				nascidos.Add(peloServidor);
+				double doServidor = ViloesDoInferno.Bps(freeza, MediaDoServidor())[3];
+				Checa($"(defeito injetado: a media do servidor inteiro) o Freeza volta a {doServidor:N0} -- o vivo da Terra entra na conta -- e a regua 27i REPROVA",
+					  Math.Abs(peloServidor.Ficha.BP - doServidor) < 1 && Math.Abs(peloServidor.Ficha.BP - esperado) > 1, $"BP {peloServidor.Ficha.BP:N0}");
+				_vilaoDoInferno!.Ate = NowMs() - 1;
+				TickDosViloesDoInferno();
+			}
 			_proximoVilaoDoInferno = NowMs() - 1;
 			TickDosViloesDoInferno();
 			ServerPlayer? v5 = VilaoDePe();
@@ -423,6 +470,133 @@ public partial class GameServer
 				Checa("(defeito injetado: sem zeni) a carteira de quem o derrotou nao muda e a bolsa fica com ele -- a regua do zeni REPROVA",
 					  Math.Abs(pl.Ficha.Zeni - z0) < 1 && v5.Ficha.Zeni >= 1, $"{z0:N0} -> {pl.Ficha.Zeni:N0}");
 				TickDosViloesDoInferno();
+			}
+
+			// ---------------------------------------------------------------- 4. o Majin Boo (2026-10-23)
+			GD.Print("[inferno] -- 4) o Majin Boo do Inferno so cai pela morte por ki (dono, 2026-10-23) --");
+			// O dono: *"boss majin boo no inferno ta dando pra matar no soco"* -> *"So a morte por ki"*. Os GOLPES DE VERDADE: o dano pronto
+			// do soco e do tiro num nucleo (`MeleeResolver.AplicarDanoPronto` -- o `porKi` separa um do outro) e o desfecho pelo
+			// `ResolverDesfecho`, o mesmo par do projetil (`GameServer.Projeteis.cs`) e da familia M da `--v030teste`. UM BOO NOVO POR GOLPE:
+			// cada regua parte de um evento intacto (sem ele, um soco que derrotasse o primeiro derrubaria as reguas seguintes junto).
+			var sorteDoBoo = new Random(23);
+			GolpeResultado GolpeDeVerdade(ServerPlayer v, bool letal, bool porKi)
+			{
+				foreach (BodyPart p in v.Combate.Corpo.Partes)
+					if (p.Papel != Vitalidade.Nucleo) p.Chance = 0;
+				MarcarAgressao(v, pl);
+				GolpeResultado r = MeleeResolver.AplicarDanoPronto(v.Combate, 1e9, letal, sorteDoBoo, "cabeca", porKi);
+				ResolverDesfecho(pl, v, r);
+				return r;
+			}
+			ServerPlayer? NovoBoo()
+			{
+				// o vilao de antes acaba (o prazo vence, ou o tique tira o derrotado), e o proximo nasce na hora: o Boo, o unico derrotado da cadeia
+				if (_vilaoDoInferno != null) { _vilaoDoInferno.Ate = NowMs() - 1; TickDosViloesDoInferno(); }
+				_proximoVilaoDoInferno = NowMs() - 1;
+				TickDosViloesDoInferno();
+				ServerPlayer? b = VilaoDePe();
+				if (b != null) nascidos.Add(b);
+				pl.Karma = 0;
+				return b;
+			}
+			_sagas = EstadoCom(("boo", "majin_boo", FaseDoChefe.Derrotado, 0, 0));
+
+			ServerPlayer? boo = NovoBoo();
+			Checa("(montagem) o Majin Boo volta no Inferno: corpo de Majin, morto e de pe, com os 250 mil na bolsa",
+				  boo != null && _vilaoDoInferno?.Molde == "majin_boo" && CorpoDeMajin(boo) && boo.MortoDePe && Math.Abs(boo.Ficha.Zeni - 250_000) < 1,
+				  $"{_vilaoDoInferno?.Molde ?? "ninguem"}; majin {boo != null && CorpoDeMajin(boo)}; zeni {boo?.Ficha.Zeni:N0}");
+			if (boo == null) return;
+
+			// (a) o SOCO LETAL: o Boo se desfaz (a regra do Majin de 2026-10-15) -- e o evento continua
+			double zb = pl.Ficha.Zeni;
+			GolpeResultado socoLetal = default;
+			List<string> doSoco = Ouvir(() => socoLetal = GolpeDeVerdade(boo, letal: true, porKi: false));
+			TickDosViloesDoInferno();
+			Checa("**4a. O SOCO LETAL NAO DERROTA O BOO** (o dono: *\"So a morte por ki\"*): ele se DESFAZ em pedacos (e se refaz em 30 s), o evento continua, ninguem leva o premio -- e quem bateu le por que",
+				  socoLetal.Desfez && boo.Combate.Desfeito && _players.ContainsKey(boo.Id) && _vilaoDoInferno is { Derrotado: false }
+				  && pl.Karma == 0 && Math.Abs(pl.Ficha.Zeni - zb) < 1 && boo.Ficha.Zeni >= 1 && Disse(doSoco, "golpe de ki letal"),
+				  $"desfez {socoLetal.Desfez}, desfeito {boo.Combate.Desfeito}, no mundo {_players.ContainsKey(boo.Id)}, derrotado {_vilaoDoInferno?.Derrotado}, "
+				  + $"karma {pl.Karma}, zeni +{pl.Ficha.Zeni - zb:N0} | {Ultimos(doSoco)}");
+
+			// ...e o EM PEDACOS QUANDO O PRAZO VENCE: afunda como qualquer vilao, sem premio
+			if (_vilaoDoInferno != null) _vilaoDoInferno.Ate = NowMs() - 1;
+			List<string> doPrazo = Ouvir(TickDosViloesDoInferno);
+			Checa("**4b. ...E SE O PRAZO VENCE COM ELE EM PEDACOS**, ele afunda de volta: o corpo sai do mundo, o Outro Mundo e avisado e ninguem ganha nada",
+				  !_players.ContainsKey(boo.Id) && _vilaoDoInferno == null && pl.Karma == 0 && Math.Abs(pl.Ficha.Zeni - zb) < 1 && Disse(doPrazo, "afundou de volta"),
+				  $"no mundo {_players.ContainsKey(boo.Id)}, karma {pl.Karma}, zeni +{pl.Ficha.Zeni - zb:N0} | {Ultimos(doPrazo)}");
+
+			// (c) o SOCO NAO-LETAL e (d) o KI NAO-LETAL: os dois so o derrubam
+			foreach ((string codigo, bool porKi, string oQue) in new[] { ("4c.", false, "O SOCO NAO-LETAL"), ("4d.", true, "O KI NAO-LETAL") })
+			{
+				boo = NovoBoo();
+				if (boo == null) { Checa($"(montagem) um Boo novo pra {oQue}", false); return; }
+				zb = pl.Ficha.Zeni;
+				GolpeResultado leve = GolpeDeVerdade(boo, letal: false, porKi: porKi);
+				TickDosViloesDoInferno();
+				Checa($"**{codigo} ...NEM {oQue}**: ele so cai nocauteado -- o evento continua e o premio fica na bolsa",
+					  leve.Nocauteou && boo.Ficha.KO && _players.ContainsKey(boo.Id) && _vilaoDoInferno is { Derrotado: false }
+					  && pl.Karma == 0 && Math.Abs(pl.Ficha.Zeni - zb) < 1 && boo.Ficha.Zeni >= 1,
+					  $"nocauteou {leve.Nocauteou}, KO {boo.Ficha.KO}, no mundo {_players.ContainsKey(boo.Id)}, derrotado {_vilaoDoInferno?.Derrotado}, karma {pl.Karma}");
+			}
+
+			// (e) o KI LETAL: a segunda morte -- a unica derrota
+			boo = NovoBoo();
+			if (boo == null) { Checa("(montagem) um Boo novo pro ki letal", false); return; }
+			zb = pl.Ficha.Zeni;
+			GolpeResultado raioLetal = default;
+			List<string> doRaio = Ouvir(() => raioLetal = GolpeDeVerdade(boo, letal: true, porKi: true));
+			Checa("**4e. SO O KI LETAL O DERROTA**: a segunda morte dele -- o premio (o karma e os 250 mil da bolsa) vai pra quem atirou, e o Outro Mundo fica sabendo",
+				  !raioLetal.Morreu && _vilaoDoInferno is { Derrotado: true } && pl.Karma == Karma.PorDerrotarChefe && Math.Abs(pl.Ficha.Zeni - zb - 250_000) < 1
+				  && boo.Ficha.Zeni < 1 && Disse(doRaio, "derrotou"),
+				  $"derrotado {_vilaoDoInferno?.Derrotado}, karma {pl.Karma}, zeni +{pl.Ficha.Zeni - zb:N0} | {Ultimos(doRaio)}");
+			GolpeDeVerdade(boo, letal: true, porKi: true);
+			Checa("**4f. ...UMA VEZ**: o segundo tiro letal, antes de o tique o tirar, nao paga de novo",
+				  pl.Karma == Karma.PorDerrotarChefe && Math.Abs(pl.Ficha.Zeni - zb - 250_000) < 1, $"karma {pl.Karma}, zeni +{pl.Ficha.Zeni - zb:N0}");
+			TickDosViloesDoInferno();
+			Checa("...e ele sai no tique seguinte", !_players.ContainsKey(boo.Id) && _vilaoDoInferno == null);
+
+			// O DEFEITO: o soco que o desfaz volta a contar como derrota
+			boo = NovoBoo();
+			if (boo != null)
+			{
+				zb = pl.Ficha.Zeni;
+				MajinDoInfernoCaiNoSocoDeTeste = true;
+				try { GolpeDeVerdade(boo, letal: true, porKi: false); }
+				finally { MajinDoInfernoCaiNoSocoDeTeste = false; }
+				Checa("(defeito injetado: o jogo de antes de 2026-10-23) o soco letal que o desfaz DERROTA o Boo e paga -- a regua 4a REPROVA",
+					  _vilaoDoInferno is { Derrotado: true } && pl.Karma == Karma.PorDerrotarChefe && Math.Abs(pl.Ficha.Zeni - zb - 250_000) < 1,
+					  $"derrotado {_vilaoDoInferno?.Derrotado}, karma {pl.Karma}, zeni +{pl.Ficha.Zeni - zb:N0}");
+				TickDosViloesDoInferno();
+			}
+
+			// ---------------------------------------------------------------- 5. o Supremo Kaioh do Ceu (2026-10-23)
+			GD.Print("[inferno] -- 5) o Supremo Kaioh do Ceu morre como todo mundo (dono, 2026-10-23: 'Toda a raca Kai morre normal') --");
+			// O NPC DE PRODUCAO, pelo molde de verdade (`supremo_kaioh`, raca Kai, cidadao vivo no Ceu): a regra e a mesma da familia M da
+			// `--v030teste` (o corpo forjado); aqui e o habitante que o dono via "regenerando" -- ele morre, sai do mundo pelo dreno de todo
+			// NPC morto, e o povoamento do Ceu o repoe (o alvo e cinco menos os Kaioshins jogadores; o `cadaDonoTiraUm` nao mudou).
+			ServerPlayer? kaioh = Nascer("supremo_kaioh", ceu, 900);
+			Checa("(montagem) um Supremo Kaioh nasceu no Ceu pelo `NascerNpc` de producao, vivo e da raca Kai",
+				  kaioh != null && kaioh.Zone.Equals(ceu) && kaioh.Race == "Kai" && !kaioh.Ficha.dead, kaioh?.Race ?? "ninguem");
+			if (kaioh != null)
+			{
+				int noCeuAntes = ContarHabitantes(ceu.Name, "supremo_kaioh");
+				GolpeResultado socoNoKaioh = GolpeDeVerdade(kaioh, letal: true, porKi: false);
+				Checa("**5a. O SUPREMO KAIOH MORRE NO SOCO LETAL**, como todo mundo -- e nao cai mais em coma pra se regenerar e levantar",
+					  socoNoKaioh.Morreu && kaioh.Ficha.dead && !socoNoKaioh.Nocauteou,
+					  $"morreu {socoNoKaioh.Morreu} ({socoNoKaioh.Membro}), nocauteou {socoNoKaioh.Nocauteou}, morto {kaioh.Ficha.dead}, KO {kaioh.Ficha.KO}");
+				kaioh.RelogioDaMorte = NowMs() - 1;   // os 2 s do corpo no chao, adiantados
+				TiqueDaMorte(kaioh);
+				bool cadaver = ZoneList(ceu.Hash).Any(c => c.ECadaver && c.NomeDeQuemMorreu == kaioh.Name);
+				Checa("**5b. ...SAI DO MUNDO E DEIXA O CADAVER**, como todo NPC morto -- e deixa de contar no povoamento do Ceu",
+					  !_players.ContainsKey(kaioh.Id) && cadaver && ContarHabitantes(ceu.Name, "supremo_kaioh") == noCeuAntes - 1,
+					  $"no mundo {_players.ContainsKey(kaioh.Id)}, cadaver {cadaver}, no Ceu {noCeuAntes} -> {ContarHabitantes(ceu.Name, "supremo_kaioh")}");
+				LinhaDePovoamento? linhaDoKaioh = _moldes!.Plano.FirstOrDefault(l => l.Planeta == ceu.Name && l.Molde == "supremo_kaioh");
+				int alvoDoKaioh = linhaDoKaioh == null ? -1 : Povoamento.AlvoDaLinha(linhaDoKaioh, QuantosDonos);
+				Manutencao();
+				int pedidosDoKaioh = _filaDoPovoamento.Count(p => p.Zona.Equals(ceu) && p.Molde == "supremo_kaioh");
+				int vivosNoCeu = ContarHabitantes(ceu.Name, "supremo_kaioh");
+				Checa("5c. ...e a MANUTENCAO do povoamento repoe o Ceu ate o alvo (cinco menos os Kaioshins jogadores)",
+					  alvoDoKaioh > 0 && vivosNoCeu + pedidosDoKaioh >= alvoDoKaioh, $"alvo {alvoDoKaioh}, vivos {vivosNoCeu}, pedidos {pedidosDoKaioh}");
 			}
 
 			// O VERB DO ADMIN
@@ -443,7 +617,7 @@ public partial class GameServer
 		finally
 		{
 			AlmaSemAureolaDeTeste = AlmaComRelogioDeTeste = AlmaVaiAoEnmaDeTeste = AlmaForaDaContaDeTeste = false;
-			InfernoComOBpDaSagaDeTeste = InfernoPagaDeNovoDeTeste = InfernoNaoPagaZeniDeTeste = false;
+			InfernoComOBpDaSagaDeTeste = InfernoPagaDeNovoDeTeste = InfernoNaoPagaZeniDeTeste = MajinDoInfernoCaiNoSocoDeTeste = false;
 			SorteioDoInfernoDeTeste = null;
 			EscutaDeChegadas = null;
 			if (VilaoDePe() is { } restou) RemoverNpc(restou);
@@ -451,6 +625,14 @@ public partial class GameServer
 			_proximoVilaoDoInferno = 0;
 			foreach (ServerPlayer n in nascidos)
 				if (_players.ContainsKey(n.Id)) RemoverNpc(n);
+			// (2026-10-23) a familia 27: o defeito da media e os jogadores forjados
+			InfernoPelaMediaDoServidorDeTeste = false;
+			foreach (ServerPlayer f in forjados)
+			{
+				// O `Peer` EMPRESTADO VOLTA ANTES DE O CORPO SAIR: `RemoverNpc` recusa corpo com dono.
+				f.Peer = null;
+				RemoverNpc(f);
+			}
 			_sagas = sagasDeAntes;
 			ViloesDoInferno.Ligado = ligadoDeAntes;
 

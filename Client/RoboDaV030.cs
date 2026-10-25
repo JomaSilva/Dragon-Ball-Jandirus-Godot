@@ -979,8 +979,8 @@ public partial class RoboDaV030 : Node
 			bool abriu = await AbrirATelinhaDoMeditar();
 			TelaDeMeditacao? tela = TelaDeMeditacao.Instancia;
 			List<string> botoes = tela?.BotoesDesenhados() ?? [];
-			Checa("**A TELINHA DO MEDITAR OFERECE A PROFUNDA AO FANTASMA**: os tres botoes acesos (a recusa sai da mesma regra do servidor -- so o cadaver e recusado)",
-				  abriu && botoes.Count == 3 && botoes.Contains("Meditação profunda")
+			Checa("**A TELINHA DO MEDITAR OFERECE A PROFUNDA AO FANTASMA**: os quatro botoes acesos (a recusa sai da mesma regra do servidor -- so o cadaver e recusado; o quarto e o estudo meditando, de 2026-10-25)",
+				  abriu && botoes.Count == 4 && botoes.Contains("Meditação profunda") && botoes.Contains("Meditar estudando")
 				  && !botoes.Exists(b => b.EndsWith("(apagado)", StringComparison.Ordinal)),
 				  $"abriu {abriu}; botoes [{string.Join(" | ", botoes)}]; motivo '{tela?.MotivoNaTela}'");
 			bool apertou = tela?.ApertarDesenhado(profunda: true) == true;

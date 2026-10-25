@@ -67,6 +67,7 @@ public partial class GameServer
 			OEchoedInsanity();
 			AsClassesRarasSemDisciplina();
 			SairEVoltar();
+			SairEVoltarComUmNpcDentro();
 		}
 		catch (Exception e)
 		{
@@ -74,6 +75,7 @@ public partial class GameServer
 		}
 		finally
 		{
+			LoginSemDevoradosDeTeste = SairCospeOsDevoradosDeTeste = false;
 			SagaSemOutraMetadeDeTeste = OutraMetadeSemVencerDeTeste = PuraSemPisoDeTeste = LoucuraComRegenDeTeste = false;
 			ExpelirCustaSanidadeDeTeste = LoucuraSemIaDeTeste = MenteInteiraNaLoucuraDeTeste = FuriaSemTiroDeTeste = false;
 			EcoSemFatorDeTeste = SagaNoDicionarioDeTeste = false;
@@ -887,7 +889,7 @@ public partial class GameServer
 	// =====================================================================
 	private void SairEVoltar()
 	{
-		GD.Print("[sagamajin] --- 15. sair do jogo e voltar: cospe todo mundo sem custo, volta NA Forma Pura ---");
+		GD.Print("[sagamajin] --- 15. sair do jogo e voltar com um JOGADOR dentro: cospe ele sem custo, volta NA Forma Pura (com um NPC, a 16) ---");
 		ServerPlayer majin = MajinPuroSg("relog", out Vec2 praca);
 		ServerPlayer preso = VitimaSg("o preso do relog", praca);
 		ApertarAbsorverSg(majin);
@@ -922,5 +924,99 @@ public partial class GameServer
 		int idDaMetade = OutraMetadeDe(m2.Id)?.Id ?? 0;
 		SairDoJogoSagaDoMajin(m2);
 		AfirmarSg("a outra metade sai do mundo com o mestre (e volta no login)", idDaMetade != 0 && !_players.ContainsKey(idDaMetade));
+	}
+
+	// =====================================================================
+	// 16. SAIR E VOLTAR COM UM NPC DEVORADO DENTRO (dono, 2026-10-23: "Conta")
+	// =====================================================================
+	/// <summary>
+	/// O dono decidiu que o NPC devorado FICA dentro depois de sair do jogo (`--majinteste`, familia 15) -- e, sobre a saga, "Conta": pro
+	/// Corrupted Majin o NPC que ficou dentro conta como alguem dentro. Ele volta FORA da Forma Pura (no corpo de absorcao) ate expelir,
+	/// e a sanidade sobe com ele la dentro, como na mesma sessao. Sem ninguem dentro, a familia 15: volta NA Forma Pura.
+	///
+	/// A SAIDA NA ORDEM DO `Drop` (`SairDoJogoSagaDoMajin`, `DesfazerAAbsorcaoAoSair`) e o LOGIN NA ORDEM DO `Entrar` (`AcordarSemAbsorcao`,
+	/// depois `PrepararOMajinPuroNoLogin` e `RestaurarFormaEDisciplina`). E a ordem do `Entrar` e conferida no FONTE (16d): com as duas
+	/// chamadas trocadas, o repouso seria decidido antes de o NPC voltar, e o Corrupted voltaria na Forma Pura com ele dentro.
+	/// </summary>
+	private void SairEVoltarComUmNpcDentro()
+	{
+		GD.Print("[sagamajin] --- 16. sair e voltar com um NPC devorado dentro: ele CONTA -- volta fora da Forma Pura ate expelir (dono, 2026-10-23) ---");
+
+		// a saida, na ordem do `Drop`, e o login, na ordem do `Entrar` (o corpo e o mesmo: a regra da saga nao olha o id de sessao)
+		void Relogar(ServerPlayer m)
+		{
+			SairDoJogoSagaDoMajin(m);
+			DesfazerAAbsorcaoAoSair(m);
+			AcordarSemAbsorcao(m);
+			PrepararOMajinPuroNoLogin(m);
+			RestaurarFormaEDisciplina(m, null);
+		}
+		bool ForaDaPura(ServerPlayer m) =>
+			AlguemDentro(m) && m.Forma.Atual != Catalogo.IdDaFormaPura && m.Forma.Atual != Catalogo.IdDaFormaPuraInsana;
+
+		// ---- 16a) o relog com o NPC dentro ----
+		ServerPlayer majin = MajinPuroSg("relog com um NPC", out Vec2 praca);
+		ServerPlayer npc = VitimaSg("o NPC do relog", praca, pessoa: false);
+		ApertarAbsorverSg(majin);
+		AfirmarSg("16a. (controle) o NPC foi devorado e o corpo saiu da Pura", npc.Ficha.dead && AlguemDentro(majin) && majin.Forma.Atual == Catalogo.IdBase,
+				  majin.Forma.Atual);
+		Relogar(majin);
+		AfirmarSg("16a. **O NPC DEVORADO CONTA COMO ALGUEM DENTRO** (dono, 2026-10-23): ele volta com o Corrupted, e o login o poe FORA da Forma "
+				  + "Pura -- no corpo de absorcao",
+				  ForaDaPura(majin) && majin.PisoDoMajin.Length == 0 && AbsorvidosPor(majin.Id).Count == 1,
+				  $"forma {majin.Forma.Atual}, piso '{majin.PisoDoMajin}', {AbsorvidosPor(majin.Id).Count} dentro");
+
+		// o mesmo relog, pelo login de antes, num Corrupted igual: e a regua de cima que reprova
+		ServerPlayer outro = MajinPuroSg("relog com um NPC, login de antes", out Vec2 praca2);
+		VitimaSg("o NPC do relog de antes", praca2, pessoa: false);
+		ApertarAbsorverSg(outro);
+		LoginSemDevoradosDeTeste = true;
+		try { Relogar(outro); }
+		finally { LoginSemDevoradosDeTeste = false; }
+		AfirmarSg("16a. (defeito injetado: o login de antes) o mesmo relog o poe NA Forma Pura, vazio -- a regua de cima REPROVA",
+				  !ForaDaPura(outro) && outro.Forma.Atual == Catalogo.IdDaFormaPura, outro.Forma.Atual);
+
+		// ---- 16b) a sanidade sobe com ele la dentro, depois do relog ----
+		majin.Ficha.majin_sanidade = 40;
+		majin.CenaSegundos = 0;
+		TickDaLoucuraDoMajin(majin, 30);
+		double esperada = 40 + SagaDoMajin.SanidadeCheia * 30 / SagaDoMajin.SegundosAteSarar;
+		AfirmarSg($"16b. ...e a SANIDADE SOBE com o NPC dentro, como na mesma sessao (40 -> {esperada:0} em 30 s), sem voltar a Pura",
+				  Math.Abs(majin.Ficha.majin_sanidade - esperada) < 0.01 && ForaDaPura(majin),
+				  $"sanidade {majin.Ficha.majin_sanidade:0.##}, forma {majin.Forma.Atual}");
+
+		// ---- 16c) expelir devolve a Pura, e o relog seguinte volta nela ----
+		UsarHabilidade(majin, "expelir");
+		AfirmarSg("16c. EXPELIR o NPC devolve a Forma Pura (a lista que esvazia) -- e a ficha deixa de leva-lo",
+				  !AlguemDentro(majin) && majin.Forma.Atual == Catalogo.IdDaFormaPura && majin.Ficha.majin_devorados == null, majin.Forma.Atual);
+		majin.CenaSegundos = 0;
+		Relogar(majin);
+		AfirmarSg("16c. ...e o relog seguinte volta NA Forma Pura, vazio, como antes da regra", !AlguemDentro(majin) && majin.Forma.Atual == Catalogo.IdDaFormaPura,
+				  majin.Forma.Atual);
+
+		// ---- 16d) a ORDEM do `Entrar`, lida no fonte de verdade ----
+		// O NPC volta (o `AcordarSemAbsorcao`) ANTES de o repouso ser decidido (o `PrepararOMajinPuroNoLogin`), e a lista de quem esta dentro
+		// sai DEPOIS do `JoinAccepted` (antes dele, o cliente a apagaria ao entrar). Cada chamada aparece uma vez so no arquivo.
+		static (bool Ok, string Onde) OrdemDoEntrar(string fonte)
+		{
+			int entrar = fonte.IndexOf("private void Entrar(", StringComparison.Ordinal);
+			int de = Math.Max(entrar, 0);
+			int volta = fonte.IndexOf("AcordarSemAbsorcao(pl);", de, StringComparison.Ordinal);
+			int repouso = fonte.IndexOf("PrepararOMajinPuroNoLogin(pl);", de, StringComparison.Ordinal);
+			int entrou = fonte.IndexOf("Protocol.S2C.JoinAccepted", de, StringComparison.Ordinal);
+			int lista = fonte.IndexOf("ListaDoMajinNoLogin(pl);", de, StringComparison.Ordinal);
+			return (entrar >= 0 && volta > entrar && repouso > volta && entrou > entrar && lista > entrou,
+					$"Entrar@{entrar}, AcordarSemAbsorcao@{volta}, PrepararOMajinPuroNoLogin@{repouso}, JoinAccepted@{entrou}, ListaDoMajinNoLogin@{lista}");
+		}
+		string caminho = ProjectSettings.GlobalizePath("res://Server/GameServer.cs");
+		string fonte = File.Exists(caminho) ? File.ReadAllText(caminho) : "";
+		(bool ordem, string onde) = OrdemDoEntrar(fonte);
+		AfirmarSg("16d. A ORDEM DO `Entrar` (no fonte): o NPC volta ANTES de o repouso do Corrupted ser decidido, e a lista de quem esta dentro "
+				  + "sai DEPOIS do `JoinAccepted`", ordem, onde);
+		const string Marca = "@@majinnpc@@";
+		string trocado = fonte.Replace("AcordarSemAbsorcao(pl);", Marca).Replace("PrepararOMajinPuroNoLogin(pl);", "AcordarSemAbsorcao(pl);")
+							  .Replace(Marca, "PrepararOMajinPuroNoLogin(pl);");
+		(bool ordemTrocada, string ondeTrocado) = OrdemDoEntrar(trocado);
+		AfirmarSg("16d. (defeito injetado: as duas chamadas trocadas, no texto do fonte) a mesma regua REPROVA", fonte.Length > 0 && !ordemTrocada, ondeTrocado);
 	}
 }

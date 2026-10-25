@@ -393,8 +393,9 @@ public static class FormasDeFrost
 	// ============================ O OITAVO KNOB **NAO** ESTA AQUI, E ISSO E DIVIDA ============================
 	// `FD_ASC_CAP 2.8` (`1A Defines.dm:34`, lido em `ascensioncontrols.dm:82,98`) e o teto da ASCENSAO
 	// dos Frost Demons -- o que faz a 2a Evolucao chegar a 20 x 2,8 = 56x e empatar com o topo das
-	// outras racas. Ele nao virou constante porque **o port nao tem Ascensao**: o `Fighter.BPBoost`
-	// e multiplicado no `powerlevel()` e NUNCA e escrito por ninguem (vale 1 pra todo mundo, sempre).
+	// outras racas. Ele nao virou constante porque **o port nao tem a Ascensao do DM**: o `Fighter.BPBoost`
+	// e multiplicado no `powerlevel()`, e o unico que o escreve (2026-10-23) e a Ascensao do DONO
+	// (`Races.Ascensao`) -- so pras racas SEM escada racial. O Frost Demon tem a dele, entao fica em 1.
 	//
 	// Escreve-lo aqui daria um numero que nada le -- e este projeto ja pagou caro por API orfa (a nota
 	// do sigilo de BP). O numero fica NESTE comentario, que e onde quem for portar a Ascensao vai

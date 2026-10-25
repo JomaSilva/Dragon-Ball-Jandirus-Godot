@@ -6,7 +6,8 @@ namespace Jandirus.Server;
 
 /// <summary>
 /// AS PORTAS DE PALCO DO ROBO `--diagsentidos` (2026-10-18): os corpos em volta do jogador (os do scouter e um por nivel do Sense), o
-/// scouter, o poder do proprio corpo e o nivel do Sense. O que cada um ve e producao: `SentidosDe`, `FichaVisivel` e o tique de 1 Hz.
+/// scouter, o poder do proprio corpo e o nivel do Sense -- e (2026-10-23) o Desperto do passo S4 e o ki divino do proprio jogador. O que
+/// cada um ve e producao: `SentidosDe`, `FichaVisivel` e o tique de 1 Hz.
 /// </summary>
 public partial class GameServer
 {
@@ -92,9 +93,49 @@ public partial class GameServer
 		MandarSkills(pl, forcar: true);
 	}
 
-	/// <summary>Tira os corpos do palco, o scouter e a skill, e devolve o BP.</summary>
+	/// <summary>
+	/// (2026-10-23) O DESPERTO DO PASSO S4: um corpo CONHECIDO a um tile e pouco do jogador, com o ki divino despertado pelo funil do Core
+	/// (`DespertarDivino.Despertar`) e na forma base -- quem so despertou, que o Sense de quem nao tem God Ki deixou de sentir
+	/// (`KiDivinoForaDoSense`). Falso sem jogador, ou se o corpo nao saiu desperto e na base.
+	/// </summary>
+	internal bool PalcoSN_Desperto(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? eu)) return false;
+		ServerPlayer d = StCorpo("Desperto", Em(eu.Pos, 1, 1), 20_000);
+		eu.Social.Fotografar(d.Assinatura, d.Name, d.Race, "Male", 25, NowMs());
+		Jandirus.Core.Forms.DespertarDivino.Despertar(d.Ficha);
+		return Jandirus.Core.Forms.DespertarDivino.JaDespertou(d.Ficha) && d.Forma.NaBase;
+	}
+
+	/// <summary>O ki divino do jogador antes do passo S4 -- pra devolver.</summary>
+	private Jandirus.Core.Stats.GodKiState? _godKiAntesDoPalcoSN;
+	private bool _palcoSNDespertou;
+
+	/// <summary>
+	/// (2026-10-23) O ki divino DESPERTO no proprio jogador (o fim do passo S4: quem tem God Ki sente o Desperto), ou de volta ao que era. So
+	/// o `awakened` -- o medidor e o marco do despertar nao entram na ficha do robo.
+	/// </summary>
+	internal void PalcoSN_Despertar(int id, bool desperto)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		if (desperto && !_palcoSNDespertou)
+		{
+			_godKiAntesDoPalcoSN = pl.Ficha.godki;
+			pl.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true };
+			_palcoSNDespertou = true;
+		}
+		else if (!desperto && _palcoSNDespertou)
+		{
+			pl.Ficha.godki = _godKiAntesDoPalcoSN;
+			_godKiAntesDoPalcoSN = null;
+			_palcoSNDespertou = false;
+		}
+	}
+
+	/// <summary>Tira os corpos do palco, o scouter e a skill, e devolve o BP (e o ki divino do passo S4).</summary>
 	internal void PalcoSN_Limpar(int id)
 	{
+		PalcoSN_Despertar(id, false);
 		PalcoSN_MeuPoder(id, -1);
 		PalcoSN_Scouter(id, false);
 		if (_players.TryGetValue(id, out ServerPlayer? pl) && pl.Livro?.Sabe(Jandirus.Core.Skills.SenseEmNiveis.Path) == true)

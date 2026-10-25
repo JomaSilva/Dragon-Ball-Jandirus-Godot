@@ -518,13 +518,23 @@ public partial class RoboDeBills : Node
 		apertou = E?.ApertarDesenhado("Desafiar pelo título") == true;
 		yield return 2.2;
 		var duelo = srv.DivinoDeTeste(whis: false);
-		Afirmar("**O DESAFIO ABRE PELO BOTAO**: no servidor o Bills esta no duelo com o host, na forma Fury, com o kit do Deus da Destruicao",
-				apertou && duelo is { Desafio: true, Consagrado: true } d1 && d1.Parceiro == eu && d1.Forma == BillsEWhis.IdDaFury,
+		// (2026-10-25) A FURY SAIU DA LARGADA: e a VIRADA do duelo -- o dono: *"o bills quando estiver perdendo o desafio pra virar god ele deve
+		// recuperar toda a vida e vigor ... e virar a forma fury"*. O desafio abre com o kit e sem ela; ferido abaixo da vida da virada, ele a veste.
+		Afirmar("**O DESAFIO ABRE PELO BOTAO**: no servidor o Bills esta no duelo com o host, com o kit do Deus da Destruicao -- e SEM a Fury na "
+				+ "largada (ela e a virada)",
+				apertou && duelo is { Desafio: true, Consagrado: true } d1 && d1.Parceiro == eu && d1.Forma != BillsEWhis.IdDaFury,
 				duelo is { } d2 ? $"forma '{d2.Forma}', desafio={d2.Desafio}, parceiro {d2.Parceiro}" : "o Bills sumiu");
+		for (int i = 0; i < 40 && srv.DivinoDeTeste(whis: false) is { Lutando: false }; i++) yield return 0.25;   // a contagem do duelo
+		srv.ManterOHostDePeDeTeste(eu);
+		srv.FerirOBillsDeTeste(0.22);
+		yield return 2.2;
+		duelo = srv.DivinoDeTeste(whis: false);
 		vb = VisualDe(ids.Bills);
-		Afirmar("**NA TELA O BILLS ESTA NA FURY**: a aura da forma esta no corpo dele (a mesma regua que deu zero no Whis)",
-				vb != null && TemEfeitoDeForma(vb),
-				vb == null ? "sem corpo" : $"corpo de forma={vb.CorpoDaFormaVisivelDeTeste}, coladas={vb.ColadasDeTeste}, contorno={vb.AuraDaFormaDeTeste:0.00}");
+		Afirmar("**NA VIRADA, NA TELA O BILLS ESTA NA FURY**: ferido abaixo de 30%, no servidor ele vestiu a Fury -- e a aura da forma esta no "
+				+ "corpo dele na tela (a mesma regua que deu zero no Whis)",
+				duelo is { Forma: var fv } && fv == BillsEWhis.IdDaFury && vb != null && TemEfeitoDeForma(vb),
+				vb == null ? "sem corpo" : $"forma '{duelo?.Forma}', corpo de forma={vb.CorpoDaFormaVisivelDeTeste}, coladas={vb.ColadasDeTeste}, "
+				+ $"contorno={vb.AuraDaFormaDeTeste:0.00}");
 		Afirmar("o desafio e ANUNCIADO, e os dois falam antes da luta", Disse("DUELO PELO TÍTULO") && Disse(BillsEWhis.FalasDoDesafio[0].Texto), Ultimas());
 		Afirmar("no desafio o Whis tambem sai do lado dele pra assistir: no servidor ele assiste, intocavel, e na tela ja deixou o posto",
 				srv.WhisDeTeste() is { Assiste: true, Intocavel: true } && (mundo.PosicaoDesenhadaDe(ids.Whis) ?? postoDoWhis).DistanceTo(postoDoWhis) > 4f,

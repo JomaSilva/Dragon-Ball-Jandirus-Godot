@@ -529,7 +529,7 @@ public partial class GameServer
 			_tarefaAlvo = _tarefaNomeDoAlvo = "";
 			_tarefaProxima = agora + EsperaSemAlvo;
 			if (OnlinePorConta(ContaDoDeus) is { } g)
-				Avisar(g, "GoD: a ameaca fugiu do plano fisico. Nova tarefa em breve.");
+				Avisar(g, MissoesDeCargo.AvisoDeAlvoQueSaiu("God of Destruction"));
 			SalvarTitulo();
 			return;
 		}
@@ -552,7 +552,8 @@ public partial class GameServer
 		SalvarTitulo();
 
 		if (OnlinePorConta(ContaDoDeus) is { } deus)
-			Avisar(deus, $"GoD: TAREFA FALHADA. Falhas: {_tarefaFalhas}/{FalhasQueDestituem}.");
+			Avisar(deus, $"God of Destruction: TAREFA FALHADA -- o prazo acabou. Falhas: {_tarefaFalhas}/{FalhasQueDestituem} "
+					   + $"(com {FalhasQueDestituem}, você perde o título).");
 		foreach (ServerPlayer o in _players.Values)
 			Mandar(o, Protocol.Fala.Sistema, "",
 				$"O God of Destruction FALHOU em manter o equilibrio... ({_tarefaFalhas}/{FalhasQueDestituem})",
@@ -606,8 +607,10 @@ public partial class GameServer
 			_tarefaPrazo = agora + IntervaloDeTarefa;
 			SalvarTitulo();
 
-			Avisar(deus, $"GoD: NOVA TAREFA -- DESTRUIR o mundo {mundo.Nome}. "
-					   + $"Prazo: {Duelo.TempoQueFalta(_tarefaPrazo, agora)}. Falhar corroi o trono.");
+			// (2026-10-24) as palavras das tarefas de cargo (`MissoesDeCargo.AvisoDeTarefaNova`): o que fazer, e o que o prazo custa
+			Avisar(deus, $"God of Destruction: NOVA TAREFA -- DESTRUIR o planeta {mundo.Nome}.");
+			Avisar(deus, $"Prazo: {Duelo.TempoQueFalta(_tarefaPrazo, agora)}. Se o prazo acabar, você leva 1 falha (tem {_tarefaFalhas} de "
+					   + $"{FalhasQueDestituem}); com {FalhasQueDestituem} falhas, perde o título.");
 			return;
 		}
 
@@ -618,8 +621,12 @@ public partial class GameServer
 		SalvarTitulo();
 
 		if (deus != null)
-			Avisar(deus, $"GoD: NOVA TAREFA -- ELIMINAR a ameaca {v.Name}. "
-					   + $"Prazo: {Duelo.TempoQueFalta(_tarefaPrazo, agora)}. Falhar corroi o trono.");
+		{
+			Avisar(deus, $"God of Destruction: NOVA TAREFA -- ELIMINAR {v.Name}, uma ameaça ao equilíbrio: mate-o enquanto ele estiver "
+					   + "online (se ele sair do jogo, a tarefa é cancelada sem falha).");
+			Avisar(deus, $"Prazo: {Duelo.TempoQueFalta(_tarefaPrazo, agora)}. Se o prazo acabar, você leva 1 falha (tem {_tarefaFalhas} de "
+					   + $"{FalhasQueDestituem}); com {FalhasQueDestituem} falhas, perde o título.");
+		}
 	}
 
 	/// <summary>`god_task_complete` (`:620`) -- e o bom servico ABATE uma falha antiga (`:625`).</summary>
@@ -634,7 +641,8 @@ public partial class GameServer
 		SalvarTitulo();
 
 		if (OnlinePorConta(ContaDoDeus) is { } deus)
-			Avisar(deus, $"GoD: TAREFA CUMPRIDA ({quem}). O equilibrio agradece.");
+			Avisar(deus, $"God of Destruction: TAREFA CUMPRIDA ({quem}) -- e 1 falha a menos (agora {_tarefaFalhas}/{FalhasQueDestituem}). "
+					   + "O equilíbrio agradece.");
 		foreach (ServerPlayer o in _players.Values)
 			Mandar(o, Protocol.Fala.Sistema, "",
 				"O God of Destruction manteve o equilibrio do universo. "

@@ -4,14 +4,16 @@ namespace Jandirus.Core.World;
 /// ============================ OS SERVICOS DO OUTRO MUNDO (pedido de jogador repassado pelo dono, 2026-10-19) ============================
 /// *"adicionar talvez uma rede de quests no outro mundo pra ganhar grana? (...) ao menos nao teria que mexer no torneio mais sacas e
 /// daria mais profundidade ao outro mundo"*. O morto ganha zeni hoje quase so pelo Torneio do Outro Mundo (1M/500k/250k a cada 12 h,
-/// so pro podio) e pelo vilao do Inferno (so quem derruba); e o revive do Enma custa 1.000.000. O dono aprovou o desenho (perguntado):
+/// so pro podio) e pelo vilao do Inferno (so quem derruba); e o revive do Enma custava 1.000.000 (200.000 desde 2026-10-23,
+/// `Alem.PrecoDoReviveDoEnma`). O dono aprovou o desenho (perguntado):
 ///   * QUATRO DOADORES de conversa (menu E), com arte que ja existia: o Oni da recepcao (ao lado da mesa do Enma, onde todo morto
 ///     chega -- e quem abre a rede), a Princesa Serpente (no palacio do Caminho da Serpente), o Sr. Kaioh (o de sempre, na ilha do
 ///     norte) e o Oni do Inferno (na sala da passagem);
 ///   * SETE SERVICOS, um de cada vez, cada um repetivel uma vez por dia do jogo (24 min reais): entregas, nocautes, meditar e treinar;
 ///   * A REDE: o Sr. Kaioh e o Oni do Inferno so dao servico a quem ja fez uma ENTREGA pra eles (a recepcao manda as duas);
 ///   * SO OS MORTOS (*"Só os mortos"*): e pra quem esta preso no Outro Mundo juntar o revive sem depender do torneio.
-/// Uma volta inteira paga 255.000 -- umas quatro voltas pagam o revive. No DM nao ha nada disso: a renda do morto la era o
+/// Uma volta inteira paga 255.000: com o revive a 200.000 (o dono, 2026-10-23), UMA volta ja paga a volta a vida -- eram umas
+/// quatro com o milhao de antes. No DM nao ha nada disso: a renda do morto la era o
 /// `Afterlife_Fighter` e o torneio celeste (`NPClist.dm:324-333`, `Tournament.dm:29-31`).
 ///
 /// AQUI MORA SO A REGRA: o catalogo, a ficha de cada personagem (que vai no save, dentro do `Fighter`) e o que pode e o que nao pode.

@@ -39,18 +39,20 @@ public static class ViloesDoInferno
 	public const double DuracaoS = 15 * 60;
 
 	/// <summary>
-	/// A FORCA: o degrau mais forte da ficha vale este tanto vezes a MEDIA de BP base dos jogadores online (a mesma media que pina
-	/// todo chefe de saga, `GameServer.MediaDoServidor`). 25 e a razao TIPICA dos chefes do `npcs.json` contra o marco de BP que acorda
+	/// A FORCA: o degrau mais forte da ficha vale este tanto vezes a MEDIA de BP base de quem esta no OUTRO MUNDO (as tres zonas, os
+	/// mortos de pe inclusive -- `GameServer.MediaDoOutroMundo`; dono, 2026-10-23: *"Pela media do Outro Mundo"* -- ate entao era a do
+	/// servidor inteiro, a que pina todo chefe de saga). 25 e a razao TIPICA dos chefes do `npcs.json` contra o marco de BP que acorda
 	/// a saga deles -- o Freeza de Vegeta 26,5x os 20 mil, o Boo 20x, os androides 40x (20x no DM: o dono os dobrou em 2026-10-19), o Freeza
 	/// de Namek 80x (40x no DM: o dono dobrou a forma final em 2026-10-18) --: o vilao volta tao
-	/// dificil quanto foi na saga dele, so que contra o servidor de hoje.
+	/// dificil quanto foi na saga dele, so que contra quem esta no Outro Mundo hoje.
 	/// </summary>
 	public const double FatorDaMedia = 25;
 
 	/// <summary>
 	/// O ZENI, por ponto da `recompensa` que o chefe tem na saga dele (a reputacao de heroi: 100 nos chefes, 50 nos androides,
-	/// `BEV_HERO_REP` e `BEV_HERO_REP_ANDROID` do DM): 250 mil num chefe, 125 mil num androide. Um quarto do revive do Enma
-	/// (`Alem.PrecoDoReviveDoEnma`, 1 milhao) e duas tarefas e meia de cargo (`MissoesDeCargo.ZeniPorTarefa`, 100 mil).
+	/// `BEV_HERO_REP` e `BEV_HERO_REP_ANDROID` do DM): 250 mil num chefe, 125 mil num androide. Nasceu como um quarto do revive do
+	/// Enma, que custava 1 milhao; com o revive a 200 mil (`Alem.PrecoDoReviveDoEnma`, o dono em 2026-10-23) um chefe derrubado ja
+	/// paga a volta a vida. E duas tarefas e meia de cargo (`MissoesDeCargo.ZeniPorTarefa`, 100 mil).
 	/// </summary>
 	public const double ZeniPorPontoDeRecompensa = 2_500;
 

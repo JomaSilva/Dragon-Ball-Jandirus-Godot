@@ -222,6 +222,21 @@ public sealed class CombatState
 	public static bool DesmaioSemMinimoDeTeste;
 
 	/// <summary>
+	/// (2026-10-23) ESTE DESMAIO VEIO DO ESMAGAMENTO -- a gravidade (ou o peso) alem do que o corpo aguenta. Quem desmaiou assim se
+	/// ARRASTA ate levantar, mesmo depois de sair do campo (dono: *"personagem ao cair por gravidade ainda consiga se mover lentamente
+	/// se arrastando"*); o desmaiado por outra coisa -- soco, ki, fome -- continua parado. Quem escreve e o servidor, logo depois do
+	/// dano do esmagamento que derrubou (`GameServer.TickDoEsmagamento`); quem apaga e o <see cref="Nocautear"/> de um corpo DE PE:
+	/// todo desmaio novo nasce sem ela, e cair de novo ja no chao (um soco no desmaiado) nao muda o porque do desmaio. Nao vai pro save.
+	/// </summary>
+	public bool DesmaioDaGravidade;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--rastejoteste`): o desmaio novo herda a marca do anterior -- quem ja desmaiou pela gravidade, levantou
+	/// e depois caiu de um soco se arrastaria. Lido pelo <see cref="Nocautear"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DesmaioHerdaAMarcaDeTeste;
+
+	/// <summary>
 	/// ============================ O MAJIN DESFEITO EM PEDACOS (dono, 2026-10-15) ============================
 	/// *"majin "morto" por soco n morre de verdade ele so fica em um KO mais longo e começa uma animaçao q tinha no DM
 	/// representando ele regenerando e voltando a vida, morrer pra ki é oq mata definitivamente"*.
@@ -410,7 +425,12 @@ public sealed class CombatState
 	/// A vida da ficha e SEMPRE derivada do corpo. Escrever `HP` em qualquer outro lugar
 	/// criaria duas verdades, e a que o jogador ve (a barra) e sempre a do corpo.
 	/// </summary>
-	public void SincronizarVida() => F.HP = Corpo.Vida();
+	public void SincronizarVida()
+	{
+		F.HP = Corpo.Vida();
+		// (2026-10-24) ...e a vida que PESA no poder, pela mesma porta: membro de 50% pra cima nao tira poder (o dono). Ver `Fighter.vidaQuePesa`.
+		F.vidaQuePesa = Corpo.VidaQuePesaNoPoder();
+	}
 
 	/// <summary>
 	/// ============================ O FUNIL UNICO DO DANO NUM MEMBRO ============================
@@ -451,10 +471,11 @@ public sealed class CombatState
 	/// (`membro.Decepado`). Nao ha lista de retorno pra ninguem esquecer de esvaziar.
 	/// =========================================================================================================
 	/// </summary>
-	public bool Ferir(BodyPart membro, double dano, bool letal)
+	/// <param name="soNosAninhados">(2026-10-24) o repique so nos aninhados -- ver `Body.Ferir`.</param>
+	public bool Ferir(BodyPart membro, double dano, bool letal, bool soNosAninhados = false)
 	{
 		if (Intocavel || dano <= 0) return false;
-		Corpo.Ferir(membro, dano, letal);
+		Corpo.Ferir(membro, dano, letal, soNosAninhados);
 		GolpesQueFeriram++;
 
 		// O `if(health <= 0 && !nonlethal) LopLimb()` do DM, com as regras que o port ja tinha no
@@ -678,6 +699,9 @@ public sealed class CombatState
 		// ==========================================================================================
 		if (!NocauteGuardaASobrecargaDeTeste && F.Ki > F.MaxKi) F.Ki = F.MaxKi;
 
+		// (2026-10-23) TODO DESMAIO NOVO NASCE SEM A MARCA DA GRAVIDADE -- ver `DesmaioDaGravidade`. So o de um corpo DE PE: quem cai de
+		// novo ja no chao continua desmaiado pelo mesmo motivo.
+		if (!F.KO && !DesmaioHerdaAMarcaDeTeste) DesmaioDaGravidade = false;
 		F.KO = true;
 		F.train = false;   // `KO.dm:57-58`: o nocaute desliga o treino e a meditacao
 		F.med = false;
@@ -753,7 +777,8 @@ public sealed class CombatState
 	/// O NUCLEO CEDEU DE VEZ (<see cref="Body.DeveMorrer"/>) -- e agora? A pergunta UNICA, que o soco, o tiro e o dano
 	/// direto fazem do mesmo jeito (`MeleeResolver.AplicarNoMembro` e `GameServer.ConsequenciaDoDano`):
 	///   * o corpo comum MORRE;
-	///   * a raca que refaz membro (o `canheallopped`) cai em COMA ate o nucleo voltar (`Injuries.dm:276-285`);
+	///   * a raca que refaz membro (o `canheallopped`) cai em COMA ate o nucleo voltar (`Injuries.dm:276-285`) -- menos a Kai, que
+	///     refaz membro e morre como o corpo comum (dono, 2026-10-23; ver <see cref="Body.RegeneraDecepado"/>);
 	///   * o Majin SE DESFAZ em pedacos (<see cref="Desfeito"/>) -- menos quando foi o KI: *"morrer pra ki é oq mata
 	///     definitivamente"* (dono, 2026-10-15).
 	/// </summary>

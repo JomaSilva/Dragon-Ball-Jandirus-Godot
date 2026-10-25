@@ -100,7 +100,8 @@ public partial class GameServer
 			return;
 		}
 		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
-		if (_transmissaoG11.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta se concentrando -- nao se mexa."); return; }
+		// (2026-10-24) e nos 0,3 s da saida piscando e do clarao da chegada a viagem ainda e a de antes -- ver GameServer.SaidaDaTransmissao.cs
+		if (_transmissaoG11.ContainsKey(pl.Id) || EmTransmissao(pl.Id)) { Avisar(pl, "voce ja esta se concentrando -- nao se mexa."); return; }
 
 		List<(ServerPlayer Quem, byte Alcance, string Rotulo, bool Conhecido)> lista = AlvosDaTransmissao(pl);
 		if (lista.Count == 0)
@@ -118,6 +119,7 @@ public partial class GameServer
 				if (!conhecido) razao *= _rng.Next(100, 1001) / 500.0;
 				Avisar(pl, $"  {rotulo}: parece ter {razao:0.##}x o seu poder");
 			}
+			Avisar(pl, $"sua maestria do Instant Transmission: {Math.Floor(f.MaestriaDaTransmissao):0}%.");   // (2026-10-23) ver GameServer.MaestriaDaTransmissao.cs
 			Avisar(pl, "para ir: Instant_Transmission:<nome ou assinatura>");
 			return;
 		}
@@ -129,12 +131,12 @@ public partial class GameServer
 			return;
 		}
 
-		// O CUSTO continua o que o verbo ja cobrava (`kireq`, yardrat.dm:101), sem o BaseDrain por cima.
-		double teleskill = Math.Max(f.teleskill, 1e-9);
-		double kireq = Math.Min(f.MaxKi, f.MaxKi / (teleskill / 100));
+		// O CUSTO continua o que o verbo ja cobrava (`kireq`, yardrat.dm:101), sem o BaseDrain por cima -- e desde 2026-10-23 a
+		// MAESTRIA o multiplica, e encurta a espera (mais ainda com o alvo no campo de visao). Ver GameServer.MaestriaDaTransmissao.cs.
+		double kireq = KiDaTransmissao(pl);
 		int nivel = NivelDaTransmissao(pl);
-		bool yardrat = string.Equals(pl.Race, "Yardrat", StringComparison.OrdinalIgnoreCase);
-		long espera = TransmissaoEmNiveis.MsDaConcentracao(nivel, yardrat, TransmissaoSemTetoDeEsperaDeTeste);
+		bool noCampoDeVisao = lista.Exists(x => x.Quem == alvo && x.Alcance == TransmissaoEmNiveis.CampoDeVisao);
+		long espera = EsperaDaTransmissao(pl, nivel, noCampoDeVisao);
 
 		_transmissaoG11[pl.Id] = new TransmissaoG11
 		{
@@ -143,7 +145,7 @@ public partial class GameServer
 		string frase = $"{pl.Name} toca a própria testa e se concentra.";
 		Avisar(pl, frase);
 		AvisarPertoG3(pl, RaioDaVista, frase, excetoCentro: true);
-		GD.Print($"[G11] {pl.Name} se concentra em {alvo.Name} ({espera} ms, nivel {nivel}, teleskill {f.teleskill:0.#})");
+		GD.Print($"[G11] {pl.Name} se concentra em {alvo.Name} ({espera} ms, nivel {nivel}, teleskill {f.teleskill:0.#}, maestria {f.MaestriaDaTransmissao:0.#}%)");
 	}
 
 	/// <summary>A lista no formato que as bancadas vizinhas ja leem (o <c>Quem</c>). O alcance novo nao sai por aqui.</summary>
@@ -207,7 +209,7 @@ public partial class GameServer
 	/// </summary>
 	private bool TravaNaEnergia(ServerPlayer eu, ServerPlayer o) =>
 		!AndroideSemKi(o) && !o.Ficha.isconcealed && TemEnergiaQueSeSente(o)
-		&& (!KiDivinoEscondido(o) || SenteKiDivino(eu)) && !HospedeEscondido(o);
+		&& (!KiDivinoForaDoSense(o) || SenteKiDivino(eu)) && !HospedeEscondido(o);   // (2026-10-23) e o desperto na base -- ver `KiDivinoForaDoSense`
 
 	/// <summary>NPC pelo nome (nao tem assinatura). Pessoa conhecida pelo nome; o resto, pela assinatura.</summary>
 	private static (string Rotulo, bool Conhecido) RotuloDaTransmissao(ServerPlayer eu, ServerPlayer o)
@@ -247,25 +249,50 @@ public partial class GameServer
 		return iguais[0];
 	}
 
-	/// <summary>A chegada, no fim da concentracao. O grupo e desta funcao: ninguem e puxado pelo <c>MoveToZone</c>.</summary>
+	/// <summary>
+	/// O FIM DA CONCENTRACAO (`TickDaTransmissaoG11`). As perguntas de sempre e, passando, o corpo PISCA e a SAIDA comeca: o salto em si
+	/// e o <see cref="SaltarPelaTransmissaoG11"/>, 0,2 s depois (dono, 2026-10-24: o mesmo par de atrasos do Kai Kai -- ver
+	/// `GameServer.SaidaDaTransmissao.cs`). O grupo e colhido aqui, no instante em que a viagem sai: ninguem e puxado pelo <c>MoveToZone</c>.
+	/// </summary>
 	private void ChegarPelaTransmissaoG11(ServerPlayer pl, TransmissaoG11 t)
 	{
-		Fighter f = pl.Ficha;
-		if (!_players.TryGetValue(t.Alvo, out ServerPlayer? alvo) || alvo.ECadaver || EhCadaver(alvo))
-		{
-			Avisar(pl, "a assinatura que voce seguia se apagou.");
-			return;
-		}
-		// As duas perguntas se refazem ANTES de cobrar: da pra ter ficado preso no meio, e o alvo da pra ter entrado
-		// onde nao se chega. O morto de pe continua sendo alvo -- o cadaver, nao.
-		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
+		if (PorQueNaoChegaPelaTransmissao(pl, t, out ServerPlayer? alvo) is { } porque) { Avisar(pl, porque); return; }
+		List<ServerPlayer> caronas = GrupoDaTransmissao(pl, alvo!.Zone);
+		PiscarNaZona(pl.Zone, pl.Id, pl.Pos);
+		foreach (ServerPlayer c in caronas) PiscarNaZona(c.Zone, c.Id, c.Pos);
+		ComecarASaidaDaTransmissao(pl, t, caronas);
+	}
+
+	/// <summary>
+	/// AS PERGUNTAS QUE SE REFAZEM ANTES DE COBRAR -- no fim da concentracao e de novo no salto: da pra ter ficado preso no meio, o alvo
+	/// da pra ter sumido, ou entrado onde nao se chega. O morto de pe continua sendo alvo -- o cadaver, nao. Nulo = pode ir.
+	/// </summary>
+	private string? PorQueNaoChegaPelaTransmissao(ServerPlayer pl, TransmissaoG11 t, out ServerPlayer? alvo)
+	{
+		if (!_players.TryGetValue(t.Alvo, out alvo) || alvo.ECadaver || EhCadaver(alvo)) return "a assinatura que voce seguia se apagou.";
+		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) return preso;
 		if (alvo.Zone.Hash != pl.Zone.Hash && ZonaFechadaAoTeleporte(alvo.Zone))
+			return "a assinatura que voce seguia entrou num lugar onde nao se chega assim.";
+		return null;
+	}
+
+	/// <summary>
+	/// O SALTO, 0,2 s depois de o corpo comecar a piscar: as perguntas de novo, a queda (quem caiu nesses 0,2 s nao vai), a cobranca, a
+	/// passagem do morto, o grupo, o voo no espaco e a maestria. Devolve quem foi junto -- o clarao da chegada e o deles tambem --, ou
+	/// nulo se a viagem nao saiu (e nada foi cobrado).
+	/// </summary>
+	private List<ServerPlayer>? SaltarPelaTransmissaoG11(ServerPlayer pl, TransmissaoG11 t, List<ServerPlayer> colhidas)
+	{
+		Fighter f = pl.Ficha;
+		if (PorQueNaoChegaPelaTransmissao(pl, t, out ServerPlayer? alvo) is { } porque) { Avisar(pl, porque); return null; }
+		// CAIR SEGURA: o golpe nao pega nesses 0,2 s (o desvio da saida), mas o corpo pode cair por outro caminho -- e caido nao viaja.
+		if ((f.KO || CaidoPelaMorte(pl)) && !TransmissaoCaidoViajaDeTeste)
 		{
-			Avisar(pl, "a assinatura que voce seguia entrou num lugar onde nao se chega assim.");
-			return;
+			Avisar(pl, "você caiu antes de sumir: o Instant Transmission se perde.");
+			return null;
 		}
 
-		bool mesmaZona = alvo.Zone.Hash == pl.Zone.Hash;
+		bool mesmaZona = alvo!.Zone.Hash == pl.Zone.Hash;
 		double distTiles = mesmaZona ? Vec2.Distance(alvo.Pos, pl.Pos) / ZoneCollision.TileSize : 30;
 		bool yardrat = string.Equals(pl.Race, "Yardrat", StringComparison.OrdinalIgnoreCase);
 		if (yardrat && f.teleskill < 500) f.teleskill = Math.Min(500, f.teleskill + distTiles * 0.2);
@@ -273,13 +300,13 @@ public partial class GameServer
 		f.Ki -= t.Kireq;
 		f.Ki = Math.Max(f.Ki, 0);
 
-		List<ServerPlayer> caronas = GrupoDaTransmissao(pl, alvo.Zone);
+		// O grupo e o que piscou junto no fim da concentracao, menos quem saiu do mundo, virou cadaver ou ficou preso nesses 0,2 s.
+		List<ServerPlayer> caronas = [.. colhidas.Where(c => _players.ContainsKey(c.Id) && !c.ECadaver && !EhCadaver(c)
+														 && PorQueNaoSaiDaqui(c).Length == 0)];
 		List<ServerPlayer> dePassagem = [.. caronas.Prepend(pl).Where(q => q.Ficha.dead && Alem.EhOAlem(q.Zone) && !Alem.EhOAlem(alvo.Zone))];
 		if (!TransmissaoSemPassagemDeTeste)
 			foreach (ServerPlayer quem in dePassagem) ArmarAPassagem(quem);
 
-		PiscarNaZona(pl.Zone, pl.Id, pl.Pos);
-		foreach (ServerPlayer c in caronas) PiscarNaZona(c.Zone, c.Id, c.Pos);
 		AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} desaparece num clarao!", excetoCentro: true);
 
 		Vec2 ponto = PontoAoLadoG11(alvo);
@@ -292,13 +319,11 @@ public partial class GameServer
 			foreach (ServerPlayer c in caronas) LigarOVooDaChegada(c);
 		}
 
-		PiscarNaZona(pl.Zone, pl.Id, pl.Pos);
-		foreach (ServerPlayer c in caronas)
-			if (_players.ContainsKey(c.Id)) PiscarNaZona(c.Zone, c.Id, c.Pos);
-
 		Avisar(pl, "voce localiza a assinatura e aparece num instante!");
 		Avisar(alvo, $"{pl.Name} aparece num instante ao seu lado!");
-		GD.Print($"[G11] {pl.Name} se teletransportou ate {alvo.Name} (teleskill {f.teleskill:0.#}, +{caronas.Count} carona)");
+		SubirAMaestriaDaTransmissao(pl);   // (2026-10-23) a viagem que CHEGA ensina -- ver GameServer.MaestriaDaTransmissao.cs
+		GD.Print($"[G11] {pl.Name} se teletransportou ate {alvo.Name} (teleskill {f.teleskill:0.#}, maestria {f.MaestriaDaTransmissao:0.#}%, +{caronas.Count} carona)");
+		return caronas;
 	}
 
 	/// <summary>

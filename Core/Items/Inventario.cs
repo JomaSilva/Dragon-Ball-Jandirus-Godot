@@ -84,7 +84,10 @@ public static class CatalogoDeItens
 	public const string Senzu = "Senzu";
 
 	/// <summary>
-	/// OS BRINCOS POTARA -- insignia do cargo de Kaioshin, e a porta da fusao Potara.
+	/// OS BRINCOS POTARA -- o que o cargo de Kaioshin entrega, e a porta da fusao Potara.
+	///
+	/// (2026-10-23) O KAIOSHIN DA O PAR (dono: *"Kaioshin entrega o par"*): ele nao e mais insignia que volta pro cofre em 1 s da mao de
+	/// quem nao e Kaioshin. Quem o recebe fica com ele ate a fusao o gastar, e o cargo entrega um par por dia -- ver <see cref="ParDePotara"/>.
 	///
 	/// ============================ UM ITEM, E NAO DOIS BRINCOS PAREADOS ============================
 	/// No DM sao dois objetos (`potaraleft.dmi` / `potararight.dmi`) que precisam ser PAREADOS num
@@ -333,12 +336,14 @@ public static class CatalogoDeItens
 		// conferidos). **Nao e a `Potara-Equipped.png`**, que esta sendo MOVIDA de pasta por outra
 		// sessao neste exato momento: apontar pra um alvo em movimento seria escrever um caminho que
 		// quebra na proxima sincronia.
+		// (2026-10-23) "DAR" ENTROU AO LADO DE "JOGAR": o par se da a quem esta marcado -- ver `ParDePotara`.
 		[BrincosPotara] = new ItemDef(
 			BrincosPotara, "Brincos Potara",
 			"O par de brincos dos Kaioshin. Mire alguém e jogue um deles: se a pessoa aceitar, vocês "
-			+ "se fundem na hora -- de qualquer raça, sem dança, e por meia hora inteira.",
+			+ "se fundem na hora -- de qualquer raça, sem dança, e por meia hora inteira. O par também se dá: "
+			+ "marque a pessoa e use \"Dar ao alvo marcado\". Na mão de quem não é Kaioshin, ele se gasta na fusão.",
 			"res://Assets/Sprites/Clothes/potara.tres", "",
-			Empilhavel: false, Acoes: ["jogar"]),
+			Empilhavel: false, Acoes: ["jogar", ParDePotara.AcaoDar]),
 
 		// `icon = 'food.dmi'`, `icon_state = "fish"` nos tres (`Fishing.dm:61-93`).
 		[Peixe] = new ItemDef(

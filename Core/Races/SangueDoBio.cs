@@ -131,6 +131,11 @@ public static class SangueDoBio
 	///
 	/// NO EMPATE GANHA QUEM NAO E NAMEKUSEIJIN: o ramo dele (`PerfilDeRegen.De`) nao cura em combate nem devolve membro com o
 	/// MESMO numero que da as duas coisas ao Kai -- com o Namekuseijin e o Kai no sangue, o bio fica com o melhor dos dois.
+	///
+	/// (2026-10-23) E, ENTRE OS OUTROS, A RACA QUE MORRE COMO TODO MUNDO (o Kai -- `Combat.PerfilDeRegen.MorreComoComum`). O dono:
+	/// *"O bio com sangue Kai tambem morre"*. Kai, Meta, Tsujin e Yardrat tem a mesma Regeneration 10 -- o mesmo eixo de cura --, e o que
+	/// os separa e so a pergunta da morte, que vem junto com a regeneracao herdada: sem esta linha o bio com o Yardrat ANTES do Kai na
+	/// fila do sangue ficava em coma, e o com o Kai antes morria. O sangue Majin (100) continua ganhando de todos.
 	/// </summary>
 	public static (string Raca, double Regeneration) RegeneracaoDoBio(Fighter f, Func<string, double> regeneracaoDa)
 	{
@@ -139,10 +144,20 @@ public static class SangueDoBio
 		foreach (string r in Doadoras(f))
 		{
 			double v = regeneracaoDa(r);
-			if (v > reg || (v == reg && melhor == "Namekian" && r != "Namekian")) { melhor = r; reg = v; }
+			if (v > reg || (v == reg && ((melhor == "Namekian" && r != "Namekian") || EmpateFicaComOKai(r, melhor)))) { melhor = r; reg = v; }
 		}
 		return (melhor, reg);
 	}
+
+	/// <summary>No empate de regeneracao, a doadora <paramref name="r"/> toma o lugar da <paramref name="melhor"/> por morrer como todo mundo -- ver <see cref="RegeneracaoDoBio"/>.</summary>
+	private static bool EmpateFicaComOKai(string r, string melhor) =>
+		!EmpateSemOKaiDeTeste && Combat.PerfilDeRegen.RacaMorreComoComum(r) && !Combat.PerfilDeRegen.RacaMorreComoComum(melhor);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`, familia M): o empate de regeneracao volta a ficar com quem chegou primeiro na fila do
+	/// sangue -- o bio com o Yardrat antes do Kai fica em coma. Lido pelo <see cref="EmpateFicaComOKai"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EmpateSemOKaiDeTeste;
 
 	/// <summary>
 	/// O SANGUE DE UM DOADOR, na hora da agulha: um bio colhido passa as doadoras DELE; os outros, a raca e a do pai (o

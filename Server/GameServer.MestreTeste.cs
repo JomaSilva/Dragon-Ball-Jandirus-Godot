@@ -289,6 +289,10 @@ public partial class GameServer
 			// High Tension e ao Extreme Tension como guia o SSJ1, pela metade da porta. O Godly Tension fica de fora sozinho: nao tem porta
 			// de BP (a porta dele e o ki divino). Ver o cabecalho de `Discipulado.Ensinaveis`.
 			"alta_tensao", "tensao_extrema",
+
+			// (2026-10-23) O SUPER MAJIN, pelo mesmo funil e pela mesma decisao da Tensao: um mestre Majin guia o aluno a ele pela metade
+			// da PORTA (a de entrada). A trava da maestria pelo BP base nao e porta: o mestre nao a corta (`SuperMajin.TetoDaMaestria`).
+			"super_majin",
 		];
 
 		string[] hoje = [.. Discipulado.Ensinaveis.Select(d => d.Id).OrderBy(x => x, StringComparer.Ordinal)];

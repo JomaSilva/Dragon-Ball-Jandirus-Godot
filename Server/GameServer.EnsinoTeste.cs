@@ -114,6 +114,7 @@ public partial class GameServer
 			NinguemMexeEmMarco();
 			ALicaoAlcancaQuemEstaEmCena(a, d);
 			DoCargoSoOAtaqueDeKi(a, b);
+			OPotentialUnleashedNaoSeEnsina(a, b);   // (2026-10-23) a familia 11m -- o dono: so o ritual da a forma
 		}
 		catch (Exception e)
 		{
@@ -872,6 +873,101 @@ public partial class GameServer
 		{
 			Jandirus.Core.Ranks.DadivaDeCargo.EnsinadaDoCargoFicaDeTeste = false;
 			Zerar(b);
+		}
+	}
+
+	/// <summary>
+	/// 11m. O POTENTIAL UNLEASHED NAO SE ENSINA (dono, 2026-10-23) -- *"essa forma nao pode ser ensinada diretamente, precisando passar
+	/// do ritual"*. A skill que era a forma (`kai/Mystic`, `teacher = TRUE` no DM) fecha por PORTA NENHUMA, cada uma pela porta de
+	/// producao dela (o codigo na frente de cada rotulo e o que o ciclo procura):
+	///   11m1/11m2  o verbo `ens_ensinar`: nem a oferta chega, e a recusa diz o caminho que sobrou (o ritual);
+	///   11m3a      `PodeRepassar` e a lista do `Teach_Skill` (`Repassaveis`) nao a tem;
+	///   11m3b      a lista do cartao do aluno (`OQueOMestreEnsina`) nao a tem;
+	///   11m4       a licao de mestre nao a abre ao proprio aluno;
+	///   11m5       o bio nao a herda do doador.
+	/// O defeito injetado e `EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste` (11mx: as cinco reguas reprovam com ele). O botao "Ensinar"
+	/// do cliente e da F8m da `--diagverbs`; a forma que fica com quem ja a tinha, da `--ritualkaiteste` (C2).
+	/// </summary>
+	private void OPotentialUnleashedNaoSeEnsina(ServerPlayer a, ServerPlayer b)
+	{
+		GD.Print("[ensino] -- 11m) O POTENTIAL UNLEASHED NAO SE ENSINA: so o Ritual Mistico do Velho Kaiohshin o da (dono, 2026-10-23)");
+		Skill? mistico = _skills!.Get(Jandirus.Core.Ranks.RitualDoKaioshin.SkillDoMistico);
+		if (mistico == null || !mistico.Ensinavel)
+		{
+			AfirmarEns("11m. PRECONDICAO: a skill que era a forma existe no catalogo e o DM a deixava ensinar (`teacher = TRUE`)",
+					   false, mistico?.Nome ?? "sem a skill");
+			return;
+		}
+
+		// A LICAO DE MESTRE, pura (o mesmo molde da 11e): o que se mede e se a porta do mestre abre a skill.
+		static RecusaDeLicao DeMestre(Skill s)
+		{
+			var doMestre = new SkillBook();
+			doMestre.Dar(s.Path);
+			var doAluno = new SkillBook();
+			doAluno.Conceder(50);
+			return EnsinoDeSkill.Avaliar(doMestre, doAluno, s, true, true, false, 1, false, eMeuAluno: true, doAlunoSozinho: Recusa.Pode);
+		}
+
+		// ---- 11m1/11m2) O VERBO -- com a copia que NINGUEM ensinou, a unica que o DM deixava repassar ----
+		Zerar(a, b);
+		a.Livro.Dar(mistico.Path);
+		b.Livro.Conceder(50);
+		Estacionar(a, 0);
+		Encostar(a, b, tiles: 1);
+		List<string> falas = Ouvir(() => UsarVerboDeEnsino(a, $"ens_ensinar:{mistico.Path}"));
+		AfirmarEns($"11m1. O POTENTIAL UNLEASHED ('{mistico.Nome}') NAO SE ENSINA: quem o tem aponta pra quem esta colado e a oferta nem chega",
+				   b.PedidoDeLicao == null && !b.Livro.Sabe(mistico.Path), b.PedidoDeLicao?.ToString() ?? "");
+		AfirmarEns("11m2. ...e a recusa diz o caminho que sobrou: o Ritual Mistico do Velho Kaiohshin",
+				   Disse(falas, "não se ensina") && Disse(falas, "Ritual Místico do Velho Kaiohshin"), Ultimos(falas));
+
+		// ---- 11m3) AS LISTAS ----
+		List<string> repassaveis = [.. EnsinoDeSkill.Repassaveis(_skills, a.Livro).Select(s => s.Path)];
+		AfirmarEns("11m3a. AS LISTAS: o livro que a tem nao a REPASSA (`PodeRepassar`), e a lista do `Teach_Skill` (`Repassaveis`) nao a oferece",
+				   !EnsinoDeSkill.PodeRepassar(a.Livro, mistico) && !repassaveis.Contains(mistico.Path), string.Join(",", repassaveis));
+		List<string> doCartao = [.. EnsinoDeSkill.OQueOMestreEnsina(_skills, a.Livro.Aprendidas).Select(s => s.Path)];
+		AfirmarEns("11m3b. ...nem a do cartao do aluno (`OQueOMestreEnsina`)", !doCartao.Contains(mistico.Path), string.Join(",", doCartao));
+
+		// ---- 11m4) A LICAO DE MESTRE ----
+		RecusaDeLicao deMestre = DeMestre(mistico);
+		AfirmarEns("11m4. A LICAO DE MESTRE nao a abre: nem o mestre a mostra ao proprio aluno", deMestre == RecusaDeLicao.SoPeloRitual, $"{deMestre}");
+
+		// ---- 11m5) O BIO ----
+		Zerar(b);
+		int herdadas = HerdarOLivroDosDoadores(b, new Gestacao
+		{
+			Amostras = { new Amostra { Doador = "bancada: o doador que a sabia" } },
+			Tecnicas = { mistico.Path },
+		});
+		AfirmarEns("11m5. O BIO nao a herda do doador (a heranca era a ultima porta)", !b.Livro.Sabe(mistico.Path) && herdadas == 0, $"herdadas {herdadas}");
+
+		// ---- O DEFEITO INJETADO ----
+		try
+		{
+			EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste = true;
+			Zerar(a, b);
+			a.Livro.Dar(mistico.Path);
+			b.Livro.Conceder(50);
+			Encostar(a, b, tiles: 1);
+			UsarVerboDeEnsino(a, $"ens_ensinar:{mistico.Path}");
+			bool ofertaChegou = b.PedidoDeLicao?.Path == mistico.Path;
+			bool listas = EnsinoDeSkill.PodeRepassar(a.Livro, mistico)
+						  && EnsinoDeSkill.OQueOMestreEnsina(_skills, a.Livro.Aprendidas).Any(s => s.Path == mistico.Path);
+			RecusaDeLicao deMestreAntes = DeMestre(mistico);
+			b.PedidoDeLicao = null;
+			Zerar(b);
+			int herdadasAntes = HerdarOLivroDosDoadores(b, new Gestacao { Amostras = { new Amostra() }, Tecnicas = { mistico.Path } });
+			AfirmarEns("11mx. (defeito injetado: o Potential Unleashed se ensina como antes) a mesma regua REPROVA nas portas -- a oferta chega, as "
+					   + "listas o oferecem, a licao de mestre nao o recusa e o bio o herda",
+					   ofertaChegou && listas && deMestreAntes != RecusaDeLicao.SoPeloRitual && herdadasAntes == 1,
+					   $"oferta {ofertaChegou}, listas {listas}, mestre {deMestreAntes}, bio {herdadasAntes}");
+		}
+		finally
+		{
+			EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste = false;
+			a.RecargaDaLicao = 0;
+			b.PedidoDeLicao = null;
+			Zerar(a, b);
 		}
 	}
 

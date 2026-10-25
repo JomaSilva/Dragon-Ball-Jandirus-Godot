@@ -322,7 +322,7 @@ public partial class GameServer
 		{
 			if (EfeitosEscritosAMao.De(s.Path) is { } feitoAMao) return $"voce aprendeu {s.Nome}: {feitoAMao}.";
 			if (RegrasDeNivel.Get(s.Path) is { } regra && Array.Exists(regra.Degraus, FichaDeSkill.DegrauTemEfeito))
-				return $"voce aprendeu {s.Nome} -- ela rende por NIVEL: sobe com o treino, e a ficha dela (aba Skills) diz o que cada nivel da.";
+				return $"voce aprendeu {s.Nome} -- ela rende por NIVEL: sobe com o treino, e a ficha dela (aba Passivas) diz o que cada nivel da.";
 		}
 		return $"voce aprendeu {s.Nome} (sem efeito mecanico ainda).";
 	}

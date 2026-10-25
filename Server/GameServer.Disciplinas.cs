@@ -197,6 +197,9 @@ public partial class GameServer
 	/// e o jogador leria como bug do numero, nao como titulo.
 	/// </summary>
 	private double MultiplicadorDaForma(ServerPlayer pl) =>
+		// (2026-10-23) A FURY DO BILLS e a excecao de UM corpo: 77x, e nao os 72x do catalogo (`FuryDoBills`, no
+		// `GameServer.BillsTreino.cs`). O jogador com o titulo, e todo outro corpo, seguem a conta de baixo.
+		FuryDoBills(pl) ??
 		// O PERFIL INTEIRO E NAO SO O `SangueDiluido`: a curva do Mistico le a linhagem e a maestria
 		// de ki divino de quem esta na forma (ver `FormaDef.EscalaComGodKi`), e o `Perfil` e o funil
 		// unico que ja responde as duas. O booleano que estava aqui era um pedaco dele solto.

@@ -206,11 +206,24 @@ public static class PintorDeKi
 		mat.SetShaderParameter("aro", e.Aro);
 		mat.SetShaderParameter("pulsar", e.Pulsar);
 		mat.SetShaderParameter("brancura", e.Brancura);
+		// (2026-10-23) A ESFERA DO HAKAI e o ritmo dos arcos dela -- ver `EstiloDeBola.Hakai`.
+		mat.SetShaderParameter("hakai", HakaiDe(e));
+		mat.SetShaderParameter("giro", e.Giro);
 		mat.SetShaderParameter("semente", Semente());
-		// (v0.3.0) A ARTE DE COR PROPRIA (a Genkidama) vai com os tons como estao: a `cor` dela e a da luz, e nao tinta.
+		// (v0.3.0) A ARTE DE COR PROPRIA (a Genkidama, o Hakai) vai com os tons como estao: a `cor` dela e a da luz, e nao tinta.
 		Tingir(mat, e.Tons, e.CorPropria != null ? Colors.Black : cor);
 		return mat;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagartedeki` familia 9 e `--diaghakaibills`): a camada do Hakai DESLIGADA -- a esfera continua roxa
+	/// (os tons e a cor sao da arte), mas sem o miolo de raios, a borda escura, os arcos, o halo grande e os graos. Lido pelo
+	/// <see cref="HakaiDe"/>, que e por onde o material, o halo e o quadro perguntam pela camada. Falso em jogo, sempre.
+	/// </summary>
+	public static bool HakaiApagadoDeTeste;
+
+	/// <summary>Quanto da camada do Hakai este estilo leva (o `EstiloDeBola.Hakai`, ou nada com o defeito de bancada).</summary>
+	private static float HakaiDe(EstiloDeBola e) => HakaiApagadoDeTeste ? 0f : e.Hakai;
 
 	/// <summary>
 	/// ESCREVE AS TRES CORES -- os tons da arte com a tinta do ki somada (ver <see cref="Rampa.Com"/>).
@@ -234,8 +247,19 @@ public static class PintorDeKi
 		mat.SetShaderParameter("cor_fundo", tons.Fundo(cor));
 	}
 
-	/// <summary>O alcance do halo de uma bola. A Genkidama (`calma`) brilha mais longe: e quase toda luz.</summary>
-	private static float HaloDaBola(EstiloDeBola e, float raio) => (5f + raio * 0.9f) * (1f + 0.5f * e.Calma);
+	/// <summary>
+	/// O alcance do halo de uma bola. A Genkidama (`calma`) brilha mais longe: e quase toda luz. E a esfera do Hakai tambem: a
+	/// imagem tem um halo magenta GRANDE em volta, que se apaga devagar (o shader o faz mais macio e mais forte).
+	/// </summary>
+	private static float HaloDaBola(EstiloDeBola e, float raio) =>
+		(5f + raio * 0.9f) * (1f + 0.5f * e.Calma) * (1f + HaloDoHakai * HakaiDe(e));
+
+	/// <summary>
+	/// (2026-10-23) QUANTO O HALO DO HAKAI VAI MAIS LONGE que o de uma bola do mesmo tamanho: 70%. Na esfera de 16 px ele chega a
+	/// 33 px da casca (dois raios), e na foto do jogo e o roxo em volta que se le de longe. ESCOLHA, olhando a conta de papel do
+	/// shader contra a imagem.
+	/// </summary>
+	private const float HaloDoHakai = 0.7f;
 
 	// =====================================================================
 	// AS FOLGAS -- ate onde cada estilo pinta
@@ -300,8 +324,16 @@ public static class PintorDeKi
 		if (e.Pontilhado > 0f) corpo = Mathf.Max(corpo, raio * 1.95f);
 		if (e.Aro > 0f) corpo = Mathf.Max(corpo, raio * 1.75f);
 		if (e.Eletrico > 0f) corpo = Mathf.Max(corpo, raio * 1.45f);
+		if (HakaiDe(e) > 0f) corpo = Mathf.Max(corpo, raio * ArcosDoHakai);
 		return corpo + HaloDaBola(e, raio) + Sobra;
 	}
+
+	/// <summary>
+	/// ATE ONDE OS ARCOS DO HAKAI CHEGAM, em raios de bola: a orbita mais larga tem 1,42 raio no eixo comprido, treme 3% pra fora
+	/// e tem 0,035 de meia espessura -- 1,5, e 0,05 de sobra. Os graos escuros vao ate 2,3 raios, mas moram dentro do halo, que
+	/// ja esta somado ao quadro.
+	/// </summary>
+	private const float ArcosDoHakai = 1.55f;
 
 	// =====================================================================
 	// A GEOMETRIA

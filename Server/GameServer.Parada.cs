@@ -45,8 +45,9 @@ namespace Jandirus.Server;
 ///                                   decide e o <see cref="_paradaEmCurso"/>, lido no `CobrarARecargaDeFusao`;
 ///                                   no logout normal o preco continua. Antes o `Persistir` recusava os dois, e
 ///                                   o que tinha sido feito durante a fusao se perdia
-///   absorcao do Majin               IGUAL: quem esta dentro e solto e o poder emprestado zera -- e o que o
-///                                   login depois de uma queda ja faz (`AcordarSemAbsorcao`)
+///   absorcao do Majin               IGUAL: o JOGADOR que esta dentro e solto e o poder dele sai; o NPC devorado
+///                                   fica na ficha e volta no login (dono, 2026-10-23) -- e o que o login depois
+///                                   de uma queda ja faz (`AcordarSemAbsorcao`)
 ///   ZanzoClash                      IGUAL: o proprio `Drop` desfaz o embate SEM vencedor e antes do save
 ///                                   (`GameServer.SaidaDoEmbate.cs`) -- ninguem e recolocado, ninguem apanha,
 ///                                   ninguem vai pro disco oculto

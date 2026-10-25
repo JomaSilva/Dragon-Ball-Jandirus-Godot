@@ -64,6 +64,24 @@ public partial class GameServer
 	/// (2026-10-16) CRAVA a maestria de gravidade de um corpo -- pra cima OU pra baixo -- e faz a ficha lenta sair de novo. A bancada
 	/// das abas mede a linha "Aclimatado" da aba de Formas com ela e devolve o corpo como estava. Devolve a maestria de antes.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-25) O KI DIVINO CRAVADO NUM CORPO: desperto, com esta maestria -- o robo das abas confere o cartao "Ki divino" da aba
+	/// Forms. Devolve o estado de antes pra o <see cref="DesfazerKiDivinoDeTeste"/>. O `S2C.GodKi` sai sozinho no tique (o retrato mudou).
+	/// </summary>
+	internal Jandirus.Core.Stats.GodKiState? CravarKiDivinoDeTeste(int id, double maestria)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return null;
+		Jandirus.Core.Stats.GodKiState? antes = pl.Ficha.godki;
+		pl.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = maestria };
+		return antes;
+	}
+
+	/// <summary>(2026-10-25) Devolve o ki divino de antes do <see cref="CravarKiDivinoDeTeste"/>.</summary>
+	internal void DesfazerKiDivinoDeTeste(int id, Jandirus.Core.Stats.GodKiState? antes)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.Ficha.godki = antes;
+	}
+
 	internal double CravarMaestriaDeGravidadeDeTeste(int id, double maestria)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return 0;

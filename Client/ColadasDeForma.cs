@@ -35,12 +35,19 @@ public static class ColadasDeForma
 	/// <summary>`god blue.tres` -- `sgkoverlay` (`AuraObject.dm:16`). Ja azul.</summary>
 	public const string FolhaDeusAzul = Pasta + "god blue.tres";
 
+	/// <summary>
+	/// (2026-10-23) `Electric_Majin.tres` -- as faiscas do Super Majin (o `MajinEffect` do DM, `Majin.dm:20-23`). Ja carmesim. Ver
+	/// <see cref="Jandirus.Core.Forms.FolhaColada.FaiscaMajin"/>.
+	/// </summary>
+	public const string FolhaFaiscaMajin = Pasta + "Electric_Majin.tres";
+
 	/// <inheritdoc cref="ColadasDeForma"/>
 	public static string CaminhoDa(Jandirus.Core.Forms.FolhaColada f) => f switch
 	{
 		Jandirus.Core.Forms.FolhaColada.PoderLendario => FolhaPoderLendario,
 		Jandirus.Core.Forms.FolhaColada.Ameacadora => FolhaAmeacadora,
 		Jandirus.Core.Forms.FolhaColada.DeusAzul => FolhaDeusAzul,
+		Jandirus.Core.Forms.FolhaColada.FaiscaMajin => FolhaFaiscaMajin,
 		_ => FolhaDeus,
 	};
 

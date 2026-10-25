@@ -102,6 +102,7 @@ public sealed partial class GameServer
 			ONpcAbsorvidoSomeV30();
 			OSomDeVegetaV30();
 			OsAvisosComCorV30();
+			ORecargaEOTetoDoZenkaiV30();
 			ORaboQueNaoVoltaCicatrizaV30();
 			ARaivaNoRetratoV30();
 			OsPesosAteOLimiteEComArteV30();
@@ -176,6 +177,9 @@ public sealed partial class GameServer
 		Alem.IlhasComoOCaminhoDeTeste = false;
 		CombatState.DesmaioSemMinimoDeTeste = false;
 		CombatState.MajinNaoSeDesfazDeTeste = false;
+		Body.KaiEmComaDeTeste = false;
+		BioKaiEmComaDeTeste = false;
+		Jandirus.Core.Races.SangueDoBio.EmpateSemOKaiDeTeste = false;
 		GolpeSemPoseDeTeste = false;
 		VoltaNaFaixaDoDmDeTeste = false;
 		ZoneCollision.QuemVoaSaiDoMapaDeTeste = false;
@@ -458,7 +462,23 @@ public sealed partial class GameServer
 		bool tudo = namek.Ficha.unlockPotential >= 1 && namek.Forma.Despertou(mistico) && namek.Forma.Despertou(orange);
 		bool acabou = PorQueNaoLiberaOPotencial(namek) is { } fim && fim.Contains("tudo", StringComparison.Ordinal) && !DesejoDePotencial(namek, set);
 		AfirmarV30("...com o poder do ki divino (o BP base no requisito pessoal) o Namekuseijin ganha o potencial, o MISTICO e o ORANGE num pedido so -- e depois nao ha mais o que pedir",
-				   tudo && acabou && Disse(doNamek, "Mistico") && Disse(doNamek, "ORANGE"), Ultimos(doNamek));
+				   tudo && acabou && Disse(doNamek, "Potential Unleashed") && Disse(doNamek, "ORANGE"), Ultimos(doNamek));
+
+		// (2026-10-23, o dono) A FORMA DO DESEJO NAO SOME NO TIQUE SEGUINTE. Ate o Ritual Mistico do Velho Kaiohshin, a forma do Mistico
+		// (hoje o Potential Unleashed) seguia a skill `kai/Mystic` do kit do Kaioshin: a reconciliacao de 1 Hz dos cargos
+		// (`ReconciliarDadiva`, pelo `ReconciliarODomDoMistico`) fechava a forma de quem nao tinha a skill -- e o Namekuseijin que a
+		// ganhava do dragao a perdia 1 s depois. Agora a forma e um direito gravado: tres reconciliacoes depois, ela continua.
+		for (int i = 0; i < 3; i++) ReconciliarDadiva(namek);
+		bool ficou = namek.Forma.Despertou(mistico) && namek.Forma.Despertou(orange);
+		string comoFicou = $"mistico {namek.Forma.Despertou(mistico)}; orange {namek.Forma.Despertou(orange)}";
+		FormaSegueASkillDeTeste = true;
+		try { ReconciliarDadiva(namek); }
+		finally { FormaSegueASkillDeTeste = false; }
+		bool comODefeito = !namek.Forma.Despertou(mistico);
+		AfirmarV30("**A FORMA DO DESEJO NAO SOME NO TIQUE SEGUINTE** (2026-10-23): o Potential Unleashed que o dragao deu ao Namekuseijin continua depois de tres reconciliacoes dos cargos (a de 1 Hz) -- a forma nao segue mais a skill do Kaioshin",
+				   ficou, comoFicou);
+		AfirmarV30("   DEFEITO INJETADO (a forma que segue a skill, como antes do ritual): a mesma reconciliacao fecharia a forma do desejo -- a afirmacao de cima ficaria vermelha (defeito injetado: a forma segue a skill)",
+				   comODefeito);
 	}
 
 	// =====================================================================
@@ -1022,6 +1042,7 @@ public sealed partial class GameServer
 
 	// =====================================================================
 	// M) O MAJIN: DESMAIA DE VERDADE, SE DESFAZ NO GOLPE QUE O MATARIA, E SO O KI O MATA (itens 2a e 2b)
+	//    -- e (2026-10-23) A RACA KAI MORRE NORMAL, pelas mesmas portas
 	// =====================================================================
 	private void OMajinV30()
 	{
@@ -1097,14 +1118,102 @@ public sealed partial class GameServer
 						   quaseLa && !pc.Desfeito && !emPedacos.Ficha.KO && inteiro && !pc.Intocavel,
 						   $"um segundo antes: {quaseLa}; agora desfeito {pc.Desfeito}, KO {emPedacos.Ficha.KO}, inteiro {inteiro}");
 
-		// O KI MATA DE VEZ; o corpo comum morre do soco; a raca que refaz membro (o Kai) cai em coma, como sempre caiu.
-		ServerPlayer peloKi = Corpo("Majin do raio", "Majin"), comum = Corpo("Humano socado", "Human"), kai = Corpo("Kai socado", "Kai");
-		GolpeResultado raio = Letal(peloKi, porKi: true), socoNoHumano = Letal(comum, porKi: false), socoNoKai = Letal(kai, porKi: false);
-		AfirmarV30("**SO O KI MATA O MAJIN**: o mesmo golpe letal, vindo de um tiro, o mata de verdade -- o Humano morre do soco, e o Kai (que refaz membro) cai em coma, mesmo sem o nucleo",
-						   raio.Morreu && peloKi.Ficha.dead && !peloKi.Combate!.Desfeito
-						   && socoNoHumano.Morreu && comum.Ficha.dead
-						   && socoNoKai.Nocauteou && kai.Ficha.KO && !kai.Ficha.dead && !kai.Combate!.Desfeito,
-						   $"ki: morreu {raio.Morreu} ({raio.Membro}); humano: morreu {socoNoHumano.Morreu}; kai: nocauteou {socoNoKai.Nocauteou} ({socoNoKai.Membro}), KO {kai.Ficha.KO}, morto {kai.Ficha.dead}");
+		// O KI MATA DE VEZ, e o corpo comum morre do soco.
+		ServerPlayer peloKi = Corpo("Majin do raio", "Majin"), comum = Corpo("Humano socado", "Human");
+		GolpeResultado raio = Letal(peloKi, porKi: true), socoNoHumano = Letal(comum, porKi: false);
+		AfirmarV30("**SO O KI MATA O MAJIN**: o mesmo golpe letal, vindo de um tiro, o mata de verdade -- e o Humano morre do soco",
+						   raio.Morreu && peloKi.Ficha.dead && !peloKi.Combate!.Desfeito && socoNoHumano.Morreu && comum.Ficha.dead,
+						   $"ki: morreu {raio.Morreu} ({raio.Membro}); humano: morreu {socoNoHumano.Morreu}");
+
+		// ---------------- (2026-10-23) A RACA KAI MORRE NORMAL ----------------
+		// O dono: *"kaios n morrem e ficam regenerando"* -> *"Toda a raca Kai morre normal"* (NPC e jogador). Ate aqui esta familia
+		// AFIRMAVA o contrario ("o Kai, que refaz membro, cai em coma") -- era a regra do DM (`Injuries.dm:276-279`, `statkai.dm:34`), e a
+		// decisao do dono de 2026-10-23 a trocou. Pelas MESMAS portas de producao do Majin e do Humano logo acima: o soco e o tiro pelo
+		// `AplicarNoMembro`, a explosao pela `ConsequenciaDoDano`, e o Kaio-ken que estoura (`EstourarG2`) -- todas perguntam o
+		// `Body.RegeneraDecepado`. O nao-letal e a parte da raca que fica sao medidos junto, e os outros que refazem membro sao o controle.
+		GolpeResultado GolpeNaoLetal(ServerPlayer v, bool porKi)
+		{
+			foreach (BodyPart p in v.Combate!.Corpo.Partes)
+				if (p.Papel != Vitalidade.Nucleo) p.Chance = 0;
+			GolpeResultado r = MeleeResolver.AplicarDanoPronto(v.Combate, 1e9, letal: false, sorte, "cabeca", porKi);
+			ResolverDesfecho(algoz, v, r);
+			return r;
+		}
+
+		ServerPlayer kai = Corpo("Kai socado", "Kai"), kaiDoRaio = Corpo("Kai do raio", "Kai"), kaiDaBomba = Corpo("Kai da bomba", "Kai");
+		GolpeResultado socoNoKai = Letal(kai, porKi: false), raioNoKai = Letal(kaiDoRaio, porKi: true);
+		EspalharDanoG3(kaiDaBomba, algoz, 1e9, letal: true);
+		AfirmarV30("**O KAI MORRE COMO TODO MUNDO** (decisao do dono de 2026-10-23: *\"Toda a raca Kai morre normal\"*): o soco letal no nucleo o MATA, como mata o Humano, e nao o poe mais em coma pra se regenerar -- e o tiro de ki e a explosao tambem",
+						   socoNoKai.Morreu && kai.Ficha.dead && !socoNoKai.Nocauteou && raioNoKai.Morreu && kaiDoRaio.Ficha.dead && kaiDaBomba.Ficha.dead,
+						   $"soco: morreu {socoNoKai.Morreu} ({socoNoKai.Membro}), nocauteou {socoNoKai.Nocauteou}, morto {kai.Ficha.dead}; raio: morto {kaiDoRaio.Ficha.dead}; bomba: morto {kaiDaBomba.Ficha.dead}");
+
+		ServerPlayer kaiDoKaioken = Corpo("Kai do Kaio-ken", "Kai");
+		EstourarG2(kaiDoKaioken, "bancada: o Kaio-ken estoura");
+		AfirmarV30("**...E NO KAIO-KEN QUE ESTOURA**: a outra porta que poupava quem refaz membro (`EstourarG2`) pergunta a mesma coisa -- o Kai morre, e nao entra em coma",
+						   kaiDoKaioken.Ficha.dead && !kaiDoKaioken.Ficha.KO, $"morto {kaiDoKaioken.Ficha.dead}, KO {kaiDoKaioken.Ficha.KO}");
+
+		ServerPlayer kaiNaoLetal = Corpo("Kai do soco nao letal", "Kai");
+		GolpeResultado leve = GolpeNaoLetal(kaiNaoLetal, porKi: false);
+		AfirmarV30("...o golpe NAO-LETAL so o derruba, como derruba todo mundo (o modo nao-letal continua sem matar)",
+						   leve.Nocauteou && kaiNaoLetal.Ficha.KO && !kaiNaoLetal.Ficha.dead,
+						   $"nocauteou {leve.Nocauteou}, KO {kaiNaoLetal.Ficha.KO}, morto {kaiNaoLetal.Ficha.dead}");
+		AfirmarV30("...e o RESTO da raca fica, que nao foi pedido: o Kai continua refazendo membro e curando em combate (a Regeneration 10 do `races.json`)",
+						   kai.Combate!.Corpo.Regen is { MembroVolta: true, CuraEmCombate: true, Regeneration: 10 }, $"{kai.Combate.Corpo.Regen}");
+
+		// O BIO-ANDROIDE QUE HERDOU O SANGUE KAI TAMBEM MORRE -- a decisao do dono nas sobras de 2026-10-23 (*"O bio com sangue Kai tambem
+		// morre"*; a r1 o deixava em coma, pela raca gravada). Ele regenera como a doadora que mais regenera (`SangueDoBio.RegeneracaoDoBio`),
+		// e a pergunta da morte vem junto. O sangue entra depois do nascimento: a conta do `AplicarEfeitos` refaz o perfil (`EixoDeRegen`).
+		ServerPlayer BioDeSangue(string nome, params string[] sangue)
+		{
+			ServerPlayer b = Corpo(nome, Jandirus.Core.Races.BioAndroids.Raca);
+			b.Ficha.bio_racas_dna = [.. sangue];
+			b.Combate!.Corpo.Regen = EixoDeRegen(b.Race, b.Ficha);
+			return b;
+		}
+		ServerPlayer bioKai = BioDeSangue("Bio com sangue Kai", "Kai"), bioYardratKai = BioDeSangue("Bio com Yardrat e Kai", "Yardrat", "Kai");
+		GolpeResultado socoNoBioKai = Letal(bioKai, porKi: false), socoNoBioYk = Letal(bioYardratKai, porKi: false);
+		AfirmarV30("**O BIO COM SANGUE KAI TAMBEM MORRE** (decisao do dono, 2026-10-23: *\"O bio com sangue Kai tambem morre\"*): herdou a regeneracao do Kai (o membro volta) e morre do soco letal como ele",
+						   bioKai.Combate!.Corpo.Regen.MembroVolta && socoNoBioKai.Morreu && bioKai.Ficha.dead,
+						   $"membro volta {bioKai.Combate.Corpo.Regen.MembroVolta}, morreu {socoNoBioKai.Morreu}, nocauteou {socoNoBioKai.Nocauteou}, morto {bioKai.Ficha.dead}");
+		AfirmarV30("**...MESMO COM O YARDRAT ANTES NA FILA DO SANGUE**: o empate em 10 (Kai, Yardrat, Meta e Tsujin, o mesmo eixo de cura) fica com o Kai, e o bio morre",
+						   socoNoBioYk.Morreu && bioYardratKai.Ficha.dead,
+						   $"regenera como {Jandirus.Core.Races.SangueDoBio.RegeneracaoDoBio(bioYardratKai.Ficha, RegeneracaoDaRaca).Raca}, morreu {socoNoBioYk.Morreu}, morto {bioYardratKai.Ficha.dead}");
+
+		// OS OUTROS QUE REFAZEM MEMBRO CONTINUAM EM COMA: a regra e da raca Kai (e de quem herdou a regeneracao dela) -- nao da Regeneration 10
+		// (o Yardrat tem a mesma). E com sangue MAJIN junto a regeneracao e a do Majin (100), e manda a semi-imortalidade dele: se desfaz.
+		ServerPlayer yardrat = Corpo("Yardrat socado", "Yardrat"), bioYardrat = BioDeSangue("Bio com sangue Yardrat", "Yardrat"),
+					 bioMajinKai = BioDeSangue("Bio com Majin e Kai", "Majin", "Kai");
+		GolpeResultado socoNoYardrat = Letal(yardrat, porKi: false), socoNoBioY = Letal(bioYardrat, porKi: false), socoNoBioMk = Letal(bioMajinKai, porKi: false);
+		AfirmarV30("...e os OUTROS que refazem membro continuam em coma: o Yardrat (a mesma Regeneration 10) e o bio SEM sangue Kai (com o do Yardrat) -- e o bio com Majin e Kai se desfaz no soco, como o Majin",
+						   socoNoYardrat.Nocauteou && yardrat.Ficha.KO && !yardrat.Ficha.dead
+						   && bioYardrat.Combate!.Corpo.Regen.MembroVolta && socoNoBioY.Nocauteou && bioYardrat.Ficha.KO && !bioYardrat.Ficha.dead
+						   && socoNoBioMk.Desfez && !bioMajinKai.Ficha.dead,
+						   $"yardrat: nocauteou {socoNoYardrat.Nocauteou}, morto {yardrat.Ficha.dead}; bio-yardrat: nocauteou {socoNoBioY.Nocauteou}, morto {bioYardrat.Ficha.dead}; "
+						   + $"bio-majin-kai: desfez {socoNoBioMk.Desfez}, morto {bioMajinKai.Ficha.dead}");
+
+		// OS DOIS DEFEITOS DA DECISAO NOVA, cada um lido pela propria linha: o perfil do bio pela raca gravada (a r1) e o empate que fica com
+		// quem chegou primeiro.
+		ServerPlayer bioDeAntes, empateDeAntes;
+		BioKaiEmComaDeTeste = true;
+		try { bioDeAntes = BioDeSangue("Bio de antes", "Kai"); }
+		finally { BioKaiEmComaDeTeste = false; }
+		Jandirus.Core.Races.SangueDoBio.EmpateSemOKaiDeTeste = true;
+		try { empateDeAntes = BioDeSangue("Bio do empate de antes", "Yardrat", "Kai"); }
+		finally { Jandirus.Core.Races.SangueDoBio.EmpateSemOKaiDeTeste = false; }
+		GolpeResultado socoNoBioDeAntes = Letal(bioDeAntes, porKi: false), socoNoEmpateDeAntes = Letal(empateDeAntes, porKi: false);
+		AfirmarV30("(defeito injetado: o bio pela raca gravada, a r1) o bio com sangue Kai cai em COMA -- a regua do \"BIO COM SANGUE KAI\" REPROVA",
+						   socoNoBioDeAntes.Nocauteou && !bioDeAntes.Ficha.dead, $"nocauteou {socoNoBioDeAntes.Nocauteou}, morto {bioDeAntes.Ficha.dead}");
+		AfirmarV30("(defeito injetado: o empate fica com quem chegou primeiro) com o Yardrat antes do Kai, o bio cai em COMA -- a regua do \"MESMO COM O YARDRAT\" REPROVA",
+						   socoNoEmpateDeAntes.Nocauteou && !empateDeAntes.Ficha.dead, $"nocauteou {socoNoEmpateDeAntes.Nocauteou}, morto {empateDeAntes.Ficha.dead}");
+
+		ServerPlayer kaiDeAntes = Corpo("Kai de antes", "Kai");
+		Body.KaiEmComaDeTeste = true;
+		GolpeResultado socoDeAntesNoKai;
+		try { socoDeAntesNoKai = Letal(kaiDeAntes, porKi: false); }
+		finally { Body.KaiEmComaDeTeste = false; }
+		AfirmarV30("(defeito injetado: a regra de antes de 2026-10-23) o Kai socado cai em COMA, regenerando, e nao morre -- a regua do \"O KAI MORRE\" REPROVA",
+						   socoDeAntesNoKai.Nocauteou && !socoDeAntesNoKai.Morreu && kaiDeAntes.Ficha.KO && !kaiDeAntes.Ficha.dead,
+						   $"nocauteou {socoDeAntesNoKai.Nocauteou}, morreu {socoDeAntesNoKai.Morreu}, KO {kaiDeAntes.Ficha.KO}, morto {kaiDeAntes.Ficha.dead}");
 
 		// E PELA CAUDA DO DANO DIRETO TAMBEM (o dano em area): a explosao comum desfaz, a de ki mata.
 		ServerPlayer naBomba = Corpo("Majin da bomba", "Majin"), naExplosao = Corpo("Majin da explosao de ki", "Majin");
@@ -1610,6 +1719,85 @@ public sealed partial class GameServer
 				   && !semTom.Exists(x => x.Tom == Protocol.Fala.AvisoDeRaiva), string.Join(" | ", semTom.Select(x => $"{x.Tom}: {x.Texto}")));
 		AfirmarV30("...e os dois tons novos sao recados do SERVIDOR: o cliente nao fala neles (o funil da fala so aceita os seis canais de gente)",
 				   Protocol.Fala.AvisoDeRaiva > Protocol.Fala.Looc && Protocol.Fala.AvisoDeZenkai > Protocol.Fala.Looc);
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// Z) A RECARGA DO ZENKAI PROPORCIONAL E O TETO QUE MINGUA (2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"coloque o cooldown do zenkai maximo (2x bp) pra 5 horas, ta mt op 1 hora"* -- e na pergunta de qual: *"e proporcional ao
+	/// 2x, 3x seriam 7,5 horas de cooldown"* --; e *"faca o zenkai tb ir perdendo forca (o teto de 3x e 2x vao caindo) lentamente ao se
+	/// aproximar do requisito do ssj3, ate zerar"* ("linha reta desde o zero"). Pelo `GainZenkai` de producao, e o requisito pelo
+	/// `ZenkaiPorDerrota` (o funil que o combate chama), com o limiar pessoal posto no corpo.
+	/// </summary>
+	private void ORecargaEOTetoDoZenkaiV30()
+	{
+		GD.Print("[v030] --- Z) a recarga do Zenkai proporcional ao multiplicador e o teto que mingua ate o SSJ3 (dono, 2026-10-24) ---");
+		LimparTudoDaBancada();
+		Vec2 c = TerraFirmeG12(4);
+		ServerPlayer s = ForjarV2("Recarga", c, 1_000_000, raca: "Saiyan");
+		const double Hora = 3_600_000;
+
+		// ---- 1. A RECARGA: 2,5 h por "x" ----
+		// Tres tamanhos, sem requisito (o teto cheio): +20% (um inimigo de 2 mi da 10% dele), o que dobra (um de 1 bi, no teto de 2x) e
+		// o do corpo em farrapos (o mesmo de 1 bi, no teto de 3x).
+		double Recarga(double inimigo, bool ferido)
+		{
+			s.Ficha.BP = 1_000_000;
+			s.Ficha.zenkaiReady = 0;
+			long agora = NowMs();
+			Fighter.ZenkaiResult z = s.Ficha.GainZenkai(inimigo, agora, ferido);
+			return z == Fighter.ZenkaiResult.Concedido ? (s.Ficha.zenkaiReady - agora) / Hora : -1;
+		}
+		double vinte = Recarga(2_000_000, false), dobro = Recarga(1e9, false), triplo = Recarga(1e9, true);
+		AfirmarV30("**A RECARGA DO ZENKAI E PROPORCIONAL AO MULTIPLICADOR** (o dono: \"e proporcional ao 2x, 3x seriam 7,5 horas de "
+				   + "cooldown\"): o que dobra o BP deixa 5 h, o do corpo em farrapos (3x) 7,5 h, e um de +20% 3 h -- 2,5 h por x",
+				   Math.Abs(dobro - 5) < 0.01 && Math.Abs(triplo - 7.5) < 0.01 && Math.Abs(vinte - 3) < 0.01,
+				   $"+20%: {vinte:0.00} h; 2x: {dobro:0.00} h; 3x: {triplo:0.00} h");
+		Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = true;
+		double dobroComDefeito;
+		try { dobroComDefeito = Recarga(1e9, false); }
+		finally { Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = false; }
+		AfirmarV30("(defeito injetado: a hora fixa de antes) o Zenkai que dobra deixa so 1 h -- a regua de cima REPROVA",
+				   Math.Abs(dobroComDefeito - 1) < 0.01, $"2x: {dobroComDefeito:0.00} h");
+
+		// ---- 2. O TETO MINGUA ATE O REQUISITO DO SSJ3 ----
+		// O limiar pessoal posto no corpo: `ssj3at` de 10 bi, entao o SSJ3 pede 1 bi de base (`LimiaresPessoais.Porta`). Um vencedor
+		// de mil bi -- muito acima de qualquer teto -- e a derrota pelo funil de producao, com o corpo inteiro e depois em farrapos.
+		s.Forma.Limiares = new Jandirus.Core.Forms.LimiaresPessoais { ssj3at = 1e10 };
+		ServerPlayer algoz = ForjarV2("Algoz", c + new Vec2(ZoneCollision.TileSize, 0), 1e12);
+		double requisito = Jandirus.Core.Forms.Catalogo.Def("ssj3") is { } ssj3 ? s.Forma.Limiares.Porta(ssj3) : 0;
+		double Multiplicador(double bp, bool ferido)
+		{
+			s.Ficha.BP = bp;
+			s.Ficha.zenkaiReady = 0;
+			Fighter.ZenkaiResult z = s.Ficha.GainZenkai(Math.Max(algoz.Ficha.expressedBP, algoz.Ficha.BP), NowMs(), ferido, RequisitoDoSsj3De(s));
+			return z == Fighter.ZenkaiResult.Concedido ? s.Ficha.BP / bp : z == Fighter.ZenkaiResult.Aposentado ? 0 : -1;
+		}
+		double longe = Multiplicador(1_000_000, false), metade = Multiplicador(5e8, false), metadeFerido = Multiplicador(5e8, true),
+			   noRequisito = Multiplicador(1e9, false);
+		AfirmarV30("**O TETO DO ZENKAI MINGUA ATE O REQUISITO DO SSJ3** (o dono: \"o teto de 3x e 2x vao caindo lentamente ao se aproximar "
+				   + "do requisito do ssj3, ate zerar\"): longe dele o Zenkai ainda quase dobra, na metade do requisito o teto e 1,5x (2x com o "
+				   + "corpo em farrapos), e no requisito nao vem nada",
+				   requisito > 0 && Math.Abs(RequisitoDoSsj3De(s) - requisito) < 1 && longe > 1.99 && Math.Abs(metade - 1.5) < 0.001
+				   && Math.Abs(metadeFerido - 2) < 0.001 && noRequisito == 0,
+				   $"requisito {requisito:N0}; longe {longe:0.000}x; metade {metade:0.000}x; metade ferido {metadeFerido:0.000}x; "
+				   + $"no requisito {noRequisito:0.000}x");
+		Fighter.ZenkaiSemMinguaDeTeste = true;
+		double metadeComDefeito;
+		try { metadeComDefeito = Multiplicador(5e8, false); }
+		finally { Fighter.ZenkaiSemMinguaDeTeste = false; }
+		AfirmarV30("(defeito injetado: o teto cheio ate a aposentadoria, o jogo de antes) na metade do requisito o Zenkai ainda dobra -- a "
+				   + "regua de cima REPROVA", Math.Abs(metadeComDefeito - 2) < 0.001, $"metade {metadeComDefeito:0.000}x");
+
+		// ...E PELO FUNIL DO COMBATE (`ZenkaiPorDerrota`), que e quem passa o requisito pessoal em jogo: a mesma derrota, na metade dele.
+		s.Ficha.BP = 5e8;
+		s.Ficha.zenkaiReady = 0;
+		ZenkaiPorDerrota(s, algoz);
+		double peloFunil = s.Ficha.BP / 5e8;
+		AfirmarV30("...e o funil do combate (`ZenkaiPorDerrota`) passa o requisito pessoal: perder pro mesmo algoz na metade dele rende os "
+				   + "mesmos 1,5x", Math.Abs(peloFunil - 1.5) < 0.001, $"{peloFunil:0.000}x");
 		LimparTudoDaBancada();
 	}
 

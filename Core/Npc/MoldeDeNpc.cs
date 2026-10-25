@@ -304,6 +304,20 @@ public sealed class MoldeDeNpc
 	public string Cabelo = "";
 
 	/// <summary>
+	/// (2026-10-24) A COR CRAVADA DO CABELO, em [r, g, b] -- os tres numeros do `npc_apply_hair(M, "Long", r, g, b)` dos androides do DM
+	/// (BossEvents.dm:497 e :506: o 17 preto, a 18 "loira via codigo"). SOMADA na arte, como no original (a tinta de soma do cliente). Nula,
+	/// a cor de fabrica da folha.
+	/// </summary>
+	public Appearance.Rgb? CorDoCabelo;
+
+	/// <summary>
+	/// (2026-10-24) O CORPO CRAVADO, pelo nome da folha -- o `icon` que a fabrica do DM escreve (`BEV_A17_ICON = 'NewPaleMale.dmi'`,
+	/// BossEvents.dm:81). Uma folha da lista da raca vira o indice dela; a FOLHA PROPRIA de um personagem, que ninguem escolhe na criacao
+	/// (a da Androide 18), viaja num indice reservado -- ver `Npc.Androides`. Vazio (ou um nome que nenhum dos dois tem), sorteado.
+	/// </summary>
+	public string Corpo = "";
+
+	/// <summary>
 	/// (v0.3.0) AS RACAS DOADORAS de um molde Bio-Androide (`"sangueDoBio"`) -- o Cell do anime foi feito do sangue de Goku e
 	/// Vegeta, Piccolo, Freeza e dos humanos. Sozinho um bio nao tem dom nenhum (`Races.SangueDoBio`); e daqui que o NPC
 	/// tira os dele. Vazio em todo molde que nao e bio.
@@ -448,7 +462,8 @@ public sealed class MoldeDeNpc
 	/// NO DM ELE COBRE DUAS COISAS e aqui cobre uma: la o `npc_try_transform()` e chamado de DENTRO
 	/// do `npc_power_up()` (NPCAI.dm:254), entao a mesma flag desliga o surto de BP e a transformacao.
 	/// O surto de BP (`NPCAscension`, `BPBoost`) nao esta portado; quando estiver, le este campo --
-	/// nao um segundo.
+	/// nao um segundo. (2026-10-23: a Ascensao que entrou e a do dono, e ela e SO DE JOGADOR -- "NPC fica
+	/// como esta" --, entao o surto de NPC continua de fora; ver `Races.Ascensao`.)
 	/// ================================================================================
 	/// </summary>
 	public bool AscendePorDecisao = true;
@@ -609,6 +624,8 @@ public sealed class CatalogoDeMoldes
 				Coragem = Num(e, "coragem", 50),
 				Furia = Num(e, "furia", 50),
 				Cabelo = Txt(e, "cabelo"),
+				CorDoCabelo = Cor(e, "corDoCabelo"),
+				Corpo = Txt(e, "corpo"),
 				SangueDoBio = Lista(e, "sangueDoBio"),
 				Alma = Bit(e, "alma", false),
 				NomesUnicos = Bit(e, "nomesUnicos", false),
@@ -689,6 +706,20 @@ public sealed class CatalogoDeMoldes
 	private static bool Bit(JsonElement e, string chave, bool padrao) =>
 		e.TryGetProperty(chave, out JsonElement v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
 			? v.GetBoolean() : padrao;
+
+	/// <summary>Uma cor [r, g, b] do arquivo -- nula quando ausente ou fora do formato (tres numeros de 0 a 255).</summary>
+	private static Appearance.Rgb? Cor(JsonElement e, string chave)
+	{
+		if (!e.TryGetProperty(chave, out JsonElement v) || v.ValueKind != JsonValueKind.Array || v.GetArrayLength() != 3) return null;
+		var c = new byte[3];
+		int i = 0;
+		foreach (JsonElement x in v.EnumerateArray())
+		{
+			if (x.ValueKind != JsonValueKind.Number || !x.TryGetInt32(out int n) || n < 0 || n > 255) return null;
+			c[i++] = (byte)n;
+		}
+		return new Appearance.Rgb(c[0], c[1], c[2]);
+	}
 
 	private static string[] Lista(JsonElement e, string chave)
 	{

@@ -868,7 +868,7 @@ public partial class GameClient : Node
 	/// </param>
 	public readonly record struct ObraInfo(int Id, string Tipo, string Nome, Vector2 Pos, bool Aparafusada,
 										   int Lab, string Dono,
-										   string Arte, string Estado, Vector2 Pixel, bool Densa, byte Feitas = 0);
+										   string Arte, string Estado, Vector2 Pixel, bool Densa, byte Feitas = 0, bool Liberada = false);
 
 	/// <summary>
 	/// Uma linha do catalogo de tecnologia, com o motivo do nao (0 = pode) e a ARTE.
@@ -1415,6 +1415,9 @@ public partial class GameClient : Node
 	/// <summary>(2026-10-21) O NIVEL DO MEU INSTANT TRANSMISSION. 0 = nao tenho a skill; a aba nao desenha o botao.</summary>
 	public int NivelDaTransmissao { get; private set; }
 
+	/// <summary>(2026-10-23) A MAESTRIA DO MEU INSTANT TRANSMISSION e o que ela rende -- o cartao da aba Sense. Ver `Net/FioDaTransmissao.cs`.</summary>
+	public TransmissaoState Transmissao { get; private set; }
+
 	public event Action? SentidosMudaram;
 
 	/// <summary>Chave vazia = so me manda a lista; com chave = reivindico aquele cargo.</summary>
@@ -1870,6 +1873,24 @@ public partial class GameClient : Node
 	public int AlvoId { get; private set; }
 	public event Action<int>? AlvoMudou;
 
+	// ============================ (2026-10-24) AS MINHAS COPIAS DO SPLIT FORM ============================
+	/// <summary>
+	/// As copias do Split Form que estao de pe e sao MINHAS (`S2C.MinhasCopias`, a lista inteira a cada mudanca). E o que o clique no
+	/// mundo pergunta pra abrir o menu de ordens de uma copia (`World.CliqueNaCopia`): o snapshot diz onde os corpos estao, e nao de quem
+	/// sao -- e o nome nao serve (`[nome] Copy` e de qualquer um que se chame igual).
+	/// </summary>
+	public IReadOnlySet<int> MinhasCopias => _minhasCopias;
+
+	private readonly HashSet<int> _minhasCopias = [];
+
+	/// <summary>`S2C.MinhasCopias`: `int n` + n x `int id` -- substitui a lista de antes.</summary>
+	private void LerMinhasCopias(NetDataReader reader)
+	{
+		_minhasCopias.Clear();
+		int n = reader.GetInt();
+		for (int i = 0; i < n && i < 256; i++) _minhasCopias.Add(reader.GetInt());
+	}
+
 	/// <summary>
 	/// Marca (ou solta, com 0) o alvo. O servidor confere se aquele id existe e esta na mesma
 	/// zona -- daqui so sai a intencao.
@@ -1994,6 +2015,7 @@ public partial class GameClient : Node
 				// memoria de quem saiu, e cada personagem tem a propria ficha de cada pessoa. Ver `GameClient.Gente.cs`.
 				EsquecerDetalhes();
 				EsquecerMestreEAlunos();   // ...nem com o discipulado dele (o mestre, os alunos). Ver `GameClient.Alunos.cs`.
+				_minhasCopias.Clear();     // ...nem com as copias do Split Form dele: elas morrem com o dono, e o id pode ser de outro agora
 				Sheet = SheetState.Read(reader);
 				// O GOLPE DO PERSONAGEM QUE ENTROU E O DELE: o corpo nasce nao-letal no servidor, e o palpite do personagem anterior
 				// (o mesmo cliente, outro slot) nao segue. Ver `SeguirOLetalDaFicha`.
@@ -2394,9 +2416,11 @@ public partial class GameClient : Node
 				for (int i = 0; i < n; i++)
 					l.Add(new ObraInfo(reader.GetInt(), reader.GetString(48), reader.GetString(64),
 						new Vector2(reader.GetFloat(), reader.GetFloat()),
-						reader.GetBool(), reader.GetByte(), reader.GetString(32),
+						reader.GetBool(), reader.GetByte(), reader.GetString(Protocol.MaxNomeNoFio),
 						reader.GetString(160), reader.GetString(48),
-						new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool(), reader.GetByte()));
+						new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool(), reader.GetByte(), reader.GetBool()));
+				// (2026-10-25) o dono le ate o teto de nome do fio (o "Bio-Androide de ..." passa de 32 letras e chegava VAZIO), e o ultimo
+				// campo e o "liberada" -- o botao "Liberar"/"Trancar" da aba Tech (`MenuJogo.LinhaDeObra`)
 				Obras = l;
 				ObrasMudaram?.Invoke();
 				break;
@@ -2478,6 +2502,9 @@ public partial class GameClient : Node
 			// Quem le os dois e `GameClient.Bills.cs`.
 			case Protocol.S2C.CasaDeBills: LerCasaDeBills(reader); break;
 			case Protocol.S2C.DivinoPerto: LerDivinoPerto(reader); break;
+
+			// (2026-10-24) AS MINHAS COPIAS DO SPLIT FORM DE PE: o clique nelas abre o menu de ordens. Ver `MinhasCopias`.
+			case Protocol.S2C.MinhasCopias: LerMinhasCopias(reader); break;
 
 			// O DISCO DO DRAGON RADAR -- so chega pra quem tem o aparelho. Ver `GameClient.Radar.cs`.
 			case Protocol.S2C.RadarDeEsferas: LerRadarDeEsferas(reader); break;
@@ -2767,7 +2794,8 @@ public partial class GameClient : Node
 				break;
 
 			case Protocol.S2C.NivelDaTransmissao:
-				NivelDaTransmissao = reader.GetByte();
+				Transmissao = FioDaTransmissao.Ler(reader);   // (2026-10-23) o nivel e a maestria; servidor de antes manda so o nivel
+				NivelDaTransmissao = Transmissao.Nivel;
 				SentidosMudaram?.Invoke();
 				break;
 
@@ -3028,6 +3056,11 @@ public partial class GameClient : Node
 				NomesDosPlanetasMudaram?.Invoke();
 				break;
 			}
+
+			// (2026-10-23) A TELA DO KAI KAI: a lista que o servidor mandou a quem apertou o verbo sem destino -- ver `TelaDoKaiKai`.
+			case Protocol.S2C.DestinosDoKaiKai:
+				TelaDoKaiKai.Instancia?.Abrir(FioDoKaiKai.Ler(reader));
+				break;
 
 			// O QUE DA PRA LEVAR DE QUEM ESTA CAIDO AQUI -- a resposta do verbo `saquear`. Quem a desenha e a tela
 			// da mochila, aberta na mochila DELE (`TelaDeInventario.AbrirSaque`). Ver `Protocol.S2C.Saque`.

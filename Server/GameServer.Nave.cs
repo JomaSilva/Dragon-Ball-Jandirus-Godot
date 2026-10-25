@@ -55,6 +55,9 @@ public sealed class Nave
 	public string DonoConta = "";
 	public string DonoNome = "";
 
+	/// <summary>(2026-10-25) LIBERADA PRA TODOS -- a `Obra.Liberada` da nave parada: qualquer um mexe nela como o dono (`MexeNaNaveComoDono`).</summary>
+	public bool Liberada;
+
 	/// <summary>O `var/Speed=1` do `obj/Spacepod` (`PlanetTech.dm:51`). Ver <see cref="Naves"/>.</summary>
 	public int Velocidade = Naves.VelocidadeInicial;
 
@@ -496,8 +499,13 @@ public partial class GameServer
 		// O CORPO FERIDO ANDA DEVAGAR (`mobTime *= HP/100`, `movement handler.dm:55`) -- o terceiro dono da
 		// velocidade do corpo, e ele entra por DENTRO do `FatorDePasso` porque no DM a linha vem antes do peso.
 		// Ver `FatorDeVidaNoPasso`, `GameServer.Membros.cs`.
+		// (2026-10-23) E QUEM SO A GRAVIDADE SEGURA SE ARRASTA: um quarto do passo que daria sem ela -- o freio do esmagamento sai e o
+		// quarto entra no lugar dele, nao por cima (dono). O bit da ficha sai daqui, junto do passo que ele explica. Ver `GameServer.Rastejo.cs`.
+		pl.SoRasteja = SoAGravidadeSegura(pl);
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed)
-					 * (float)Jandirus.Core.Stats.Esmagamento.FatorDePasso(pl.Ficha, FatorDeVidaNoPasso(pl));
+					 * (float)(pl.SoRasteja
+						 ? Jandirus.Core.Stats.Esmagamento.PassoDoRastejo(pl.Ficha, FatorDeVidaNoPasso(pl))
+						 : Jandirus.Core.Stats.Esmagamento.FatorDePasso(pl.Ficha, FatorDeVidaNoPasso(pl)));
 
 		// NADAR E MAIS DEVAGAR QUE ANDAR -- `mobTime -= 0.3` (`movement handler.dm:66`). Entra AQUI
 		// e nao no tique do nado pelo motivo que este metodo inteiro existe: velocidade tem um dono
@@ -573,7 +581,8 @@ public partial class GameServer
 	{
 		Nave? n = NavePerto(pl);
 		if (n == null) { Avisar(pl, "não há nenhuma nave parada por perto."); return; }
-		if (n.DonoConta.Length > 0 && !string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		// (2026-10-25) o dono, o Neo Tuffle no corpo dele, ou quem chegar se ele a liberou -- ver `MexeNaNaveComoDono`
+		if (!MexeNaNaveComoDono(n, pl, semDonoEDeTodos: true))
 		{ Avisar(pl, $"{NomeDaNave(n)} é de {n.DonoNome}."); return; }
 		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }
 
@@ -795,7 +804,8 @@ public partial class GameServer
 		Nave? n = MinhaNaveOuPerto(pl);
 		if (n == null) { Avisar(pl, "não há nenhum foguete por perto."); return; }
 		if (!Naves.EhFoguete(n.Tipo)) { Avisar(pl, $"{NomeDaNave(n)} não é um foguete."); return; }
-		if (n.DonoConta.Length > 0 && !string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		// (2026-10-25) o dono, o Neo Tuffle no corpo dele, ou quem chegar se ele a liberou -- ver `MexeNaNaveComoDono`
+		if (!MexeNaNaveComoDono(n, pl, semDonoEDeTodos: true))
 		{ Avisar(pl, $"{NomeDaNave(n)} é de {n.DonoNome}."); return; }
 		if (!n.Usada) { Avisar(pl, $"{NomeDaNave(n)} ainda está inteiro -- não há o que recondicionar."); return; }
 
@@ -1064,7 +1074,8 @@ public partial class GameServer
 		// ====================================================================================================
 		Nave? n = NaveDaPonteDe(pl) ?? NaveDesteInterior(pl) ?? MinhaNaveOuPerto(pl);
 		if (n == null) { Avisar(pl, "não há nenhuma nave por perto."); return; }
-		if (n.DonoConta.Length > 0 && !string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		// (2026-10-25) o dono, o Neo Tuffle no corpo dele, ou quem chegar se ele a liberou -- ver `MexeNaNaveComoDono`
+		if (!MexeNaNaveComoDono(n, pl, semDonoEDeTodos: true))
 		{ Avisar(pl, $"{NomeDaNave(n)} é de {n.DonoNome}."); return; }
 
 		if (n.Velocidade >= Naves.VelocidadeMaxima)

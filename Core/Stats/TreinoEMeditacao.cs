@@ -33,7 +33,9 @@ namespace Jandirus.Core.Stats;
 ///     nao treina e o CADAVER (o corpo no chao, antes da viagem).
 ///   * **O PRESO DA SALA DO TEMPO, O SELADO E QUEM ESPERA A VEZ NO TORNEIO TREINAM**: a Sala existe pra isso, o
 ///     `Train()` nao pergunta por selo, e o participante do torneio ja entra na espera com a atividade que tinha.
-///   * **O ESMAGAMENTO NAO BARRA**: treinar sob gravidade pesada e o proposito dela (na mineracao ele barra).
+///   * **O ESMAGAMENTO NAO BARRA**: treinar sob gravidade pesada e o proposito dela (na mineracao ele barra). (2026-10-23) O que
+///     barra e o PESO DEMAIS -- acima de 8x o limite do corpo (dono: *"vc nem conseguiria treinar assim"*, `Fighter.PesoDemaisPraTreinar`);
+///     gravidade alta sem peso nenhum continua sendo treino.
 ///   * `Swim()` tambem chama `Deoccupy()` uma vez (`Swim.dm:8`), mas o `Train()` nao pergunta `swim`: no DM se
 ///     volta a treinar dentro d'agua na tecla seguinte. Aqui nadar so barra a MEDITACAO, que e o que o verbo diz.
 ///   * O raio na mao (`charging`/`beaming`) nao barra: no DM e ao contrario -- treinar ou meditar SOLTA o raio
@@ -64,9 +66,10 @@ public static class TreinoEMeditacao
 	/// <param name="atirando">Com uma tecnica de ki sustentada no ar (o `blasting` do DM).</param>
 	/// <param name="emBriga">Trocou golpe com outro corpo nos ultimos segundos.</param>
 	/// <param name="saiuDoLugar">Andando, ou fora do ponto em que a atividade comecou.</param>
+	/// <param name="pesoDemais">(2026-10-23) Com o peso acima de 8x o limite do corpo (`Fighter.PesoDemaisPraTreinar`): nada rende.</param>
 	public static string PorQueNao(bool meditar, bool emCurso, bool ko, bool cadaver, bool possuido, bool fera,
 								   bool agarrado, bool voando, bool nadando, bool atirando, bool emBriga,
-								   bool saiuDoLugar)
+								   bool saiuDoLugar, bool pesoDemais)
 	{
 		string o = meditar ? "meditar" : "treinar";
 		string fim = meditar ? "você para de meditar." : "você para de treinar.";
@@ -74,6 +77,10 @@ public static class TreinoEMeditacao
 		if (ko || cadaver) return emCurso ? fim : $"caído não dá pra {o}.";
 		if (possuido) return emCurso ? fim : $"agora não dá pra {o}.";
 		if (meditar && fera) return "a fera não medita.";
+		// (2026-10-23) O PESO DEMAIS, antes de tudo o que se resolve parando ou pousando: tirar o peso e a unica saida, e a frase a diz
+		if (pesoDemais)
+			return emCurso ? $"o peso passou de {GainKnobs.RazaoQueImpedeOTreino:0.#}x o que o seu corpo aguenta: {fim}"
+						   : $"com esse peso você não consegue {o}: ele passa de {GainKnobs.RazaoQueImpedeOTreino:0.#}x o que o seu corpo aguenta. Tire peso (menu P, aba Equip).";
 		if (agarrado) return emCurso ? $"preso num agarrão você não se concentra: {fim}" : "preso num agarrão você não se concentra.";
 		if (voando) return emCurso ? $"no ar não dá: {fim}" : $"pouse antes: não dá pra {o} no ar.";
 		if (meditar && nadando) return emCurso ? $"dentro d'água não dá: {fim}" : "não dá pra meditar dentro d'água.";

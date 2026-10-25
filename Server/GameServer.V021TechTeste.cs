@@ -1298,6 +1298,193 @@ public sealed partial class GameServer
 			DesfazerV2(p, vizinho);
 			LimparTudoDaBancada();
 		}
+		ATechDeQuemVirouBioV21();   // (2026-10-25) o pedido 74 -- logo abaixo
+	}
+
+	// =====================================================================
+	// X4b) (2026-10-25) A TECH DE QUEM VIROU BIO, E A TECH LIBERADA -- o pedido 74 do dono
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"Faca q personagens q viraram neotuffle ou bio, consigam usar os itens tech do personagem anterior antes dele ser substituido,
+	/// e permita com q o criador da tech libere ela quando quiser pra qualquer um mexer nela, desparafusar, pegar, etc, tudo q o dono pode
+	/// fazer"* -- e o caso que o trouxe: *"meu amigo q virou bio n tava conseguindo usar o simulator dps q virou bio androide (simulator ele fez
+	/// quando ainda era humano/androide)"*. O bio nasce pelo parto de PRODUCAO (`NascerBioAndroide`); o Neo Tuffle dentro do hospede e provado
+	/// na `--tuffleteste` (a posse de producao mora la).
+	/// </summary>
+	private void ATechDeQuemVirouBioV21()
+	{
+		GD.Print("[v021] -- X4b) A TECH DE QUEM VIROU BIO, E A TECH LIBERADA (o pedido 74, 2026-10-25)");
+		LimparEmbatesDaBancada();
+		LimparTudoDaBancada();
+		const float T = ZoneCollision.TileSize;
+		Vec2 c = TerraFirmeG12(10);
+		var obras = new List<Obra>();
+		var naves = new List<Nave>();
+		ServerPlayer cientista = ForjarV2("Cientista", c, 5_000);
+		cientista.Conta = "bancada_v021_cientista";
+		ServerPlayer estranho = ForjarV2("Estranho", c + new Vec2(0, T), 500);
+		estranho.Conta = "bancada_v021_estranho";
+
+		List<string> Usar(ServerPlayer quem, string verbo, string arg = "") => Ouvir(() => ComandoDeInteracao(quem, verbo, arg));
+		List<string> Tech(ServerPlayer quem, string cmd, string arg = "") => Ouvir(() => ComandoDeTech(quem, cmd, arg));
+		bool Disse(List<string> falas, string trecho) => falas.Exists(f => f.Contains(trecho, StringComparison.OrdinalIgnoreCase));
+		ServerPlayer? ASimulacao() => _simulacoes.Keys.Select(id => _players.GetValueOrDefault(id)).FirstOrDefault(s => s != null);
+		void SemSimulacao() { foreach (int id in _simulacoes.Keys.ToList()) DesfazerSimulacao(id, null); }
+		bool Larva(ServerPlayer quem) => Jandirus.Core.Races.BioAndroids.EmLarva(quem.Ficha);
+		// UMA OBRA DE CADA VEZ, um tile a leste do meio: a mais perto de quem esta no meio e sempre ela (o `ObraPerto` do parafuso e do pegar)
+		Obra Por(string tipo, ServerPlayer dono)
+		{
+			Obra o = ObraDeBancadaV21(tipo, c + new Vec2(T, 0), dono);
+			obras.Add(o);
+			return o;
+		}
+
+		try
+		{
+			// ---------------------------------------------------------------- 1. o simulador do humano, e o parto de producao
+			Obra simulador = Por(Simulador.Tipo, cientista);
+			Obra lab = ObraDeBancadaV21("Android_Creation_Mainframe", c + new Vec2(6 * T, 0), cientista);
+			obras.Add(lab);
+			lab.Lab = 2;
+			var fornada = new Gestacao
+			{
+				DonoConta = cientista.Conta, MaiorBp = 40_000, PrometidaEm = NowMs(),
+				Amostras = { new Amostra { Raca = "Human", Doador = "Doador da Bancada", Bp = 40_000 } },
+			};
+			lab.Fornada = fornada;
+			string antes = cientista.Name;
+			NascerBioAndroide(cientista, lab, fornada);
+			ServerPlayer bio = cientista;
+			AfirmarV21("(montagem) o Cientista vira o bio pelo parto de PRODUCAO (`NascerBioAndroide`): o mesmo corpo e a mesma conta, outro nome -- e LARVA",
+					   bio.Name == $"Bio-Androide de {antes}" && Larva(bio) && bio.Conta == "bancada_v021_cientista", $"{bio.Name}; larva {Larva(bio)}");
+
+			// ---------------------------------------------------------------- 2. a larva liga o simulador que fez quando era humano
+			bio.Pos = c;
+			List<string> pediu = Usar(bio, Simulador.VerboIniciar);
+			ServerPlayer? sim = ASimulacao();
+			bool caca = sim != null && GuiarASimulacao(sim, bio.Id, out ServerPlayer? presa, out _) && presa == bio;
+			bio.Ficha.PowerLevel();
+			sim?.Ficha.PowerLevel();
+			double dele = bio.Ficha.expressedBP, dela = sim?.Ficha.expressedBP ?? -1;
+			AfirmarV21("**O BIO USA O SIMULADOR QUE FEZ QUANDO ERA HUMANO** (o amigo do dono): a larva liga a maquina e a simulacao nasce cacando ela -- e a "
+					   + "COPIA DE UMA LARVA E UMA LARVA, selada como ela: o poder expresso da copia nao passa o dela (era o poder base inteiro, ate o teto "
+					   + "da maquina, contra os 5 da carapaca -- o primeiro golpe nocauteava o bio e desfazia a simulacao)",
+					   sim != null && caca && Larva(sim) && dela <= dele + 1e-6,
+					   $"{Ultimos(pediu)} | {(sim == null ? "nenhuma simulacao" : $"{sim.Name}: expresso {dela:N0}, larva {Larva(sim)}")}; o bio expressa {dele:N0}");
+			SemSimulacao();
+			SimulacaoSemOSeloDaLarvaDeTeste = true;
+			try
+			{
+				Usar(bio, Simulador.VerboIniciar);
+				ServerPlayer? semSelo = ASimulacao();
+				semSelo?.Ficha.PowerLevel();
+				AfirmarV21("(defeito injetado: a copia sem o selo da larva, o jogo de antes) a mesma larva liga a mesma maquina e a copia nasce com o poder "
+						   + "base dela, dezenas de vezes os 5 da carapaca -- a regua de cima REPROVA",
+						   semSelo != null && semSelo.Ficha.expressedBP > dele * 10, $"copia {semSelo?.Ficha.expressedBP:N0}, o bio {dele:N0}");
+			}
+			finally { SimulacaoSemOSeloDaLarvaDeTeste = false; SemSimulacao(); }
+
+			// ---------------------------------------------------------------- 3. maduro; o nome nas obras; o que e dele, ele solta e recolhe
+			AmadurecerALarva(bio);
+			List<string> maduro = Usar(bio, Simulador.VerboIniciar);
+			ServerPlayer? simMaduro = ASimulacao();
+			bool cacaMaduro = simMaduro != null && GuiarASimulacao(simMaduro, bio.Id, out ServerPlayer? presaMaduro, out _) && presaMaduro == bio;
+			AfirmarV21("...e MADURO tambem: a simulacao do bio nasce e caca ele, sem selo nenhum (a copia de quem nao e larva e a de sempre)",
+					   !Larva(bio) && cacaMaduro && !Larva(simMaduro!), Ultimos(maduro));
+			SemSimulacao();
+			AfirmarV21("**A TECH DO HUMANO PASSA PRO NOME DO BIO**: o simulador que o Cientista ergueu diz que e do Bio-Androide de Cientista -- a aba Tech "
+					   + "(\"Suas construções\") lista pelo nome, e o deixava de fora",
+					   simulador.DonoNome == bio.Name, simulador.DonoNome);
+			List<string> soltou = Tech(bio, "aparafusar");
+			List<string> recolheu = Tech(bio, "pegar");
+			AfirmarV21("...e o bio SOLTA e RECOLHE o simulador do humano que ele era: a obra e da CONTA, e o bio e o mesmo save",
+					   !_noChao.Contains(simulador) && !Disse(soltou, "nao e seu") && !Disse(recolheu, " é de "), $"{Ultimos(soltou)} | {Ultimos(recolheu)}");
+
+			// ---------------------------------------------------------------- 4. LIBERAR PRA TODOS: o parafuso e o pegar
+			Obra maquina = Por(Simulador.Tipo, bio);
+			estranho.Pos = c;
+			List<string> trancada = Tech(estranho, "aparafusar");
+			List<string> estranhoLibera = Tech(estranho, "liberar", maquina.Id.ToString());
+			List<string> liberou = Tech(bio, "liberar", maquina.Id.ToString());
+			bool ficouLiberada = maquina.Liberada;
+			List<string> comDefeito;
+			LiberadaNaoValeDeTeste = true;
+			try { comDefeito = Tech(estranho, "aparafusar"); }
+			finally { LiberadaNaoValeDeTeste = false; }
+			bool defeitoRecusou = maquina.Aparafusada && Disse(comDefeito, "nao e seu");
+			List<string> estranhoSolta = Tech(estranho, "aparafusar");
+			bool soltaPeloEstranho = !maquina.Aparafusada;
+			List<string> estranhoPega = Tech(estranho, "pegar");
+			AfirmarV21("**O DONO LIBERA A TECH PRA TODOS** (o dono: 'permita com q o criador da tech libere ela quando quiser pra qualquer um mexer nela, "
+					   + "desparafusar, pegar, etc'): trancada, o estranho nao a solta nem a libera; o dono a libera pelo botao da aba Tech (`liberar` com o "
+					   + "id) e o estranho a SOLTA e a RECOLHE pra mochila dele",
+					   Disse(trancada, "nao e seu") && Disse(estranhoLibera, "só o dono libera") && !Disse(estranhoLibera, "está liberada")
+					   && ficouLiberada && Disse(liberou, "está liberada") && soltaPeloEstranho && !_noChao.Contains(maquina),
+					   $"{Ultimos(trancada)} | {Ultimos(estranhoLibera)} | {Ultimos(liberou)} | solta {soltaPeloEstranho} | {Ultimos(estranhoSolta)} | {Ultimos(estranhoPega)}");
+			AfirmarV21("(defeito injetado: a liberada continua so do dono, o jogo de antes) com a maquina liberada o estranho ainda ouve 'isso nao e seu' "
+					   + "-- a regua de cima REPROVA", defeitoRecusou, Ultimos(comDefeito));
+
+			// ---------------------------------------------------------------- 5. as outras portas do mesmo funil, e o TRANCAR de volta
+			Obra drill = Por(Drill.Tipo, bio);
+			List<string> drillDeOutro = Usar(estranho, Drill.VerboColetar);
+			Tech(bio, "liberar", drill.Id.ToString());
+			List<string> drillLiberada = Usar(estranho, Drill.VerboColetar);
+			List<string> trancou = Tech(bio, "liberar", drill.Id.ToString());
+			List<string> drillTrancada = Usar(estranho, Drill.VerboColetar);
+			_noChao.Remove(drill);
+			Obra acampamento = Por(Deposito.Base, bio);
+			List<string> baseDeOutro = Usar(estranho, Deposito.VerboDesmontar);
+			Tech(bio, "liberar", acampamento.Id.ToString());
+			List<string> baseLiberada = Usar(estranho, Deposito.VerboDesmontar);
+			AfirmarV21("...a MESMA chave nas outras portas: a Drill de outro so o dono coleta, a liberada qualquer um, e TRANCADA de volta ('volta a ser "
+					   + "só sua') de novo so o dono; a base de outro so o dono desmonta, a liberada qualquer um",
+					   Disse(drillDeOutro, "só o dono coleta") && !Disse(drillLiberada, "só o dono") && Disse(trancou, "volta a ser só sua")
+					   && Disse(drillTrancada, "só o dono coleta") && Disse(baseDeOutro, "só o dono desmonta") && !_noChao.Contains(acampamento),
+					   $"{Ultimos(drillDeOutro)} | {Ultimos(drillLiberada)} | {Ultimos(trancou)} | {Ultimos(drillTrancada)} | {Ultimos(baseDeOutro)} | {Ultimos(baseLiberada)}");
+
+			// ---------------------------------------------------------------- 6. a nave parada (o id negativo do pacote), e a trava do dono
+			var pod = new Nave { Id = _proximaNaveId++, Tipo = "Spacepod", X = c.X + T, Y = c.Y, DonoConta = bio.Conta, DonoNome = bio.Name };
+			pod.PorZona(bio.Zone);
+			_naves.Add(pod);
+			naves.Add(pod);
+			List<string> podDeOutro = Usar(estranho, "nave_pegar");
+			List<string> podLibera = Tech(bio, "liberar", (-pod.Id).ToString());
+			List<string> podLiberado = Usar(estranho, "nave_pegar");
+			Obra clonagem = Por(MaquinaDeClonagem.Tipo, bio);
+			Tech(bio, "liberar", clonagem.Id.ToString());
+			List<string> senhaDeOutro = Usar(estranho, MaquinaDeClonagem.VerboSenha, "1234");
+			_noChao.Remove(clonagem);
+			AfirmarV21("...a NAVE parada tambem (o botao manda o id negativo): a de outro nao se recolhe, a liberada sim -- e a SENHA da clonagem, trava "
+					   + "permanente, continua so do dono de verdade com a maquina liberada (senao um estranho a trancaria pra sempre)",
+					   Disse(podDeOutro, " é de ") && pod.Liberada && !_naves.Contains(pod) && Disse(senhaDeOutro, "só o dono põe senha"),
+					   $"{Ultimos(podDeOutro)} | {Ultimos(podLibera)} | {Ultimos(podLiberado)} | {Ultimos(senhaDeOutro)}");
+
+			// ---------------------------------------------------------------- 7. o ingles do que a tech liberada diz e mostra
+			var ingles = Jandirus.Core.Lingua.Tradutor.DoJson(Godot.FileAccess.GetFileAsString("res://Assets/Data/lingua-en.json"));
+			string[] novas =
+			[
+				FraseDaObraLonge, "só o dono libera Simulator.", "Simulator volta a ser só sua.",
+				"Simulator está liberada: qualquer um mexe nela como você -- aparafusa, solta, pega, usa.",
+				"Spacepod está liberada: qualquer um mexe nela como você -- recolhe, melhora, embarca.",
+				"Liberar", "Trancar", "liberada",
+				"libera esta construção pra qualquer um mexer nela como você: aparafusar, soltar, pegar, usar",
+				"volta a ser só sua: ninguém mais mexe nela",
+			];
+			string[] semIngles = [.. novas.Where(s => ingles.Traduzir(s) == s)];
+			AfirmarV21("...e o que a tech liberada diz e mostra tem ingles no dicionario do jogo", semIngles.Length == 0, string.Join(" | ", semIngles));
+		}
+		finally
+		{
+			SimulacaoSemOSeloDaLarvaDeTeste = LiberadaNaoValeDeTeste = false;
+			SemSimulacao();
+			foreach (Obra o in obras) _noChao.Remove(o);
+			foreach (Nave n in naves) _naves.Remove(n);
+			AplicarColisaoDasObras(cientista.Zone);
+			GravarMundo();
+			GravarNaves();
+			DesfazerV2(cientista, estranho);
+			LimparTudoDaBancada();
+		}
 	}
 
 	// =====================================================================

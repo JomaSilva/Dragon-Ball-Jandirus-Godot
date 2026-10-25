@@ -260,9 +260,17 @@ public partial class GameServer
 		// resto -- cada porta de revive (a tecnica, as esferas, o Enma, o admin) e o save de antes do conserto. O jogador entra pela porta.
 		// Ver `GameServer.PenaDoVivoTeste.cs`.
 		if (Array.IndexOf(args, "--penavivoteste") >= 0) RodarBancadaDaPenaDoVivo(porta);
+		// `--kaikaiteste`: (2026-10-23) o Kai Kai com a tela dos planetas conhecidos -- a lista (os doze, o livro de batismo, o destruido
+		// fora), o salto na hora com o clarao do Instant Transmission nas duas pontas e o mundo gerado que ainda nao nasceu. Corpos
+		// forjados, sem jogador. Ver `GameServer.KaiKaiTeste.cs`.
+		if (Array.IndexOf(args, "--kaikaiteste") >= 0) RodarBancadaDoKaiKai();
 		// `--ganhoteste`: de onde o poder da luta vem -- o soco no ar, o objeto, a troca entre jogadores e o ki que so
 		// rende encostando. Os jogadores entram pela porta. Ver `GameServer.GanhoTeste.cs`.
 		if (Array.IndexOf(args, "--ganhoteste") >= 0) RodarBancadaDeGanho(porta);
+		// `--vigortreinoteste`: (2026-10-24) o BP que "congelava" no treino -- o vigor do treino proporcional ao peso, o T exausto recusado no
+		// pedido com quanto falta, o estomago vazio avisado a cada tentativa, o vigor no fundo que pesa no poder (`StaminaDrain.dm:40`) e a
+		// janela do tiro de ki que fecha em 45 s e nao vai pro save. O jogador entra pela porta. Ver `GameServer.VigorTreinoTeste.cs`.
+		if (Array.IndexOf(args, "--vigortreinoteste") >= 0) RodarBancadaDoVigorDoTreino(porta);
 		// `--treinofocadoteste`: o treino focado e a meditacao focada (anel de WASD, respiracao, bonus ate 2x, o AFK intacto).
 		// Roda no boot, sem jogador. Ver `GameServer.TreinoFocadoTeste.cs`.
 		if (Array.IndexOf(args, "--treinofocadoteste") >= 0) RodarBancadaDoTreinoFocado();
@@ -274,6 +282,10 @@ public partial class GameServer
 		// `--niveisteste`: (adendo 18) as skills que nao subiam de nivel -- a Ki Effusion, o Spirit Gun e o Fist, a Rapid
 		// Movement, a lamina/espada/escudo de Ki, o Full Power e o gigante. O jogador entra pela porta. Ver `GameServer.NiveisQueNaoSubiamTeste.cs`.
 		if (Array.IndexOf(args, "--niveisteste") >= 0) RodarBancadaDosNiveis(porta);
+		// `--ascensaoteste`: (2026-10-23) a Ascensao das racas sem transformacao -- quem ascende (a regra do catalogo contra a lista do
+		// dono), a rampa pelos degraus do Saiyajin, os jogadores e o NPC, a forma absoluta que toma o lugar, os marcos e o fio. Os jogadores
+		// entram pela porta. Ver `GameServer.AscensaoTeste.cs`. (Aqui no meio, entre duas linhas velhas, e nao no fim.)
+		if (Array.IndexOf(args, "--ascensaoteste") >= 0) RodarBancadaDaAscensao(porta);
 		// `--espacovooteste`: (2026-10-20) no espaco so se anda voando -- a pe o corpo fica parado (o jogador e a IA), voando anda; ao leme a
 		// nave anda; o colo e o golpe ainda levam; quem rompe a atmosfera voando chega voando. O jogador entra pela porta. Ver
 		// `GameServer.EspacoSoVoandoTeste.cs`.
@@ -286,12 +298,20 @@ public partial class GameServer
 		// vida diaria que nao sai do lugar, o menu E e a conversa que desperta o potencial. O jogador entra pela porta. Ver
 		// `GameServer.PatriarcaTeste.cs`.
 		if (Array.IndexOf(args, "--patriarcateste") >= 0) RodarBancadaDoPatriarca(porta);
+		// `--potarateste`: (2026-10-23) o par de brincos Potara que o Kaioshin da -- o par que chega com o cargo, o "Dar ao alvo marcado", quem
+		// recebe que fica com ele, o um par por dia do cargo, a fusao que o gasta, o um par uma fusao e a roupa potara fora do guarda-roupa. Os
+		// jogadores entram pela porta. Ver `GameServer.ParDePotaraTeste.cs`. (Aqui no meio, entre duas linhas velhas, e nao no fim.)
+		if (Array.IndexOf(args, "--potarateste") >= 0) RodarBancadaDoParDePotara(porta);
 		// `--servicosteste`: (2026-10-19) os servicos do Outro Mundo -- os doadores, so os mortos, a entrega e a rede, a recarga, o lugar do
 		// treino e da meditacao, o nocaute, o prazo e o revive, o cartao e o save. O jogador entra pela porta. Ver `GameServer.ServicosTeste.cs`.
 		if (Array.IndexOf(args, "--servicosteste") >= 0) RodarBancadaDosServicos(porta);
 		// `--filhosteste`: (adendo 42) os filhos -- o amor correspondido, o pedido e o "sim", a fila dos bebes e o parto pela criacao. Os
 		// pais e o filho entram pela porta. Ver `GameServer.FilhosTeste.cs`.
 		if (Array.IndexOf(args, "--filhosteste") >= 0) RodarBancadaDosFilhos(porta);
+		// `--telacinzateste`: (2026-10-23) a tela cinza da criacao, do lado do servidor -- o sorteio velho "Icer" da conta que vira Frost
+		// Demon e nasce, e a excecao na criacao que responde com uma recusa (e nao responde a quem ja entrou). Os jogadores entram pela
+		// porta. Ver `GameServer.TelaCinzaTeste.cs`.
+		if (Array.IndexOf(args, "--telacinzateste") >= 0) RodarBancadaDaTelaCinza(porta);
 		// `--esferamochilateste`: (2026-10-19) as Esferas do Dragao na mochila -- o slot com o sprite do chao, largar uma, a caverna e o
 		// Lookout que sao do planeta, as portas que recusam quem carrega e a invocacao que as tira da mochila. O jogador entra pela porta.
 		// Ver `GameServer.EsferasNaMochilaTeste.cs`.
@@ -309,6 +329,10 @@ public partial class GameServer
 		// `--juizteste`: (2026-10-19) o King Yemma vai e volta do Outro Mundo -- a ida, o revive la dentro, a volta exata, o carimbo, as
 		// portas. Corpos forjados. Ver `GameServer.JuizTeste.cs`.
 		if (Array.IndexOf(args, "--juizteste") >= 0) RodarBancadaDoJuiz();
+		// `--ritualkaiteste`: (2026-10-23) o Ritual Mistico do Velho Kaiohshin e o Potential Unleashed -- o nome, o kit sem o Mistico, a
+		// migracao, a oferta no cartao, a trava dos dois, o fim, o dia e o que quebra o ritual. Corpos forjados. Ver
+		// `GameServer.RitualDoKaioshinTeste.cs`.
+		if (Array.IndexOf(args, "--ritualkaiteste") >= 0) RodarBancadaDoRitualDoKaioshin();
 		// `--cargolivreteste`: (2026-10-19) os cargos sem admin -- os onze que o dono abriu (os sete do espaco e os Anciaos de Namek), a
 		// reivindicacao de producao, o trono de Vegeta condenado, as frases do trono vago que cabem no fio e o trono de quem sumiu ha 7
 		// dias. Corpos forjados. Ver `GameServer.CargoLivreTeste.cs`.
@@ -320,9 +344,15 @@ public partial class GameServer
 		// `--calendarioteste`: (2026-10-17) o calendario e a idade que anda com ele -- a data, o dia e o mes que viram, os meses de quem esta
 		// no jogo e de quem volta, a velhice, a Sala do Tempo por cima. O jogador entra pela porta. Ver `GameServer.CalendarioTeste.cs`.
 		if (Array.IndexOf(args, "--calendarioteste") >= 0) RodarBancadaDoCalendario(porta);
+		// `--formasteclasteste`: (2026-10-23) o C duplo de quem tem ki divino (o botao das formas mortais/divinas, gravado) e a tecla de forma
+		// que vai direto (a divina ja usada; a com 50% de maestria nela). O jogador entra pela porta. Ver `GameServer.FormasTeclasTeste.cs`.
+		if (Array.IndexOf(args, "--formasteclasteste") >= 0) RodarBancadaDasTeclasDeForma(porta);
 		// `--sonoteste`: (2026-10-18) o Sleep do Majin -- o catalogo (a skill no lugar da `Regenerate`, so na arvore dele), a troca no login, os 5 s
 		// inteiros e cada coisa que acorda, com a recarga de 1 min. O jogador entra pela porta. Ver `GameServer.SonoTeste.cs`.
 		if (Array.IndexOf(args, "--sonoteste") >= 0) RodarBancadaDoSono(porta);
+		// `--supermajinteste`: (2026-10-23) o Super Majin do Majin que nao e Corrupted -- a linha, a trava da maestria pelo BP base (6x, 10x,
+		// 16x), a lentidao, o "nada desce" e o NPC. Corpos forjados. Ver `GameServer.SuperMajinTeste.cs`.
+		if (Array.IndexOf(args, "--supermajinteste") >= 0) RodarBancadaDoSuperMajin();
 		// `--chefesteste`: (2026-10-18) os chefes e os dois nerfs -- o cuspe acido e o Spirit Gun, o Death Beam do Freeza numa luta, a forma do
 		// chefe no disco e o reinicio, o Cell que volta do alem, o vilao do Inferno, o marco batido e a auditoria do boot. O jogador entra pela
 		// porta. Ver `GameServer.ChefesTeste.cs`.
@@ -330,6 +360,9 @@ public partial class GameServer
 		// `--pesosteste`: (2026-10-18) os pesos com estado no id (dois pesos, dois itens; o que cai e o que se pega e o mesmo peso; a migracao do
 		// save de antes) e a maestria de gravidade que o peso travava. O jogador entra pela porta. Ver `GameServer.PesosTeste.cs`.
 		if (Array.IndexOf(args, "--pesosteste") >= 0) RodarBancadaDosPesos(porta);
+		// `--gravmetateste`: (2026-10-23) o morto que sente o peso e a gravidade, a aclimatacao com teto de +25% e o peso acima de 8x o limite do
+		// corpo que nao treina. O jogador entra pela porta. Ver `GameServer.GravMetaTeste.cs`. (Aqui no meio, e nao no fim: o fim e de todo mundo.)
+		if (Array.IndexOf(args, "--gravmetateste") >= 0) RodarBancadaGravMeta(porta);
 		// `--lemeteste`: (2026-10-19) o casco isola quem pilota -- a gravidade, a lua, o ar, os golpes de fora, e nenhum poder ao leme. O
 		// jogador entra pela porta. Ver `GameServer.LemeTeste.cs`.
 		if (Array.IndexOf(args, "--lemeteste") >= 0) RodarBancadaDoLeme(porta);

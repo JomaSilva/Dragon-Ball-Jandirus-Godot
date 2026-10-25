@@ -10,6 +10,10 @@ namespace Jandirus.Server;
 /// O dono (2026-10-21): cada uso espalha as esferas em lugar novo no planeta delas, e as Black
 /// Star sao um set global, um desejo, 5x o Shenron, e saem do planeta.
 ///
+/// (2026-10-23, dono) O desejo das Black Star PARTE O PLANETA onde elas foram usadas (familia X) e a lista delas ganha "Aprender a
+/// Danca da Fusao" (familia D). Os desejos de verdade daqui em diante rodam DENTRO do palco das mortes (`PalcoDeMortesDeBancada`):
+/// sem ele, os 310 s da Terra iriam pro `planetas-mortos.json` -- o acidente da `--escudoteste` (`GameServer.Destruicao.cs`).
+///
 ///     Godot --headless --path . --host --rede 10130 --esferanegrateste --raca Human --conta bancada_negra --nome Negra
 /// </summary>
 public sealed partial class GameServer
@@ -35,6 +39,8 @@ public sealed partial class GameServer
 		BlackStarSemMultiplicadorDeTeste = false;
 		BlackStarComSupremoDeTeste = false;
 		ReassentarTudoNoBootDeTeste = DeslogarEspalhaDeTeste = false;
+		NegraNaoExplodeOPlanetaDeTeste = NegraCaiNoPlanetaCondenadoDeTeste = false;
+		DancaEmTodoDragaoDeTeste = DancaSemSerEnsinadaDeTeste = DancaRepetidaDeTeste = false;
 		try { CorpoDaBancadaNegra(pl); }
 		catch (Exception e) { ChecaNegra("a bancada nao estourou", false, e.ToString()); }
 		finally
@@ -45,6 +51,8 @@ public sealed partial class GameServer
 			BlackStarSemMultiplicadorDeTeste = false;
 			BlackStarComSupremoDeTeste = false;
 			ReassentarTudoNoBootDeTeste = DeslogarEspalhaDeTeste = false;
+			NegraNaoExplodeOPlanetaDeTeste = NegraCaiNoPlanetaCondenadoDeTeste = false;
+			DancaEmTodoDragaoDeTeste = DancaSemSerEnsinadaDeTeste = DancaRepetidaDeTeste = false;
 			GD.Print($"[esferanegra] ================ {_okNegra} OK, {_falhaNegra} FALHA(S) ================");
 		}
 	}
@@ -204,6 +212,10 @@ public sealed partial class GameServer
 		InvocarODragao(pl);
 		ChecaNegra("no espaco as Black Star nao invocam", !_invocacoes.ContainsKey(EsferasNegras.IdDoSet));
 
+		// (2026-10-23) DAQUI ATE O FIM DAS FAMILIAS X E D, O PALCO DAS MORTES: o desejo de verdade parte o planeta onde foi feito -- a
+		// Terra, aqui. Declarado com `using` (uma excecao no meio ainda devolve o mundo) e fechado a mao antes do X10, que le o que ele
+		// barrou: o `EscritasBarradas` so e preenchido no `Dispose`.
+		using PalcoDeMortes palco = PalcoDeMortesDeBancada();
 		MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
 		foreach (EsferaNegra n in _negras) { n.Portador = pl.Id; n.PorZona(terra); n.PrecisaAssentar = false; }
 		InvocarODragao(pl);
@@ -218,7 +230,7 @@ public sealed partial class GameServer
 			() => BlackStarComSupremoDeTeste = false);
 
 		double zeniDoDesejo = pl.Ficha.Zeni;
-		PedirDesejo(pl, "dinheiro");
+		List<string> ouviuNoDesejo = Ouvir(() => PedirDesejo(pl, "dinheiro"));
 		ChecaNegra("o desejo unico consome e multiplica o zeni",
 			Math.Abs(pl.Ficha.Zeni - zeniDoDesejo - Desejos.ZeniDoDesejo * EsferasNegras.MultiplicadorDaBlackStar) < 1
 			&& !_invocacoes.ContainsKey(EsferasNegras.IdDoSet));
@@ -229,6 +241,14 @@ public sealed partial class GameServer
 			$"espera {espera:0} s");
 		ChecaNegra("e se espalham de novo por planetas",
 			_negras.All(e => e.Portador == 0 && Espaco.EhPlaneta(e.Zona)));
+
+		FamiliaDaExplosaoNegra(pl, terra, ouviuNoDesejo);
+		FamiliaDaDancaNegra(pl, terra, eterno);
+		palco.Dispose();
+		ChecaNegra("X10. (palco) as contagens e a explosao desta bancada ficaram na memoria: as gravacoes do planetas-mortos.json foram "
+				   + "barradas, e a Terra e Arlia voltam vivas",
+			palco.EscritasBarradas > 0 && !ZonaCondenada(terra) && !ZonaCondenada(Cobaia),
+			$"{palco.EscritasBarradas} gravacao(oes) barrada(s); morreram aqui: {palco.NomesQueMorreram}");
 
 		// Disco de largura fixa, ida e volta.
 		SalvarNegras();
@@ -317,6 +337,199 @@ public sealed partial class GameServer
 			ChecaNegra("planeta destruido com Black Star em cima espalha ela de novo", noMundo.Zona.Hash != era, noMundo.ZonaNome);
 			if (_mortos.De(ck) is { } morte) morte.Fase = FaseDaMorte.Vivo;
 		}
+	}
+
+	/// <summary>
+	/// (2026-10-23) UM DESEJO DE VERDADE DAS BLACK STAR em <paramref name="onde"/>, do zero: o planeta vivo (o desejo anterior o condenou),
+	/// o set aceso, as sete na mao, o Shenlong pelo verbo de producao (`InvocarODragao`) e o pedido. Devolve o que o servidor disse.
+	/// </summary>
+	private List<string> DesejoNegroDeVerdade(ServerPlayer pl, ZoneKey onde, string pedido)
+	{
+		AbortarMorte(onde, "bancada: o planeta volta vivo pro proximo desejo");
+		_setNegro.AtivoEm = 0;
+		_setNegro.Pedidos = 0;
+		_setNegro.Inerte = false;
+		_invocacoes.Remove(EsferasNegras.IdDoSet);
+		MoveToZone(pl.Id, onde, PontoDeNascimento(onde));
+		foreach (EsferaNegra n in _negras) { n.Portador = pl.Id; n.PorZona(onde); n.PrecisaAssentar = false; }
+		InvocarODragao(pl);
+		return Ouvir(() => PedirDesejo(pl, pedido));
+	}
+
+	// =====================================================================
+	// (2026-10-23) O PLANETA DO DESEJO SE PARTE -- familia X
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-23): *"black star dragon ball ao ser usada explodir o planeta q esta sendo usada alguns minutos apos o uso, e elas
+	/// se espalharem pelo universo"*; decidido "5 min, pelos planetas de hoje". Roda DENTRO do palco das mortes, logo depois do desejo de
+	/// verdade feito na Terra (<paramref name="ouviuNoDesejo"/> e o que se ouviu nele):
+	///   X1-X4. a Terra entra nos 310 s da porta unica, com os dois avisos, sem autor, e nenhuma das sete cai num planeta condenado;
+	///   X5.    o sorteio nao conhece planeta condenado -- pedindo o universo inteiro dele (no desejo de verdade e sorte: sete de ~12);
+	///   X6-X8. o desejo em Arlia e a consumacao pelo tique de producao (o laco da `--porungateste`): o planeta explode e a Black Star que
+	///          alguem largou la depois do desejo se espalha de novo, num mundo vivo;
+	///   X9.    o contra-exemplo da contagem: com o defeito ligado, a mesma regua do X1/X2 (num desejo de verdade) reprova.
+	/// </summary>
+	private void FamiliaDaExplosaoNegra(ServerPlayer pl, ZoneKey terra, List<string> ouviuNoDesejo)
+	{
+		bool PartiuEAvisou(ZoneKey onde, List<string> falas) =>
+			MorteDaZona(onde) is { Fase: FaseDaMorte.Explodindo } m
+			&& Math.Abs(m.Faltam - MortePlanetaria.SegundosDeExplosao) < 1e-6
+			&& _proximoTremor.ContainsKey(m.Chave)
+			&& Disse(falas, "COMEÇA A SE PARTIR") && Disse(falas, "se despedaçando");
+
+		// ---- X1-X4: o desejo de cima, na Terra (o berco: "a Terra tambem", decisao do dono)
+		EstadoDaMorte? daTerra = MorteDaZona(terra);
+		ChecaNegra("X1. O DESEJO PARTE O PLANETA ONDE AS BLACK STAR FORAM USADAS: a Terra entra nos 310 s da porta unica (fase, prazo e "
+				   + "o relogio do tremor)",
+			daTerra is { Fase: FaseDaMorte.Explodindo } x1 && Math.Abs(x1.Faltam - MortePlanetaria.SegundosDeExplosao) < 1e-6
+			&& _proximoTremor.ContainsKey(x1.Chave),
+			daTerra == null ? "a Terra continua viva" : $"{daTerra.Fase}, faltam {daTerra.Faltam:0} s");
+		ChecaNegra("X2. ...e o aviso sai: quem esta nela ouve que o planeta comeca a se partir, e o mundo, que ele se despedaca",
+			Disse(ouviuNoDesejo, "COMEÇA A SE PARTIR") && Disse(ouviuNoDesejo, "se despedaçando"), Ultimos(ouviuNoDesejo));
+		ChecaNegra("X3. ...sem autor (e o preco das esferas, nao um golpe de quem pediu), com o motivo no registro",
+			daTerra is { IdDoAlgoz: 0 } x3 && x3.Motivo.Contains("Black Star", StringComparison.Ordinal),
+			daTerra == null ? "sem registro" : $"algoz {daTerra.IdDoAlgoz}, motivo '{daTerra.Motivo}'");
+		ChecaNegra("X4. ...e nenhuma das sete caiu num planeta condenado (viraram pedra e foram pros outros)",
+			_negras.All(e => !ZonaCondenada(e.Zona)),
+			string.Join(", ", _negras.Where(e => ZonaCondenada(e.Zona)).Select(e => $"#{e.Numero} em {e.ZonaNome}")));
+		AbortarMorte(terra, "bancada: a Terra volta viva pro resto da familia");
+
+		// ---- X5: O SORTEIO NAO CONHECE PLANETA CONDENADO. A regua pede o universo INTEIRO do sorteio (os pre-feitos + os gerados em
+		// volta da Terra) com Arlia nos 310 s: com o filtro ela nunca vem, e sem ele vem sempre.
+		ZoneKey arlia = Cobaia;
+		PlanetaNoEspaco casa = Espaco.PreFeitos().First();
+		int universo = Espaco.PreFeitos().Count()
+			+ Espaco.PorPerto(SeedDoUniverso, casa.Chunk, EsferasNegras.RaioDeBuscaEmChunks).Count;
+		bool SorteioPulaArlia() => !SortearPlanetas(_setNegro.LerSal(), universo).Any(z => z.Hash == arlia.Hash);
+		bool condenou = ComecarDestruicao(arlia, 1, "bancada: o sorteio das Black Star pula o planeta condenado");
+		ChecaNegra("X5. (montagem) Arlia nos 310 s pra medir o sorteio -- e ela e um planeta que o sorteio conhece",
+			condenou && MorteDaZona(arlia) is { Fase: FaseDaMorte.Explodindo } && Espaco.EhPlaneta(arlia));
+		ChecaNegra($"X5a. O SORTEIO DAS BLACK STAR NAO CONHECE PLANETA CONDENADO: pedindo o universo inteiro dele ({universo} mundos), "
+				   + "Arlia nunca vem", SorteioPulaArlia());
+		bool pulaComDefeito;
+		NegraCaiNoPlanetaCondenadoDeTeste = true;
+		try { pulaComDefeito = SorteioPulaArlia(); }
+		finally { NegraCaiNoPlanetaCondenadoDeTeste = false; }
+		ChecaNegra("X5b. (defeito injetado: o sorteio so pula planeta MORTO, como antes) a MESMA regua do X5a REPROVA", !pulaComDefeito);
+		AbortarMorte(arlia, "bancada: Arlia volta viva pro desejo dela");
+
+		// ---- X6-X8: O DESEJO EM ARLIA E A CONSUMACAO, PELO TIQUE DE PRODUCAO
+		List<string> ouviuEmArlia = DesejoNegroDeVerdade(pl, arlia, "dinheiro");
+		ChecaNegra("X6. o desejo em Arlia tambem a parte (a regra e de qualquer planeta, nao so do berco)", PartiuEAvisou(arlia, ouviuEmArlia),
+			MorteDaZona(arlia) is { } ma ? $"{ma.Fase}, faltam {ma.Faltam:0} s" : "Arlia continua viva");
+		// A BLACK STAR QUE ALGUEM TROUXE DE VOLTA nos 310 s: no chao de Arlia, aos pes de quem pediu.
+		EsferaNegra largada = _negras.First(x => x.Numero == 1);
+		largada.Portador = 0;
+		largada.PorZona(arlia);
+		largada.Cx = (int)MathF.Floor(pl.Pos.X / ZoneCollision.TileSize);
+		largada.Cy = (int)MathF.Floor(pl.Pos.Y / ZoneCollision.TileSize);
+		largada.PrecisaAssentar = false;
+		// QUEM PEDIU SAI ANTES DO FIM: o commit feriria o corpo da bancada (dano letal, pelo tamanho do mundo) e o mandaria pro espaco.
+		MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
+		int voltas = 0;
+		List<string> fim = Ouvir(() => { while (!ZonaMorta(arlia) && voltas < 4000) { TickDaDestruicao(1); voltas++; } });
+		ChecaNegra("X7. NO FIM DA CONTAGEM O PLANETA DO DESEJO EXPLODE (o tique de producao), e o mundo ouve que ele nao existe mais",
+			ZonaMorta(arlia) && Disse(fim, "NÃO EXISTE MAIS"), $"{voltas} voltas; {Ultimos(fim)}");
+		ChecaNegra("X8. ...e a Black Star largada la depois do desejo se espalha de novo, num mundo vivo",
+			largada.Portador == 0 && largada.Zona.Hash != arlia.Hash && Espaco.EhPlaneta(largada.Zona) && !ZonaCondenada(largada.Zona),
+			largada.ZonaNome);
+
+		// ---- X9: O CONTRA-EXEMPLO DA CONTAGEM -- a mesma regua do X1/X2, num desejo de verdade na Terra, com o defeito ligado
+		bool partiuComDefeito;
+		NegraNaoExplodeOPlanetaDeTeste = true;
+		try { partiuComDefeito = PartiuEAvisou(terra, DesejoNegroDeVerdade(pl, terra, "dinheiro")); }
+		finally { NegraNaoExplodeOPlanetaDeTeste = false; }
+		ChecaNegra("X9a. (defeito injetado: o desejo nao parte o planeta) a MESMA regua do X1/X2 REPROVA", !partiuComDefeito);
+		ChecaNegra("X9b. ...e desfeito o defeito ela volta a passar", PartiuEAvisou(terra, DesejoNegroDeVerdade(pl, terra, "dinheiro")));
+	}
+
+	// =====================================================================
+	// (2026-10-23) A DANCA DA FUSAO, SO NAS BLACK STAR -- familia D
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-23): *"faca ter a opcao de aprender a danca da fusao como um pedido da black star dragon ball"*. Roda DENTRO do palco
+	/// das mortes (o desejo de verdade parte a Terra):
+	///   D1. a lista das Black Star tem "Aprender a Danca da Fusao", e a linha vem acesa pra quem nao a sabe;
+	///   D2. e so ela: o Porunga, o menu da estatua e o Super Shenlong nao a oferecem (contra-exemplo: a danca em todo dragao);
+	///   D3. o desejo de verdade ensina a Danca, e ela FICA depois do tique dos cargos -- e skill do kit do Geti Star, e o tique tira a copia
+	///       de cargo que ninguem ensinou (contra-exemplo: sem a marca de ensinada);
+	///   D4. quem ja sabe nao gasta o pedido: a linha vem apagada com o motivo, e o pedido por verbo recusa com o dragao de pe
+	///       (contra-exemplo: com o defeito a linha acende e o pedido e gasto).
+	/// </summary>
+	private void FamiliaDaDancaNegra(ServerPlayer pl, ZoneKey terra, SetDeEsferas porunga)
+	{
+		DesejoDef danca = Desejos.DaBlackStar.First(d => d.Id == Desejos.IdDaDancaDaFusao);
+		void SemADanca() { if (SabeDancar(pl)) pl.Livro!.Esquecer(PathDaDanca); }
+
+		// ---- D1
+		SemADanca();
+		ChecaNegra("D1. A LISTA DAS BLACK STAR TEM \"Aprender a Dança da Fusão\" -- e a linha da janela vem acesa pra quem nao sabe a danca",
+			MenuDaqui(pl, _setNegro).Any(d => d.Id == danca.Id)
+			&& EntradaDoDesejo(pl, _setNegro, danca, posso: true, juntas: false) is { Pode: true },
+			string.Join(", ", MenuDaqui(pl, _setNegro).Select(d => d.Id)));
+
+		// ---- D2
+		bool SoNelas() =>
+			!MenuDaqui(pl, porunga).Any(d => d.Id == danca.Id)
+			&& !ConfigDaEstatua.Ajustaveis.Any(d => d.Id == danca.Id)
+			&& !Desejos.MenuDoSuper(ehKaioshin: true, haProcuracao: false, sangueSaiyajin: 100).Any(d => d.Id == danca.Id);
+		ChecaNegra("D2. ...e SO nelas: nem o Porunga (o dragao comum), nem o menu da estatua, nem o Super Shenlong a oferecem", SoNelas());
+		bool soComDefeito;
+		DancaEmTodoDragaoDeTeste = true;
+		try { soComDefeito = SoNelas(); }
+		finally { DancaEmTodoDragaoDeTeste = false; }
+		ChecaNegra("D2b. (defeito injetado: a danca entra em todo dragao) a MESMA regua do D2 REPROVA", !soComDefeito);
+
+		// ---- D3: o pedido de verdade, e o tique dos cargos (o corpo da bancada nao tem cargo) passando por cima
+		bool AprendeEFica(out string detalhe)
+		{
+			SemADanca();
+			List<string> falas = DesejoNegroDeVerdade(pl, terra, danca.Id);
+			bool gastou = _setNegro.Pedidos == EsferasNegras.Desejos && !_invocacoes.ContainsKey(EsferasNegras.IdDoSet);
+			bool aprendeu = SabeDancar(pl);
+			ReconciliarDadiva(pl);
+			bool ficou = SabeDancar(pl);
+			detalhe = $"gastou {gastou}, aprendeu {aprendeu}, ficou depois do tique {ficou}; {Ultimos(falas)}";
+			return gastou && aprendeu && ficou && Disse(falas, "você aprende a Dança da Fusão");
+		}
+		ChecaNegra("D3. O DESEJO ENSINA A DANCA DA FUSAO, e ela FICA depois do tique dos cargos (a Danca e do kit do Geti Star)",
+			AprendeEFica(out string d3), d3);
+		bool ficaComDefeito;
+		DancaSemSerEnsinadaDeTeste = true;
+		try { ficaComDefeito = AprendeEFica(out _); }
+		finally { DancaSemSerEnsinadaDeTeste = false; }
+		ChecaNegra("D3b. (defeito injetado: o desejo poe a danca no livro sem a marca de ensinada) a MESMA regua do D3 REPROVA -- o tique "
+				   + "dos cargos a tira", !ficaComDefeito);
+
+		// ---- D4: quem ja sabe. A montagem poe a danca no livro ela mesma (como um mestre poria), e nao pelo D3: cada medida parte do zero.
+		(bool Janela, bool Verbo, string Detalhe) JaSabe()
+		{
+			if (!SabeDancar(pl)) (pl.Livro ??= new Jandirus.Core.Skills.SkillBook()).DarComoEnsinada(PathDaDanca);
+			AbortarMorte(terra, "bancada");
+			_setNegro.AtivoEm = 0;
+			_setNegro.Pedidos = 0;
+			_setNegro.Inerte = false;
+			_invocacoes.Remove(EsferasNegras.IdDoSet);
+			MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
+			foreach (EsferaNegra n in _negras) { n.Portador = pl.Id; n.PorZona(terra); n.PrecisaAssentar = false; }
+			InvocarODragao(pl);
+			EntradaDoDragao linha = EntradaDoDesejo(pl, _setNegro, danca, posso: true, juntas: false);
+			List<string> falas = Ouvir(() => PedirDesejo(pl, danca.Id));
+			bool janela = !linha.Pode && linha.Motivo.Contains("já sabe a Dança da Fusão", StringComparison.Ordinal);
+			bool verbo = _setNegro.Pedidos == 0 && _invocacoes.ContainsKey(EsferasNegras.IdDoSet)
+						 && Disse(falas, "você já sabe a Dança da Fusão") && Disse(falas, "Nenhum pedido foi gasto");
+			return (janela, verbo, $"linha Pode={linha.Pode} '{linha.Motivo}'; pedidos {_setNegro.Pedidos}; {Ultimos(falas)}");
+		}
+		(bool janela, bool verbo, string d4) = JaSabe();
+		ChecaNegra("D4a. QUEM JA SABE A DANCA ve a linha APAGADA, com o motivo escrito", janela, d4);
+		ChecaNegra("D4b. ...e o pedido por verbo recusa SEM GASTAR: o Shenlong continua de pe e o pedido unico continua la", verbo, d4);
+		(bool janelaComDefeito, bool verboComDefeito, string d4c) = (false, false, "");
+		DancaRepetidaDeTeste = true;
+		try { (janelaComDefeito, verboComDefeito, d4c) = JaSabe(); }
+		finally { DancaRepetidaDeTeste = false; }
+		ChecaNegra("D4c. (defeito injetado: quem ja sabe pede de novo) as MESMAS reguas do D4a e do D4b REPROVAM",
+			!janelaComDefeito && !verboComDefeito, d4c);
+		_invocacoes.Remove(EsferasNegras.IdDoSet);
 	}
 
 	private List<Vec2> OndeEsta(SetDeEsferas s) =>

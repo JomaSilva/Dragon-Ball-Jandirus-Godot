@@ -1236,29 +1236,45 @@ public sealed partial class GameServer
 	// =====================================================================
 	// 13) AS ROUPAS
 	// =====================================================================
-	/// <summary>As onze folhas da pasta `Clothes` que nao estavam no guarda-roupa ate 2026-10-12.</summary>
+	/// <summary>
+	/// As folhas da pasta `Clothes` que nao estavam no guarda-roupa ate 2026-10-12 e continuam nele. Eram onze: os quatro brincos potara
+	/// (<see cref="BrincosForaDoGuardaRoupa"/>) SAIRAM de novo em 2026-10-23 -- o dono: a Potara de verdade e o item que o Kaioshin da, e o
+	/// brinco de roupa enganava os jogadores (ver `Core/Items/ParDePotara.cs`).
+	/// </summary>
 	internal static readonly string[] RoupasNovasDaV020 =
-		["Black Goku Suit Fixed", "Blue Armor", "Halo", "Mega Buster", "potara", "Potara-Equipped", "potaraleft", "potararight",
-		 "Red Armor", "TurlesArmor", "Uncoloured Armour Plating"];
+		["Black Goku Suit Fixed", "Blue Armor", "Halo", "Mega Buster", "Red Armor", "TurlesArmor", "Uncoloured Armour Plating"];
+
+	/// <summary>(2026-10-23) Os quatro brincos potara, que voltaram a ficar FORA do guarda-roupa. Ver <see cref="RoupasNovasDaV020"/>.</summary>
+	internal static readonly string[] BrincosForaDoGuardaRoupa = ["potara", "Potara-Equipped", "potaraleft", "potararight"];
 
 	private void AsRoupasV2()
 	{
-		GD.Print("[v020] -- 13) AS ROUPAS: a pasta inteira no guarda-roupa da criacao, menos a do Beerus e o rabo (item 6)");
+		GD.Print("[v020] -- 13) AS ROUPAS: a pasta inteira no guarda-roupa da criacao, menos a do Beerus, o rabo e (2026-10-23) os brincos potara (item 6)");
 		if (_visual is not { } cat) { AfirmarV2("(montagem) o servidor tem o catalogo de aparencia", false); return; }
 
 		const string pasta = "res://Assets/Sprites/Clothes";
 		static bool Fora(string n) => n.StartsWith("Eyes_", StringComparison.OrdinalIgnoreCase)
-									  || n.Contains("Tail", StringComparison.OrdinalIgnoreCase) || n.Contains("Beerus", StringComparison.OrdinalIgnoreCase);
+									  || n.Contains("Tail", StringComparison.OrdinalIgnoreCase) || n.Contains("Beerus", StringComparison.OrdinalIgnoreCase)
+									  || n.Contains("potara", StringComparison.OrdinalIgnoreCase);
 		List<string> folhas = [.. DirAccess.GetFilesAt(pasta).Where(f => f.EndsWith(".tres", StringComparison.OrdinalIgnoreCase)).Select(f => f[..^5])];
 		List<string> faltando = [.. folhas.Where(n => !Fora(n) && !cat.Roupas.Contains($"{pasta}/{n}.tres"))];
 		AfirmarV2($"**TODA FOLHA DA PASTA `Clothes` ESTA NO GUARDA-ROUPA** da criacao ({folhas.Count} folhas na pasta, {cat.Roupas.Count} no catalogo)",
 				  folhas.Count >= 170 && faltando.Count == 0, $"faltando: {string.Join(", ", faltando)}");
-		AfirmarV2("...inclusive as onze que ficavam de fora: as seis que so tinham o PNG, o halo, o Mega Buster e os brincos",
+		AfirmarV2($"...inclusive as {RoupasNovasDaV020.Length} que ficavam de fora ate 2026-10-12 e continuam dentro: as que so tinham o PNG, o halo e o Mega Buster",
 				  RoupasNovasDaV020.All(n => cat.Roupas.Contains($"{pasta}/{n}.tres")),
 				  string.Join(", ", RoupasNovasDaV020.Where(n => !cat.Roupas.Contains($"{pasta}/{n}.tres"))));
-		AfirmarV2("**MENOS O RABO E A DO BEERUS** (e os olhos, que nao sao roupa: sao a camada de olhos de todo corpo)",
+		AfirmarV2("**MENOS O RABO, A DO BEERUS E OS BRINCOS POTARA** (e os olhos, que nao sao roupa: sao a camada de olhos de todo corpo)",
 				  !cat.Roupas.Exists(c => Fora(VisualCatalog.NomeDoArquivo(c))) && folhas.Contains("Tail") && cat.Olhos == $"{pasta}/Eyes_Black.tres",
 				  string.Join(", ", cat.Roupas.Where(c => Fora(VisualCatalog.NomeDoArquivo(c)))));
+		// (2026-10-23) OS QUATRO BRINCOS SAIRAM DO GUARDA-ROUPA (a criacao e a Materialize leem esta lista), MAS A ARTE FICA: o `potara` e o
+		// brinco que a fusao Potara veste, e quem o acha fora do catalogo e a segunda porta do `CaminhoDaPecaDeFusao`.
+		AfirmarV2("**OS QUATRO BRINCOS POTARA NAO ESTAO NO GUARDA-ROUPA** (2026-10-23: brinco de roupa nao funde ninguem -- a Potara e o item que o Kaioshin da)",
+				  BrincosForaDoGuardaRoupa.All(n => !cat.Roupas.Contains($"{pasta}/{n}.tres") && cat.Peca(n) == null),
+				  string.Join(", ", BrincosForaDoGuardaRoupa.Where(n => cat.Roupas.Contains($"{pasta}/{n}.tres") || cat.Peca(n) != null)));
+		AfirmarV2("...e a arte continua na pasta: a fusao Potara ainda veste o brinco `potara` (a segunda porta do `CaminhoDaPecaDeFusao`)",
+				  BrincosForaDoGuardaRoupa.All(folhas.Contains)
+				  && CaminhoDaPecaDeFusao(cat, Jandirus.Core.Social.Fusao.PecaDosBrincosPotara) == $"{pasta}/potara.tres",
+				  CaminhoDaPecaDeFusao(cat, Jandirus.Core.Social.Fusao.PecaDosBrincosPotara) ?? "(nulo)");
 		AfirmarV2("CONTRA-EXEMPLO: armadura nao e guarda-roupa -- nenhuma folha da pasta `Armor` entra na grade da criacao",
 				  !cat.Roupas.Exists(c => c.Contains("/Clothes/Armor/")) && cat.Armaduras.TrueForAll(c => c.Contains("/Clothes/Armor/")));
 
@@ -1277,6 +1293,16 @@ public sealed partial class GameServer
 		string queixa = cat.Sanear(ap, "Human", "Male");
 		AfirmarV2("o servidor ACEITA as pecas novas na ficha de criacao (o `Sanear` nao tira nenhuma)",
 				  ap.Roupa.Count == Aparencia.MaxRoupa && queixa.Length == 0, queixa);
+
+		// (2026-10-23) ...E RECUSA O BRINCO: a ficha de criacao (ou o save de antes) que traz um potara sai sem ele -- e o mesmo saneamento
+		// que tira do corpo, no proximo login, a peca de quem a vestia.
+		var comBrinco = new Aparencia();
+		comBrinco.Roupa.Add(new PecaDeRoupa($"{pasta}/{RoupasNovasDaV020[0]}.tres", null));
+		comBrinco.Roupa.Add(new PecaDeRoupa($"{pasta}/potaraleft.tres", null));
+		string queixaDoBrinco = cat.Sanear(comBrinco, "Human", "Male");
+		AfirmarV2("...e RECUSA o brinco potara na ficha (o `Sanear` o tira e fica a outra peca)",
+				  comBrinco.Roupa.Count == 1 && !comBrinco.Roupa.Exists(p => p.Caminho.Contains("potara")) && queixaDoBrinco.Contains("potaraleft"),
+				  queixaDoBrinco);
 	}
 
 	// =====================================================================

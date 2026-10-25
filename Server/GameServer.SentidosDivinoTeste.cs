@@ -19,7 +19,10 @@ namespace Jandirus.Server;
 ///   c. a ficha do dono do scouter: o proprio poder acima do teto, ou o proprio ki divino, chega "???";
 ///   d. as frases com numero perguntam o mesmo (`ScouterMostra`);
 ///   e. o Sense de um mortal nao sente o divino, o de quem tem ki divino sente -- e a telepatia e o Instant Transmission seguem a mesma regra;
-///      contra-exemplo `KiDivinoAparecerDeTeste`.
+///      contra-exemplo `KiDivinoAparecerDeTeste`;
+///   f. (2026-10-23) quem so DESPERTOU, na forma base, tambem nao e sentido por quem nao tem ki divino (o Sense, a telepatia, o Observe e o
+///      Instant Transmission), e quem tem o sente; o scouter continua lendo-o; o androide desperto continua fora ate pra quem tem ki divino.
+///      Contra-exemplo `DespertoAparecerNoSenseDeTeste` (o jogo de antes). As reguas da contraprova por mutacao levam os codigos SNA1-SNA3.
 /// </summary>
 public partial class GameServer
 {
@@ -133,11 +136,66 @@ public partial class GameServer
 			AfirmarSn("o INSTANT TRANSMISSION trava na mesma regra: o Dourado (alcancavel pela conta do DM -- o defeito injetado o poe na lista) some "
 					  + "da lista do mortal e fica na do divino", itAntes && !itMortal && itDivino,
 					  $"com o defeito {itAntes}; mortal {itMortal}; divino {itDivino}");
+
+			// ---------------------------------------------------------------- f. (2026-10-23) quem so DESPERTOU, na forma base
+			// O dono: *"quem tem god ki despertado , ou é da raça androide n deve ter o ki sentido por ki sense, a nao ser q o usuario do sense
+			// tb tenha god ki (androide ninguem nunca sente)"*. O Desperto so despertou (forma base, sem classe nem cargo divino): ate a v0.4.4 o
+			// Sense de qualquer um o sentia (ele nao usava o ki divino). Agora so o de quem tem ki divino. O scouter NAO muda.
+			ServerPlayer desperto = StCorpo("Desperto", Em(c, 1, 3), 30_000);
+			Jandirus.Core.Forms.DespertarDivino.Despertar(desperto.Ficha);
+			AfirmarSn("preparo: o Desperto despertou e esta na forma base, sem ki divino EM USO (o scouter o le); o Mortal nao tem ki divino, o "
+					  + "Divino tem", Jandirus.Core.Forms.DespertarDivino.JaDespertou(desperto.Ficha) && desperto.Forma.NaBase
+										 && !KiDivinoEscondido(desperto) && !SenteKiDivino(mortal) && SenteKiDivino(divino), "");
+			List<Protocol.PresencaState> lmf = SentidosDe(mortal).Lista, ldf = SentidosDe(divino).Lista;
+			AfirmarSn("SNA1. **O SENSE DE UM MORTAL NAO SENTE QUEM SO DESPERTOU** (dono, 2026-10-23: *\"quem tem god ki despertado (...) n deve ter o "
+					  + "ki sentido por ki sense\"*): o Desperto, na forma base, nao aparece pro Mortal -- e o Abaixo, sim",
+					  Acha(lmf, desperto) == null && Acha(lmf, abaixo) != null, Nomes(lmf));
+			AfirmarSn("...e quem TEM ki divino o sente (*\"a nao ser q o usuario do sense tb tenha god ki\"*): o Divino sente o Desperto",
+					  Acha(ldf, desperto) != null, Nomes(ldf));
+			AfirmarSn("SNA2. a TELEPATIA e o Observe seguem a mesma regra (`AchoAEnergia`): o Mortal nao acha o Desperto, o Divino acha",
+					  !AchoAEnergia(mortal, desperto) && AchoAEnergia(divino, desperto), "");
+			bool itMortalF = ListaDeAssinaturasG11(mortal).Any(x => x.Quem == desperto);
+			bool itDivinoF = ListaDeAssinaturasG11(divino).Any(x => x.Quem == desperto);
+			AfirmarSn("SNA3. o INSTANT TRANSMISSION tambem (`TravaNaEnergia`): o Desperto some da lista do Mortal e fica na do Divino",
+					  !itMortalF && itDivinoF, $"mortal {itMortalF}; divino {itDivinoF}");
+			List<Protocol.PresencaState> scanF = SentidosDe(eu).Lista;
+			AfirmarSn("**O SCOUTER NAO MUDA** (o pedido e do \"ki sense\"): o Desperto na forma base continua no Scan, com o numero",
+					  Acha(scanF, desperto) is { } pdf && !double.IsNaN(pdf.Bp), Nomes(scanF));
+			DespertoAparecerNoSenseDeTeste = true;
+			bool senteNoDefeito, achaNoDefeito, itNoDefeito;
+			try
+			{
+				senteNoDefeito = Acha(SentidosDe(mortal).Lista, desperto) != null;
+				achaNoDefeito = AchoAEnergia(mortal, desperto);
+				itNoDefeito = ListaDeAssinaturasG11(mortal).Any(x => x.Quem == desperto);
+			}
+			finally { DespertoAparecerNoSenseDeTeste = false; }
+			AfirmarSn("   CONTRA-EXEMPLO (defeito injetado: o desperto na base sentido por qualquer um, o jogo de antes de 2026-10-23): o Mortal o sente, a "
+					  + "telepatia o acha e o Instant Transmission trava nele -- as tres reguas de cima reprovariam",
+					  senteNoDefeito && achaNoDefeito && itNoDefeito, $"sense {senteNoDefeito}; telepatia {achaNoDefeito}; IT {itNoDefeito}");
+
+			// O ANDROIDE CONTINUA FORA DE TUDO, desperto e pra quem tem ki divino (*"androide ninguem nunca sente"*): ele sai ANTES da pergunta do
+			// ki divino (`AchoAEnergiaG4`, `AndroideSemKi`). O defeito do androide o poe de volta na lista do teleporte do Divino.
+			ServerPlayer androide = StCorpo("AndroideDesperto", Em(c, 2, 3), 30_000);
+			androide.Race = "Android";
+			androide.Ficha.AndroideAbsorcao = true;
+			Jandirus.Core.Forms.DespertarDivino.Despertar(androide.Ficha);
+			bool itAndroide = ListaDeAssinaturasG11(divino).Any(x => x.Quem == androide);
+			AndroideAparecerDeTeste = true;
+			bool itAndroideNoDefeito;
+			try { itAndroideNoDefeito = ListaDeAssinaturasG11(divino).Any(x => x.Quem == androide); }
+			finally { AndroideAparecerDeTeste = false; }
+			AfirmarSn("o ANDROIDE desperto continua fora: o Divino nao o sente, nao o acha pela telepatia e nao trava nele pelo Instant Transmission "
+					  + "(com o defeito do androide ele volta a lista do teleporte -- a regua reprovaria)",
+					  Acha(SentidosDe(divino).Lista, androide) == null && !AchoAEnergia(divino, androide) && !itAndroide && itAndroideNoDefeito,
+					  $"IT {itAndroide}; com o defeito {itAndroideNoDefeito}");
 		}
 		finally
 		{
 			Scouter.SemTetoDeTeste = false;
 			KiDivinoAparecerDeTeste = false;
+			DespertoAparecerNoSenseDeTeste = false;
+			AndroideAparecerDeTeste = false;
 			if (anjoAntes != null) _tronos[Jandirus.Core.Npc.BillsEWhis.CargoDoWhis] = anjoAntes;
 			else _tronos.Remove(Jandirus.Core.Npc.BillsEWhis.CargoDoWhis);
 		}

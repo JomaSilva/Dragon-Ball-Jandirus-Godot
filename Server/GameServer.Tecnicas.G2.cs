@@ -709,7 +709,7 @@ public partial class GameServer
 			// -- `log()` de um argumento no DM e logaritmo NATURAL.
 			double dano = Math.Max(razao * 3, 1) * 0.1 * (ssj + 1)
 						* Math.Max(Math.Log(Math.Max(amt, 1)), 1) / LoopDmG2;
-			EspalharDanoG2(pl, dano);
+			EspalharDanoG2(pl, dano, _rng);
 
 			// `staminadrainMod` do DM e reescrito pra 1 todo statify (master.dm:45) -- e knob morto.
 			// O equivalente VIVO daqui e o `staminadrainStyle`, que o estilo de luta escreve.
@@ -799,8 +799,11 @@ public partial class GameServer
 	/// `SpreadDamage()` (Injuries.dm:63): o mesmo dano em CADA membro sorteavel. Nao-letal de
 	/// proposito -- o dano continuo do Kaio-ken nocauteia, e quem MATA e a explosao separada
 	/// (`Body_Parts()`), que so dispara nas duas condicoes escritas no DM.
+	///
+	/// (2026-10-24) COM <paramref name="sorteio"/>, CADA MEMBRO LEVA O DANO VEZES O SEU SORTEIO (ver <see cref="VariacaoDoKaiokenG2"/>)
+	/// -- o tique do Kaio-ken passa o dele. Sem sorteio, o mesmo valor em todos (as bancadas do escudo).
 	/// </summary>
-	private static void EspalharDanoG2(ServerPlayer pl, double dano)
+	private static void EspalharDanoG2(ServerPlayer pl, double dano, Random? sorteio = null)
 	{
 		// CORPO INTOCAVEL NAO PAGA O KAIO-KEN. O dano e AUTO-INFLIGIDO, e a decisao aqui e cobrir o
 		// proprio corpo tambem: o que o dono prometeu e "durante a cinematica ninguem morre
@@ -812,12 +815,57 @@ public partial class GameServer
 		// Antes do laco, e nao so no `Ferir`: o `DeveNocautear` la embaixo le o ESTADO do corpo.
 		if (dano <= 0 || pl.Combate is not { Intocavel: false }) return;
 		foreach (BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false);
+			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano * FatorDoMembroG2(sorteio), letal: false, soNosAninhados: !RepiqueNaVirilhaDeTeste);
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !EhCadaver(pl) && pl.Combate.Corpo.DeveNocautear())
 			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 	}
+
+	// =====================================================================
+	// O KAIO-KEN NO CORPO TODO (dono, 2026-10-24)
+	// =====================================================================
+	// *"o kaioken deveria dar dano no corpo todo ao mesmo tempo com pequenas variaçoes em algumas partes, pq atualmente parece q ele
+	// sempre começa pela virilha e dps vai pro resto"*. DUAS coisas desigualavam um dano que era o mesmo em todo membro:
+	//   * O REPIQUE (medido na r1 do `kaiokencorpo`: a virilha perdeu 28,9 contra 22,5 do resto, com a cura igual pra todos): ela mora
+	//     no abdomen (`BodyPart.Dono`) sem ser aninhada, e levava o dano dela E 20% do do abdomen (`Body.Ferir`). Agora o dano espalhado
+	//     do Kaio-ken so repica nos aninhados de verdade -- cerebro, orgaos, maos e pes (`soNosAninhados`).
+	//   * A CURA de fora de luta, que tem um canal de cada membro (`Regeneracao.TaxaDoMembro`: o torso costura 2, a virilha 0,5): no
+	//     Kaio-ken baixo de quem ja o domina, a costura do torso, da cabeca, dos bracos e das pernas dava conta do dano, e a da virilha nao.
+
+	/// <summary>
+	/// O KAIO-KEN ACESO PARA A COSTURA DE CADA MEMBRO -- o canal 1 da cura (`Regeneracao.Tique`, `costuraParada`). Os canais espalhados,
+	/// iguais pra todo membro, seguem a regra de sempre: o corpo ainda se cura fora de luta, so que por igual. Lido pelo
+	/// `RegenerarPassivo`.
+	/// </summary>
+	private bool KaiokenParaACosturaG2(ServerPlayer pl) => !KaiokenCosturaCadaMembroDeTeste && _kaiokenAmtG2.ContainsKey(pl.Id);
+
+	/// <summary>
+	/// A VARIACAO DE CADA MEMBRO, por tique: o dano vezes um sorteio entre 1 - isto e 1 + isto (<see cref="FatorDoMembroG2"/>). Na
+	/// media e o mesmo dano em todos -- o corpo cai junto --, e no caminho um membro fica um pouco a frente ou atras dos outros.
+	/// </summary>
+	private const double VariacaoDoKaiokenG2 = 0.25;
+
+	private static double FatorDoMembroG2(Random? sorteio) =>
+		sorteio == null || KaiokenSemVariacaoDeTeste ? 1 : 1 + VariacaoDoKaiokenG2 * (2 * sorteio.NextDouble() - 1);
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, KK f): a costura de cada membro segue com o Kaio-ken aceso -- o jogo de antes, em que so a
+	/// virilha caia. Lido pelo <see cref="KaiokenParaACosturaG2"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool KaiokenCosturaCadaMembroDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, KK f): o mesmo dano em todo membro, sem o sorteio. Lido pelo <see cref="FatorDoMembroG2"/>.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	internal static bool KaiokenSemVariacaoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, KK f): o dano espalhado volta a repicar do abdomen na virilha -- o jogo de antes. Lido pelo
+	/// <see cref="EspalharDanoG2"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool RepiqueNaVirilhaDeTeste;
 
 	/// <summary>
 	/// `Body_Parts()` -- o corpo se desfaz. E o preco de usar um Kaio-ken acima do que o corpo

@@ -30,13 +30,31 @@ public partial class GameServer
 	/// A conta em si mora no Core (<see cref="ClasseDeAgua.ModoDe"/>), porque o cliente faz a MESMA
 	/// pergunta com a mesma funcao. Aqui so se diz de onde vem cada resposta:
 	///
-	///   * ARREMESSADO -- `TiquesDeVoo > 0` e o `KB` do DM: quem esta sendo jogado atravessa o lago.
+	///   * ARREMESSADO -- `TiquesDeVoo > 0` e o `KB` do DM: quem esta sendo jogado atravessa o lago. SO RENTE AO
+	///     CHAO (2026-10-24): o corpo jogado NO AR continua no ar -- ver o bloco de baixo.
 	///   * NO AR -- ALTURA, e nao a flag de voo. Quem esta subindo (ou caindo) nos primeiros 32 px
 	///     ainda consulta o mapa, e sem isto a decolagem da beira do lago levaria parede de agua.
 	///   * NADANDO -- <see cref="ServerPlayer.Nadando"/>, que so este arquivo escreve.
+	///
+	/// ============================ O SOCO NO AR NAO APAGA O VOO (2026-10-24) ============================
+	/// O dono: *"tomar knock back enquanto voa ta fazendo o personagem contar como sem fly as vezes [...] o
+	/// jogo pode te jogar no inferno se estiver nas nuvens do ceu ou falar q vc saiu da arena se estiver em
+	/// torneio"*. O `ClasseDeAgua.ModoDe` poe o arremesso NA FRENTE da altura -- pra agua tanto faz, ela deixa
+	/// passar os dois --, e a NUVEM le este mesmo funil (`TickDasNuvens`), onde so passa quem voa
+	/// (`ClasseDeNuvem.Travessia`). O corpo que levava um soco VOANDO por cima da nuvem do Caminho da Serpente
+	/// virava "a pe" durante o arremesso e caia no Inferno. E no torneio do Outro Mundo era esse o RING-OUT: o
+	/// palco tem quatro tiles de chao alem da arena antes da nuvem, o soco jogava o lutador voando por cima
+	/// dela, ele caia no Inferno, e o juiz o via fora da arena e sem voo (o `MoveToZone` apaga o voo de toda
+	/// troca de zona).
+	///
+	/// O DM concorda: o `KB` nao apaga o `isflying`, e o `Enter()` da nuvem so pergunta pelo `isflying`. Entao
+	/// o arremessado so e "arremessado" RENTE AO CHAO; no ar, e de quem esta no ar. A geometria do proprio
+	/// arremesso nao passa por aqui (o `TickDoEmpurrao` pergunta com o modo dele, `PorCima` ou `Arremessado`),
+	/// e o corpo jogado continua batendo em quem esta no caminho.
+	/// ====================================================================================================
 	/// </summary>
 	private static ModoDeTravessia ModoDeTravessiaDe(ServerPlayer pl)
-		=> ClasseDeAgua.ModoDe(pl.TiquesDeVoo > 0, pl.Altitude > 0f, pl.Nadando);
+		=> ClasseDeAgua.ModoDe(pl.TiquesDeVoo > 0 && pl.Altitude <= 0f, pl.Altitude > 0f, pl.Nadando);
 
 	/// <summary>
 	/// Este corpo esta em cima de agua AGORA? Falso em zona sem plano de agua (espaco, Sala do

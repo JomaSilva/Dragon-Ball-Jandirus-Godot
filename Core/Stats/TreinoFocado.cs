@@ -75,22 +75,58 @@ public static class TreinoFocado
 	public const long PisoDoPrazoMs = 300;
 
 	/// <summary>
-	/// Quanto cada acerto seguido encurta a proxima letra, em ms. Com 15 acertos o prazo encosta no piso.
-	/// Anti-macro: a sequencia aperta, e a letra e outra a cada vez. Decisao minha (o dono pediu o aperto
-	/// e o piso, nao o passo).
+	/// Quanto cada acerto seguido encurtava a proxima letra, em ms -- o aperto de antes, que com 15 acertos encostava no piso.
+	/// (2026-10-24) O dono: *"e tira clicar no timing de treino no T acelerar quanto mais vc acerta"*. O prazo ficou fixo; o numero fica pro defeito injetado (<see cref="PrazoApertaDeTeste"/>),
+	/// que devolve o jogo de antes.
 	/// </summary>
 	public const long ApertoPorAcertoMs = 40;
 
-	/// <summary>O prazo da proxima letra, dado quantos acertos vieram seguidos. Nunca abaixo do piso.</summary>
+	/// <summary>
+	/// O prazo da proxima letra: o MESMO, acerte quanto acertar (dono, 2026-10-24) -- quem decide a letra e o sorteio, e quem paga o
+	/// martelar e o erro (o bonus cai e o vigor sai). O defeito injetado devolve o aperto antigo, ate o piso.
+	/// </summary>
 	public static long PrazoDaLetra(int acertosSeguidos) =>
-		PrazoNaoApertaDeTeste ? PrazoInicialMs
+		!PrazoApertaDeTeste ? PrazoInicialMs
 		: Math.Max(PisoDoPrazoMs, PrazoInicialMs - Math.Max(0, acertosSeguidos) * ApertoPorAcertoMs);
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada <c>--treinofocadoteste</c>): o prazo nao aperta. Lido por
-	/// <see cref="PrazoDaLetra"/>. Falso em jogo, sempre.
+	/// DEFEITO INJETADO (bancada <c>--treinofocadoteste</c>): o prazo volta a apertar com a sequencia -- o jogo de antes de
+	/// 2026-10-24. Lido por <see cref="PrazoDaLetra"/>. Falso em jogo, sempre.
 	/// </summary>
-	public static bool PrazoNaoApertaDeTeste;
+	public static bool PrazoApertaDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) O PRAZO DA LETRA COM A REDE, na hora do servidor. O dono: *"dps faça um ping compensation pra galera q tem ping alto pra meditaçao e treino no T q tem q tem timing"*. O jogador ve a letra meia volta depois de ela
+	/// sair, e o aperto leva mais meia volta pra chegar: o servidor aceita ate o prazo MAIS a ida e volta (<see cref="AtrasoMaximoDaRedeMs"/>
+	/// no teto) e a folga da rede longa (<see cref="FolgaDaRede"/>). Vale pro julgamento do aperto e pro tique que vence a letra -- senao
+	/// o aperto ainda a caminho chegava depois da letra nova e era julgado contra ela. E a conta da respiracao (<see cref="InstanteVisto"/>)
+	/// do outro lado da igualdade: la o instante volta a ida e volta, aqui o prazo anda ela.
+	/// </summary>
+	public static long PrazoComARede(long prazo, long idaEVoltaMs) =>
+		LetraSemCompensarAtrasoDeTeste ? prazo : prazo + Math.Clamp(idaEVoltaMs, 0, AtrasoMaximoDaRedeMs) + FolgaDaRede(idaEVoltaMs);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada <c>--treinofocadoteste</c>): a letra e julgada e vence na hora crua do servidor -- o jogo de antes de
+	/// 2026-10-24. Lido por <see cref="PrazoComARede"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool LetraSemCompensarAtrasoDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) A FOLGA DA REDE LONGA, pros dois lados: o desconto da ida e volta e a MEDIA dela, e a rede longa oscila em volta da
+	/// media -- o aperto certo chegava 30, 50 ms fora e virava erro. Um quarto da ida e volta, ate <see cref="FolgaMaximaDaRedeMs"/>: a rede
+	/// curta quase nao muda, a de 200 ms ganha 50 de cada lado. Decisao minha (o dono pediu a compensacao, nao o numero).
+	/// </summary>
+	public static long FolgaDaRede(long idaEVoltaMs) =>
+		SemFolgaDaRedeDeTeste ? 0 : Math.Clamp(Math.Max(0, idaEVoltaMs) / 4, 0, FolgaMaximaDaRedeMs);
+
+	/// <summary>O teto da <see cref="FolgaDaRede"/>, em ms.</summary>
+	public const long FolgaMaximaDaRedeMs = 100;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada <c>--treinofocadoteste</c>): sem a folga da rede longa. Lido por <see cref="FolgaDaRede"/>. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool SemFolgaDaRedeDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada <c>--treinofocadoteste</c>): a letra e sempre W. Lido pelo sorteio do
@@ -156,13 +192,20 @@ public static class TreinoFocado
 		return u < 0.5 ? u * 2 : (1 - u) * 2;
 	}
 
-	/// <summary>O marcador esta na faixa (ou, com a folga, esteve nela ha pouco)?</summary>
-	public static bool NaFaixa(long agora, long inicio, long periodo)
+	/// <summary>
+	/// O marcador esta na faixa (ou, com a folga, esteve nela ha pouco)? (2026-10-24) E com a folga da rede longa
+	/// (<paramref name="folgaDaRede"/>, a <see cref="FolgaDaRede"/> do jogador), PROS DOIS LADOS: o instante descontado pode ter saido cedo
+	/// ou tarde pela oscilacao da rede. Amostrado de 20 em 20 ms -- a faixa fica ~140 ms sob o marcador, e nenhum passo pula ela.
+	/// </summary>
+	public static bool NaFaixa(long agora, long inicio, long periodo, long folgaDaRede = 0)
 	{
 		if (RespiracaoSempreDentroDeTeste) return true;
 		if (Dentro(Posicao(agora, inicio, periodo))) return true;
 		if (Dentro(Posicao(agora - FolgaDeLatenciaMs, inicio, periodo))) return true;
-		return Dentro(Posicao(agora - FolgaDeLatenciaMs / 2, inicio, periodo));
+		if (Dentro(Posicao(agora - FolgaDeLatenciaMs / 2, inicio, periodo))) return true;
+		for (long d = 20; d <= folgaDaRede; d += 20)
+			if (Dentro(Posicao(agora + d, inicio, periodo)) || Dentro(Posicao(agora - FolgaDeLatenciaMs - d, inicio, periodo))) return true;
+		return false;
 	}
 
 	private static bool Dentro(double posicao) =>

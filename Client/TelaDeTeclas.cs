@@ -102,6 +102,12 @@ public partial class TelaDeTeclas : CanvasLayer
 	/// </summary>
 	public override void _Input(InputEvent evento)
 	{
+		// (2026-10-23) O BOTAO DO MEIO E OS LATERAIS DO MOUSE VIRAM TECLA AQUI, antes de qualquer outra pergunta e com esta
+		// tela aberta ou nao: ela vive do lobby ao mundo (o campo `_teclas` do `Boot`), entao a porta vale na captura E em
+		// jogo. O aperto volta logo em seguida como TECLA -- por esta mesma porta (e a captura o pega como pegaria um "J") e
+		// pela de todo mundo. Ver `MouseComoTecla`.
+		MouseComoTecla.Traduzir(evento);
+
 		if (!_raiz.Visible) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
@@ -198,6 +204,8 @@ public partial class TelaDeTeclas : CanvasLayer
 			"Clique na tecla de qualquer linha e aperte a tecla que voce quer. ESC cancela.\n"
 			+ "A ligacao e desta MAQUINA: ela vale pra todos os seus personagens e sobrevive ao "
 			+ "fechar o jogo.", Tema.TextoFraco, 12));
+		// (2026-10-23) E O MOUSE: sem esta linha ninguem descobriria que a captura aceita o botao do meio e os laterais.
+		caixa.AddChild(Tema.Legenda(MouseComoTecla.Aviso, Tema.TextoFraco, 12));
 		caixa.AddChild(new HSeparator());
 
 		_busca = new LineEdit { PlaceholderText = "procurar acao, tecnica ou forma..." };
@@ -290,10 +298,13 @@ public partial class TelaDeTeclas : CanvasLayer
 		Secao("Transformacoes");
 		if (formas.Length == 0)
 		{
+			// (2026-10-23) A REGRA DA TECLA MUDOU (o adendo do dono): a divina ja usada vai direto, e a mortal pula degrau com 50% de
+			// maestria nela -- ver `EstadoDeForma.VaiDiretoPelaTecla`. O numero sai da constante, e nao de um "50" escrito aqui.
 			_lista.AddChild(Tema.Legenda(
-				"Nenhuma ainda. As formas aparecem aqui conforme voce as desperta -- e uma tecla de "
-				+ "forma nao pula degrau: ela PEDE aquela forma, e a subida e conferida igualzinho "
-				+ "ao toque duplo no C.", Tema.TextoFraco, 12));
+				"Nenhuma ainda. As formas aparecem aqui conforme você as desperta. Uma tecla de forma PEDE aquela forma: "
+				+ "a divina já usada vai direto, e a mortal só pula os degraus de antes com "
+				+ $"{EstadoDeForma.MaestriaQuePulaDegrau:0}% de maestria nela -- abaixo disso, a subida é conferida "
+				+ "igualzinho ao toque duplo no C.", Tema.TextoFraco, 12));
 		}
 		else
 		{

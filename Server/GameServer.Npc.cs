@@ -198,7 +198,11 @@ public partial class GameServer
 	/// onda, o que for. Ver <see cref="SorteioDeNpc.SementeDe"/>: com (universo, molde, lugar) o
 	/// mesmo NPC sai igual em qualquer maquina e em qualquer reinicio.
 	/// </summary>
-	private ServerPlayer? NascerNpc(string moldeId, ZoneKey zona, Vec2 pos, ulong lugar)
+	/// <param name="media">
+	/// (2026-10-23) A MEDIA DE BP que escala o molde de `bpRelativo`. Nula = a do servidor inteiro (<see cref="MediaDoServidor"/>), como
+	/// sempre foi pra todo chamador. So o vilao avulso passa outra: a dos jogadores vivos do planeta onde ele nasce (`NascerVilao`).
+	/// </param>
+	private ServerPlayer? NascerNpc(string moldeId, ZoneKey zona, Vec2 pos, ulong lugar, double? media = null)
 	{
 		MoldeDeNpc? molde = _moldes?.Get(moldeId);
 		if (molde == null)
@@ -242,7 +246,7 @@ public partial class GameServer
 		// ==================================================================================
 		ulong semente = SorteioDeNpc.SementeDe(
 			SeedDoUniverso, molde.Id, Espaco.Misturar(zona.Hash, lugar, 0));
-		FichaSorteada s = SorteioDeNpc.Sortear(molde, semente, _racas, _skills, zona.Name, MediaDoServidor());
+		FichaSorteada s = SorteioDeNpc.Sortear(molde, semente, _racas, _skills, zona.Name, media ?? MediaDoServidor());
 
 		// (2026-10-16) O NOME QUE NAO SE REPETE, se o molde pede (`nomesUnicos`): os cinco Supremos Kaiohs do Ceu sao cinco pessoas.
 		string nome = molde.NomesUnicos ? NomeLivre(molde, s.Raca, s.Nome) : s.Nome;
@@ -426,6 +430,18 @@ public partial class GameServer
 	/// </summary>
 	internal static bool NpcSemRoupaDeTeste;
 
+	/// <summary>
+	/// (2026-10-24) DEFEITO INJETADO (`--npcteste` e o robo `--diagcorposderaca`): a Androide 18 volta a nascer com o corpo do povo -- o jogo
+	/// de antes da folha dela. Lido pela propria <see cref="AparenciaDeNpc"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool AndroideComOCorpoDoPovoDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) DEFEITO INJETADO (`--chefesteste`, familia T1): o soldado da tropa do Freeza volta a nascer com um corpo da lista do povo
+	/// Alien -- o jogo de antes das seis folhas do dono. Lido pela propria <see cref="AparenciaDeNpc"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool TropaComOCorpoDoPovoDeTeste;
+
 	private Appearance AparenciaDeNpc(MoldeDeNpc molde, string raca, string genero, ulong semente)
 	{
 		var ap = new Appearance();
@@ -433,7 +449,11 @@ public partial class GameServer
 
 		BodyOptions corpos = _visual.CorposDe(raca);
 		List<string> lista = corpos.Para(genero);
-		if (lista.Count > 0) ap.Corpo = SorteioDeNpc.Sorteador(semente, "corpo").Next(lista.Count);
+		// (2026-10-24) O CORPO CRAVADO NO MOLDE vence o sorteio (`MoldeDeNpc.Corpo`): a folha da lista da raca, pelo nome -- o 17 do DM no
+		// `NewPaleMale` (`BEV_A17_ICON`). A folha PROPRIA (a da 18) entra depois do `Sanear`, la embaixo.
+		int cravado = molde.Corpo.Length > 0 ? lista.FindIndex(c => System.IO.Path.GetFileNameWithoutExtension(c) == molde.Corpo) : -1;
+		if (cravado >= 0) ap.Corpo = cravado;
+		else if (lista.Count > 0) ap.Corpo = SorteioDeNpc.Sorteador(semente, "corpo").Next(lista.Count);
 		if (corpos.Tons.Count > 0) ap.Tom = SorteioDeNpc.Sorteador(semente, "tom").Next(corpos.Tons.Count);
 
 		if (VisualCatalog.TemCabelo(raca) && _visual.Cabelos.Count > 0)
@@ -441,6 +461,8 @@ public partial class GameServer
 			ap.Cabelo = molde.Cabelo.Length > 0 && _visual.Cabelos.Any(c => c.Nome == molde.Cabelo)
 				? molde.Cabelo
 				: _visual.Cabelos[SorteioDeNpc.Sorteador(semente, "cabelo").Next(_visual.Cabelos.Count)].Nome;
+		// (2026-10-24) E A COR CRAVADA NO MOLDE (`MoldeDeNpc.CorDoCabelo`) -- o 17 preto e a 18 loira do `npc_apply_hair` do DM.
+		if (molde.CorDoCabelo is { } corDoCabelo) ap.CorCabelo = corDoCabelo;
 
 		// O FROST DEMON NAO TEM CORPO NO CATALOGO: o corpo dele E a forma (ver `VisualCatalog.CorpoSprite`).
 		// Sem esta linha o Freeza nasceria desenhado como um humano palido -- pra todo mundo na zona.
@@ -513,6 +535,17 @@ public partial class GameServer
 			ap.Corpo = Patriarca.Corpo;
 			ap.Roupa.Clear();
 		}
+
+		// (2026-10-24) E A FOLHA PROPRIA DA ANDROIDE 18 (dono: *"a 18 vai ter o corpo base da 18"*), pelo caminho do Guru logo acima: fora do
+		// catalogo, num indice reservado, DEPOIS do saneamento (que a zeraria). Sem roupa porque o molde nao crava nenhuma -- a folha ja e a
+		// roupa dela. Ver `Npc.Androides`.
+		if (Androides.IndiceReservado(molde.Corpo) is int reservado && !AndroideComOCorpoDoPovoDeTeste) ap.Corpo = reservado;
+
+		// (2026-10-24) E A TROPA DO FREEZA (dono: *"sendo aleatorio o sprite escolhido ao spawnar cada npcs soldado"*), pelo mesmo caminho: uma
+		// das seis folhas da faixa reservada, SORTEADA pela semente do lugar -- e o lugar da tropa anda um a cada soldado que nasce
+		// (`_lugarDaTropa`), entao cada um tira a sua. Ver `Npc.FolhasDaTropa`.
+		if (molde.Corpo == FolhasDaTropa.NomeNoMolde && !TropaComOCorpoDoPovoDeTeste)
+			ap.Corpo = FolhasDaTropa.Sortear(SorteioDeNpc.Sorteador(semente, "tropa"));
 
 		ap.CorAura = Jandirus.Core.Appearance.CorDeAura.DeSemente(semente);
 

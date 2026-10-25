@@ -186,6 +186,7 @@ public partial class GameServer
 			NinguemMorreTransformando();
 			OCorpoQueEntraNaCenaJaNoLimiar();
 			OPortaoDeMovimentoNaoRegrediu();
+			ATravaAtravessaACena();
 		}
 		finally
 		{
@@ -1023,6 +1024,85 @@ public partial class GameServer
 	{
 		if (v.Papel == null && _moldes?.Get("cidadao") is { } molde)
 			v.Papel = new PapelDeNpc(molde, (ulong)v.Id);
+	}
+
+	// =====================================================================
+	// 10) A TRAVA ATRAVESSA A CENA (dono, 2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// *"se alguem tiver com lock in em vc e vc se transformar entrando na cinematica o lock in buga mas ainda mostra q ta lockado,
+	/// corrija isso, isso acontece tanto em player quanto npc"*. O `Marcado` apagava a marca de quem marcou assim que o marcado ficava
+	/// intocavel -- calado: a tela do jogador continuava com o anel, e travar de novo no mesmo corpo nem saia do cliente (o `SendAlvo`
+	/// recusa o id que ele acha que ja e o alvo). Agora a marca so cai quando o corpo sai da zona, que a tela tambem ve.
+	///
+	/// Pelo caminho de producao (o `Mirar` do `C2S.Alvo`, a transformacao da tecla C e o `TickDaForma`), com o travado JOGADOR e com o
+	/// travado NPC (o `Papel` do molde `cidadao`):
+	///   (a) durante a cena o golpe nao acha o travado (ele e intocavel) -- e a MARCA FICA;
+	///   (b) com a cena vencida pelo prazo, o golpe acha o travado de novo;
+	///   (c) quem SAI da zona continua soltando a marca, como sempre.
+	/// E o contra-exemplo: com `TravaCaiNoIntocavelDeTeste` (o jogo de antes) a marca some na cena e a regua (a) REPROVA.
+	/// </summary>
+	private void ATravaAtravessaACena()
+	{
+		GD.Print("[escudo] -- 10) A TRAVA ATRAVESSA A CENA (o lock-in em quem se transforma) --");
+		const double Dt = 1.0 / 30.0;
+
+		(bool Ficou, bool Voltou, string Detalhe) Medir(bool npc, bool defeito)
+		{
+			TravaCaiNoIntocavelDeTeste = defeito;
+			try
+			{
+				ServerPlayer quem = Forjar("bancada: quem trava", ZonaDoEscudo, PontoLivre(), 3_000_000);
+				ServerPlayer travado = Forjar(npc ? "bancada: o NPC travado" : "bancada: o travado", ZonaDoEscudo, PontoLivre(), 3_000_000);
+				if (npc) PalcoDeHabitante(travado);
+				Mirar(quem, travado.Id);
+				if (quem.AlvoId != travado.Id || !PorEmCena(travado))
+					return (false, false, $"(montagem) marcou {quem.AlvoId == travado.Id}, em cena {EmCena(travado)}");
+				ServerPlayer? naCena = Marcado(quem);
+				bool ficou = naCena == null && travado.Combate!.Intocavel && quem.AlvoId == travado.Id;
+				double preso = travado.CenaSegundos;
+				for (double t = 0; t < preso + 1.0; t += Dt) TiqueDosRelogiosDeKi(travado, Dt);
+				ServerPlayer? depois = Marcado(quem);
+				bool voltou = !travado.Combate!.Intocavel && depois == travado;
+				return (ficou, voltou, $"na cena: o golpe acha {naCena?.Name ?? "ninguem"}, marca {quem.AlvoId} (o travado e {travado.Id}); "
+									  + $"depois da cena de {preso:0.#} s: intocavel {travado.Combate.Intocavel}, o golpe acha {depois?.Name ?? "ninguem"}");
+			}
+			finally
+			{
+				TravaCaiNoIntocavelDeTeste = false;
+				RecolherOsCorpos();
+			}
+		}
+
+		foreach (bool npc in new[] { false, true })
+		{
+			string quemE = npc ? "NPC" : "jogador";
+			var certo = Medir(npc, defeito: false);
+			EscudoCheca($"(a) o {quemE} travado que entra na cinematica fica intocavel pro golpe, e a MARCA FICA (*\"o lock in buga mas ainda mostra q ta lockado\"*)",
+						certo.Ficou, certo.Detalhe);
+			EscudoCheca($"(b) ...e com a cena vencida pelo prazo o golpe acha o {quemE} travado de novo -- a trava atravessou a cena",
+						certo.Voltou, certo.Detalhe);
+		}
+
+		// (c) A OUTRA PONTA: quem SAI da zona continua soltando a marca -- e a tela tambem a solta, porque o corpo some dela
+		ServerPlayer q = Forjar("bancada: quem trava", ZonaDoEscudo, PontoLivre(), 3_000_000);
+		ServerPlayer foi = Forjar("bancada: o que foi embora", ZonaDoEscudo, PontoLivre(), 3_000_000);
+		try
+		{
+			Mirar(q, foi.Id);
+			bool marcou = q.AlvoId == foi.Id;
+			ZoneList(foi.Zone.Hash).Remove(foi);
+			foi.Zone = ZonaDaDestruicaoDoEscudo;
+			ZoneList(foi.Zone.Hash).Add(foi);
+			ServerPlayer? achou = Marcado(q);
+			EscudoCheca("(c) ...e quem SAI da zona continua soltando a marca (a tela tambem: o corpo some dela)",
+						marcou && achou == null && q.AlvoId == 0, $"marcou {marcou}; o golpe acha {achou?.Name ?? "ninguem"}, marca {q.AlvoId}");
+		}
+		finally { RecolherOsCorpos(); }
+
+		var antes = Medir(npc: false, defeito: true);
+		EscudoCheca("(defeito injetado: a marca apagada calada no intocavel, o jogo de antes) a marca some na cena -- a regua (a) REPROVA",
+					!antes.Ficou, antes.Detalhe);
 	}
 
 	/// <summary>

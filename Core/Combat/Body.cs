@@ -149,8 +149,21 @@ public sealed class Body
 	/// sentidos: o DM da `canheallopped = 0` ao Namekuseijin (o `return` proprio do rework) e ao
 	/// Shapeshifter (`Regeneration = 2` -> `DeathRegen = 0`), e da `1` a Kai, Meta, Tsujin e Yardrat
 	/// (`Regeneration = 10`), que estavam de fora.
+	///
+	/// (2026-10-23) MENOS A RACA KAI, que refaz membro e MORRE como todo mundo -- o dono: *"Toda a raca Kai morre normal"* -- e o
+	/// bio-androide que herdou o sangue dela (ver <see cref="PerfilDeRegen.MorreComoComum"/>). O nome ficou, e o que ele responde e o
+	/// "coma em vez de morte": e a pergunta de
+	/// TODA porta da morte -- o soco, o tiro e o dano direto (`CombatState.QuandoONucleoCede`), o Kaio-ken que estoura, a expulsao
+	/// do Neo Tuffle, o corpo largado do transe --, entao a regra nova vale em todas de uma vez. O membro que volta continua sendo o
+	/// <see cref="PerfilDeRegen.MembroVolta"/> (a cura passiva o le direto).
 	/// </summary>
-	public bool RegeneraDecepado => Regen.MembroVolta;
+	public bool RegeneraDecepado => Regen.MembroVolta && (!Regen.MorreComoComum || KaiEmComaDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`, familia M): a raca Kai volta a cair em coma quando o nucleo cede -- o jogo de antes
+	/// de 2026-10-23. Lido pelo <see cref="RegeneraDecepado"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool KaiEmComaDeTeste;
 
 	public static Body Novo(bool comRabo = false)
 	{
@@ -263,6 +276,12 @@ public sealed class Body
 		return n == 0 ? 0 : soma / n;
 	}
 
+	/// <summary>
+	/// (2026-10-24) A VIDA QUE PESA NO PODER, 0-100 -- cada membro so conta o que caiu abaixo da metade da vida dele (o dono). Ver
+	/// <see cref="DebuffsDeMembro.VidaQuePesaNoPoder"/>, que a aba Body refaz pelo fio com as mesmas contas.
+	/// </summary>
+	public double VidaQuePesaNoPoder() => DebuffsDeMembro.VidaQuePesaNoPoder(Partes.Select(p => (p.Fracao * 100, p.Decepado)));
+
 	// =====================================================================
 	// ESTADO
 	// =====================================================================
@@ -373,7 +392,12 @@ public sealed class Body
 	/// Machuca UM membro. Cabeca e torso escorrem parte do golpe pros aninhados -- e assim
 	/// que o cerebro e os orgaos se ferem, ja que ninguem os acerta diretamente.
 	/// </summary>
-	public void Ferir(BodyPart alvo, double dano, bool letal)
+	/// <param name="soNosAninhados">
+	/// (2026-10-24) O REPIQUE SO NOS ANINHADOS (cerebro, orgaos, maos e pes) -- pro dano que JA acerta cada membro de fora por si (o
+	/// Kaio-ken, `GameServer.EspalharDanoG2`). A virilha mora no abdomen (`Dono`) sem ser aninhada: um golpe no abdomen repica nela, e no
+	/// dano espalhado ela levava o dela E o repique do abdomen -- 20% a mais que todo o resto, e era ela que caia primeiro.
+	/// </param>
+	public void Ferir(BodyPart alvo, double dano, bool letal, bool soNosAninhados = false)
 	{
 		if (alvo.Decepado || dano <= 0) return;
 
@@ -393,8 +417,8 @@ public sealed class Body
 		// a propagacao usa o dano CRU, nao o que sobrou depois do piso: um golpe absurdo na
 		// cabeca ainda chacoalha o cerebro mesmo com a cabeca protegida pelo nao-letal
 		foreach (BodyPart dentro in Partes)
-			if (dentro.Dono == alvo.Nome && !dentro.Decepado)
-				Ferir(dentro, dano * Regras.Propagacao, letal);
+			if (dentro.Dono == alvo.Nome && !dentro.Decepado && (!soNosAninhados || dentro.Aninhado))
+				Ferir(dentro, dano * Regras.Propagacao, letal, soNosAninhados);
 	}
 
 	/// <summary>

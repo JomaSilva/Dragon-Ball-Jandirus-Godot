@@ -264,6 +264,26 @@ public sealed partial class Cerebro
 	public double Agressividade = 0.50;
 
 	/// <summary>
+	/// (2026-10-24) A DEFENSIVA -- o Whis no treino (o dono: *"ele é uma IA defensiva, ataca raramente e nao usa ataques de ki"*). Com o alvo
+	/// de pe, o plano e ORBITAR (<see cref="Plano.Circular"/>, a tres tiles) e deixar o instinto desviar; a cada <see cref="PausaDoDefensivo"/>
+	/// segundos (sorteados de 0,75 a 1,25 disso) ele abre uma janela de <see cref="JanelaDoGolpeDefensivo"/> segundos de PRESSIONAR -- o golpe
+	/// raro. O peso do golpe e a <see cref="ChanceDePesado"/> de sempre, que quem liga isto escreve tambem.
+	/// </summary>
+	public bool Defensivo;
+
+	/// <summary>(2026-10-24) Sem ataque de ki: o tiro nunca e escolhido (ver `EscolherTiro`), tenha o arsenal que tiver.</summary>
+	public bool SemTiro;
+
+	/// <summary>Ver <see cref="Defensivo"/>: os segundos entre uma janela de golpe e a seguinte.</summary>
+	public double PausaDoDefensivo = 7;
+
+	/// <summary>Ver <see cref="Defensivo"/>: quanto dura a janela de golpe.</summary>
+	public double JanelaDoGolpeDefensivo = 1.2;
+
+	/// <summary>A defensiva: ate o proximo golpe, e ate o fim do golpe em curso. O primeiro golpe espera a pausa inteira.</summary>
+	private double _proximoGolpeDefensivo = double.NaN, _golpeDefensivoAte;
+
+	/// <summary>
 	/// TEMPO DE REACAO BASE, em segundos. Nao e o intervalo de decisao: e quanto ele demora pra
 	/// RESPONDER a uma coisa que acabou de acontecer (um soco chegando).
 	///
@@ -600,6 +620,7 @@ public sealed partial class Cerebro
 	// --- humanidade ---
 	private double _hesitaAte;
 	private double _carenciaDeVooDeArena;   // entre duas trocas de voo decididas pela arena
+	private double _relogioDoCovarde;       // (2026-10-25) entre duas frases de covarde da arena -- ver `NaArena`
 	private double _carenciaDeAgua;         // entre duas trocas de modo decididas pela agua (`Travessia`)
 	private double _deriva;           // passeio lento do tempo de reacao (ver Reagir)
 	private double _ultimoPoderDoAlvo;
@@ -946,9 +967,12 @@ public sealed partial class Cerebro
 		if (_pausaDoTiro > 0) _pausaDoTiro -= dt;
 		if (_pausaDoSopro > 0) _pausaDoSopro -= dt;
 		if (_carenciaDeVooDeArena > 0) _carenciaDeVooDeArena -= dt;
+		if (_relogioDoCovarde > 0) _relogioDoCovarde -= dt;
 		if (_carenciaDeAgua > 0) _carenciaDeAgua -= dt;
 		if (Atual == Plano.Recuperar) { _carregandoHa += dt; _recuandoHa += dt; }
 		if (_carenciaDaCarga > 0) _carenciaDaCarga -= dt;
+		if (_proximoGolpeDefensivo > 0) _proximoGolpeDefensivo -= dt;
+		if (_golpeDefensivoAte > 0) _golpeDefensivoAte -= dt;
 		TicarOKit(p, dt);
 		TicarORepertorio(p, dt);
 		TicarARaca(dt);
@@ -1016,7 +1040,7 @@ public sealed partial class Cerebro
 		// O DEMONIC SAIYAN POR CIMA DO PLANO (2026-10-17), quando da pra ficar parado -- ver `Cerebro.Raciais.cs`.
 		if (DemonicoAgora(p) is { } demonico) return demonico;
 
-		Comando pronto = Travessia.Atravessar(p, Poderes, NaArena(p, Montar(p, rng)), ref _carenciaDeAgua,
+		Comando pronto = Travessia.Atravessar(p, Poderes, NaArena(p, Montar(p, rng), rng), ref _carenciaDeAgua,
 											  pousarNoSeco: false, out string? naAgua);
 		if (naAgua != null) Porque = naAgua;
 		// O DESABAFO DO TRANSBORDAR (2026-10-17) vai por cima do gesto, como um pulso do repertorio -- ver `Cerebro.Raciais.cs`.
@@ -1315,6 +1339,23 @@ public sealed partial class Cerebro
 			return Plano.Nada;
 		}
 
+		// ---- (2026-10-24) A DEFENSIVA: orbita e desvia, e so de tempos em tempos abre a janela do golpe -- ver `Defensivo` ----
+		if (Defensivo)
+		{
+			_finalizando = false;
+			if (double.IsNaN(_proximoGolpeDefensivo)) _proximoGolpeDefensivo = PausaDoDefensivo * (0.75 + 0.5 * rng.NextDouble());
+			if (_golpeDefensivoAte > 0) { Porque = "defensivo: o golpe raro"; return Plano.Pressionar; }
+			if (_proximoGolpeDefensivo <= 0)
+			{
+				_golpeDefensivoAte = JanelaDoGolpeDefensivo;
+				_proximoGolpeDefensivo = PausaDoDefensivo * (0.75 + 0.5 * rng.NextDouble());
+				Porque = "defensivo: abre a janela do golpe";
+				return Plano.Pressionar;
+			}
+			Porque = "defensivo: orbitar e desviar";
+			return Plano.Circular;
+		}
+
 		// ============================ O MODO FINALIZADOR -- e ele e o CONSUMIDOR DA VIDA DO ALVO ============================
 		// `if(target.HP <= NPC_AI_FINISH_HP && !target.KO && prob(ai_aggression))` (`NPCAI.dm:388`),
 		// a PRIMEIRA pergunta do seletor de acao do DM: com o outro quase caido, o bicho para de
@@ -1561,6 +1602,7 @@ public sealed partial class Cerebro
 		// A PODA, NA PRIMEIRA LINHA. Um `int` contra zero, 4 vezes por segundo por corpo: e este o
 		// custo total do gancho enquanto nao houver ataque de longe no jogo.
 		if (!Poderes.DeLonge.TemAlguma) return false;
+		if (SemTiro) return false;   // (2026-10-24) o Whis nao usa ataque de ki -- ver `SemTiro`
 		if (!p.TemAlvo || p.AlvoCaido) return false;
 		if (_pausaDoTiro > 0) return false;
 
@@ -1760,6 +1802,22 @@ public sealed partial class Cerebro
 	/// </summary>
 	public const double CarenciaDoVooDeArena = 3.0;
 
+	/// <summary>(2026-10-25) Segundos entre duas frases de covarde da arena: uma provocacao, e nao um papagaio. Ver `NaArena`.</summary>
+	public const double PausaDoCovarde = 10.0;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--arenaiateste`, familia 7): o corpo que nao voa volta a ir atras do alvo que voa fora da linha -- e a tremer
+	/// na beirada, o plano puxando pra fora e a margem pra dentro --, e nao xinga ninguem. O jogo de antes de 2026-10-25. Lido pelo
+	/// <see cref="NaArena"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EsperaNaLinhaDesligadaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--arenaiateste`, familia 8): o corpo xingado de covarde segue no ar, la fora -- o jogo de antes de 2026-10-25.
+	/// Lido pelo <see cref="NaArena"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool VoltaDeCovardeDesligadaDeTeste;
+
 	/// <summary>
 	/// A CONSCIENCIA DA LINHA -- o `trn_ai_assist` (`Tournament.dm:279-296`), aplicado POR CIMA do plano.
 	///
@@ -1791,9 +1849,19 @@ public sealed partial class Cerebro
 	///      num alvo no chao (`DeveDescerDoCeu`), e chegar ao chao POUSA (`DescerAte`) -- fora da
 	///      linha, isso e o ring-out que o voo existia pra evitar. A bancada viu: o voador se salvou
 	///      da linha, foi carregado pra fora ainda voando, e pousou la fora por vontade propria.
+	///
+	/// E DUAS DO DONO (2026-10-25): *"IA do torneio quando n sabe voar e quer andar pra fora da arena ela fica flicando e tremendo,
+	/// conserte isso faca ela comentar algo chamando o cara de covarde ou algo do tipo, e se for IA vs IA a q ta voando ao ser xingada
+	/// volta pra arena e luta sem voar"*:
+	///   6. Com o ALVO FORA da linha e SEM COMO IR ATRAS (sem voo, ou sem Ki pra decolar), o corpo ESPERA dentro da arena, parado --
+	///      e chama o outro de covarde (`Momento.ChamarDeCovarde`, a cada <see cref="PausaDoCovarde"/>). O tremor era o plano andando
+	///      pro alvo e a regra 2 empurrando de volta, um tique pra cada lado. So com a consciencia da linha ligada (a margem da config
+	///      `-1` desliga as regras, e esta com elas).
+	///   7. XINGADO DE COVARDE (<see cref="Percepcao.ChamadoDeCovarde"/>), o corpo luta no chao o resto da luta: voando, volta pro
+	///      centro e pousa assim que estiver longe da linha; no chao, nao decola mais -- nem a decolagem de emergencia da regra 1.
 	/// ==============================================================================================
 	/// </summary>
-	private Comando NaArena(in Percepcao p, Comando c)
+	private Comando NaArena(in Percepcao p, Comando c, Random rng)
 	{
 		if (!p.TemArena || p.Caido) return c;
 		int m = p.MargemAteALinha;
@@ -1806,9 +1874,41 @@ public sealed partial class Cerebro
 			Porque = "arena: o alvo esta fora da linha, sem soco (o arranque me levaria junto)";
 			c = c with { Leve = false, Pesado = false };
 		}
+
+		// 7. XINGADO DE COVARDE: o orgulho vence a tatica -- volta pra dentro e luta no chao.
+		bool xingado = p.ChamadoDeCovarde && !VoltaDeCovardeDesligadaDeTeste;
+		if (xingado && p.EstouVoando)
+		{
+			if (p.Arena.ContemEm(p.Minha) && m >= p.MargemSeguraParaPousar)
+			{
+				if (_carenciaDeVooDeArena > 0) return c with { Rumo = Vec2.Zero, QuerDescer = false, AlternarVoo = false };
+				_carenciaDeVooDeArena = CarenciaDoVooDeArena;
+				Porque = "arena: me chamaram de covarde -- pouso e luto no chao";
+				return c with { AlternarVoo = true, Rumo = Vec2.Zero, Correndo = false };
+			}
+			Porque = "arena: me chamaram de covarde -- volto pra dentro da linha";
+			return c with { Rumo = aoCentro, Correndo = false, QuerDescer = false, AlternarVoo = false, Leve = false, Pesado = false };
+		}
+		if (xingado) c = c with { AlternarVoo = false };   // no chao: nada de decolar o resto da luta
+
+		// 6. O ALVO VOA FORA DA LINHA E EU NAO TENHO COMO IR ATRAS: espero aqui dentro, parado, e chamo de covarde.
+		bool semComoIr = xingado || !(Poderes.PodeVoar && p.Ki >= Poderes.CustoDeDecolar);
+		if (p.TemAlvo && !p.EstouVoando && !p.Arena.ContemEm(p.DoAlvo) && semComoIr && p.MargemDaArena >= 0
+			&& !naMargem && !vaiParar && !EsperaNaLinhaDesligadaDeTeste)
+		{
+			Porque = "arena: o alvo esta fora da linha e eu nao voo -- espero aqui dentro";
+			c = c with { Rumo = Vec2.Zero, Correndo = false };
+			if (_relogioDoCovarde <= 0 && c.Falar == null && Boca.DeCombate(Momento.ChamarDeCovarde, rng) is { } desafio)
+			{
+				_relogioDoCovarde = PausaDoCovarde;
+				c = c with { Falar = desafio, ChamouDeCovarde = true };
+			}
+			return c;
+		}
+
 		if (!p.EstouVoando && (naMargem || vaiParar))
 		{
-			if (Poderes.PodeVoar && p.Ki >= Poderes.CustoDeDecolar && _carenciaDeVooDeArena <= 0)
+			if (!xingado && Poderes.PodeVoar && p.Ki >= Poderes.CustoDeDecolar && _carenciaDeVooDeArena <= 0)
 			{
 				_carenciaDeVooDeArena = CarenciaDoVooDeArena;
 				Porque = vaiParar ? "arena: arremessado, decolar antes da linha" : "arena: na margem, decolar";

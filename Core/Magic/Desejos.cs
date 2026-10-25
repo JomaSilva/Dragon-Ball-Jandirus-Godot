@@ -380,7 +380,7 @@ public static class Desejos
 		// ================================================================================================================
 		new() { Id = "potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-13 e 2026-10-15 -- sem par no WishTable.dm",
 				Nome = "Liberar o meu potencial", Patamar = 6,
-				Desc = "O dragão desperta o potencial que dorme em você (uma vez por vida). Um Namekuseijin com o poder do ki divino ganha também o Místico e o Orange." },
+				Desc = "O dragão desperta o potencial que dorme em você (uma vez por vida). Um Namekuseijin com o poder do ki divino ganha também o Potential Unleashed e o Orange." },
 
 		// (2026-10-21, regra do dono) NAO E O DE CIMA: este soma potencial escondido, uma fracao de um ano de vida pela forca
 		// do set -- `FracaoDoAnoDoSet`, e nas Black Star a fracao fixa delas. No mesmo patamar do "Liberar". Pede-se quantas
@@ -545,6 +545,25 @@ public static class Desejos
 
 	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): o Super so com os cinco dele, o jogo de antes.</summary>
 	public static bool SuperSoComOsDeleDeTeste;
+
+	// =====================================================================
+	// (2026-10-23) OS PEDIDOS SO DAS BLACK STAR -- regra do dono, sem par no `WishTable.dm`
+	// =====================================================================
+	/// <summary>O id do desejo da Danca da Fusao. Constante porque o efeito (`GameServer.Conceder`) e a janela perguntam por ele.</summary>
+	public const string IdDaDancaDaFusao = "danca_da_fusao";
+
+	/// <summary>
+	/// O QUE SO AS BLACK STAR OFERECEM (dono, 2026-10-23: *"faca ter a opcao de aprender a danca da fusao como um pedido da black star
+	/// dragon ball"*). FORA de <see cref="Todos"/> de proposito: o Shenron, o Porunga, o menu da estatua (`ConfigDaEstatua.Ajustaveis`) e
+	/// o Super Shenlong (que copia a lista INTEIRA, <see cref="MenuDoSuper"/>) leem aquela tabela, e o pedido e so das Black Star -- a
+	/// regra literal. O servidor poe estas linhas no fim da lista delas (`GameServer.MenuDaqui`). Sem patamar: o set delas abre tudo.
+	/// </summary>
+	public static readonly DesejoDef[] DaBlackStar =
+	[
+		new() { Id = IdDaDancaDaFusao, Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-23 -- sem par no WishTable.dm",
+				Nome = "Aprender a Dança da Fusão",
+				Desc = "O dragão te ensina a Dança da Fusão. Pra fundir, os dois precisam sabê-la, ser da mesma raça e ter poder parecido." },
+	];
 
 	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): a janela com o texto fixo de cada desejo, os numeros do Shenron.</summary>
 	public static bool DescricaoFixaDeTeste;

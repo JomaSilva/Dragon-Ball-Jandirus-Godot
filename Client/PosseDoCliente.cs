@@ -47,16 +47,27 @@ public sealed class PosseDoCliente : IPosse
 	/// <summary>
 	/// O dono de um cargo chega pelo NOME na lista de cargos (`CargoInfo.Dono`), que o servidor manda no login
 	/// e a cada outorga -- as chaves sao as de `Core/Ranks/Ranks.cs`.
+	///
+	/// (2026-10-23) UM DOS DONOS, e nao O dono: desde 2026-10-16 o cargo de varias vagas (o Kaioshin tem cinco) manda os
+	/// nomes separados por virgula (`GameServer.MandarCargos`), e a aba Cargos ja perguntava pelo `CargoInfo.TemDono`. Esta
+	/// porta comparava o texto INTEIRO -- e com dois Kaioshins no trono os botoes do cargo (o Ritual Mistico do Velho
+	/// Kaiohshin, o Name/Dismiss Apprentice) sumiam dos DOIS. Achado pelo robo `--diagritualkai`.
 	/// </summary>
 	public bool TemCargo(string chave)
 	{
 		if (C is not { LocalName.Length: > 0 } c) return false;
 		foreach (GameClient.CargoInfo k in c.Cargos)
 			if (string.Equals(k.Chave, chave, StringComparison.OrdinalIgnoreCase)
-				&& string.Equals(k.Dono, c.LocalName, StringComparison.Ordinal))
+				&& (DonoInteiroDeTeste ? string.Equals(k.Dono, c.LocalName, StringComparison.Ordinal) : k.TemDono(c.LocalName)))
 				return true;
 		return false;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagritualkai`): o dono do cargo volta a ser comparado INTEIRO -- com dois Kaioshins no trono,
+	/// nenhum dos dois "tem" o cargo e os botoes dele somem. Lido pelo <see cref="TemCargo"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DonoInteiroDeTeste;
 
 	public Fatos Fatos => C?.Fatos ?? Fatos.Nenhum;
 

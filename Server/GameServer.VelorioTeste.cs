@@ -229,8 +229,8 @@ public partial class GameServer
 	/// PAGA O ENMA -- a volta de PRODUCAO, e a unica que este port tem alem das esferas e da tecnica
 	/// de reviver (2026-09-04: *"voce teria que ficar morto ate alguem te reviver com as esferas, ou
 	/// juntar 1 milhao de zeni e pagar o Enma Daioh"*). Poe o corpo na mesa do Enma (a obra semeada
-	/// no boot), da a ele exatamente o milhao e chama <see cref="EnmaReviverPorZeni"/>, que e o que
-	/// o menu E dele chama; o `Renascer`, o berco e o debuff que vem depois sao o caminho do jogo, e
+	/// no boot), da a ele exatamente o preco (`Alem.PrecoDoReviveDoEnma`) e chama <see cref="EnmaReviverPorZeni"/>,
+	/// que e o que o menu E dele chama; o `Renascer` e o berco que vem depois sao o caminho do jogo, e
 	/// nao desta janela. Devolve se o Enma aceitou (o corpo saiu vivo).
 	/// </summary>
 	/// <summary>

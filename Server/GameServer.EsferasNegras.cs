@@ -15,6 +15,9 @@ namespace Jandirus.Server;
 /// <c>PorQueAsEsferasPrendem</c> e o tique que derruba quem sai do mundo varrem aquelas listas.
 /// As comuns continuam presas. Estas nao. O disco, a mochila e o pacote <c>S2C.Esferas</c>
 /// ganham uma linha cada nos arquivos que ja escrevem -- o corpo esta aqui.
+///
+/// (2026-10-23, dono) O DESEJO TEM PRECO E A LISTA TEM UM PEDIDO SO DELAS: o planeta onde elas foram usadas comeca a se partir
+/// (<see cref="DepoisDoDesejoNegro"/>), e "Aprender a Danca da Fusao" (<see cref="DesejoDaDancaDaFusao"/>) so existe aqui.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -42,6 +45,21 @@ public sealed partial class GameServer
 
 	/// <summary>DEFEITO INJETADO: quem sai do jogo carregando, mesmo num planeta, faz a esfera se espalhar. Lido por <see cref="TickDasNegras"/>. Falso em jogo.</summary>
 	internal static bool DeslogarEspalhaDeTeste;
+
+	/// <summary>(2026-10-23) DEFEITO INJETADO (bancada --esferanegrateste, familia X): o desejo NAO parte o planeta onde as Black Star foram usadas -- o jogo de antes. Lido por <see cref="DepoisDoDesejoNegro"/>. Falso em jogo.</summary>
+	internal static bool NegraNaoExplodeOPlanetaDeTeste;
+
+	/// <summary>(2026-10-23) DEFEITO INJETADO (bancada --esferanegrateste, familia X): o sorteio so pula planeta MORTO, como antes -- uma Black Star pode cair no planeta que vai explodir. Lido por <see cref="SortearPlanetas"/>. Falso em jogo.</summary>
+	internal static bool NegraCaiNoPlanetaCondenadoDeTeste;
+
+	/// <summary>(2026-10-23) DEFEITO INJETADO (bancada --esferanegrateste, familia D): a Danca da Fusao entra na lista de TODO dragao, e nao so na das Black Star. Lido pelo <c>MenuDaqui</c> (`GameServer.Desejos.cs`). Falso em jogo.</summary>
+	internal static bool DancaEmTodoDragaoDeTeste;
+
+	/// <summary>(2026-10-23) DEFEITO INJETADO (bancada --esferanegrateste, familia D): o desejo da Danca a poe no livro sem a marca de ensinada -- e o tique dos cargos a tira. Lido por <see cref="DesejoDaDancaDaFusao"/>. Falso em jogo.</summary>
+	internal static bool DancaSemSerEnsinadaDeTeste;
+
+	/// <summary>(2026-10-23) DEFEITO INJETADO (bancada --esferanegrateste, familia D): quem ja sabe a Danca pode pedi-la de novo -- a janela a acende e o pedido e gasto. Lido por <see cref="DesejoDaDancaDaFusao"/> e pelo <c>EntradaDoDesejo</c> (`GameServer.MenuDoDragao.cs`). Falso em jogo.</summary>
+	internal static bool DancaRepetidaDeTeste;
 
 	private static SetDeEsferas CriarSetNegro() => new()
 	{
@@ -269,7 +287,10 @@ public sealed partial class GameServer
 		var pool = new List<ZoneKey>();
 		void Por(ZoneKey z)
 		{
-			if (!Espaco.EhPlaneta(z) || ZonaMorta(z)) return;
+			// (2026-10-23) NEM NO PLANETA CONDENADO, so no morto: o do desejo comeca a se partir ANTES de elas se espalharem
+			// (`DepoisDoDesejoNegro`), e uma que caisse la passaria os 310 s num mundo de onde todo mundo foge, pra ser reespalhada no
+			// commit (`RecolherNegrasDePlanetasMortos`). `ZonaCondenada` e o morto mais o que esta morrendo (o pavio lento ou os 310 s).
+			if (!Espaco.EhPlaneta(z) || (NegraCaiNoPlanetaCondenadoDeTeste ? ZonaMorta(z) : ZonaCondenada(z))) return;
 			if (pool.Any(p => p.Hash == z.Hash)) return;
 			pool.Add(z);
 		}
@@ -593,7 +614,10 @@ public sealed partial class GameServer
 		return true;
 	}
 
-	/// <summary>O desejo unico acabou: pedra por um ano e espalha de novo. Nao passa pelo <c>EspalharOSet</c> (aquele prega as sete no planeta do set).</summary>
+	/// <summary>
+	/// O desejo unico acabou: pedra por um ano, O PLANETA DO DESEJO COMECA A SE PARTIR, e elas se espalham de novo. Nao passa pelo
+	/// <c>EspalharOSet</c> (aquele prega as sete no planeta do set).
+	/// </summary>
 	private void DepoisDoDesejoNegro()
 	{
 		_setNegro.Pedidos = EsferasNegras.Desejos;
@@ -601,8 +625,44 @@ public sealed partial class GameServer
 		ZoneKey zona = _zonaDoDragaoNegro;
 		FecharAInvocacao(EsferasNegras.IdDoSet,
 			$"{EsferasNegras.NomeDoDragao} some no céu. As Esferas de Estrela Negra viram pedra e se espalham pelos planetas.");
+		// (2026-10-23) O PRECO DAS ESTRELAS NEGRAS (dono: *"ao ser usada explodir o planeta q esta sendo usada alguns minutos apos o uso"*;
+		// decidido: "5 min, pelos planetas de hoje"). O planeta onde o dragao subiu -- e nao onde quem pediu esta agora -- comeca a se
+		// partir pela porta unica: os 310 s, o tremor, o ceu, o aviso pro mundo e o commit de sempre, a Terra tambem. Vale pra QUALQUER
+		// desejo, o "curar um planeta" inclusive: ele cura um mundo que ja morreu, e este so comeca a morrer agora. ANTES do espalhar, de
+		// proposito: o sorteio pula planeta condenado (`SortearPlanetas`). Sem autor (id 0): e o preco das esferas e nao um golpe de quem
+		// pediu, entao ninguem vira o algoz de quem morrer no commit. O BP e o limiar do proprio planeta -- so vai pro log.
+		if (Espaco.EhPlaneta(zona) && !NegraNaoExplodeOPlanetaDeTeste)
+			ComecarDestruicao(zona, MortePlanetaria.BpExigido(MedidasDoPlaneta(zona).Gravidade), "o desejo das Black Star");
 		EspalharAsNegras(anunciar: false);
 		if (zona.Name.Length > 0) MandarEsferas(zona);
+	}
+
+	/// <summary>
+	/// (2026-10-23) "Aprender a Danca da Fusao" -- o desejo que so as Black Star tem (dono: *"faca ter a opcao de aprender a danca da fusao
+	/// como um pedido da black star dragon ball"*; a linha mora em `Desejos.DaBlackStar`). Ensina a skill da Danca a quem pede; as portas
+	/// da Danca (os dois sabendo, a mesma raca, poder parecido -- `Fusao.Avaliar`) continuam as de sempre, na hora de fundir.
+	/// </summary>
+	private bool DesejoDaDancaDaFusao(ServerPlayer pl, SetDeEsferas s)
+	{
+		// QUEM JA SABE NAO GASTA O PEDIDO (o desejo unico das Black Star) -- a janela ja mostra a linha apagada pelo mesmo motivo.
+		if (SabeDancar(pl) && !DancaRepetidaDeTeste)
+		{
+			Avisar(pl, "você já sabe a Dança da Fusão. Nenhum pedido foi gasto.");
+			return false;
+		}
+		if (_skills?.Get(PathDaDanca) is not { } danca) return false;
+		Jandirus.Core.Skills.SkillBook livro = pl.Livro ??= new Jandirus.Core.Skills.SkillBook();
+		// O DRAGAO ENSINA COMO UM MESTRE QUE NAO COBRA (`EnsinoDeSkill.Ensinar`): a copia fica marcada como ENSINADA, e e isso que a
+		// segura no livro -- a Danca e do kit do Geti Star (o espaco `rank/`), e o tique dos cargos (`ReconciliarDadiva`) tira em 1 s a
+		// copia de cargo que ninguem ensinou. Como toda copia ensinada, ela nao se repassa a um terceiro.
+		if (DancaSemSerEnsinadaDeTeste) livro.Dar(danca.Path);
+		else Jandirus.Core.Skills.EnsinoDeSkill.Ensinar(livro, danca);
+		MandarSkills(pl, forcar: true);
+		Persistir(pl);
+		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} os passos da Dança da Fusão!");
+		Avisar(pl, "você aprende a Dança da Fusão. Pra fundir, a outra pessoa também precisa saber a dança, ser da mesma raça "
+				 + "e ter um poder parecido com o seu.");
+		return true;
 	}
 
 	private double FatorNegro(SetDeEsferas s) =>

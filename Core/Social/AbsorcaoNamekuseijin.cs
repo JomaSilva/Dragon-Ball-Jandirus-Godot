@@ -129,10 +129,10 @@ public static class AbsorcaoNamekuseijin
 	/// ============================ ELE EXISTE POR UM EXPLOIT, E O EXPLOIT E REAL ============================
 	/// O povoamento de planeta REPOE habitante (`GameServer.Povoamento`), e Namek e um planeta de
 	/// Namekuseijin. Sem teto, "absorver o vilarejo" seria uma escada de poder infinita limitada so pela
-	/// paciencia -- e o unico freio seria a recarga de 1 h (`Fusao.RecargaSegundos`, o
-	/// `FUSION_COOLDOWN` do `Fusion.dm:6`), que ja se aplica aqui.
+	/// paciencia -- e o unico freio seria a recarga (o `FUSION_COOLDOWN` do `Fusion.dm:6`; desde 2026-10-24
+	/// proporcional ao multiplicador, `GainKnobs.RecargaProporcionalMs`), que ja se aplica aqui.
 	///
-	/// Com o teto, a conta fecha: 5% do proprio BP por hora, no MELHOR caso, contra as horas de treino
+	/// Com o teto, a conta fecha: 5% do proprio BP a cada ~2,6 h, no MELHOR caso, contra as horas de treino
 	/// que o mesmo tempo renderia. Absorver NPC vira o que o dono pediu que fosse -- um caminho que
 	/// existe e que vale MUITO menos que o outro.
 	/// ======================================================================================================

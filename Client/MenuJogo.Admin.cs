@@ -309,7 +309,7 @@ public partial class MenuJogo
 		Jandirus.Core.Forms.LinhaDeForma.LegendaryPrimal => "Legendary Primal",
 		Jandirus.Core.Forms.LinhaDeForma.GodKi => "Ki divino",
 		Jandirus.Core.Forms.LinhaDeForma.GodKiRose => "Ki divino · Rose",
-		Jandirus.Core.Forms.LinhaDeForma.Mistico => "Mistico",
+		Jandirus.Core.Forms.LinhaDeForma.Mistico => "Potential Unleashed",   // (2026-10-23) o nome na tela da forma (o dono); o id da linha fica
 		Jandirus.Core.Forms.LinhaDeForma.UltraInstinct => "Ultra Instinto",
 		Jandirus.Core.Forms.LinhaDeForma.UltraEgo => "Ultra Ego",
 		Jandirus.Core.Forms.LinhaDeForma.Oozaru => "Oozaru (fera)",
@@ -321,6 +321,7 @@ public partial class MenuJogo
 		Jandirus.Core.Forms.LinhaDeForma.Heran => "Heran",
 		Jandirus.Core.Forms.LinhaDeForma.Alien => "Alien",
 		Jandirus.Core.Forms.LinhaDeForma.Tensao => "Tensão (Humano)",
+		Jandirus.Core.Forms.LinhaDeForma.SuperMajin => "Super Majin (Majin)",
 		_ => l.ToString(),
 	};
 

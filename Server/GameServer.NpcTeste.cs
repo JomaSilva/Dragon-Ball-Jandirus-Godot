@@ -631,12 +631,42 @@ public partial class GameServer
 						  && guardiao.Visual.Roupa.Any(p => p.Caminho.Contains("Armor_Elite", StringComparison.Ordinal)),
 						  string.Join(",", guardiao.Visual.Roupa.Select(p => p.Caminho)));
 
+				// (2026-10-24) OS ANDROIDES COM A ARTE QUE O DONO TROUXE -- *"a 18 vai ter o corpo base da 18, e o 17 vai usar a roupa do 17"*, e
+				// *"deve usar o cabelo q era no DM"*. Ver `Npc.Androides`.
 				ServerPlayer? a17 = Spawnar("androide_17", 950);
 				if (a17 != null)
-					Checa("o Androide 17 veste a camisa CASUAL que o DM escreve a mao (BossEvents.dm:499)",
+				{
+					Checa("o Androide 17 veste a ROUPA DELE (*\"o 17 vai usar a roupa do 17\"*) -- e so ela",
 						  a17.Visual.Roupa.Count == 1
-						  && a17.Visual.Roupa[0].Caminho.Contains("LongSleeveShirt", StringComparison.Ordinal),
+						  && a17.Visual.Roupa[0].Caminho.EndsWith("/Android17 Suit.tres", StringComparison.Ordinal),
 						  string.Join(",", a17.Visual.Roupa.Select(p => p.Caminho)));
+					string corpo17 = _visual!.CorpoSprite(a17.Visual, "Human", "Male");
+					Checa("...no corpo PALIDO do DM (`BEV_A17_ICON`) e com o cabelo `Long` PRETO do `npc_apply_hair` (*\"deve usar o cabelo q era no DM\"*)",
+						  corpo17.EndsWith("/NewPaleMale.tres", StringComparison.Ordinal)
+						  && a17.Visual.Cabelo == "Long" && a17.Visual.CorCabelo is { R: 10, G: 10, B: 10 },
+						  $"{corpo17}; cabelo {a17.Visual.Cabelo} {a17.Visual.CorCabelo}");
+				}
+				ServerPlayer? a18 = Spawnar("androide_18", 952);
+				if (a18 != null)
+				{
+					string corpo18 = _visual!.CorpoSprite(a18.Visual, "Human", "Female");
+					Checa("a Androide 18 nasce com a FOLHA DELA (*\"a 18 vai ter o corpo base da 18\"*), sem peca por cima e sem a camada de olhos de gente "
+						  + "(a folha ja traz os dela)",
+						  corpo18 == Androides.FolhaDa18 && a18.Visual.Roupa.Count == 0 && !VisualCatalog.CorpoTemRosto(a18.Visual, "Human"),
+						  $"{corpo18}; {a18.Visual.Roupa.Count} peca(s); rosto {VisualCatalog.CorpoTemRosto(a18.Visual, "Human")}");
+					Checa("...e com o cabelo `Long` LOIRO do DM (`BEV_A18_HAIR` 255,222,120: a 18 \"loira via codigo\")",
+						  a18.Visual.Cabelo == "Long" && a18.Visual.CorCabelo is { R: 255, G: 222, B: 120 },
+						  $"cabelo {a18.Visual.Cabelo} {a18.Visual.CorCabelo}");
+				}
+				AndroideComOCorpoDoPovoDeTeste = true;
+				try
+				{
+					ServerPlayer? doPovo = Spawnar("androide_18", 953);
+					Checa("(defeito injetado: a 18 com o corpo do povo, o jogo de antes) a folha dela nao vem -- a regua de cima REPROVA",
+						  doPovo != null && _visual!.CorpoSprite(doPovo.Visual, "Human", "Female") != Androides.FolhaDa18,
+						  doPovo == null ? "nao nasceu" : _visual!.CorpoSprite(doPovo.Visual, "Human", "Female"));
+				}
+				finally { AndroideComOCorpoDoPovoDeTeste = false; }
 
 				// --- f) SOBREVIVE A REPOSICAO: o NPC nao tem save, entao a roupa e REDEDUZIDA ---
 				// A manutencao do povoamento repoe o cidadao a cada 5 min com o MESMO lugar. Se a

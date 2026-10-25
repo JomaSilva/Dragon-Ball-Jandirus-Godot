@@ -116,13 +116,13 @@
       ],
       "tropa": {
         "molde": "soldado_do_freeza",
-        "quantos": 12,
-        "chegamJuntos": 6,
-        "segundosEntre": 20,
+        "quantos": 40,
+        "chegamJuntos": 20,
+        "segundosEntre": 5,
         "caca": "Namekian",
         "anuncioDaChegada": "Os soldados do Freeza se espalham por Namek -- caçando os Namekuseijins e as Esferas do Dragão!",
         "anuncioDaPartida": "Sem o Freeza, os soldados dele fogem de Namek.",
-        "_nota": "(2026-10-18) A TROPA (`Core/Npc/Sagas.cs`, TropaDaSaga): enquanto o Freeza esta em Namek, ate 'quantos' soldados de pe pelo planeta -- 'chegamJuntos' no desembarque e um a cada 'segundosEntre' depois, que e tambem a reposicao de quem cai. Eles cacam a raca 'caca', pegam as esferas do chao e so as soltam derrotados. Quando o Freeza cai (ou a saga acaba), a tropa vai embora e o que ela carregava cai no chao."
+        "_nota": "(2026-10-18) A TROPA (`Core/Npc/Sagas.cs`, TropaDaSaga): enquanto o Freeza esta em Namek, ate 'quantos' soldados de pe pelo planeta -- 'chegamJuntos' no desembarque e um a cada 'segundosEntre' depois, que e tambem a reposicao de quem cai. Eles cacam a raca 'caca', pegam as esferas do chao e so as soltam derrotados. Quando o Freeza cai (ou a saga acaba), a tropa vai embora e o que ela carregava cai no chao. (2026-10-24) O dono: 'faca spawnar mais soldados tb, pelomenos uns 40 pelo mapa todo' -- eram 12 (6 no desembarque e um a cada 20 s); agora 40, 20 no desembarque e um a cada 5 s (a reposicao tambem). O desembarque e num tique so, e o nascer de um corpo custa perto de 1 ms: 20 juntos e o que cabe sem engasgar o servidor. Eles nascem nas vagas de habitante (`PontoDeHabitante`), que cobrem o planeta inteiro."
       },
       "_nota": "BEV_M2_TRIGGER_BP 100000, BEV_M2_DAYS 7. O prazo de 5 min (BEV_FREEZA2_FINAL_TIMER) so passa a correr na FORMA FINAL -- e por isso 'ultimatoSoNoUltimoDegrau'. (2026-10-17) 'ataqueDoUltimato: deathball' -- o dono: 'a super nova e so quando ele explode o planeta vegeta, namek e death ball ao qual ele joga pra baixo seguindo a mesma logica da super nova' (Core/Npc/Supernova.cs, AtaqueDoUltimato)."
     },
@@ -373,7 +373,7 @@
       "coragem": 85,
       "furia": 60,
       "nomes": ["Garra", "Corvo", "Navalha", "Brutus", "Cicatriz", "Víbora", "Escorpião", "Carrasco", "Abutre", "Ferrão", "Trovão", "Chacal"],
-      "_nota": "O VILAO AVULSO das quests de viloes (item 12 do playtest de 2026-10-10; `Core/Npc/VilaoAvulso.cs` e `GameServer.Viloes.cs`). Tipo proprio ('vilao'): nasce so pelo evento, e o recorte que desliga o 'inimigo' comum nao o barra. A FORCA e daqui: 'bpRelativo' 1.0 = a media de BP dos jogadores online (+-15%), com 'bpPiso' por baixo (500: num servidor so de novatos o vilao nao pode nascer seis vezes mais forte que todo mundo). Sem 'racas': usa as racas jogaveis do planeta onde nasce."
+      "_nota": "O VILAO AVULSO das quests de viloes (item 12 do playtest de 2026-10-10; `Core/Npc/VilaoAvulso.cs` e `GameServer.Viloes.cs`). Tipo proprio ('vilao'): nasce so pelo evento, e o recorte que desliga o 'inimigo' comum nao o barra. A FORCA e daqui: 'bpRelativo' 1.0 = a media de BP dos jogadores VIVOS do planeta onde ele nasce (+-15%; dono, 2026-10-23 -- era a do servidor inteiro, e o veterano de outro planeta fazia o vilao do novato), com 'bpPiso' por baixo (500: num planeta so de novatos o vilao nao pode nascer seis vezes mais forte que todo mundo). Sem 'racas': usa as racas do berco do planeta onde nasce; num planeta GERADO, onde ninguem tem berco, ele vem de fora -- Alien (Core/Npc/VilaoAvulso.cs, RacasDoForasteiro)."
     },
 
     {
@@ -384,6 +384,7 @@
       "nomes": ["Appule", "Cui", "Orlen", "Banan", "Raspberry", "Blueberry", "Tagoma", "Shisami", "Kikono", "Sorbet", "Napple", "Mint", "Ledgic", "Abo", "Kado", "Rozie"],
       "nomesUnicos": true,
       "generos": ["Male", "Male", "Male", "Female"],
+      "corpo": "Tropa do Freeza",
       "bpRelativo": 0.3,
       "bpPiso": 15000,
       "marcosBase": 3,
@@ -397,7 +398,7 @@
       "agressividade": 80,
       "coragem": 70,
       "furia": 60,
-      "_nota": "(2026-10-18) O SOLDADO DO FREEZA -- a tropa da saga de Namek (bloco 'tropa' do elo 'freeza_namek'; quem os poe no mundo, dirige e tira e o `GameServer.TropaDaSaga.cs`). Tipo proprio ('soldado'): nasce so pelo evento, enquanto o Freeza esta em Namek. A RACA e 'Alien' e a ARMADURA vem dela: a tabela de roupa ja veste o Alien com a armadura de batalha do exercito, a mesma do Saiyajin, com a 'Armor 8' tingida (`RoupaDeNpc`, o case 'Alien'). A FORCA e um terco da media dos jogadores online ('bpRelativo' 0.3, +-15%), com 15 mil por baixo: forte pro povo de Namek (500 a 5 mil), vencivel por quem chega na saga (o marco e 100 mil de BP base). Todos voam ('perfil.voa' 1): o soldado do desenho atravessa o planeta voando, e a pe ele empacaria na agua de Namek."
+      "_nota": "(2026-10-18) O SOLDADO DO FREEZA -- a tropa da saga de Namek (bloco 'tropa' do elo 'freeza_namek'; quem os poe no mundo, dirige e tira e o `GameServer.TropaDaSaga.cs`). Tipo proprio ('soldado'): nasce so pelo evento, enquanto o Freeza esta em Namek. A RACA e 'Alien' e a ARMADURA vem dela: a tabela de roupa ja veste o Alien com a armadura de batalha do exercito, a mesma do Saiyajin, com a 'Armor 8' tingida (`RoupaDeNpc`, o case 'Alien'). A FORCA e um terco da media dos jogadores online ('bpRelativo' 0.3, +-15%), com 15 mil por baixo: forte pro povo de Namek (500 a 5 mil), vencivel por quem chega na saga (o marco e 100 mil de BP base). Todos voam ('perfil.voa' 1): o soldado do desenho atravessa o planeta voando, e a pe ele empacaria na agua de Namek. (2026-10-24) O CORPO: 'corpo: Tropa do Freeza' nao e uma folha -- e a chave da faixa reservada das seis que o dono escolheu (Alien 9, Alien 4, Alien 8, Alien 1, Race Kui e CavemanAlien), sorteada por soldado quando ele nasce (`Core/Npc/Sagas.cs`, FolhasDaTropa). A raca continua Alien, e a armadura tambem."
     },
 
     {
@@ -652,8 +653,12 @@
       "racas": ["Human"],
       "classe": "Peak Human",
       "generos": ["Male"],
-      "roupa": ["Clothes_LongSleeveShirt"],
-      "_roupa": "npc_wear_simple(M17, /obj/items/clothes/LongSleeveShirt) -- BossEvents.dm:499, com o comentario do proprio original explicando a escolha: 'roupa casual (nada de Namek/armadura Saiyajin)'.",
+      "roupa": ["Android17 Suit"],
+      "_roupa": "(2026-10-24, dono: 'o 17 vai usar a roupa do 17') A roupa DELE, a arte que o dono trouxe (Assets/Sprites/Clothes/Android17 Suit.png, um DMI convertido pela esteira). Antes: a camisa casual do DM, npc_wear_simple(M17, /obj/items/clothes/LongSleeveShirt) -- BossEvents.dm:499.",
+      "corpo": "NewPaleMale",
+      "cabelo": "Long",
+      "corDoCabelo": [10, 10, 10],
+      "_corpo": "(2026-10-24) O BEV_A17_ICON = 'NewPaleMale.dmi' e o npc_apply_hair(M17, \"Long\", BEV_A17_HAIR) do DM (BossEvents.dm:81, :85-87, :497) -- o dono: 'deve usar o cabelo q era no DM', e o corpo palido confirmado por ele.",
       "marcosBase": 6, "marcosPorDecada": 2.0,
       "dadas": ["/datum/skill/ki/Ki_Wave"],
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
@@ -673,8 +678,12 @@
       "racas": ["Human"],
       "classe": "Peak Human",
       "generos": ["Female"],
-      "roupa": ["Clothes_ShortSleeveShirt"],
-      "_roupa": "npc_wear_simple(M18, /obj/items/clothes/ShortSleeveShirt) -- BossEvents.dm:508 ('roupa casual').",
+      "roupa": [],
+      "_roupa": "(2026-10-24, dono: 'a 18 vai ter o corpo base da 18') A folha dela JA E A ROUPA (Android 18 Base: vestida e com os olhos desenhados) -- nenhuma peca por cima. Antes: npc_wear_simple(M18, /obj/items/clothes/ShortSleeveShirt) -- BossEvents.dm:508.",
+      "corpo": "Android 18 Base",
+      "cabelo": "Long",
+      "corDoCabelo": [255, 222, 120],
+      "_corpo": "(2026-10-24) A folha propria (Core/Npc/Androides.cs: indice reservado, sem a camada de olhos de gente) e o npc_apply_hair(M18, \"Long\", BEV_A18_HAIR) do DM (BossEvents.dm:88-90, :506: 'loira via codigo') -- o dono: 'deve usar o cabelo q era no DM'.",
       "marcosBase": 6, "marcosPorDecada": 2.0,
       "dadas": ["/datum/skill/ki/Ki_Wave"],
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
@@ -772,7 +781,7 @@
       "ascendePorDecisao": false,
       "inteligencia": 90, "agressividade": 80, "coragem": 100, "furia": 85,
       "estagios": [ { "bp": 150000000000 } ],
-      "_nota": "BILLS, o Deus da Destruicao (dono, 2026-10-11; NAO existe no DM). As regras e os numeros estao em Core/Npc/BillsEWhis.cs e quem o poe no mundo e o GameServer.Bills.cs -- nunca o povoamento nem a cadeia de sagas. Ele existe enquanto o cargo 'godofdestruction' estiver VAGO. O 'bp' do degrau e o poder com que ele luta NA TERRA (15% de um trilhao); no treino e no desafio o servidor crava outro por cima (o triplo de quem treina; o trilhao inteiro, mais a forma Fury). Acordado na Terra (sem a Fury) e no desafio ele carrega o kit do Deus da Destruicao, e quem decide cada habilidade e o cerebro de todo NPC (Core/Ai/Cerebro.Kit.cs); no treino, nao. A 'raca' Hakaishin nao esta no races.json de proposito: a ficha sai neutra, e e por ela que as duas pontas desenham a folha dele (VisualCatalog.CorpoSprite). Tipo 'chefe' porque tem poder de ficha (e chefe nao e embaralhado quando o planeta esfria); ele NAO caca ninguem: parado nao tem mente, e a presa dele e sempre imposta pelo servidor."
+      "_nota": "BILLS, o Deus da Destruicao (dono, 2026-10-11; NAO existe no DM). As regras e os numeros estao em Core/Npc/BillsEWhis.cs e quem o poe no mundo e o GameServer.Bills.cs -- nunca o povoamento nem a cadeia de sagas. Ele existe enquanto o cargo 'godofdestruction' estiver VAGO. O 'bp' do degrau e so a FICHA DE NASCIMENTO: dele sai o orcamento de skills do sorteio (SorteioDeNpc.MarcosDe), e por isso ficou nos 150 bilhoes quando o poder dobrou (2026-10-23). O poder de verdade e o que o servidor crava por cima (BillsEWhis.cs): NA TERRA, 30% de um trilhao (300 bilhoes, o dobro pedido pelo dono em 2026-10-23); em casa, o trilhao; no treino, o triplo de quem treina; no desafio, o trilhao inteiro com a Fury DELE por cima (77x). Acordado na Terra (sem a Fury) e no desafio ele carrega o kit do Deus da Destruicao, e quem decide cada habilidade e o cerebro de todo NPC (Core/Ai/Cerebro.Kit.cs); no treino, nao. A 'raca' Hakaishin nao esta no races.json de proposito: a ficha sai neutra, e e por ela que as duas pontas desenham a folha dele (VisualCatalog.CorpoSprite). Tipo 'chefe' porque tem poder de ficha (e chefe nao e embaralhado quando o planeta esfria); ele NAO caca ninguem: parado nao tem mente, e a presa dele e sempre imposta pelo servidor."
     },
 
     {
@@ -789,7 +798,7 @@
       "ascendePorDecisao": false,
       "inteligencia": 100, "agressividade": 40, "coragem": 100, "furia": 20,
       "estagios": [ { "bp": 1000000000000 } ],
-      "_nota": "WHIS, o Anjo que acompanha o Bills (dono, 2026-10-11; NAO existe no DM). Existe enquanto o cargo 'angel' estiver VAGO. Fora de luta fica ao lado do Bills (e anda com ele); quando o Bills luta, assiste de longe, comentando comida (GameServer.GuiarOWhis). Ninguem o enfrenta por conta propria: fora da aula dele ele e intocavel. O 'bp' do degrau e so o poder de repouso -- no treino o servidor crava o TRIPLO do poder de quem o chamou, a cada tique, e liga o Ultra Instinto dele a 100% sem queda e sem forma (Core/Npc/BillsEWhis.cs, GameServer.BillsTreino.cs). Sem 'roupa': a folha dele ja vem vestida, e chefe sem roupa cravada nao entra no sorteio racial."
+      "_nota": "WHIS, o Anjo que acompanha o Bills (dono, 2026-10-11; NAO existe no DM). Existe enquanto o cargo 'angel' estiver VAGO. Fora de luta fica ao lado do Bills (e anda com ele); quando o Bills luta, assiste de longe, comentando comida (GameServer.GuiarOWhis). Ninguem o enfrenta por conta propria: fora da aula dele ele e intocavel. O 'bp' do degrau e so a FICHA DE NASCIMENTO (o orcamento de skills do sorteio, SorteioDeNpc.MarcosDe -- por isso ficou no trilhao); o poder de repouso e o que o servidor crava, CEM TRILHOES (dono, 2026-10-23: BillsEWhis.PoderDoWhis) -- no treino o servidor crava o TRIPLO do poder de quem o chamou, a cada tique, e liga o Ultra Instinto dele a 100% sem queda e sem forma (Core/Npc/BillsEWhis.cs, GameServer.BillsTreino.cs). Sem 'roupa': a folha dele ja vem vestida, e chefe sem roupa cravada nao entra no sorteio racial."
     }
   ]
 }

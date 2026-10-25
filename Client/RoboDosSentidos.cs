@@ -21,6 +21,9 @@ namespace Jandirus.Client;
 ///       (`Scouter.SemTetoDeTeste`): o numero;
 ///   S3. o SENSE (sem scouter) nos cinco niveis: a faixa diz o nivel e o alcance, e a cada nivel entra o corpo do alcance novo -- fotos
 ///       `sentidos-3-nivel-1` a `-5`; o Dourado e o Kaioh nunca (o ki divino, pra quem nao o tem).
+///   S4. (2026-10-23) QUEM SO DESPERTOU o God Ki (o Desperto, na forma base, a um tile e pouco): o Sense do jogador mortal nao o sente --
+///       foto `sentidos-4-desperto-fora`; CONTRA-EXEMPLO (`GameServer.DespertoAparecerNoSenseDeTeste`, o jogo de antes): ele aparece --
+///       foto `sentidos-4b-defeito-desperto`; com o God Ki desperto no proprio jogador, ele o sente -- foto `sentidos-4c-quem-tem-sente`.
 ///
 ///     Godot --path . --host --rede 8472 --campoteste 12 --horateste 0.5 --semfauna --diagsentidos --raca Human --conta bancada_sentidos --nome Sensor
 /// </summary>
@@ -62,10 +65,12 @@ public partial class RoboDosSentidos : Node
 			await OScan(cli, srv, menu, eu);
 			await AFichaAcimaDoTeto(cli, srv, menu, eu);
 			await OsNiveisDoSense(cli, srv, menu, eu);
+			await ODespertoNaBase(cli, srv, menu, eu);
 		}
 		finally
 		{
 			Jandirus.Server.GameServer.KiDivinoAparecerDeTeste = false;
+			Jandirus.Server.GameServer.DespertoAparecerNoSenseDeTeste = false;
 			Jandirus.Core.Stats.Scouter.SemTetoDeTeste = false;
 			srv.PalcoSN_Limpar(eu);
 		}
@@ -176,6 +181,50 @@ public partial class RoboDosSentidos : Node
 	}
 
 	// =====================================================================
+	// S4) QUEM SO DESPERTOU O GOD KI (dono, 2026-10-23)
+	// =====================================================================
+	/// <summary>
+	/// *"quem tem god ki despertado , ou é da raça androide n deve ter o ki sentido por ki sense, a nao ser q o usuario do sense tb tenha god
+	/// ki"*. O Desperto (despertou, na forma base) nasce a um tile e pouco do jogador -- e e o corpo mais perto, o primeiro cartao da aba
+	/// quando aparece.
+	/// </summary>
+	private async Tarefa ODespertoNaBase(GameClient cli, Jandirus.Server.GameServer srv, MenuJogo menu, int eu)
+	{
+		bool montou = srv.PalcoSN_Desperto(eu);
+		// O NIVEL DESCE DE 5 PRA 1 DEPOIS de o Desperto nascer: a lista muda (os de longe saem) e o pacote que chega ja foi feito com ele no
+		// mundo -- "nao apareceu" so vale pra uma lista que podia te-lo.
+		srv.PalcoSN_Sense(eu, 1);
+		bool chegou = await Ate(() => !cli.SentidosSaoDoScouter && cli.NivelDoSense == 1 && Tem(cli, "Vizinho") && !Tem(cli, "NaRegiao"), 8);
+		await Aba(menu, "Sense");
+		await Segundos(1.5);   // mais um tique de 1 Hz: o Desperto teria entrado nele
+		Conferir(montou && chegou && !Tem(cli, "Desperto"),
+				 "S4a. **QUEM SO DESPERTOU O GOD KI NAO E SENTIDO POR QUEM NAO O TEM** (dono, 2026-10-23): o Desperto, na forma base e a um tile e "
+				 + $"pouco, nao esta na aba Sense do jogador mortal [palco {montou}; nivel 1 {chegou}; {Lista(cli)}]");
+		Fotografar("user://sentidos-4-desperto-fora.png");
+
+		Jandirus.Server.GameServer.DespertoAparecerNoSenseDeTeste = true;
+		bool apareceu;
+		try
+		{
+			apareceu = await Ate(() => Tem(cli, "Desperto"), 5);
+			await Quadros(8);
+			Fotografar("user://sentidos-4b-defeito-desperto.png");
+		}
+		finally { Jandirus.Server.GameServer.DespertoAparecerNoSenseDeTeste = false; }
+		Conferir(apareceu, "CONTRA-EXEMPLO (defeito injetado: quem so despertou sentido por qualquer um, o jogo de antes): o Desperto aparece na "
+						   + $"aba -- a regua de S4a reprovaria [{Lista(cli)}]");
+		await Ate(() => !Tem(cli, "Desperto"), 5);
+
+		srv.PalcoSN_Despertar(eu, true);
+		bool sente = await Ate(() => Tem(cli, "Desperto"), 5);
+		await Quadros(8);
+		Conferir(sente, "S4c. ...e com o God Ki desperto no PROPRIO jogador, a aba sente o Desperto (*\"a nao ser q o usuario do sense tb tenha "
+						+ $"god ki\"*) [{Lista(cli)}]");
+		Fotografar("user://sentidos-4c-quem-tem-sente.png");
+		srv.PalcoSN_Despertar(eu, false);
+	}
+
+	// =====================================================================
 	// AS MAOS
 	// =====================================================================
 	private static IEnumerable<Node> Todos(Node raiz)
@@ -221,6 +270,7 @@ public partial class RoboDosSentidos : Node
 	private void Fechar()
 	{
 		Jandirus.Server.GameServer.KiDivinoAparecerDeTeste = false;
+		Jandirus.Server.GameServer.DespertoAparecerNoSenseDeTeste = false;
 		Jandirus.Core.Stats.Scouter.SemTetoDeTeste = false;
 		foreach (string l in _linhas) GD.Print("[dsentidos] " + l);
 		GD.Print(_falhas.Count == 0 ? "[dsentidos] ===== TUDO OK =====" : $"[dsentidos] ===== {_falhas.Count} FALHA(S) =====");

@@ -237,23 +237,31 @@ public partial class GameServer
 					  semTrocaDeAntes.Acertou && Math.Abs(razaoDeAntes - 1) < 0.03, $"razao {razaoDeAntes:0.###}; {semTrocaDeAntes}");
 
 			// ---------------------------------------------------------------- 5. o ritmo do jogo
-			// O dono (2026-10-16): *"diminuir os ganhos em 20x do jogo em si"*. O MESMO soco de producao no NPC, medido duas vezes: na
-			// taxa do jogo e na do DM (`BPTickDoDm` -- o contra-exemplo e o jogo de antes, com a taxa global de volta).
-			GD.Print("[ganho] -- 5) O RITMO DO JOGO: o ganho de BP 20x menor que o do DM (dono, 2026-10-16) --");
+			// O dono (2026-10-16): *"diminuir os ganhos em 20x do jogo em si"*; e (2026-10-23), junto do morto que passou a sentir o peso e a
+			// gravidade: *"suba o bp gain em 10x (tinha dividido por 20 antes entao agr seria so dividido por 2)"*. O MESMO soco de producao no
+			// NPC, medido na taxa do jogo e na do DM (`BPTickDoDm`): a do DM rende 2x a de agora. O 2 e o do dono, escrito AQUI (a regua nao le o
+			// `BPTick` que confere). Contra-exemplo: o ritmo de 2026-10-16 (`BPTickDoDm / 20`), posto no mesmo campo -- a mesma regua REPROVA.
+			GD.Print("[ganho] -- 5) O RITMO DO JOGO: o ganho de BP a metade do do DM (dono, 2026-10-23; de 2026-10-16 a 2026-10-23, 20x menor) --");
 			Estacionar(b);
-			SocoMedido agora = SocoEm(a, n);
-			Estacionar(n);
 			double ritmo = GainKnobs.BPTick;
-			SocoMedido doDm;
-			GainKnobs.BPTick = GainKnobs.BPTickDoDm;
-			try { doDm = SocoEm(a, n); }
-			finally { GainKnobs.BPTick = ritmo; }
-			Estacionar(n);
+			SocoMedido SocoNoRitmo(double taxa)
+			{
+				GainKnobs.BPTick = taxa;
+				try { return SocoEm(a, n); }
+				finally { GainKnobs.BPTick = ritmo; Estacionar(n); }
+			}
+			SocoMedido agora = SocoNoRitmo(ritmo);
+			SocoMedido doDm = SocoNoRitmo(GainKnobs.BPTickDoDm);
+			SocoMedido de1016 = SocoNoRitmo(GainKnobs.BPTickDoDm / 20);
 			double vezes = agora.Ganho > 0 ? doDm.Ganho / agora.Ganho : 0;
-			AfirmarGn("**O GANHO DE BP E 20x MENOR QUE O DO DM** (*\"diminuir os ganhos em 20x do jogo em si\"*): o mesmo soco no mesmo NPC rende "
-					  + "um vinte avos do que rendia com a taxa global do DM -- o jogo de antes, que e o contra-exemplo",
-					  agora.Acertou && doDm.Acertou && agora.Ganho > 0 && Math.Abs(vezes - 20) < 0.5,
+			double vezesDeAntes = de1016.Ganho > 0 ? doDm.Ganho / de1016.Ganho : 0;
+			AfirmarGn("**O GANHO DE BP E A METADE DO DO DM** (*\"tinha dividido por 20 antes entao agr seria so dividido por 2\"*): o mesmo soco no mesmo NPC "
+					  + "rende metade do que rende com a taxa global do DM -- dez vezes o de 2026-10-16",
+					  agora.Acertou && doDm.Acertou && agora.Ganho > 0 && Math.Abs(vezes - 2) < 0.05,
 					  $"agora {agora.Ganho:0.##########} | na taxa do DM {doDm.Ganho:0.##########} | {vezes:0.###}x");
+			AfirmarGn("(defeito injetado: o ritmo de 2026-10-16, a taxa do DM / 20) o mesmo soco rende um vinte avos do do DM -- a regua de cima REPROVA",
+					  de1016.Acertou && Math.Abs(vezesDeAntes - 2) >= 0.05 && Math.Abs(vezesDeAntes - 20) < 0.5,
+					  $"de 2026-10-16 {de1016.Ganho:0.##########} | {vezesDeAntes:0.###}x");
 
 			// ---------------------------------------------------------------- 6. o lugar multiplica o tique
 			// O dono (2026-10-16): *"em 1x gravidade diz 4,8x e em 10x diz 15,63x oq daria uma grande diferença, pq eu lembro q no DM esses
@@ -263,8 +271,11 @@ public partial class GameServer
 			// lugar multiplica, o esforco.
 			GD.Print("[ganho] -- 6) A GRAVIDADE E O PESO MULTIPLICAM O TIQUE, E A ACLIMATACAO E PODER: o painel diz o que o treino paga (dono, 2026-10-16) --");
 			Estacionar(b, n);
+			// `pesoMaximoEmLimites`: o maximo do peso em vezes o limite do corpo NESTA gravidade (o "100" vira essa razao); zero = o dobro do
+			// limite, a escala do verbo. (2026-10-23) A familia 7 o usa: a 500x o "100" do peso de sempre e 1000x o limite, e acima de 8x o
+			// treino nao rende mais nada (`Fighter.PesoDemaisPraTreinar`) -- o "peso no teto" dela passou a ser o do teto do GANHO (8x).
 			(double Bp, double Painel) UmMinuto(double gravidade, double maestria, string peso = "0", bool meditando = false,
-												double potencial = 0, double bpDePartida = 0, int passadas = 300)
+												double potencial = 0, double bpDePartida = 0, int passadas = 300, double pesoMaximoEmLimites = 0)
 			{
 				Fighter f = a.Ficha;
 				PrepararParaMedir(a, bpDePartida > 0 ? bpDePartida : bp);
@@ -282,7 +293,9 @@ public partial class GameServer
 				f.GravMastered = maestria;
 				f.zoneGainMult = 1;
 				// (2026-10-18) os pesos de bancada sao um ITEM, com o maximo no id (o dobro do limite do corpo -- a escala do verbo)
-				string pesos = Jandirus.Core.Items.PesoDeTreino.IdDe(f.weight_cap_hw * GainKnobs.WeightItemCapMult, "");
+				string pesos = Jandirus.Core.Items.PesoDeTreino.IdDe(pesoMaximoEmLimites > 0
+					? f.weight_cap_hw * pesoMaximoEmLimites / Math.Max(gravidade, 1)
+					: f.weight_cap_hw * GainKnobs.WeightItemCapMult, "");
 				a.Mochila.Guardar(pesos);
 				AjustarPeso(a, pesos, peso);
 				f.Statify();
@@ -404,8 +417,14 @@ public partial class GameServer
 			// com o potencial (dez vezes o BP: o de quem comprou a One Hundred mais alto) e sem ele --, porque a 500x o esforco a afogaria.
 			GD.Print("[ganho] -- 7) O POTENCIAL OCULTO PINGA IGUAL EM QUALQUER LUGAR, e o lugar multiplica so o esforco (dono, 2026-10-20) --");
 			const double potencialAlto = 10 * bp;
-			double PingoNoTreino(double gravidade, string peso) =>
-				UmMinuto(gravidade, gravidade, peso, potencial: potencialAlto).Bp - UmMinuto(gravidade, gravidade, peso).Bp;
+			// (2026-10-23) O PESO NO TETO E O DO GANHO, 8x: a 500x o "100" do peso de sempre e 1000x o limite do corpo, e acima de 8x o treino nao
+			// rende nada (dono: *"vc nem conseguiria treinar assim"*). Aqui o "100" e 6x o limite -- o `weight` no teto (8x), e abaixo do corte.
+			const double TetoDoGanho = 6;
+			// (2026-10-23) CEM PASSADAS, e nao trezentas: com o ganho x10 o pingo de antes (o defeito do lugar, 4000x) passava o potencial
+			// (1e7) no meio do minuto, e acima dele o pingo cai a metade (1/64) -- a razao media o cruzamento, e nao o lugar.
+			double PingoNoTreino(double gravidade, string peso, double limites = 0) =>
+				UmMinuto(gravidade, gravidade, peso, potencial: potencialAlto, passadas: 100, pesoMaximoEmLimites: limites).Bp
+				- UmMinuto(gravidade, gravidade, peso, passadas: 100, pesoMaximoEmLimites: limites).Bp;
 			double PingoMeditando(double gravidade) =>
 				UmMinuto(gravidade, gravidade, meditando: true, potencial: potencialAlto).Bp - UmMinuto(gravidade, gravidade, meditando: true).Bp;
 			double PingoNoSoco(double gravidade)
@@ -422,12 +441,12 @@ public partial class GameServer
 			// UMA HORA de `Treinar` de producao (18.000 passadas) a 500x com o peso no teto e o folego sempre cheio (o do morto, que nao cansa).
 			// No DM esse corpo vai a 1,03B; com o potencial levando o lugar passava de 14B (medido fora do jogo, com a mesma DLL). Roda por
 			// ULTIMO: o recorde do corpo pro peso (`weight_cap_hw`) nunca desce, e o de 1B ficaria nas medidas seguintes.
-			double UmaHoraDoRelato() => UmMinuto(500, 500, "100", potencial: 14e9, bpDePartida: 1e9, passadas: 18_000).Bp;
+			double UmaHoraDoRelato() => UmMinuto(500, 500, "100", potencial: 14e9, bpDePartida: 1e9, passadas: 18_000, pesoMaximoEmLimites: TetoDoGanho).Bp;
 
-			double treino1 = PingoNoTreino(1, "0"), treino500 = PingoNoTreino(500, "100");
-			AfirmarGn("**O POTENCIAL OCULTO PINGA NO TREINO A 500x COM O PESO NO MAXIMO O MESMO QUE EM 1x SEM PESO** -- como no DM (*\"treinou na gravidade de 500x com peso no maximo\"*: era ai que ele pingava 4000x)",
-					  treino1 > 0 && Bate(Vezes(treino500, treino1), 1), $"1x: +{treino1:0.####} por minuto | 500x com peso: +{treino500:0.####} ({Vezes(treino500, treino1):0.###}x)");
-			var esforco500 = UmMinuto(500, 500, "100");
+			double treino1 = PingoNoTreino(1, "0"), treino500 = PingoNoTreino(500, "100", TetoDoGanho);
+			AfirmarGn("**O POTENCIAL OCULTO PINGA NO TREINO A 500x COM O PESO NO TETO DO GANHO O MESMO QUE EM 1x SEM PESO** -- como no DM (*\"treinou na gravidade de 500x com peso no maximo\"*: era ai que ele pingava 4000x)",
+					  treino1 > 0 && Bate(Vezes(treino500, treino1), 1), $"1x: +{treino1:0.####} em 100 passadas | 500x com peso: +{treino500:0.####} ({Vezes(treino500, treino1):0.###}x)");
+			var esforco500 = UmMinuto(500, 500, "100", pesoMaximoEmLimites: TetoDoGanho);
 			AfirmarGn("...e o ESFORCO, no mesmo lugar, continua pagando o que o painel diz: 500x de gravidade com o peso no teto (8x) = 4000x o de 1x",
 					  Bate(Vezes(esforco500.Bp, em1.Bp), 4000) && Bate(Vezes(esforco500.Painel, em1.Painel), 4000),
 					  $"{Vezes(esforco500.Bp, em1.Bp):0.#}x; painel {esforco500.Painel:0.##}x");
@@ -442,8 +461,8 @@ public partial class GameServer
 			GainKnobs.PotencialOcultoComOLugarDeTeste = true;
 			try
 			{
-				double treino500DeAntes = PingoNoTreino(500, "100");
-				AfirmarGn("(defeito injetado: o potencial leva o lugar -- o jogo de 2026-10-16 a 2026-10-20) no treino a 500x com o peso no maximo ele pinga 4000x o de 1x. A prova do treino sabe reprovar",
+				double treino500DeAntes = PingoNoTreino(500, "100", TetoDoGanho);
+				AfirmarGn("(defeito injetado: o potencial leva o lugar -- o jogo de 2026-10-16 a 2026-10-20) no treino a 500x com o peso no teto ele pinga 4000x o de 1x. A prova do treino sabe reprovar",
 						  Bate(Vezes(treino500DeAntes, treino1), 4000), $"{Vezes(treino500DeAntes, treino1):0.#}x");
 				double med500DeAntes = PingoMeditando(500);
 				AfirmarGn("(defeito injetado: o mesmo) meditando a 500x ele pinga 500x o de 1x. A prova da meditacao sabe reprovar",
@@ -455,8 +474,10 @@ public partial class GameServer
 			finally { GainKnobs.PotencialOcultoComOLugarDeTeste = false; }
 
 			double hora = UmaHoraDoRelato();
-			AfirmarGn("**O CASO DO RELATO**: 1B com o potencial de quem comprou as tres skills com 1B, uma hora de treino a 500x com o peso no maximo e o folego do morto -- sobe o pingo do DM (menos de 50M), e nao os 13B de antes",
-					  hora > 0 && hora < 50e6, $"+{hora:N0} de BP na hora");
+			// (2026-10-23) O TETO DA HORA SUBIU COM O GANHO x10: menos de 500M (era 50M no ritmo de 2026-10-16; mede ~250M) -- ainda o pingo cru,
+			// longe dos bilhoes do lugar
+			AfirmarGn("**O CASO DO RELATO**: 1B com o potencial de quem comprou as tres skills com 1B, uma hora de treino a 500x com o peso no teto e o folego do morto -- sobe o pingo cru do potencial (menos de 500M no ritmo de 2026-10-23), e nao os 13B de antes",
+					  hora > 0 && hora < 500e6, $"+{hora:N0} de BP na hora");
 			GainKnobs.PotencialOcultoComOLugarDeTeste = true;
 			try
 			{
@@ -466,6 +487,32 @@ public partial class GameServer
 			}
 			finally { GainKnobs.PotencialOcultoComOLugarDeTeste = false; }
 			AplicarGravidade(a);   // a gravidade do chao de volta
+
+			// ---------------------------------------------------------------- 7b. sem o freio de 1 bi
+			// O dono (2026-10-24): *"tira o debuff de bp gains acima de 1b"*. O `CapCheck` multiplicava todo ganho acima de 1B por
+			// `1B / BP` (`Fighter.BpGainSoftcap`, na forca `BpGainSoftStrength` = 1): a 10B, um decimo. O treino deste port e LINEAR (a base
+			// nao le o BP), entao o mesmo minuto a 2,5B e a 10B tem de render o MESMO -- e com o freio de volta, o de 10B rende um quarto do
+			// de 2,5B. Um minuto de aquecimento no BP mais alto antes: os marcos de ascensao que o tique de producao cruza (`Treinar`) ficam
+			// todos vistos e nao mexem nas duas medidas.
+			GD.Print("[ganho] -- 7b) SEM O FREIO DE 1 BI: o mesmo treino rende o mesmo em qualquer BP (dono, 2026-10-24) --");
+			UmMinuto(1, 1, bpDePartida: 1e10);
+			var minutoEm2B5 = UmMinuto(1, 1, bpDePartida: 2.5e9);
+			var minutoEm10B = UmMinuto(1, 1, bpDePartida: 1e10);
+			AfirmarGn("**SEM O FREIO DE 1 BI** (dono, 2026-10-24: *\"tira o debuff de bp gains acima de 1b\"*): o mesmo minuto de treino rende o MESMO a 2,5B e a 10B -- e nao um quarto",
+					  minutoEm2B5.Bp > 0 && Bate(minutoEm10B.Bp, minutoEm2B5.Bp),
+					  $"2,5B: +{minutoEm2B5.Bp:N0} | 10B: +{minutoEm10B.Bp:N0} ({Vezes(minutoEm10B.Bp, minutoEm2B5.Bp):0.###}x)");
+			double forcaDoFreio = Fighter.BpGainSoftStrength;
+			Fighter.BpGainSoftStrength = 1;
+			try
+			{
+				var freado10B = UmMinuto(1, 1, bpDePartida: 1e10);
+				var freado2B5 = UmMinuto(1, 1, bpDePartida: 2.5e9);
+				AfirmarGn("(defeito injetado: o freio de antes, `Fighter.BpGainSoftStrength` = 1) a 10B o minuto rende um quarto do de 2,5B -- a regua de cima REPROVA",
+						  freado2B5.Bp > 0 && Bate(freado10B.Bp, freado2B5.Bp * 0.25),
+						  $"2,5B: +{freado2B5.Bp:N0} | 10B: +{freado10B.Bp:N0} ({Vezes(freado10B.Bp, freado2B5.Bp):0.###}x)");
+			}
+			finally { Fighter.BpGainSoftStrength = forcaDoFreio; }
+			AplicarGravidade(a);
 
 			// ---------------------------------------------------------------- 8. a media da sessao de treino
 			// O dono (2026-10-20): *"adicione com isso no training session ao clicar em view session a media de ganhos de bp por segundo"*.

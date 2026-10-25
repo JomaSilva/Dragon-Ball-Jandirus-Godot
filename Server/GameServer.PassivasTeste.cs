@@ -411,7 +411,7 @@ public partial class GameServer
 		AfirmarPs("...e descer pra base ZERA as veteranas", s.Racial.FormasVeteranas == 0 && PertoPs(s.Ficha.racialBp, 1),
 				  $"veteranas {s.Racial.FormasVeteranas}, racialBp {s.Ficha.racialBp:0.###}");
 
-		// ---- Warrior Race (o tronco ou a cabeca abaixo de 20%) + False Advantage (a vida baixa) ----
+		// ---- Warrior Race (o tronco ou a cabeca abaixo da metade; 20% ate 2026-10-24) + False Advantage (a vida baixa) ----
 		// (2026-10-19) O dono: *"mudar de 20% de vida pra 20% do tronco ou cabeça"*. A vida e o `Fighter.HP` (a do corpo inteiro); o tronco e a
 		// cabeca sao as partes do corpo de verdade, lidas pela entrada racial de producao (`MontarEntradaRacial`).
 		BodyPart tronco = s.Combate.Corpo.Achar(Body.NomeDoTronco)!, cabeca = s.Combate.Corpo.Achar("Cabeca")!;
@@ -432,9 +432,28 @@ public partial class GameServer
 		string daCabeca = Fisico();
 		AfirmarPs("WARRIOR RACE PELO TRONCO OU PELA CABECA (dono, 2026-10-19): o tronco a 15% acende (ataque fisico +20%, defesa fisica +30%), e a "
 				  + "cabeca a 15% com o tronco inteiro tambem", peloTronco && pelaCabeca, $"tronco: {doTronco}; cabeca: {daCabeca}");
-		Partes(0.25, 0.25);
+		// (2026-10-24) O LIMIAR SUBIU PRA METADE -- o dono: *"aumentar o warrior race de 20% de hp pra 50% de hp na cabeça ou torso"*. A parte a
+		// 35% (acima dos 20% de antes, abaixo da metade) acende; o defeito devolve os 20% e a mesma parte a 35% nao acende.
+		Partes(0.35, 1);
 		AndarPs(s, 0.1);
-		AfirmarPs("...e o tronco e a cabeca a 25% nao acendem", PertoPs(s.Ficha.racialPhysoff, 1) && PertoPs(s.Ficha.racialPhysdef, 1), Fisico());
+		bool nos35 = Guerreiro();
+		string dos35 = Fisico();
+		Partes(1, 0.35);
+		AndarPs(s, 0.1);
+		AfirmarPs("WARRIOR RACE NA METADE (dono, 2026-10-24): o tronco a 35% acende, e a cabeca a 35% com o tronco inteiro tambem (era 20%)",
+				  nos35 && Guerreiro(), $"tronco: {dos35}; cabeca: {Fisico()}");
+		Passivas.GuerreiroNos20DeTeste = true;
+		try
+		{
+			Partes(0.35, 0.35);
+			AndarPs(s, 0.1);
+			AfirmarPs("   (defeito injetado: `GuerreiroNos20DeTeste`, o limiar de antes) o tronco e a cabeca a 35% NAO acendem -- a regua de cima REPROVA",
+					  PertoPs(s.Ficha.racialPhysoff, 1) && PertoPs(s.Ficha.racialPhysdef, 1), Fisico());
+		}
+		finally { Passivas.GuerreiroNos20DeTeste = false; }
+		Partes(0.55, 0.55);
+		AndarPs(s, 0.1);
+		AfirmarPs("...e o tronco e a cabeca a 55% nao acendem", PertoPs(s.Ficha.racialPhysoff, 1) && PertoPs(s.Ficha.racialPhysdef, 1), Fisico());
 		Partes(1, 1);
 		s.Ficha.HP = 15;
 		AndarPs(s, 0.1);

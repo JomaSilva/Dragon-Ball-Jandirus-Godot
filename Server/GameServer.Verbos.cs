@@ -261,6 +261,8 @@ public sealed partial class GameServer
 			// sessao porque atrapalhar o treino do parceiro e temporario; por onde a sua escada
 			// sobe, nao.
 			case "graus": VerboGrades(pl); break;
+			// (2026-10-23) a familia do C duplo -- as formas divinas primeiro, ou as mortais; o irmao do `graus`. Ver `VerboFamiliaDoC`.
+			case "divinas_c": VerboFamiliaDoC(pl); break;
 
 			// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON, RE-ESCOLHIDOS EM JOGO -- o `Icer_Form_Settings` do DM. Ver
 			// `GameServer.Frost.ComandoDasFormasDoFrost`: quem confere a raca e a lista e ele.

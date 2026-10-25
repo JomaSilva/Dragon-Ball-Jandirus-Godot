@@ -124,6 +124,8 @@ public partial class GameServer
 			OTemploSagrado(),
 			AChegadaEChaoLivre(),
 			AsOutrasNuvensSoBarram(),
+			OSocoNoArNoPalcoDoOutroMundo(),
+			OCasteloDoReiVegeta(),
 		];
 
 		int provas = 0, falhas = 0, defeitos = 0, cegos = 0, semCobertura = 0;
@@ -173,6 +175,8 @@ public partial class GameServer
 		GD.Print($"[nuvem]   defeitos injetados : {defeitos}   ({defeitos - cegos} pegos, {cegos} passaram batido)");
 		GD.Print($"[nuvem]   provas sem rodar   : {semCobertura}");
 		foreach (string b in buracos) GD.PrintErr($"[nuvem]     - {b}");
+		// (2026-10-24) O PLACAR NO FORMATO DAS OUTRAS BANCADAS, pra a fila do rascunho le-lo: a familia cega tambem conta como falha.
+		GD.Print($"[nuvem] PLACAR: {provas - falhas} OK, {falhas + cegos} FALHA");
 		GD.Print(falhas == 0 && cegos == 0
 			? "[nuvem] ================ OK -- toda familia esta verde E sabe ficar vermelha ================"
 			: "[nuvem] ================ ATENCAO -- ha familia vermelha ou cega acima ================");
@@ -292,6 +296,10 @@ public partial class GameServer
 		("o funil do modo travou em VOANDO (ninguem cai, e por outro caminho)",
 		 s => s.Modo = _ => ModoDeTravessia.Voando),
 
+		// (2026-10-24) o jogo de antes do conserto do soco no ar -- ver a metade 3 do `AQuedaDeUmaZona`
+		("o soco no ar apaga o voo: o corpo arremessado conta como a pe na nuvem",
+		 s => s.Modo = pl => pl.TiquesDeVoo > 0 ? ModoDeTravessia.Arremessado : ModoDeTravessiaDe(pl)),
+
 		("o destino sumiu: a zona derruba e nao sabe pra onde",
 		 s => s.Destino = _ => null),
 
@@ -367,6 +375,38 @@ public partial class GameServer
 
 		p.Prova($"{zonaOrigem}: quem VOA nao cai -- continua na nuvem", voando.Zone.Name == zonaOrigem,
 				$"acabou em `{voando.Zone.Name}`");
+
+		// ---------- METADE 3: ARREMESSADO NO AR, NAO CAI (2026-10-24) ----------
+		// O dono: *"tomar knock back enquanto voa ta fazendo o personagem contar como sem fly as vezes [...] o jogo pode te jogar no
+		// inferno"*. No meio de um arremesso, no ar: o funil o le como VOANDO, e o tique de producao o deixa onde esta.
+		ServerPlayer jogadoNoAr = CorpoDeNuvem("bancada: o que leva um soco no ar", ZoneKey.Premade(zonaOrigem), emCima);
+		jogadoNoAr.Voando = true;
+		jogadoNoAr.Altitude = Voo.AlturaDePairar;
+		jogadoNoAr.Nadando = false;
+		jogadoNoAr.TiquesDeVoo = 6;
+		jogadoNoAr.ArremessadoNoAr = true;
+		ModoDeTravessia modoNoAr = SondasNuvem.Modo(jogadoNoAr);
+		p.Prova($"{zonaOrigem}: o corpo arremessado NO AR e lido como quem VOA pelo funil", Voo.Voa(modoNoAr), modoNoAr.ToString());
+
+		TickDasNuvens();
+
+		p.Prova($"{zonaOrigem}: quem leva um soco VOANDO nao cai -- continua na nuvem", jogadoNoAr.Zone.Name == zonaOrigem,
+				$"acabou em `{jogadoNoAr.Zone.Name}`");
+
+		// ---------- METADE 4: ARREMESSADO A PE, CAI ----------
+		// A que segura a terceira: um funil que lesse "voando" pra todo arremessado deixaria o soco a pe atravessar a nuvem -- e o `KB`
+		// sem `isflying` do DM cai.
+		ServerPlayer jogadoAPe = CorpoDeNuvem("bancada: o que leva um soco a pe", ZoneKey.Premade(zonaOrigem), emCima);
+		jogadoAPe.Voando = false;
+		jogadoAPe.Altitude = 0f;
+		jogadoAPe.Nadando = false;
+		jogadoAPe.TiquesDeVoo = 6;
+		jogadoAPe.ArremessadoNoAr = false;
+
+		TickDasNuvens();
+
+		p.Prova($"{zonaOrigem}: e quem leva o soco A PE cai em `{zonaDestino}`, como o `KB` sem `isflying` do DM",
+				string.Equals(jogadoAPe.Zone.Name, zonaDestino, StringComparison.OrdinalIgnoreCase), $"acabou em `{jogadoAPe.Zone.Name}`");
 
 		// ---------- E A CHEGADA E CHAO LIVRE ----------
 		// (a familia 3 mede isto contra um destino HOSTIL; aqui e contra o destino de verdade)
@@ -550,6 +590,212 @@ public partial class GameServer
 			 s => { s.ZonaDerruba = _ => true; s.Destino = _ => (Alem.ZonaDoInferno, 63, 260); }),
 		],
 	};
+
+	// =====================================================================
+	// FAMILIA 5 -- O SOCO NO AR, NO PALCO DO TORNEIO DO OUTRO MUNDO (2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"tomar knock back enquanto voa ta fazendo o personagem contar como sem fly as vezes [...] o jogo pode te jogar no inferno
+	/// se estiver nas nuvens do ceu ou falar q vc saiu da arena se estiver em torneio"*.
+	///
+	/// ============================ O ARREMESSO E O DE PRODUCAO, DE PONTA A PONTA ============================
+	/// As metades 3 e 4 das familias 1 e 2 poem o corpo no meio de um arremesso escrito a mao. Aqui o soco e o de verdade: o
+	/// `Arremessar`, o `TickDoEmpurrao` que leva o corpo e o `TickDasNuvens` que o derruba ou nao, tique a tique -- a partir da linha
+	/// leste da arena do torneio do Outro Mundo (a do `torneio.json`). O palco tem quatro tiles de chao alem dela, e um arremesso de
+	/// oito tiles termina por cima da nuvem. A linha da arena e ACHADA, e nao digitada: no meio do palco ha uma ponte e uma parede, e a
+	/// prova so vale numa linha em que o arremesso chega na nuvem sem nada no caminho.
+	///
+	/// AS DUAS METADES DE SEMPRE: quem VOA segue no Outro Mundo e voando -- sem Inferno, e entao sem o "pisou fora da arena" do juiz,
+	/// que so cobra quem nao voa --; quem esta A PE, jogado pelo mesmo soco, cai no Inferno, e e isso que prova que o arremesso chegou
+	/// na nuvem.
+	/// ==========================================================================================================
+	/// </summary>
+	private FamiliaDaNuvem OSocoNoArNoPalcoDoOutroMundo() => new()
+	{
+		Nome = "5 -- o soco no ar, no palco do torneio do Outro Mundo",
+		Frase = "tomar knock back enquanto voa ta fazendo o personagem contar como sem fly as vezes",
+		Provas = OSocoNoAr,
+		Defeitos =
+		[
+			("o soco no ar apaga o voo: o corpo arremessado conta como a pe na nuvem (o jogo de antes de 2026-10-24)",
+			 s => s.Modo = pl => pl.TiquesDeVoo > 0 ? ModoDeTravessia.Arremessado : ModoDeTravessiaDe(pl)),
+		],
+	};
+
+	private void OSocoNoAr(PlacarDaNuvem p)
+	{
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		if (MapaDaZonaOuCatalogo(alem) is not { TemNuvem: true, NuvemDerruba: true } mapa)
+		{
+			p.NaoDeu($"`{Alem.ZonaDoOutroMundo}` sem plano de nuvem que derruba");
+			return;
+		}
+		const float t = ZoneCollision.TileSize;
+		const int tiques = 4;
+		Arena arena = _torneioCfg.Alem.Arena;
+		float alcance = (float)(tiques * Jandirus.Core.Combat.Empurrao.TilesPorTique);
+
+		// AS LINHAS DA ARENA de onde o soco leva o corpo, a leste, ate a nuvem sem parede no caminho -- duas, a tres tiles uma da
+		// outra: os dois corpos voam lado a lado, e nenhum esbarra no outro.
+		var linhas = new List<int>();
+		for (int y = arena.Y1; y <= arena.Y2; y++)
+		{
+			Vec2 de = new((arena.X2 + 0.5f) * t, (y + 0.5f) * t), ate = de + new Vec2(alcance * t, 0);
+			if (MoveRules.NaNuvem(mapa, ate) && !MoveRules.PathOccupied(mapa, de, ate, ModoDeTravessia.Arremessado)) linhas.Add(y);
+		}
+		int? outra = linhas.Count > 0 ? linhas.Find(y => y - linhas[0] >= 3) : null;
+		p.Prova("o palco do torneio do Outro Mundo tem linhas da arena de onde um soco de oito tiles leva o corpo ate a nuvem",
+				linhas.Count > 0 && outra > 0, $"arena ({arena.X1},{arena.Y1})-({arena.X2},{arena.Y2}); linhas {string.Join(",", linhas)}");
+		if (linhas.Count == 0 || outra is not > 0) return;
+
+		ServerPlayer voando = CorpoDeNuvem("bancada: o lutador que voa", alem, new Vec2((arena.X2 + 0.5f) * t, (linhas[0] + 0.5f) * t));
+		voando.Voando = true;
+		voando.Altitude = Voo.AlturaDePairar;
+		ServerPlayer aPe = CorpoDeNuvem("bancada: o lutador a pe", alem, new Vec2((arena.X2 + 0.5f) * t, ((int)outra + 0.5f) * t));
+		aPe.Voando = false;
+		aPe.Altitude = 0f;
+
+		Arremessar(voando, new Vec2(1, 0), 1_000, tiques);
+		Arremessar(aPe, new Vec2(1, 0), 1_000, tiques);
+		for (int i = 0; i < 90 && (voando.TiquesDeVoo > 0 || aPe.TiquesDeVoo > 0); i++)
+		{
+			TickDoEmpurrao();
+			TickDasNuvens();
+		}
+		TickDasNuvens();
+
+		p.Prova("**QUEM LEVA O SOCO VOANDO NAO CAI**: o arremesso acabou por cima da nuvem e ele segue no Outro Mundo, VOANDO -- sem "
+				+ "Inferno, e sem o \"pisou fora da arena\" do juiz, que so cobra quem nao voa",
+				voando.Zone.Name == Alem.ZonaDoOutroMundo && voando.Voando && voando.TiquesDeVoo <= 0 && MoveRules.NaNuvem(mapa, voando.Pos),
+				$"em `{voando.Zone.Name}` ({voando.Pos.X / t:0.0},{voando.Pos.Y / t:0.0}); voando {voando.Voando}; altura {voando.Altitude:0}");
+		p.Prova("...e o mesmo soco em quem esta A PE o joga no Inferno (o arremesso chega mesmo na nuvem)",
+				string.Equals(aPe.Zone.Name, Alem.ZonaDoInferno, StringComparison.OrdinalIgnoreCase), $"acabou em `{aPe.Zone.Name}`");
+	}
+
+	// =====================================================================
+	// FAMILIA 6 -- O CASTELO DO REI VEGETA  ->  VEGETA, NO PE DA ESCADA (2026-10-25)
+	// =====================================================================
+	/// <summary>
+	/// O dono, perguntado depois de saber que da nuvem do patio do castelo se caia na Terra: *"A nuvem do castelo do Rei Vegeta derruba
+	/// em Vegeta, no pe da escada do castelo (onde a saida do castelo leva)."* Ver <see cref="ClasseDeNuvem.DestinoNoCastelo"/>.
+	///
+	/// AS METADES DE SEMPRE, e mais o contra-exemplo: a pe, da beira do patio, cai em VEGETA -- e chega ao lado de onde a escada de saida
+	/// do castelo deixa o corpo (a chegada da passagem do castelo pra Vegeta, pelo MESMO funil das passagens, `ChegadaDaPassagem`); voando,
+	/// nao cai; e a nuvem do Templo FORA do castelo segue caindo na TERRA (uma regra que mandasse o z12 inteiro pra Vegeta passaria nas
+	/// duas primeiras). A celula do castelo e ACHADA -- nuvem com folga 3x3, dentro da caixa do castelo e com chao do patio a ate dois
+	/// tiles, a beira por onde se cai --, e nao digitada.
+	/// </summary>
+	private FamiliaDaNuvem OCasteloDoReiVegeta() => new()
+	{
+		Nome = "6 -- o castelo do Rei Vegeta derruba em Vegeta, no pe da escada",
+		Frase = "A nuvem do castelo do Rei Vegeta derruba em Vegeta, no pe da escada do castelo (onde a saida do castelo leva)",
+		Provas = AQuedaDoCastelo,
+		Defeitos =
+		[
+			("o castelo volta a cair na Terra: a regra do castelo saiu do caminho (o jogo de antes de 2026-10-25)",
+			 s => s.Castelo = (_, _) => null),
+
+			// a r1 deste conserto: o pouso perto do ponto fugia da beirada do mapa e caia 2,2 tiles ao lado da escada
+			("o castelo pousa no ponto livre mais perto da coordenada, e nao pela escada de saida (dois tiles ao lado)",
+			 s => s.PousarPelaEscadaDoCastelo = false),
+
+			("o z12 inteiro passou a cair em Vegeta (o Templo tambem)",
+			 s => s.Castelo = (z, _) => string.Equals(z, ClasseDeNuvem.ZonaDoTemplo, StringComparison.OrdinalIgnoreCase)
+				 ? (ClasseDeNuvem.ZonaDeVegeta, ClasseDeNuvem.PeDaEscadaDoCasteloBx, ClasseDeNuvem.PeDaEscadaDoCasteloBy)
+				 : null),
+		],
+	};
+
+	private void AQuedaDoCastelo(PlacarDaNuvem p)
+	{
+		string templo = ClasseDeNuvem.ZonaDoTemplo, vegeta = ClasseDeNuvem.ZonaDeVegeta;
+		const float t = ZoneCollision.TileSize;
+		if (_catalogo?.Get(templo)?.Mapa is not { TemNuvem: true, NuvemDerruba: true } mapa || _catalogo?.Get(vegeta)?.Mapa is not { } mv)
+		{
+			p.NaoDeu("faltou o mapa do Templo (com nuvem que derruba) ou o de Vegeta");
+			return;
+		}
+
+		// A BEIRA DO PATIO: nuvem com folga 3x3 dentro da caixa do castelo, com chao andavel a ate dois tiles
+		(int X, int Y)? beira = null;
+		for (int y = SubZonas.CasteloY0 + 1; y < SubZonas.CasteloY1 && beira == null; y++)
+			for (int x = SubZonas.CasteloX0 + 1; x < SubZonas.CasteloX1; x++)
+			{
+				bool folgada = true;
+				for (int dy = -1; dy <= 1 && folgada; dy++)
+					for (int dx = -1; dx <= 1; dx++)
+						if (!mapa.EhNuvem(x + dx, y + dy)) { folgada = false; break; }
+				if (!folgada) continue;
+				bool encosta = false;
+				for (int dy = -2; dy <= 2 && !encosta; dy++)
+					for (int dx = -2; dx <= 2; dx++)
+						if (mapa.ServeDeChao(x + dx, y + dy)) { encosta = true; break; }
+				if (encosta) { beira = (x, y); break; }
+			}
+		if (beira is not { } c)
+		{
+			p.NaoDeu("nao achei nuvem folgada encostada no patio do castelo");
+			return;
+		}
+		Vec2 emCima = mapa.CentroDaCelula(c.X, c.Y);
+		p.Prova($"a celula ({c.X},{c.Y}) do Templo e nuvem pela caixa dos pes, e e DO CASTELO (`SubZonas.NoCastelo`), na beira do patio",
+				MoveRules.NaNuvem(mapa, emCima) && SubZonas.NoCastelo(emCima));
+
+		// ONDE A ESCADA DE SAIDA DO CASTELO DEIXA O CORPO -- a passagem do Templo pra Vegeta, pelo funil das passagens
+		Passagem? saida = _passagens.TryGetValue(templo, out List<Passagem>? bocas)
+			? bocas.Find(b => string.Equals(b.Zona, vegeta, StringComparison.OrdinalIgnoreCase))
+			: null;
+		if (saida == null)
+		{
+			p.NaoDeu("o Templo nao tem a passagem de saida do castelo pra Vegeta");
+			return;
+		}
+		Vec2 pe = ChegadaDaPassagem(templo, saida);
+
+		// ---------- A PE, CAI EM VEGETA, NO PE DA ESCADA ----------
+		ServerPlayer aPe = CorpoDeNuvem("bancada: o que anda no castelo", ZoneKey.Premade(templo), emCima);
+		aPe.Altitude = 0f;
+		aPe.Nadando = false;
+		aPe.TiquesDeVoo = 0;
+		TickDasNuvens();
+		bool emVegeta = string.Equals(aPe.Zone.Name, vegeta, StringComparison.OrdinalIgnoreCase);
+		float longe = (aPe.Pos - pe).Length / t;
+		int cx = (int)MathF.Floor(aPe.Pos.X / t), cy = (int)MathF.Floor(aPe.Pos.Y / t);
+		p.Prova("**QUEM PISA NA NUVEM DO CASTELO A PE CAI EM VEGETA** -- e nao na Terra", emVegeta, $"acabou em `{aPe.Zone.Name}`");
+		p.Prova("**...NO PE DA ESCADA DO CASTELO**: exatamente onde a escada de saida do castelo deixa quem desce (meio tile de folga)",
+				emVegeta && longe <= 0.5f, $"a {longe:0.0} tile(s) da chegada da saida ({pe.X / t:0.0},{pe.Y / t:0.0}); pousou ({cx},{cy})");
+		// (a chegada da escada e na BEIRADA do mapa, como a de toda passagem: o criterio e o do `Passagem.Chegada`, `mesmoNaBorda`)
+		p.Prova("...em chao livre de Vegeta (nao dentro da boca lacrada da escada)", emVegeta && mv.ServeDeChao(cx, cy, mesmoNaBorda: true), $"celula ({cx},{cy})");
+		p.Prova("...e o aviso de quem cai do castelo diz Vegeta",
+				ClasseDeNuvem.AvisoDaQueda(templo, vegeta).Contains("Vegeta") && ClasseDeNuvem.AvisoDaQueda(templo, ClasseDeNuvem.ZonaDaTerra).Contains("Terra"),
+				ClasseDeNuvem.AvisoDaQueda(templo, vegeta));
+		// (o dono: *"N esqueca de fazer versao ingles de tudo"*) -- pelo tradutor do jogo, com o dicionario do disco
+		var ingles = Jandirus.Core.Lingua.Tradutor.DoJson(Godot.FileAccess.GetFileAsString("res://Assets/Data/lingua-en.json"));
+		string aviso = ClasseDeNuvem.AvisoDaQueda(templo, vegeta);
+		p.Prova("...e o aviso de Vegeta tem ingles no dicionario do jogo", ingles.Traduzir(aviso) != aviso, ingles.Traduzir(aviso));
+
+		// ---------- VOANDO, NAO CAI ----------
+		ServerPlayer voando = CorpoDeNuvem("bancada: o que voa no castelo", ZoneKey.Premade(templo), emCima);
+		voando.Altitude = 64f;
+		voando.Nadando = false;
+		voando.TiquesDeVoo = 0;
+		TickDasNuvens();
+		p.Prova("quem VOA sobre a nuvem do castelo nao cai -- continua no Templo", voando.Zone.Name == templo, $"acabou em `{voando.Zone.Name}`");
+
+		// ---------- O CONTRA-EXEMPLO: A NUVEM DO TEMPLO FORA DO CASTELO SEGUE CAINDO NA TERRA ----------
+		if (CelulaDeNuvemFolgada(mapa) is not { } fora || SubZonas.NoCastelo(mapa.CentroDaCelula(fora.X, fora.Y)))
+		{
+			p.NaoDeu("nao achei nuvem do Templo fora do castelo");
+			return;
+		}
+		ServerPlayer noTemplo = CorpoDeNuvem("bancada: o que anda no Templo", ZoneKey.Premade(templo), mapa.CentroDaCelula(fora.X, fora.Y));
+		noTemplo.Altitude = 0f;
+		noTemplo.Nadando = false;
+		noTemplo.TiquesDeVoo = 0;
+		TickDasNuvens();
+		p.Prova($"**E A NUVEM DO TEMPLO FORA DO CASTELO ({fora.X},{fora.Y}) SEGUE CAINDO NA TERRA** (o contra-exemplo)",
+				string.Equals(noTemplo.Zone.Name, ClasseDeNuvem.ZonaDaTerra, StringComparison.OrdinalIgnoreCase), $"acabou em `{noTemplo.Zone.Name}`");
+	}
 
 	// =====================================================================
 	// A OFICINA

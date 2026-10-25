@@ -35,6 +35,16 @@ public partial class CharacterSelect : CanvasLayer
     private Control? _pergunta;
 
     /// <summary>
+    /// (2026-10-24) O MOTIVO DA ULTIMA RECUSA DO "JOGAR", escrito em vermelho entre as vagas e o rodape -- vazio = nenhum (e o rotulo nem
+    /// ocupa lugar). Mora num campo, e nao so no rotulo, porque a tela se remonta inteira a cada lista de vagas. Ver <see cref="MostrarARecusa"/>.
+    /// </summary>
+    private string _motivo = "";
+    private Label? _rotuloDoMotivo;
+
+    /// <summary>(2026-10-24) O "Jogar" foi apertado e a tela espera o servidor: a recusa que chegar agora e dele.</summary>
+    private bool _esperandoOJogar;
+
+    /// <summary>
     /// DEFEITO INJETADO (`--diagv030`, familia RA): a vaga livre volta a dizer a raca sorteada -- o jogo de antes. Falso em
     /// jogo, sempre.
     /// </summary>
@@ -45,6 +55,48 @@ public partial class CharacterSelect : CanvasLayer
         _slots = slots;
         if (IsNodeReady()) Remontar();
     }
+
+    /// <summary>
+    /// ============================ A RECUSA DO "JOGAR" APARECE AQUI (2026-10-24) ============================
+    /// O "Jogar" sobe a cobertura (`Boot.CobrirEntrada`) com esta tela de pe por baixo. Quando o servidor RECUSAVA a entrada -- o erro
+    /// dele no `Entrar`, o login que caiu no meio, o slot que mudou --, a cobertura caia e o motivo ia pro rotulo do LOGIN, escondido
+    /// desde a lista de vagas: o jogador voltava pra esta tela sem saber por que. O dono ("Consertar", o mesmo defeito da tela cinza da
+    /// criacao): o motivo aparece AQUI, em vermelho, entre as vagas e o rodape -- e em ingles pra quem joga em ingles (o rotulo passa
+    /// pela traducao do Godot, como todo texto de tela).
+    ///
+    /// Devolve se a recusa era do "Jogar": so o pedido que esta tela mandou volta pra ela (`_esperandoOJogar`).
+    /// ======================================================================================================
+    /// </summary>
+    public bool MostrarARecusa(string motivo)
+    {
+        if (!_esperandoOJogar) return false;
+        _esperandoOJogar = false;
+        _motivo = motivo;
+        if (_rotuloDoMotivo != null && IsInstanceValid(_rotuloDoMotivo))
+        {
+            _rotuloDoMotivo.Text = motivo;
+            _rotuloDoMotivo.Visible = motivo.Length > 0;
+        }
+        return true;
+    }
+
+    /// <summary>(2026-10-24) O "Jogar" foi apertado: o motivo da tentativa anterior sai, e a recusa que chegar agora e desta.</summary>
+    private void EsperarOServidor()
+    {
+        _esperandoOJogar = true;
+        LimparOMotivo();
+    }
+
+    private void LimparOMotivo()
+    {
+        _motivo = "";
+        if (_rotuloDoMotivo == null || !IsInstanceValid(_rotuloDoMotivo)) return;
+        _rotuloDoMotivo.Text = "";
+        _rotuloDoMotivo.Visible = false;
+    }
+
+    /// <summary>(2026-10-24, robo `--diagtelacinza --jogar`) O rotulo do motivo da recusa do "Jogar" -- nulo antes da primeira montagem.</summary>
+    internal Label? RotuloDoMotivoDeTeste => _rotuloDoMotivo != null && IsInstanceValid(_rotuloDoMotivo) ? _rotuloDoMotivo : null;
 
     public override void _Ready()
     {
@@ -100,6 +152,17 @@ public partial class CharacterSelect : CanvasLayer
         col.AddChild(fileira);
 
         for (int i = 0; i < _slots.Count; i++) fileira.AddChild(MontarSlot(i, _slots[i]));
+
+        // (2026-10-24) O MOTIVO DA RECUSA DO "JOGAR" -- ver `MostrarARecusa`. Sem motivo o rotulo nem aparece, e a tela fica como era.
+        _rotuloDoMotivo = new Label
+        {
+            Text = _motivo,
+            Visible = _motivo.Length > 0,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.Word,
+        };
+        _rotuloDoMotivo.AddThemeColorOverride("font_color", Tema.Perigo);
+        col.AddChild(_rotuloDoMotivo);
 
         var rodape = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         rodape.AddThemeConstantOverride("separation", 6);
@@ -185,7 +248,12 @@ public partial class CharacterSelect : CanvasLayer
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
             var jogar = new Button { Text = "Jogar" };
             int alvo = indice;
-            jogar.Pressed += () => Jogar?.Invoke(alvo);
+            jogar.Pressed += () =>
+            {
+                // (2026-10-24) uma tentativa nova: o motivo da anterior sai, e a recusa que chegar agora e desta (`MostrarARecusa`)
+                EsperarOServidor();
+                Jogar?.Invoke(alvo);
+            };
             caixa.AddChild(jogar);
 
             // APAGAR FICA LONGE DE JOGAR, e discreto de proposito: e o unico botao desta tela que
@@ -231,6 +299,7 @@ public partial class CharacterSelect : CanvasLayer
             int alvo = indice;
             criar.Pressed += () =>
             {
+                LimparOMotivo();   // (2026-10-24) o motivo de um "Jogar" recusado nao fica na volta da criacao
                 if (Bebe is { } bebe) PerguntarSeNasceDoBebe(alvo, bebe);
                 else Criar?.Invoke(alvo);
             };

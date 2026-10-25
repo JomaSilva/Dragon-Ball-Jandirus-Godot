@@ -237,11 +237,40 @@ public static class ClasseDeNuvem
 	/// </summary>
 	public static bool Derruba(string nomeDaZona) => DestinoDaQueda(nomeDaZona) != null;
 
+	/// <summary>
+	/// (2026-10-25) A NUVEM DO CASTELO DO REI VEGETA DERRUBA EM VEGETA -- a UNICA excecao a "o destino e da zona".
+	///
+	/// O z12 tem dois planetas: o Templo Sagrado e, num canto, o castelo do Rei Vegeta (`/area/Vegeta` do `.dmm`, ver
+	/// <see cref="SubZonas.CasteloX0"/>), que desde 2026-10-21 conta como Vegeta pro relogio, o clima e o fim do mundo. A queda pra Terra
+	/// do Templo valia pro mapa inteiro, e o castelo virou um atalho: subir a escada em Vegeta, sair pela porta da frente e pisar na beira
+	/// do patio (107 celulas de nuvem encostadas no chao, x 322..386 y 387..409 do z12) levava o corpo pra Terra. O dono, perguntado:
+	/// *"A nuvem do castelo do Rei Vegeta derruba em Vegeta, no pe da escada do castelo (onde a saida do castelo leva)."* (No DM o `Sky1`
+	/// so barra -- ver <see cref="DestinoDaQueda"/>; a queda inteira e desenho do dono.)
+	///
+	/// So a celula do castelo muda: o resto do z12 segue caindo na Terra, e o <see cref="Derruba"/> continua respondendo pela zona (o
+	/// castelo tambem derruba, so que em outro lugar).
+	/// </summary>
+	/// <returns>O destino da queda nesta posicao do castelo, ou nulo fora dele (ai vale o <see cref="DestinoDaQueda"/> da zona).</returns>
+	public static (string Zona, int Bx, int By)? DestinoNoCastelo(string nomeDaZona, Vec2 pos) =>
+		string.Equals(nomeDaZona, ZonaDoTemplo, StringComparison.OrdinalIgnoreCase) && SubZonas.NoCastelo(pos)
+			? (ZonaDeVegeta, PeDaEscadaDoCasteloBx, PeDaEscadaDoCasteloBy)
+			: null;
+
 	/// <summary>O Templo Sagrado -- z12. E o `Lookout` que o dono citou pelo nome.</summary>
 	public const string ZonaDoTemplo = "Lookout";
 
 	/// <summary>A Terra -- z1.</summary>
 	public const string ZonaDaTerra = "Earth";
+
+	/// <summary>Vegeta -- z3. Pra onde cai quem pisa na nuvem do castelo do Rei Vegeta (ver <see cref="DestinoNoCastelo"/>).</summary>
+	public const string ZonaDeVegeta = "Vegeta";
+
+	/// <summary>
+	/// O PE DA ESCADA DO CASTELO, em coordenada BYOND de Vegeta: o destino da `VCastleExit1` do z12 (`z12_Lookout.passagens`: chegada em
+	/// (1264,16) px = celula (39,0) = BYOND (40,500)), que e a boca da escada `VCastleEntrance1`. Quem decide onde o corpo encosta e o
+	/// funil de pouso, como em toda queda -- e ele o poe na frente da boca, ao lado de onde a saida do castelo deixa quem desce a escada.
+	/// </summary>
+	public const int PeDaEscadaDoCasteloBx = 40, PeDaEscadaDoCasteloBy = 500;
 
 	/// <summary>
 	/// A COORDENADA BYOND DO DESTINO, EM PIXEL DO PORT.
@@ -273,4 +302,10 @@ public static class ClasseDeNuvem
 		string.Equals(nomeDaZonaDeOrigem, Alem.ZonaDoOutroMundo, StringComparison.OrdinalIgnoreCase)
 			? "você atravessa as nuvens e cai no Inferno!"
 			: "você atravessa as nuvens e cai de volta na Terra!";
+
+	/// <summary>(2026-10-25) O aviso pelo DESTINO de verdade: quem cai do castelo do Rei Vegeta cai em Vegeta (ver <see cref="DestinoNoCastelo"/>).</summary>
+	public static string AvisoDaQueda(string nomeDaZonaDeOrigem, string zonaDeDestino) =>
+		string.Equals(zonaDeDestino, ZonaDeVegeta, StringComparison.OrdinalIgnoreCase)
+			? "você atravessa as nuvens e cai de volta em Vegeta!"
+			: AvisoDaQueda(nomeDaZonaDeOrigem);
 }

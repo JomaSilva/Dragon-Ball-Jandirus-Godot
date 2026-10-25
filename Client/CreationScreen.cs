@@ -522,6 +522,9 @@ public partial class CreationScreen : CanvasLayer
 		return p;
 	}
 
+	/// <summary>(2026-10-23) A grade dos cinco mundos -- o `Reabrir` volta a marcar o primeiro quando desfaz o mundo do bebe.</summary>
+	private GridContainer _gradePlaneta = null!;
+
 	/// <summary>
 	/// OS CINCO MUNDOS, com o icone de cada um.
 	///
@@ -534,7 +537,7 @@ public partial class CreationScreen : CanvasLayer
 	private Control PaginaDePlaneta()
 	{
 		VBoxContainer p = NovaPagina();
-		var grade = new GridContainer { Columns = 3 };
+		var grade = _gradePlaneta = new GridContainer { Columns = 3 };
 		grade.AddThemeConstantOverride("h_separation", 10);
 		grade.AddThemeConstantOverride("v_separation", 10);
 		p.AddChild(grade);
@@ -1415,7 +1418,44 @@ public partial class CreationScreen : CanvasLayer
 		_cat?.Sanear(_visual, _ficha.Race, _ficha.Gender);
 
 		Visible = false;
+		// (2026-10-23) A FICHA FOI PRO SERVIDOR: a recusa que vier agora reabre ESTA tela (`ReabrirComOMotivo`).
+		_esperandoOServidor = true;
 		Pronto?.Invoke(_ficha, _visual);
+	}
+
+	/// <summary>
+	/// (2026-10-23) O "Entrar no mundo" ja mandou a ficha e a tela espera a resposta do servidor: o mundo (e a tela some de vez) ou a
+	/// recusa (e ela volta). Falso de novo quando volta, e a cada criacao nova (`Reabrir`).
+	/// </summary>
+	private bool _esperandoOServidor;
+
+	/// <summary>
+	/// ============================ A RECUSA DO SERVIDOR REABRE A CRIACAO (2026-10-23) ============================
+	/// O relato: *"alguns jogadores caem em uma tela cinza na criacao"*. O `Confirmar` esconde esta tela no clique e a cobertura sobe;
+	/// quando o servidor RECUSAVA a ficha (nome de alguem em jogo -- os moradores do mundo inclusos --, a raca fora do mundo, a ficha
+	/// invalida, o erro do proprio servidor), a cobertura caia e o motivo ia pro rotulo do LOGIN, escondido desde a lista de vagas. Sobrava
+	/// o fundo chapado e o selo da versao: a tela cinza, sem saida e sem dizer por que.
+	///
+	/// O dono escolheu *"So mostrar o motivo"*: a tela volta com o RASCUNHO INTACTO (nada daqui e refeito -- o nome, a historia, a roupa e
+	/// as escolhas do jogador estao como ele deixou, pra trocar o que foi recusado e tentar de novo) e com o motivo no rotulo vermelho que a
+	/// tela ja tinha, logo acima do "Entrar no mundo" -- o mesmo das recusas da propria tela. Volta na ULTIMA etapa, "QUEM E VOCE?", que e
+	/// a do nome: a recusa mais comum e o nome, e o resto do rascunho continua a um "Voltar" de distancia. Quem joga em ingles le o motivo
+	/// em ingles: o rotulo passa pela traducao do Godot, como todo texto de tela (`Idioma`), e as recusas estao no dicionario.
+	///
+	/// Devolve se reabriu: so a tela que mandou a ficha (`_esperandoOServidor`) volta -- a recusa do login, de antes da criacao, continua
+	/// onde estava.
+	/// ==========================================================================================================
+	/// </summary>
+	public bool ReabrirComOMotivo(string motivo)
+	{
+		if (!_esperandoOServidor) return false;
+		_esperandoOServidor = false;
+		_passo = _etapas.Count - 1;
+		while (_passo > 0 && !_etapas[_passo].Cabe()) _passo--;
+		MostrarEtapa();
+		_erro.Text = motivo;
+		Visible = true;
+		return true;
 	}
 
 	/// <summary>
@@ -1442,11 +1482,16 @@ public partial class CreationScreen : CanvasLayer
 
 		// (2026-10-17) A CRIACAO COMUM NAO E A DO FILHO: a tela nao e destruida, e sem isto o bebe de uma criacao desistida -- e a
 		// idade travada em zero -- ficavam colados na proxima. Ver `ReabrirComoFilho`.
+		bool vinhaDoFilho = _filho != null;
 		_filho = null;
+		_esperandoOServidor = false;   // (2026-10-23) criacao nova: a recusa de uma ficha de antes nao a reabre
 		_ficha.FilhoDe = 0;
+		// (2026-10-24) A IDADE DO BEBE E LIDA ANTES DE O MINIMO SUBIR: o `MinValue = 1` grampeia o zero do filho em 1 na hora, e o "< 1"
+		// de depois nunca mais o via -- a criacao comum depois da do filho abria com 1 ano, e nao com os 18 de sempre (o dono: "Consertar").
+		bool idadeDoBebe = _idade.Value < 1 && !IdadeDoBebeFicaDeTeste;
 		_idade.MinValue = 1;
 		_idade.Editable = true;
-		if (_idade.Value < 1) _idade.Value = 18;
+		if (idadeDoBebe) _idade.Value = 18;
 
 		// ZERA O GUARDA-ROUPA. Esta tela nao e destruida (e o que tira a travadinha de abrir) e a
 		// `Appearance` dela e um campo unico: sem isto, criar um segundo personagem comecava com a
@@ -1464,6 +1509,16 @@ public partial class CreationScreen : CanvasLayer
 			EscolherPlaneta(SorteioDeRaca.PlanetaDaRaca(_racaSorteada));
 			EscolherRaca(_racaSorteada);
 			_ficha.ChosenClass = _linhagemSorteada;
+		}
+		// (2026-10-23) O MUNDO E A RACA DO BEBE NAO FICAM pra criacao comum. A do filho escreve a raca dos pais na ficha por fora das
+		// grades (`ReabrirComoFilho`), e o meio-Saiyajin nem esta em grade nenhuma: "Nascer como filho(a)", desistir e "Criar outro
+		// personagem" deixava `Race = "Halfbreed"` com o mundo Terra, as etapas mostrando o Humano marcado -- e o servidor recusava a
+		// ficha ("raca nao pertence a esse planeta") toda vez, sem o jogador ter como ver o porque. A criacao comum volta ao mundo de
+		// fabrica, o primeiro, como a tela recem-montada (o `_Ready`).
+		else if (vinhaDoFilho && !MundoDoFilhoFicaDeTeste)
+		{
+			if (_gradePlaneta.GetChildCount() > 0 && _gradePlaneta.GetChild(0) is Button primeiro) MarcarSelecionado(_gradePlaneta, primeiro);
+			EscolherPlaneta(CharacterDraft.Planetas[0]);
 		}
 
 		// VOLTA PRA PRIMEIRA ETAPA. A tela nao e destruida entre um personagem e outro, entao sem
@@ -1545,6 +1600,38 @@ public partial class CreationScreen : CanvasLayer
 
 	/// <summary>(2026-10-17) A recusa que a tela mostra agora (vazio = nenhuma). Pro rodape do robo `--diagfilho`.</summary>
 	internal string ErroDeTeste => _erro.Text;
+
+	/// <summary>(2026-10-23, robo `--diagtelacinza`) O rotulo vermelho das recusas: o texto DESENHADO (`Atr`), a cor e o lugar.</summary>
+	internal Label RotuloDoErroDeTeste => _erro;
+
+	/// <summary>(2026-10-23, robo `--diagtelacinza`) O rascunho que o jogador deixou: o nome, a historia e quantas pecas de roupa.</summary>
+	internal (string Nome, string Historia, int Pecas) RascunhoDeTeste => (_nome.Text, _historia.Text, _visual.Roupa.Count);
+
+	/// <summary>
+	/// (2026-10-23, robo `--diagtelacinza`) O mundo e a raca da ficha contra o que a tela mostra: o cartao de mundo marcado, se a raca e
+	/// uma das do mundo, e o cartao de raca marcado.
+	/// </summary>
+	internal (string Mundo, string MundoMarcado, string Raca, bool RacaDoMundo, string RacaMarcada) MundoDaFichaDeTeste =>
+		(_ficha.Planet,
+		 _gradePlaneta.GetChildren().OfType<Button>().FirstOrDefault(b => b.ButtonPressed)?.Text ?? "",
+		 _ficha.Race,
+		 Array.IndexOf(CharacterDraft.RacasDoPlaneta(_ficha.Planet), _ficha.Race) >= 0,
+		 _gradeRaca.GetChildren().OfType<Button>().FirstOrDefault(b => b.ButtonPressed && !b.IsQueuedForDeletion())?.Text ?? "");
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagtelacinza`): o `Reabrir` deixa o mundo e a raca da criacao do filho na criacao comum -- o jogo de
+	/// antes (o meio-Saiyajin no mundo Terra, recusado sempre). Lido pelo <see cref="Reabrir"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MundoDoFilhoFicaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagtelacinza`): o `Reabrir` volta a perguntar a idade do bebe DEPOIS de subir o minimo -- o jogo de
+	/// antes, a criacao comum depois da do filho com 1 ano. Lido pelo <see cref="Reabrir"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool IdadeDoBebeFicaDeTeste;
+
+	/// <summary>(2026-10-24, robo `--diagtelacinza --emingles`) O rodape da raca, como o Godot o desenha (`Atr`).</summary>
+	internal Label RotuloDaDescricaoDeTeste => _descricao;
 
 	/// <summary>(v0.3.0) O titulo da etapa na tela, a trilha e a raca/linhagem da ficha. Pra bancada `--diagv030` (RA).</summary>
 	internal string TituloDaEtapaDeTeste => _tituloEtapa.Text;

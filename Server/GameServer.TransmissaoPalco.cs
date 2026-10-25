@@ -45,13 +45,17 @@ public partial class GameServer
 	internal int PalcoIT_Id(string chave) =>
 		_corposDaTransmissao.TryGetValue(chave, out ServerPlayer? o) ? o.Id : 0;
 
-	/// <summary>Vence a concentracao agora, pelo tique de producao.</summary>
+	/// <summary>
+	/// Vence a concentracao agora, pelo tique de producao. (2026-10-24) E a viagem inteira: a saida piscando e o clarao da chegada vencem
+	/// junto -- quem os mede no relogio de verdade e o robo `--diagitmaestria`.
+	/// </summary>
 	internal bool PalcoIT_Vencer(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
 		if (!_transmissaoG11.TryGetValue(id, out TransmissaoG11? t)) return false;
 		t.QuandoMs = NowMs() - 1;
 		TickDaTransmissaoG11(pl, t, NowMs());
+		TerminarATransmissaoDeTeste(id);
 		return true;
 	}
 

@@ -212,10 +212,12 @@ public partial class GameServer
 			"/datum/skill/style/KameStyle", "/datum/skill/style/CraneStyle", "/datum/skill/style/GodStyle",
 			"/datum/skill/style/NamekStyle", "/datum/skill/style/SaiyanStyle", "/datum/skill/style/AlienStyle",
 			"/datum/skill/style/DemonStyle", "/datum/skill/ki/Heal", "/datum/skill/general/kikoho",
-			"/datum/skill/kai/Mystic", "/datum/skill/demon/Majin", "/datum/skill/rank/RankChat",
+			"/datum/skill/demon/Majin", "/datum/skill/rank/RankChat",
 		];
+		// (2026-10-23) O MISTICO (`kai/Mystic`) SAIU DESTA LISTA porque saiu de TODO kit: o Kaioshin o trocou pelo Ritual Mistico do
+		// Velho Kaiohshin (o dono), e a copia que o cargo deu sai pela migracao (`ReconciliarODomDoMistico`), e nao pelo kit.
 		var faltando = deviamSair.Where(p => !sai.Contains(p)).ToList();
-		AfirmarPrt("os 7 estilos (e a Cura, o Kikoho, o Mistico, o Majin) saem com o cargo",
+		AfirmarPrt("os 7 estilos (e a Cura, o Kikoho, o Majin) saem com o cargo",
 			faltando.Count == 0, string.Join(", ", faltando));
 
 		// AS QUE TEM DONO FORA DO CARGO. Cada uma pende de pelo menos uma arvore que NAO e de rank
@@ -264,7 +266,8 @@ public partial class GameServer
 		ReconciliarDadiva(cobaia);
 		AfirmarPrt("subir a Kaioshin tira a Spirit Bomb (que era do Kaio do Norte)",
 			!cobaia.Livro.Sabe("/datum/skill/rank/SpiritBomb"));
-		AfirmarPrt("...e entrega o Mistico do Kaioshin", cobaia.Livro.Sabe("/datum/skill/kai/Mystic"));
+		AfirmarPrt("...e NAO entrega mais o Mistico (2026-10-23, o dono: o Potential Unleashed so vem pelo ritual)",
+			!cobaia.Livro.Sabe("/datum/skill/kai/Mystic") && !cobaia.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico));
 		AfirmarPrt("o Kaio-ken que veio de FORA do cargo continua (o treeshrink do DM)",
 			cobaia.Livro.Sabe("/datum/skill/kaioken"));
 
@@ -274,11 +277,8 @@ public partial class GameServer
 		AfirmarPrt("sem cargo, as skills de rank somem", !cobaia.Livro.Sabe("/datum/skill/rank/Revive")
 													  && !cobaia.Livro.Sabe(DadivaDeCargo.CanalDosCargos));
 
-		// O MISTICO SAI JUNTO -- e ate ontem ele NAO saia. Esta linha era, literalmente, um
-		// `Livro.Esquecer("/datum/skill/kai/Mystic")` de faxina no fim desta bancada: a checagem
-		// nao existia e a sobra era varrida a mao. A faxina era a confissao do defeito.
-		AfirmarPrt("...e o Mistico do Kaioshin sai junto (ele so pende da arvore do Outro Mundo)",
-			!cobaia.Livro.Sabe("/datum/skill/kai/Mystic"));
+		// (AQUI MORAVA "...e o Mistico do Kaioshin sai junto": desde 2026-10-23 o cargo nao o da, e a prova de que a copia do cargo
+		// sai -- com a forma -- e da `--ritualkaiteste`, familia C.)
 		AfirmarPrt("...e o Kaio-ken ENSINADO continua sendo dele", cobaia.Livro.Sabe("/datum/skill/kaioken"));
 		cobaia.Livro.Esquecer("/datum/skill/kaioken");
 

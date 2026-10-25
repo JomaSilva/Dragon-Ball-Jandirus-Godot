@@ -200,7 +200,7 @@ public sealed partial class GameServer
 
 		// ---------------------------------------------------------------- C. o Enma pago
 		// A unica montagem em que o Enma VENDE a volta a quem tem pena: o karma ja voltou a zero e a pena ainda corre (com o coracao negro
-		// ele julga de novo em vez de vender -- o "o milhao nao compra" da `--karmateste`).
+		// ele julga de novo em vez de vender -- o "o zeni nao compra" da `--karmateste`).
 		Condenar();
 		pl.Karma = Karma.Neutro;
 		MoveToZone(pl.Id, alem, naMesa);

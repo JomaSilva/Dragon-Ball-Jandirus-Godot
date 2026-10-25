@@ -219,6 +219,45 @@ public partial class RoboDosCorposDeRaca : Node
 		}
 		finally { Jandirus.Server.GameServer.FrostNpcSemVariedadeDeTeste = false; }
 		await Segundos(0.5);
+
+		// ---- 6. (2026-10-24) os Androides 17 e 18, com a arte que o dono trouxe ----
+		(float X, float Y)[] casasDosAndroides = [(-1.5f, 0), (1.5f, 0)];
+		List<int> andr = srv.PalcoCorpos_Androides(eu, casasDosAndroides);
+		bool vestidos2 = andr.Count == 2 && await Ate(() => andr.All(i => Folha(i).Length > 0), 10);
+		await Segundos(0.6);
+		CharacterVisual? v17 = vestidos2 ? Boneco(andr[0]) : null, v18 = vestidos2 ? Boneco(andr[1]) : null;
+		Conferir(v17 != null && Folha(andr[0]) == "NewPaleMale"
+				 && v17.RoupasNoCorpoDeTeste() is [var roupa17] && roupa17.EndsWith("/Android17 Suit.tres", StringComparison.Ordinal)
+				 && v17.CabeloDeTeste.Contains("Hair_Long", StringComparison.Ordinal)
+				 && v17.TintaDoCabeloDeTeste is { Modo: 0 } t17 && t17.Tinta.DistanceTo(new Vector3(10, 10, 10) / 255f) < 0.01f,
+				 "6. O ANDROIDE 17 (*\"o 17 vai usar a roupa do 17\"*): a roupa dele por cima do corpo palido do DM, e o cabelo `Long` preto "
+				 + $"(*\"deve usar o cabelo q era no DM\"*) -- corpo {(andr.Count > 0 ? Folha(andr[0]) : "?")}, roupa "
+				 + $"[{string.Join(", ", v17?.RoupasNoCorpoDeTeste() ?? [])}], cabelo {v17?.CabeloDeTeste} {v17?.TintaDoCabeloDeTeste}");
+		Conferir(v18 != null && Folha(andr[1]) == "Android 18 Base" && v18.RoupasNoCorpoDeTeste().Count == 0 && !v18.OlhosVisiveisDeTeste
+				 && v18.CabeloDeTeste.Contains("Hair_Long", StringComparison.Ordinal)
+				 && v18.TintaDoCabeloDeTeste is { Modo: 0 } t18 && t18.Tinta.DistanceTo(new Vector3(255, 222, 120) / 255f) < 0.01f,
+				 "6b. A ANDROIDE 18 (*\"a 18 vai ter o corpo base da 18\"*): a folha dela, sem roupa por cima e sem os olhos de gente (a folha "
+				 + $"traz os dela), com o cabelo `Long` loiro do DM -- corpo {(andr.Count > 1 ? Folha(andr[1]) : "?")}, "
+				 + $"{v18?.RoupasNoCorpoDeTeste().Count} peca(s), olhos {v18?.OlhosVisiveisDeTeste}, cabelo {v18?.CabeloDeTeste} {v18?.TintaDoCabeloDeTeste}");
+		Fotografar("user://androides-1.png");
+		srv.PalcoCorpos_Tirar(andr);
+		await Segundos(0.8);
+
+		// ---- 7. o contra-exemplo da 18 ----
+		Jandirus.Server.GameServer.AndroideComOCorpoDoPovoDeTeste = true;
+		try
+		{
+			List<int> doPovo = srv.PalcoCorpos_Androides(eu, casasDosAndroides);
+			await Ate(() => doPovo.Count == 2 && doPovo.All(i => Folha(i).Length > 0), 10);
+			await Segundos(0.6);
+			string folha18 = doPovo.Count > 1 ? Folha(doPovo[1]) : "";
+			Conferir(folha18.Length > 0 && folha18 != "Android 18 Base",
+					 $"CONTRA-EXEMPLO (defeito injetado: a 18 com o corpo do povo, o jogo de antes): ela sai de `{folha18}` -- a regua do passo 6b reprovaria");
+			Fotografar("user://androides-2-defeito.png");
+			srv.PalcoCorpos_Tirar(doPovo);
+		}
+		finally { Jandirus.Server.GameServer.AndroideComOCorpoDoPovoDeTeste = false; }
+		await Segundos(0.5);
 	}
 
 	/// <summary>Reabre a criacao do Saibaman e avanca ate a etapa da aparencia (cinco "Avançar" no maximo).</summary>
@@ -298,6 +337,7 @@ public partial class RoboDosCorposDeRaca : Node
 		VisualCatalog.SemOsCorposDasRacasNovasDeTeste = false;
 		VisualCatalog.SaibamanComOlhosDeGenteDeTeste = false;
 		Jandirus.Server.GameServer.FrostNpcSemVariedadeDeTeste = false;
+		Jandirus.Server.GameServer.AndroideComOCorpoDoPovoDeTeste = false;
 		CreationScreen.NoneNaListaDeTeste = false;
 		foreach (string l in _linhas) GD.Print("[dcorpos] " + l);
 		GD.Print(_falhas.Count == 0 ? "[dcorpos] ===== TUDO OK =====" : $"[dcorpos] ===== {_falhas.Count} FALHA(S) =====");

@@ -186,6 +186,10 @@ public partial class ChamaDeAura : Node2D
 	/// no corpo e carmim fundo em volta, com a beirada em vermelho vivo. O BLUE SAI DA COR DA FORMA -- e e por isso que o
 	/// Evolution e mais escuro com o mesmo desenho (*"ela tem o formato igual a do blue, a diferenca ta na cor"*): o
 	/// `1c7cff` dele contra o `3ad2ff` do Blue, no catalogo.
+	///
+	/// (2026-10-24/25) O FOGO DO DEUS FICOU VERMELHO por um dia, a pedido do dono (*"deixe o ssj deus mais vermelho e a aura
+	/// dele tb"*), e VOLTOU a este quando ele viu as fotos: *"a aura anterior tava melhor do ssj god, o cabelo atual ta top"*. O
+	/// cabelo vermelho ficou (`Catalogo.VermelhoDoCabeloDivino`); o fogo e o amarelo-laranja de sempre.
 	/// </summary>
 	public static (Color Miolo, Color Meio, Color Borda, Color Aro) PaletaDe(FolhaDeAura f, Color cor) => f switch
 	{

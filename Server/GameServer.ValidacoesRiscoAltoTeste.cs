@@ -428,9 +428,10 @@ public sealed partial class GameServer
 		TeleporteFuraPrisaoDeTeste = true;
 		try
 		{
-			Ouvir(() => ChegarPelaTransmissaoG11(yardrat, new TransmissaoG11 { Alvo = preso.Id, Ancora = yardrat.Pos, Kireq = 10 }));
+			// (2026-10-24) a concentracao vencida comeca a SAIR (o corpo pisca 0,2 s); a viagem inteira vence aqui -- ver GameServer.SaidaDaTransmissao.cs
+			Ouvir(() => { ChegarPelaTransmissaoG11(yardrat, new TransmissaoG11 { Alvo = preso.Id, Ancora = yardrat.Pos, Kireq = 10 }); TerminarATransmissaoDeTeste(yardrat.Id); });
 			bool entrou = NaSala(yardrat);
-			Ouvir(() => ChegarPelaTransmissaoG11(preso, new TransmissaoG11 { Alvo = amigo.Id, Ancora = preso.Pos, Kireq = 10 }));
+			Ouvir(() => { ChegarPelaTransmissaoG11(preso, new TransmissaoG11 { Alvo = amigo.Id, Ancora = preso.Pos, Kireq = 10 }); TerminarATransmissaoDeTeste(preso.Id); });
 			ValCheca("(defeito injetado: o teleporte nao pergunta) as duas provas de cima REPROVAM -- um entra na Sala sem porta, sem chave "
 					+ "e sem recarga, e o preso sai dela",
 					entrou && preso.Zone.Hash == terra.Hash, $"yardrat entrou {entrou}, preso em {preso.Zone.Name}");

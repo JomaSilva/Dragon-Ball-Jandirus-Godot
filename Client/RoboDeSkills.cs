@@ -878,25 +878,29 @@ public partial class RoboDeSkills : Node
 	private bool Prova(Func<bool> f) { try { return f(); } catch (Exception e) { Nota("  excecao: " + e.Message); return false; } }
 
 	// =====================================================================
-	// F8 -- A ABA SKILLS: nome + arvore/tier + o que faz (o defeito H)
+	// F8 -- A ABA PASSIVAS: nome + arvore/tier + o que faz (o defeito H)
 	// =====================================================================
+	/// <summary>
+	/// (2026-10-24) O QUE JA SEI MORA NA ABA PASSIVAS -- o dono separou as ativas das passivas (*"separar skills ativas de passivas nas
+	/// abas"*): a Skills ficou so com as acoes. Os contratos desta familia seguiram a lista.
+	/// </summary>
 	private async System.Threading.Tasks.Task F8_AAbaSkills(MenuJogo menu, GameClient cli, SkillCatalog cat)
 	{
-		Nota("--- F8: a aba Skills (o que ja sei) ---");
-		Button? aba = Botao(menu, "Skills");
-		if (aba == null) { Checa("achei a aba Skills", false); return; }
+		Nota("--- F8: a aba Passivas (o que ja sei) ---");
+		Button? aba = Botao(menu, "Passivas");
+		if (aba == null) { Checa("achei a aba Passivas", false); return; }
 		await Clicar(aba);
-		Control? pg = menu.PaginaDeTeste("Skills");
-		Checa("a aba Skills esta na tela", pg is { Visible: true } && menu.AbaDeTeste == "Skills");
+		Control? pg = menu.PaginaDeTeste("Passivas");
+		Checa("a aba Passivas esta na tela", pg is { Visible: true } && menu.AbaDeTeste == "Passivas");
 		if (pg == null) return;
 
 		Checa("as compradas aparecem agrupadas pela arvore ('STRENGTH OF BODY (10)')", Rotulos(pg).Any(l => l.Text.StartsWith("STRENGTH OF BODY") && l.Text.Contains("(10)")));
-		string? valor = menu.ValorDesenhado("Skills", "Basic Training");
+		string? valor = menu.ValorDesenhado("Passivas", "Basic Training");
 		Checa("a coluna da direita diz o TIER e a categoria limpa ('tier 1 · buff'), nao o `type` cru", valor != null && valor.Contains("tier 1") && valor.Contains("buff"), valor ?? "(nao achei a linha)");
 		Checa("DEFEITO H MORTO: nenhum rotulo mostra o `type` sujo do DM ('Body Buff', 'Sprit Buff', 'misc')",
 			  !Rotulos(pg).Any(l => l.Text is "Body Buff" or "Sprit Buff" or "misc" or "Misc" or "Physical"));
 		Checa("cada linha diz O QUE A SKILL FAZ (os efeitos extraidos, em portugues)", Rotulos(pg).Any(l => l.Text.Contains("ataque físico +0,1") || l.Text.Contains("ataque físico +0.1")));
-		await Guardar("depois-07-aba-skills", await Foto());
+		await Guardar("depois-07-aba-passivas", await Foto());
 
 		Button? voltar = Botao(menu, "Learning");
 		if (voltar != null) await Clicar(voltar);

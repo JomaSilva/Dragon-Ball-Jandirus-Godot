@@ -74,7 +74,8 @@ public sealed partial class GameServer
 	///
 	/// (dono, 2026-10-23) MENOS A SKILL DE CARGO QUE O ENSINO NAO DA MAIS (a chave da Sala do Tempo de um Guardiao doador): a copia
 	/// que o bio levaria e ensinada, e a reconciliacao do cargo a tiraria no tique seguinte -- o parto contaria uma skill que ele nao
-	/// tem. A amostra continua guardando o livro inteiro; quem escolhe e o parto.
+	/// tem. A amostra continua guardando o livro inteiro; quem escolhe e o parto. E MENOS O POTENTIAL UNLEASHED (a skill `kai/Mystic`):
+	/// o dono fechou o ensino dele por porta nenhuma, e a heranca do bio era a ultima.
 	/// </summary>
 	private int HerdarOLivroDosDoadores(ServerPlayer pl, Gestacao g)
 	{
@@ -89,6 +90,8 @@ public sealed partial class GameServer
 		{
 			if (_skills.Get(path) == null || pl.Livro.Sabe(path)) continue;
 			if (EnsinadasQueSaem.Contains(path) && !Jandirus.Core.Ranks.DadivaDeCargo.EnsinadaDoCargoFicaDeTeste) continue;
+			// (2026-10-23) ...nem o Potential Unleashed do doador: so o ritual o da (`EnsinoDeSkill.SoPeloRitual`), e o laboratorio nao e porta.
+			if (Jandirus.Core.Skills.EnsinoDeSkill.SoPeloRitual(_skills.Get(path)!)) continue;
 			pl.Livro.DarComoEnsinada(path);
 			herdadas++;
 		}

@@ -277,7 +277,7 @@ public partial class GameServer
 	/// <summary>
 	/// `enma_judge_to_hell()` + `afterlife_alignment_check()` (`SkyNPCs.dm:176-182, 228-236`), medidos no
 	/// host: a pena pela formula, o corpo no portao, a passagem que devolve, a pena cumprida que limpa o
-	/// karma, e o milhao que nao compra a volta de um coracao negro. Tudo fotografado e devolvido no `finally`.
+	/// karma, e o zeni que nao compra a volta de um coracao negro. Tudo fotografado e devolvido no `finally`.
 	/// </summary>
 	private void OJulgamentoDoEnma(ServerPlayer pl, Action<string, bool, string> Checa)
 	{
@@ -351,12 +351,12 @@ public partial class GameServer
 				  pl.Ficha.hell_lockout_until == 0 && pl.Karma == Karma.Neutro && pl.Zone.Equals(alem),
 				  $"pena {pl.Ficha.hell_lockout_until} karma {pl.Karma} zona {pl.Zone.Name}");
 
-			// o milhao nao compra a volta de um coracao negro
+			// zeni nenhum compra a volta de um coracao negro (dois milhoes: dez vezes o preco)
 			pl.Pos = naMesa;
 			pl.Karma = -30;
 			pl.Ficha.Zeni = 2_000_000;
 			EnmaReviverPorZeni(pl);
-			Checa("o MILHAO nao compra a volta de um coracao negro: o Enma julga antes de vender (continua morto, zeni intacto, no Inferno)",
+			Checa("o ZENI nao compra a volta de um coracao negro: o Enma julga antes de vender (continua morto, zeni intacto, no Inferno)",
 				  pl.Ficha.dead && pl.Zone.Equals(inferno) && Math.Abs(pl.Ficha.Zeni - 2_000_000) < 1e-6,
 				  $"morto={pl.Ficha.dead} zona={pl.Zone.Name} zeni={pl.Ficha.Zeni}");
 		}

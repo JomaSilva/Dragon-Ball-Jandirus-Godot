@@ -1026,6 +1026,8 @@ public partial class TelaDeInventario : CanvasLayer
 		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.
 		"ler" => "Ler (gasta o livro)",
 		"jogar" => "Jogar no alvo marcado",
+		// (2026-10-23) o par de brincos Potara se da a quem esta marcado -- ver `ParDePotara`.
+		ParDePotara.AcaoDar => "Dar ao alvo marcado",
 		// A ROUPA: a guardada VESTE, a que esta no corpo SAI e vai pra mochila. Ver `RoupaGuardada`.
 		RoupaGuardada.AcaoVestir => "Vestir",
 		RoupaGuardada.AcaoTirar => "Tirar e guardar",

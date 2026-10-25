@@ -88,7 +88,8 @@ public sealed partial class Fighter
 
         // ESCALA TROCADA NO ORIGINAL: staminadeBuff e 0-100 (o CheckNutrition escreve ate 100),
         // mas esta linha o trata como 0-1. O resultado pratico e que statstamina fica preso em 1
-        // -- so cairia com o personagem abaixo de 1% de folego. Portado como esta: mexer aqui
+        // -- so cai com o personagem abaixo de 1% de folego (e cai de verdade desde 2026-10-24, quando o
+        // staminadeBuff passou a ser escrito: `Nutricao.FolegoNoPoder`). Portado como esta: mexer aqui
         // mudaria offense/defense de todo mundo de uma vez.
         statstamina = Math.Max(Math.Min(1, staminadeBuff), 0.8);
 

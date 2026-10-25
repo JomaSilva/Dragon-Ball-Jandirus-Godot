@@ -67,7 +67,14 @@ public partial class MenuJogo
 	/// constantes que o servidor consulta pra aplicar cada pena, pra tela nao prometer o que ele nao cumpre.
 	/// </summary>
 	internal static List<string> EfeitosDoCorpo(List<Protocol.ParteState> partes, double hp, string raca) =>
-		DebuffsDeMembro.EmVigor(PerdasDe(partes), hp, raca);
+		DebuffsDeMembro.EmVigor(PerdasDe(partes), hp, raca, VidaQuePesaDe(partes));
+
+	/// <summary>
+	/// (2026-10-24) A VIDA QUE PESA NO PODER pelo que veio no fio -- a mesma conta do servidor (`Body.VidaQuePesaNoPoder`): cada membro so
+	/// conta abaixo da metade da vida dele. Sem corpo no fio ainda, -1 (a linha do poder sai da vida inteira).
+	/// </summary>
+	internal static double VidaQuePesaDe(List<Protocol.ParteState> partes) =>
+		partes.Count == 0 ? -1 : DebuffsDeMembro.VidaQuePesaNoPoder(partes.Select(p => ((double)p.Vida, p.Decepado)));
 
 	/// <summary>
 	/// O `injury_word` do DM (`HtmlUI.dm:313-319`), em portugues. Os cortes sao os MESMOS do

@@ -45,7 +45,7 @@ namespace Jandirus.Server;
 /// A SEGUNDA NAO TEM PRAZO. Ela ja foi um andaime de 60 s (`MsNoAlem`, hoje so na historia de
 /// `Alem.cs`), da epoca em que nenhuma volta do original existia; o dono pediu o oposto
 /// (2026-09-04): o morto fica no Outro Mundo ate alguem pagar a volta -- as esferas, a tecnica de
-/// reviver de um vivo, ou o Enma Daioh (secao 5, 1.000.000 de zeni). Ver `Alem.TipoDoEnma`.
+/// reviver de um vivo, ou o Enma Daioh (secao 5, `Alem.PrecoDoReviveDoEnma`). Ver `Alem.TipoDoEnma`.
 /// ========================================================================================
 ///
 /// ============================ UM RELOGIO SO, E ELE NAO E MAIS ESCRITO A MAO ============================
@@ -721,10 +721,15 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O `enma_zeni_revive()` do DM (`SkyNPCs.dm:185-197`): 1.000.000 de zeni, o BP expresso em 25% por
-	/// uma hora (`zeni_revive_debuff_until`, lido em `Fighter.Power`), e a volta pro berco INTEIRO --
-	/// vida, membros, Ki e folego, que e o que `Revive()` faz la (`Death.dm:163-173`) e o `Renascer`
-	/// faz aqui.
+	/// O `enma_zeni_revive()` do DM (`SkyNPCs.dm:185-197`): o preco (`Alem.PrecoDoReviveDoEnma`, 200.000 zeni desde
+	/// 2026-10-23; o DM cobra 1.000.000) e a volta pro berco INTEIRO -- vida, membros, Ki e folego, que e o que
+	/// `Revive()` faz la (`Death.dm:163-173`) e o `Renascer` faz aqui.
+	///
+	/// SEM O DEBUFF DE BP (2026-10-23, o dono: *"faca com q ao reviver n tenha mais o debuff de bp"*): o DM arma aqui
+	/// uma hora de BP expresso a 25% (`zeni_revive_debuff_until`, `SkyNPCs.dm:194`, cortado em `base.dm:136`). Este
+	/// port nao arma mais, e o prazo que o save de quem pagou ate a v0.4.4 ainda traz nao corta nada
+	/// (`Fighter.PowerLevel`): as duas linhas da regra de antes so rodam com o defeito injetado
+	/// `Alem.DebuffDoEnmaComoAntesDeTeste`.
 	///
 	/// O DOBRO PRA QUEM FOI APAGADO POR HAKAI (`hakai_mark`, `:189`) sai do `PrecoDoEnmaPara`
 	/// (`GameServer.KitDoDeus.cs`), e a marca cai na volta a vida (`CombatState.Reviver`).
@@ -735,7 +740,7 @@ public partial class GameServer
 	{
 		if (ObraQueAceita(pl, "enma_reviver") == null) { Avisar(pl, "o Enma não está ao alcance -- fale com ele na mesa dele."); return; }
 		if (!pl.Ficha.dead) { Avisar(pl, "Enma Daioh troveja: \"Os vivos não têm negócio na minha mesa!\""); return; }
-		if (pl.Karma < 0) { JulgarProInferno(pl); return; }   // o milhao nao compra a volta de um coracao negro: o Enma julga antes de vender
+		if (pl.Karma < 0) { JulgarProInferno(pl); return; }   // zeni nenhum compra a volta de um coracao negro: o Enma julga antes de vender
 		if (pl.Ficha.aged_out)
 		{
 			Avisar(pl, "Enma Daioh: \"Nem todo o zeni do universo compra mais um dia para quem já viveu todos os seus.\"");
@@ -749,15 +754,15 @@ public partial class GameServer
 			return;
 		}
 		pl.Ficha.Zeni -= custo;
-		pl.Ficha.zeni_revive_debuff_until = NowMs() + Alem.MsDoDebuffDoEnma;
+		// SEM O DEBUFF (ver o cabecalho): o prazo de uma hora a 25% so se arma no defeito injetado da regra de antes.
+		if (Alem.DebuffDoEnmaComoAntesDeTeste) pl.Ficha.zeni_revive_debuff_until = NowMs() + Alem.MsDoDebuffDoEnma;
 		Avisar(pl, "Enma Daioh carimba a sua ficha: \"De volta à terra dos vivos!\"");
-		Avisar(pl, "seu corpo volta frágil da viagem: o seu poder fica em 25% por uma hora.");
 		Renascer(pl);
 		MandarFicha(pl);
 		Persistir(pl);
 		GD.Print($"[server] {pl.Name} pagou o Enma ({custo:N0} zeni) e voltou a vida");
 	}
 
-	/// <summary>DEFEITO INJETADO (`--alemteste`): o Enma de graca -- a prova "sem o milhao ele recusa" tem que ficar vermelha.</summary>
+	/// <summary>DEFEITO INJETADO (`--alemteste`): o Enma de graca -- a prova "sem o preco ele recusa" tem que ficar vermelha.</summary>
 	internal bool EnmaNaoCobraDeTeste;
 }

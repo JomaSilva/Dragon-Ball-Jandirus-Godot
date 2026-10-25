@@ -363,7 +363,7 @@ public sealed class EstadoRacial
 	}
 
 	/// <summary>
-	/// (2026-10-19) O WARRIOR RACE ESTA ACESO: o TRONCO ou a CABECA abaixo de 20% da propria vida. O dono: *"mudar de 20% de vida pra 20% do
+	/// (2026-10-19) O WARRIOR RACE ESTA ACESO: o TRONCO ou a CABECA abaixo de 50% da propria vida (20% ate 2026-10-24). O dono: *"mudar de 20% de vida pra 20% do
 	/// tronco ou cabeça"* -- as duas partes que derrubam e matam (`Vitalidade.Nucleo`); um braco quebrado nao acende, e a cabeca rachada
 	/// acende mesmo com o resto inteiro. Uma pergunta so pro efeito e pra linha do HUD.
 	/// </summary>

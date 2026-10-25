@@ -73,8 +73,8 @@ namespace Jandirus.Server;
 ///   * o `Goto Spawn` SAI (era teleporte de graca, com um botao no menu "Other" e nenhum preco);
 ///   * a MORTE FICA -- e assim a prisao deixa de ser absoluta e passa a ter um PRECO.
 ///
-/// E o preco existe: morrer neste jogo ja custa karma, o julgamento do Enma, o debuff de revive
-/// por Zeni e idade. Um preso sem Guardiao online nao fica sem jogo -- fica com uma escolha cara.
+/// E o preco existe: morrer neste jogo ja custa karma, o julgamento do Enma, o zeni do revive
+/// e idade. Um preso sem Guardiao online nao fica sem jogo -- fica com uma escolha cara.
 /// Um caminho de saida gratuito e uma tranca que nao tranca; um caminho de saida caro e uma regra.
 ///
 /// EM CODIGO: `IrProAlem` (`GameServer.Alem.cs`) chama <see cref="AMorteSaiDaSala"/>, que LIMPA o
@@ -366,7 +366,7 @@ public sealed partial class GameServer
 
 		// ============================ O PRECO DA SAIDA TEM QUE SER LIDO ANTES ============================
 		// A outra saida da prisao e MORRER (decisao do dono -- ver o cabecalho), e ela e cara: karma,
-		// o julgamento do Enma, o debuff de revive por Zeni, idade. Um custo que so se descobre do
+		// o julgamento do Enma, o zeni do revive, idade. Um custo que so se descobre do
 		// lado de dentro nao e custo, e pegadinha -- que e a razao de este aviso ser uma acao do
 		// MENU DA PORTA, e nao uma mensagem de boas-vindas. Quem vai ser preso tem que saber, antes
 		// de atravessar, que o unico jeito de sair sozinho e morrendo.

@@ -14,9 +14,10 @@ namespace Jandirus.Core.Stats;
 ///                        Entram como `BP*m - BP`, entao NAO se multiplicam entre si. Um
 ///                        valor abaixo de 1 aqui e PENALIDADE, mesmo parecendo buff.
 ///
-///  3) APLICAM NO FIM     debuff do revive por Zeni (25%), vazamento do Frost mutante, e o corte
-///                        de nocaute. (A larva bio saiu daqui em 2026-10-17: ela e RELAXADA -- 5 --, e o
-///                        relaxado trava no topo, como o poder escondido.)
+///  3) APLICAM NO FIM     vazamento do Frost mutante e o corte de nocaute. (A larva bio saiu daqui
+///                        em 2026-10-17: ela e RELAXADA -- 5 --, e o relaxado trava no topo, como o
+///                        poder escondido. O debuff do revive por Zeni -- 25% por uma hora -- saiu em
+///                        2026-10-23: so o defeito injetado da regra de antes o aplica.)
 ///
 /// Trocar um fator de familia nao quebra compilacao e nao aparece em teste raso -- aparece
 /// meses depois como numero esquisito em forma + Kaio-ken + God Ki ao mesmo tempo.
@@ -30,13 +31,50 @@ public sealed partial class Fighter
 	/// </summary>
 	public double AdditiveBoost(double mult) => BP * mult - BP;
 
+	// ============================ (2026-10-24) PERDER PODER SO ABAIXO DA METADE ============================
+	// O dono: *"faça tb q perder poder seria so se o ki estiver abaixo de 50% ai começa a perder bp com o ki baixo e tb so começa a perder
+	// bp quando membros começam a ficar abaixo de 50% entao tipo se o torço ta abaixo de 50% de hp vc começa a perder bp, mas se seu braço
+	// estiver full e tomar dano e continuar acima de 50% vc n perde bp, somente se o membro ficar abaixo de 50%"*. No DM cada ponto de Ki e
+	// cada ponto da vida (a media dos membros, aqui) custavam poder ja a partir do cheio (`base.dm:75-76`); agora as duas razoes so descem
+	// abaixo da METADE -- o Ki do tanque, e a vida de CADA membro (`DebuffsDeMembro.VidaQuePesaNoPoder`). Os pisos ficaram os de sempre
+	// (0,6 nos dois), e o Ki acima do cheio continua o bonus linear. Entram no poder expresso e nos atributos (`Statify`), como antes.
+	// ===================================================================================================
+
+	/// <summary>Daqui pra cima (a razao do tanque) o Ki nao tira poder. Ver <see cref="RazaoDoKiNoPoder"/>.</summary>
+	public const double LimiarDoKiNoPoder = 0.5;
+
+	/// <summary>O piso da razao do Ki -- o `max(..., 0.6)` do DM (`base.dm:75`), alcancado agora so com o tanque vazio.</summary>
+	public const double PisoDoKiNoPoder = 0.6;
+
+	/// <summary>
+	/// A RAZAO DO KI NA CONTA DE PODER (o `kiratio`): da METADE do tanque ate o cheio ela e 1; abaixo da metade desce em linha reta ate o
+	/// piso (0,6) no tanque vazio; ACIMA do cheio e a propria razao -- 200% = 2x, linear, como sempre.
+	/// </summary>
+	public static double RazaoDoKiNoPoder(double ki, double maxKi)
+	{
+		double r = ki / Math.Max(maxKi, 1e-9);
+		if (r >= 1) return r;
+		if (r >= LimiarDoKiNoPoder) return 1;
+		return PisoDoKiNoPoder + (1 - PisoDoKiNoPoder) * Math.Max(r, 0) / LimiarDoKiNoPoder;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--membrosteste`, e as reguas do Ki da `--g12teste` e da `--formasteste`): a perda de poder de antes de 2026-10-24
+	/// -- o Ki tirando poder desde o cheio (`max(Ki/MaxKi, 0.6)`) e a vida pela MEDIA dos membros (`max(HP/100, 0.6)`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool PerdaDePoderComoAntesDeTeste;
+
 	public void PowerLevel(double gravBalance = 1, long agoraMs = 0)
 	{
 		if (BP == 0) return;
 
 		// --- estado do corpo: pisos generosos pra ferimento nao virar espiral ----------
-		kiratio = Math.Max(Ki / Math.Max(MaxKi, 1e-9), 0.6);
-		hpratio = Math.Max(HP / 100, 0.6);
+		// (2026-10-24) so abaixo da METADE -- do tanque e de cada membro. Ver o bloco acima.
+		kiratio = PerdaDePoderComoAntesDeTeste ? Math.Max(Ki / Math.Max(MaxKi, 1e-9), 0.6) : RazaoDoKiNoPoder(Ki, MaxKi);
+		double vidaQueConta = PerdaDePoderComoAntesDeTeste ? HP
+							: vidaQuePesa >= 0 ? vidaQuePesa
+							: 100 * (1 - Jandirus.Core.Combat.DebuffsDeMembro.PesoDoMembroNoPoder(HP));
+		hpratio = Math.Max(vidaQueConta / 100, 0.6);
 		staminaratio = Math.Max(staminadeBuff / 100, 0.3);
 
 		buffBuff = expandBuff * giantFormbuff * ArtifactsBuff * eyeBuff;
@@ -161,7 +199,9 @@ public sealed partial class Fighter
 			expressedBP = (DmMath.Round(Math.Max(tempBP, 1) * nnetBuff * angerBuff) + expressedAdd) * powerMod;
 
 			// familia 3 -- no fim de tudo
-			if (zeni_revive_debuff_until != 0 && agoraMs < zeni_revive_debuff_until)
+			// (2026-10-23) O DEBUFF DO REVIVE POR ZENI SAIU (o dono): o prazo que o save de quem pagou o Enma ate a v0.4.4 ainda traz
+			// nao corta mais nada. So o defeito injetado da regra de antes o aplica (`Alem.DebuffDoEnmaComoAntesDeTeste`).
+			if (Jandirus.Core.World.Alem.DebuffDoEnmaComoAntesDeTeste && zeni_revive_debuff_until != 0 && agoraMs < zeni_revive_debuff_until)
 				expressedBP = DmMath.Round(expressedBP * 0.25);
 
 		}
@@ -238,7 +278,7 @@ public sealed partial class Fighter
 	/// DUAS COISAS QUE ELA NAO ENXERGA, e e honesto dize-las:
 	///   - a perna da ESTAMINA esta morta na conta do jogo (`staminaratio` le `staminadeBuff`, que
 	///     nasce em 100 e nada abaixa hoje) -- quando alguem a acordar, ela entra aqui sozinha;
-	///   - o que multiplica o poder DEPOIS (nocaute, debuff do revive, vazamento do Frost) some na
+	///   - o que multiplica o poder DEPOIS (nocaute, vazamento do Frost) some na
 	///     divisao de proposito: aquilo nao e "estar inteiro", e estar cortado. O nocaute ja tem
 	///     linha propria na tela.
 	///
@@ -263,8 +303,8 @@ public sealed partial class Fighter
 	/// arredondamento: neste jogo os fatores tem tres FAMILIAS (ver o cabecalho desta classe), e
 	/// so a primeira multiplica. Medido: Kaio-ken 2x com Mistico 2x da 3x de verdade (os dois
 	/// SOMAM na base) e o produto ingenuo diria 4x -- 33% de erro; com forma, raiva e gravidade
-	/// juntos o erro medido passa de 126%; e o corte de 25% do revive por Zeni nao tem campo
-	/// nenhum onde caber num produto de fatores.
+	/// juntos o erro medido passa de 126%; e um corte do fim da conta (o vazamento do Frost mutante)
+	/// nao tem campo nenhum onde caber num produto de fatores.
 	///
 	/// Uma quebra por fator na tela e ilustracao bem-vinda, mas o TOTAL sai daqui. Se as duas
 	/// discordarem, e a quebra que esta incompleta.
@@ -298,10 +338,20 @@ public sealed partial class Fighter
 			fator *= gfm != 0 ? gfm / Math.Max(ssjBuff, 1) : godki.godki_mult;
 		}
 
-		// o Primal nao recebe BP do God Ki: nele o ki divino so destrava o SSJ4 Limit Breaker
-		if (godki_give_mult != 0 && SaiyanLineage != "Primal Saiyan") fator *= godki_give_mult;
+		// (2026-10-23) O DESPERTAR NAO MULTIPLICA MAIS O PODER. O DM dava 2,5x PRA SEMPRE a quem despertava, transformado ou nao
+		// (`godki_give_mult = godki_boost`, `godkiattain.dm:37`, aplicado aqui como em `base.dm:134`; o Primal nunca, `:38`), e o dono:
+		// *"o god ki dobrar o bp quando pega n achei mt legal nao, so as formas e as passivas de god ki ja estao bons"*. Ficam as formas
+		// divinas (acima) e as passivas. O campo saiu da ficha: o save de quem ja tinha o bonus ainda o traz, a leitura o ignora, e ele
+		// some no login. So o defeito injetado da bancada devolve o fator (a todo desperto que nao e Primal, como no jogo da v0.4.4).
+		if (BonusDoGodKiPraSempreDeTeste && godki is { awakened: true } && SaiyanLineage != "Primal Saiyan") fator *= godki_boost;
 		return fator;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--godkiteste`, familias 4 e 7): quem despertou o ki divino volta a valer x2,5 pra sempre, forma ou nao -- o jogo de
+	/// antes de 2026-10-23. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BonusDoGodKiPraSempreDeTeste;
 
 	/// <summary>
 	/// `god_form_mult()` -- o multiplicador CHEIO da forma divina ativa, ou 0 fora de uma.
@@ -333,11 +383,19 @@ public sealed partial class Fighter
 	// =====================================================================
 	// TETO DE TREINO
 	// =====================================================================
-	/// <summary>BP acima disto treina com retorno decrescente. 0 desliga.</summary>
+	/// <summary>
+	/// BP acima disto treina com retorno decrescente (o ganho vezes `BpGainSoftcap / BP`, na forca <see cref="BpGainSoftStrength"/>). 0
+	/// desliga. (2026-10-24) DESLIGADO PELA FORCA, e nao por aqui: a tabela das estrelas (`CalorDaEstrela`, conferida na `SolBench`) se
+	/// ancora neste numero.
+	/// </summary>
 	public static double BpGainSoftcap = 1_000_000_000;
 
-	/// <summary>Quanto amortecer acima do softcap. 1 = o ganho para de escalar com o BP.</summary>
-	public static double BpGainSoftStrength = 1;
+	/// <summary>
+	/// Quanto amortecer acima do softcap. 1 = o ganho para de escalar com o BP; 0 = nao amortece. (2026-10-24) ZERO -- o dono: *"tira o
+	/// debuff de bp gains acima de 1b"*. Era 1: a 10B todo ganho que passa pelo <see cref="CapCheck"/> (treino, luta, meditacao,
+	/// potencial, desejo, digestao) saia um decimo. A `--ganhoteste` (familia 7b) poe o 1 de volta como defeito injetado.
+	/// </summary>
+	public static double BpGainSoftStrength = 0;
 
 	public static double GainsRate = 1;
 
@@ -366,7 +424,8 @@ public sealed partial class Fighter
 		gap *= StamBPGainMod;
 
 		// retorno decrescente no topo: sem isto o ganho por tick e proporcional ao BP, e nos
-		// bilhoes um unico tick adicionava bilhoes
+		// bilhoes um unico tick adicionava bilhoes. (2026-10-24) Desligado pelo dono (a forca e 0): o
+		// ganho deste port e LINEAR -- a base nao le o BP (`BpGainBase`) --, e o freio so encolhia.
 		if (BpGainSoftcap > 0 && BpGainSoftStrength > 0 && BP > BpGainSoftcap)
 			gap *= DmMath.Pow(BpGainSoftcap / BP, BpGainSoftStrength);
 

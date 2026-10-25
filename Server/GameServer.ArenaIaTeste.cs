@@ -353,6 +353,151 @@ public sealed partial class GameServer
 					  Jandirus.Core.World.Voo.Andar(v.Altitude) <= 1, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
 				Descartar(v, alvo);
 			}
+
+			// =====================================================================
+			// 7) QUEM NAO VOA NAO TREME NA BEIRADA, E CHAMA O OUTRO DE COVARDE (dono, 2026-10-25)
+			// =====================================================================
+			// *"IA do torneio quando n sabe voar e quer andar pra fora da arena ela fica flicando e tremendo, conserte isso faca ela
+			// comentar algo chamando o cara de covarde ou algo do tipo"*. O tremor era o plano andando pro alvo (que voa fora da linha) e a
+			// margem empurrando de volta, um tique pra cada lado. A regua conta as VIRADAS de rumo em 5 s.
+			GD.Print("[arenaia] -- 7) quem nao voa nao treme na beirada, e chama o outro de covarde (dono, 2026-10-25) --");
+			int ViradasDeRumo(ServerPlayer quem, int tiques, out bool cruzou, params ServerPlayer[] corpos)
+			{
+				int viradas = 0, sinal = 0;
+				float x = quem.Pos.X;
+				cruzou = false;
+				for (int i = 0; i < tiques; i++)
+				{
+					Tiques(1, corpos);
+					float dx = quem.Pos.X - x;
+					x = quem.Pos.X;
+					if (!arena.ContemEm(quem.Pos)) cruzou = true;
+					if (MathF.Abs(dx) < 0.5f) continue;
+					int s = Math.Sign(dx);
+					if (sinal != 0 && s != sinal) viradas++;
+					sinal = s;
+				}
+				return viradas;
+			}
+			{
+				// O ALVO VOA tres tiles alem da linha leste; o lutador que nao voa comeca a quatro celulas dela.
+				ServerPlayer alvo = Forjar("arena: voa fora", new Vec2(linhaLeste + Tiles(3, 0).X, centro.Y), comCerebro: false);
+				alvo.Voando = true;
+				alvo.Altitude = Jandirus.Core.World.Voo.AlturaDePairar;
+				Vec2 partida = new(linhaLeste - Tiles(4.5f, 0).X, centro.Y);
+				ServerPlayer a = Forjar("arena: nao voa", partida, perfil: PerfilDeCombate.SoCorpo);
+				Armar(a);
+				a.Cerebro!.Boca.Ligado = true;
+				Checa("PRECONDICAO: o lutador nao voa, e o alvo voa fora da linha",
+					  !a.Cerebro.Poderes.PodeVoar && !arena.ContemEm(alvo.Pos) && alvo.Voando, $"margem {arena.MargemEmCelulas(a.Pos)}");
+
+				var falas = new List<(int Quem, Protocol.Fala Canal, string Texto)>();
+				EscutaDeFalas = falas;
+				int viradas;
+				bool cruzou;
+				try { viradas = ViradasDeRumo(a, 150, out cruzou, a, alvo); }   // 5 s
+				finally { EscutaDeFalas = null; }
+				Checa("**QUEM NAO VOA NAO TREME NA BEIRADA** (o pedido do dono): com o alvo voando fora da linha, em 5 s o corpo nao vai e "
+					  + "volta -- espera dentro da arena, sem cruzar", viradas <= 1 && !cruzou,
+					  $"{viradas} virada(s) de rumo; cruzou {cruzou}; porque '{a.Cerebro.Porque}'");
+				string[] dele = [.. falas.Where(f => f.Quem == a.Id).Select(f => f.Texto)];
+				Checa("...e CHAMA O OUTRO DE COVARDE (uma das frases da arena)",
+					  dele.Any(f => Falatorio.ChamandoDeCovarde.Contains(f)), string.Join(" | ", dele));
+
+				// CONTRA-EXEMPLO: a espera desligada (o jogo de antes) -- o mesmo corpo, do mesmo ponto, treme.
+				a.Pos = partida;
+				Cerebro.EsperaNaLinhaDesligadaDeTeste = true;
+				int viradasComDefeito;
+				try { viradasComDefeito = ViradasDeRumo(a, 150, out _, a, alvo); }
+				finally { Cerebro.EsperaNaLinhaDesligadaDeTeste = false; }
+				Checa("[injecao] SEM a espera, o mesmo corpo vai e volta na beirada (o tremor do relato) -- a regua de cima REPROVA",
+					  viradasComDefeito >= 4, $"{viradasComDefeito} virada(s) de rumo");
+				Descartar(a, alvo);
+			}
+
+			// =====================================================================
+			// 8) IA CONTRA IA: A QUE VOAVA, XINGADA, VOLTA PRA ARENA E LUTA SEM VOAR (dono, 2026-10-25)
+			// =====================================================================
+			// *"e se for IA vs IA a q ta voando ao ser xingada volta pra arena e luta sem voar"*. Duas metades, cada uma com a regua dela:
+			//   8a. A CORRENTE NO SERVIDOR: o que nao voa, dentro da linha, xinga o voador la fora; o servidor o marca (`MarcarComoCovarde`) e
+			//       a percepcao dele passa a dize-lo (`LerPercepcao`).
+			//   8b. A REGRA NO CEREBRO, com a percepcao do servidor e so a marca escrita a mao: xingado e voando la fora, o rumo e o centro da
+			//       arena (com o alvo do lado de fora); no meio da arena ele pousa; e no chao, na beirada, nao decola.
+			// A PRIMEIRA MONTAGEM ERA UMA SO, os dois corpos lutando por 15 s, e ela nao separava: o voador voltava sozinho -- o alvo dele e o
+			// lutador de dentro --, com ou sem a regra, e o fim da janela pegava a luta ja em curso (um soco o tirava da linha de novo).
+			GD.Print("[arenaia] -- 8) IA contra IA: a que voava, xingada de covarde, volta pra arena e luta no chao (dono, 2026-10-25) --");
+			{
+				ServerPlayer voador = Forjar("arena: voa fora", new Vec2(linhaLeste + Tiles(3, 0).X, centro.Y), comCerebro: false);
+				voador.Voando = true;
+				voador.Altitude = Jandirus.Core.World.Voo.AlturaDePairar;
+				ServerPlayer xinga = Forjar("arena: xinga", new Vec2(linhaLeste - Tiles(4.5f, 0).X, centro.Y), perfil: PerfilDeCombate.SoCorpo);
+				Armar(xinga);
+				xinga.Cerebro!.Boca.Ligado = true;
+				bool marcado = false;
+				for (int i = 0; i < 150 && !marcado; i++)   // ate 5 s
+				{
+					Tiques(1, xinga, voador);
+					marcado = FoiChamadoDeCovarde(voador);
+				}
+				Percepcao lida = LerPercepcao(voador, xinga, xinga.Pos, quemAtira: false);
+				Checa("**O XINGADO E MARCADO** (IA contra IA, o pedido do dono): o que nao voa xinga o voador la fora, o servidor o marca e a "
+					  + "percepcao dele o diz", marcado && lida.ChamadoDeCovarde && lida.TemArena,
+					  $"marcado {marcado}; a percepcao diz {lida.ChamadoDeCovarde}");
+				_xingadosDeCovarde.Remove(voador.Id);
+				Descartar(xinga, voador);
+			}
+			{
+				ServerPlayer fora = Forjar("arena: alvo la fora", new Vec2(linhaLeste + Tiles(8, 0).X, centro.Y), comCerebro: false);
+				fora.Voando = true;
+				fora.Altitude = Jandirus.Core.World.Voo.AlturaDePairar;
+				Vec2 laFora = new(linhaLeste + Tiles(3, 0).X, centro.Y), naBeirada = new(linhaLeste - Tiles(0.5f, 0).X, centro.Y);
+				// UM SEGUNDO DO CEREBRO DESTE CORPO, parado nesta posicao: o rumo medio no eixo x (o centro fica a oeste) e se ele pediu pra
+				// trocar o voo. A percepcao e a do servidor (`LerPercepcao`), com a marca escrita a mao.
+				(float RumoX, bool Alterna) UmSegundo(ServerPlayer voa, Vec2 onde, bool voando)
+				{
+					voa.Pos = onde;
+					voa.Voando = voando;
+					voa.Altitude = voando ? Jandirus.Core.World.Voo.AlturaDePairar : 0f;
+					Percepcao p = LerPercepcao(voa, fora, fora.Pos, quemAtira: false) with { ChamadoDeCovarde = true };
+					var rng = new Random(25);
+					float soma = 0;
+					bool alterna = false;
+					for (int i = 0; i < 30; i++)
+					{
+						Comando c = voa.Cerebro!.Pensar(p, Protocol.TickSeconds, rng);
+						soma += c.Rumo.X;
+						alterna |= c.AlternarVoo;
+					}
+					return (soma / 30, alterna);
+				}
+				// as TRES cenas, num cerebro novo: voando la fora, voando no meio da arena, e no chao, na beirada
+				(float VoltaX, bool Pousou, bool Decolou) Xingado()
+				{
+					ServerPlayer voa = Forjar("arena: voava", laFora);
+					EnsinarAVoar(voa);
+					Armar(voa);
+					var volta = UmSegundo(voa, laFora, voando: true);
+					var pousa = UmSegundo(voa, centro, voando: true);
+					var fica = UmSegundo(voa, naBeirada, voando: false);
+					Descartar(voa);
+					return (volta.RumoX, pousa.Alterna, fica.Alterna);
+				}
+				static bool Voltou((float VoltaX, bool Pousou, bool Decolou) x) => x.VoltaX < -0.3f && x.Pousou && !x.Decolou;
+				var comRegra = Xingado();
+				Checa("**O XINGADO VOLTA PRA ARENA, POUSA E NAO DECOLA MAIS** (IA contra IA, o pedido do dono): voando la fora o rumo e o centro "
+					  + "(com o alvo do lado de fora), no meio da arena ele pousa, e no chao, na beirada, nao decola", Voltou(comRegra),
+					  $"rumo la fora {comRegra.VoltaX:0.00}; pousou no meio {comRegra.Pousou}; decolou da beirada {comRegra.Decolou}");
+				Cerebro.VoltaDeCovardeDesligadaDeTeste = true;
+				try
+				{
+					var semRegra = Xingado();
+					Checa("[injecao] SEM a volta do xingado, o MESMO cerebro, nas MESMAS tres cenas, nao faz o que o xingado faz -- a regua de cima REPROVA",
+						  !Voltou(semRegra),
+						  $"rumo la fora {semRegra.VoltaX:0.00}; pousou no meio {semRegra.Pousou}; decolou da beirada {semRegra.Decolou}");
+				}
+				finally { Cerebro.VoltaDeCovardeDesligadaDeTeste = false; }
+				Descartar(fora);
+			}
 		}
 		finally
 		{

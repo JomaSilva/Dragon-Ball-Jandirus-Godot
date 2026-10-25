@@ -69,6 +69,8 @@ public partial class RoboDaLingua : Node
 		Idioma.TelaSemTraducaoDeTeste = false;
 		Idioma.TraduzODigitadoDeTeste = false;
 		Jandirus.Server.GameServer.FalaSemMarcaDeTeste = false;
+		Transformacao.FalaCruNoBalaoDeTeste = false;
+		Jandirus.Core.Lingua.Tradutor.BordaComeAPontuacaoDeTeste = false;
 	}
 
 	private async System.Threading.Tasks.Task Rodar()
@@ -170,6 +172,7 @@ public partial class RoboDaLingua : Node
 			await Foto("aba-" + aba.ToLowerInvariant());
 		}
 		Checa("nenhum texto em portugues nas abas do menu P", sobrasDasAbas.Count == 0, Resumo(sobrasDasAbas));
+		await AFichaDaSkill(menu);
 		menu.Fechar();
 		await Quadros(3);
 
@@ -224,6 +227,8 @@ public partial class RoboDaLingua : Node
 		}
 		finally { Idioma.TraduzODigitadoDeTeste = false; }
 		await Foto("chat-digitada");
+
+		await ACinematicaDoSsj3();
 
 		// ---------------- 4. de volta ao portugues, pelo mesmo seletor ----------------
 		Nota("--- 4. de volta ao portugues ---");
@@ -295,6 +300,193 @@ public partial class RoboDaLingua : Node
 		}
 		if (c.TooltipText.Length > 0) yield return c.TooltipText;
 	}
+
+	// =====================================================================
+	// 2b E 3b. O QUE SE MONTA PEDACO A PEDACO (o pedido do dono de 2026-10-23)
+	// =====================================================================
+	/// <summary>A skill cuja ficha o robo abre: tem como sobe, sete degraus (soma, habilidade nova, gene, o que ela libera) e a soma no topo.</summary>
+	private const string SkillDaFicha = "/datum/skill/mind/Basic_Ki_Awareness";
+
+	/// <summary>
+	/// A FICHA DE UMA SKILL COM NIVEIS, aberta pelo caminho do dedo -- o dono, 2026-10-23: *"falta traduzir tb oq cada nivel de kill
+	/// faz"* (o "kill" e "skill"). Este robo olhava cada aba e nunca abria a ficha (a aba Learning so mostra os cartoes das arvores), e
+	/// por isso o buraco passou verde. Aqui: Learning, o cartao da Strength of Mind, o cartao da Basic Ki Awareness, a ficha -- como
+	/// sobe, o que cada nivel da, a soma no topo. A regua e a da tela (<see cref="Sobras"/>), no painel da ficha e nas dicas dos cartoes
+	/// da arvore (o resumo de cada skill); e com o jogo em portugues ela ENXERGA portugues na mesma ficha. O contra-exemplo do motor
+	/// (os cortes da ficha desligados) mora na bancada `plingua`, que mede a ficha de TODA skill.
+	/// </summary>
+	private async System.Threading.Tasks.Task AFichaDaSkill(MenuJogo menu)
+	{
+		Nota("--- 2b. a ficha de uma skill com niveis: Learning -> Strength of Mind -> Basic Ki Awareness ---");
+		menu.IrPara("Learning");
+		await Segundos(0.9);
+		Control? pg = menu.PaginaDeTeste("Learning");
+		PanelContainer? mente = pg == null ? null : Cartao(pg, "arvore", c => Todos(c).OfType<Label>().Any(l => l.Text == "Strength of Mind"));
+		Checa("(montagem) a aba Learning mostra o cartao da arvore Strength of Mind", mente?.GetChild(0) is Button);
+		if (pg == null || mente?.GetChild(0) is not Button abrirMente) return;
+		await Clicar(abrirMente);
+		await Segundos(0.5);
+		pg = menu.PaginaDeTeste("Learning") ?? pg;   // a arvore aberta remonta a pagina
+		PanelContainer? cartao = Cartao(pg, "skill", c => c.HasMeta("path") && c.GetMeta("path").AsString() == SkillDaFicha);
+		Checa("(montagem) a arvore abriu, com o cartao da Basic Ki Awareness", cartao?.GetChild(0) is Button);
+		if (cartao?.GetChild(0) is not Button abrirFicha) return;
+
+		// AS DICAS DOS CARTOES: o mouse em cima de uma skill mostra o nome, a descricao e o RESUMO do que ela da
+		List<PanelContainer> cartoes = [.. Todos(pg).OfType<PanelContainer>().Where(c => !c.IsQueuedForDeletion() && c.HasMeta("cartao")
+																				 && c.GetMeta("cartao").AsString() == "skill" && c.TooltipText.Length > 0)];
+		List<string> dicas = [.. cartoes.Select(c => c.Atr(c.TooltipText)).Where(Idioma.Tradutor.ParecePortugues)];
+		Checa($"as dicas dos cartoes da Strength of Mind (o resumo do que cada skill da) em ingles ({cartoes.Count} cartoes)",
+			  cartoes.Count > 5 && dicas.Count == 0, Resumo(dicas));
+		List<string> naPagina = Sobras(pg);
+		Nota($"  (so de olho) o que mais sobra em portugues na pagina da arvore: {naPagina.Count}" + (naPagina.Count > 0 ? " -- " + Resumo(naPagina) : ""));
+
+		await Clicar(abrirFicha);
+		await Quadros(3);
+		PanelContainer? ficha = menu.FichaDeTeste;
+		Checa("o cartao abre a FICHA da Basic Ki Awareness", ficha != null);
+		if (ficha == null) return;
+		List<string> vistos = [.. Todos(ficha).OfType<Label>().Where(l => l.IsVisibleInTree()).Select(l => l.Atr(l.Text))];
+		Checa("...e ela diz em ingles o que cada NIVEL da: '• every 5 levels: Ki awareness +1', '• level 10: new skills: Study Other, Focus Skill'",
+			  vistos.Contains("• every 5 levels: Ki awareness +1") && vistos.Contains("• level 10: new skills: Study Other, Focus Skill"),
+			  string.Join(" | ", vistos.Where(v => v.StartsWith("• ", StringComparison.Ordinal))));
+		Checa("...como sobe ('... meditating before level 10 (×2), otherwise (×1).') e a soma no topo ('at level 100, all told: Ki awareness +20, ...')",
+			  vistos.Any(v => v.Contains("Gains experience: studying someone (×2); meditating before level 10 (×2), otherwise (×1).", StringComparison.Ordinal))
+			  && vistos.Any(v => v.StartsWith("at level 100, all told: Ki awareness +20", StringComparison.Ordinal)),
+			  string.Join(" | ", vistos.Where(v => v.StartsWith("Max level", StringComparison.Ordinal) || v.StartsWith("at level", StringComparison.Ordinal))));
+		ChecaSemSobras("a ficha inteira em ingles (descricao, como sobe, cada nivel, a soma no topo, o motivo e o botao)", ficha);
+		await Foto("ficha-en");
+
+		// (a regua enxerga) a MESMA ficha, com o jogo em portugues
+		Idioma.Aplicar(Idioma.Portugues);
+		await Quadros(3);
+		int emPortugues = Sobras(ficha).Count;
+		Idioma.Aplicar(Idioma.Ingles);
+		await Quadros(3);
+		Checa("(a regua enxerga) a mesma ficha com o jogo em portugues tem portugues na varredura", emPortugues >= 5, $"{emPortugues} textos");
+		if (Botao(ficha, "Fechar") is { } fechar) await Clicar(fechar);
+	}
+
+	/// <summary>O cartao (`meta cartao`) deste tipo que satisfaz <paramref name="qual"/>.</summary>
+	private static PanelContainer? Cartao(Node raiz, string tipo, Func<PanelContainer, bool> qual) =>
+		Todos(raiz).OfType<PanelContainer>().FirstOrDefault(c => !c.IsQueuedForDeletion() && c.HasMeta("cartao")
+															   && c.GetMeta("cartao").AsString() == tipo && qual(c));
+
+	/// <summary>Ate quando a cena do SSJ3 roda no robo: o "AINDA MAIS ALEM!" dos 30 s. Dai pra frente ela e so o grito.</summary>
+	private const double FimDaCenaNoRobo = 30.5;
+
+	/// <summary>
+	/// A CINEMATICA DO SSJ3 EM INGLES -- o dono, 2026-10-23: *"e tb a cinematica do ssj3"*. E a unica cena falada do jogo (sete baloes e
+	/// nove narracoes em 140 s), e nenhuma das metades chegava em ingles: o BALAO recebia a fala crua (ele desenha a mao, e esta fala nasce
+	/// no cliente, sem passar pelo `S2C.Chat` que traduz as outras) e a NARRACAO ia ao chat com o "* " colado, e a borda do tradutor
+	/// tirava o ponto que a chave do dicionario tem.
+	///
+	/// A cena roda no MEU corpo pelo tocador de producao (`Transformacao.Rodar`, o mesmo do pacote de forma), com o relogio dela nas
+	/// maos do robo (`SetProcess(false)` e um `_Process` por beat que fala, ate os 30 s: esperar os 140 s de verdade seria a bancada
+	/// inteira), e um segundo de tela entre um beat e outro, pro balao cumprir o piso de leitura. O robo le o balao
+	/// (`BalaoDeFala.TextoDeTeste`) e o chat (`Chat.LinhasDeTeste`). Contra-exemplos, cada um num beat que o tradutor ainda nao viu (ele
+	/// lembra o que ja traduziu): o balao com a fala crua (`Transformacao.FalaCruNoBalaoDeTeste`, no "E PARA IR...") e a borda que come o
+	/// ponto (`Tradutor.BordaComeAPontuacaoDeTeste`, na narracao dos 23 s).
+	/// </summary>
+	private async System.Threading.Tasks.Task ACinematicaDoSsj3()
+	{
+		Nota("--- 3b. a cinematica do SSJ3 em ingles: o balao e a narracao ---");
+		if (GetTree().Root.FindChild("LocalPlayer", true, false) is not Node2D corpo || corpo.GetNodeOrNull<BalaoDeFala>("Balao") is not { } balao
+			|| Jandirus.Core.Forms.Catalogo.Def("ssj3") is not { } def)
+		{
+			Checa("(montagem) o corpo local, com o balao, e a forma ssj3 no catalogo", false);
+			return;
+		}
+		Cinematica cena = Cinematicas.Ssj3;
+		Beat[] comTexto = [.. cena.Beats.Where(b => b.Em <= FimDaCenaNoRobo && (b.Fala.Length > 0 || b.Narra.Length > 0))];
+		Beat? cruNoBalao = comTexto.Where(b => b.Fala.Length > 0 && b.Narra.Length == 0).Skip(4).Cast<Beat?>().FirstOrDefault();
+		Beat? bordaQueCome = comTexto.Where(b => b.Narra.Length > 0).Skip(1).Cast<Beat?>().FirstOrDefault();
+		Checa("(montagem) a cena tem, ate os 30 s, as falas e as narracoes que o robo confere (e um beat de cada pra cada defeito)",
+			  comTexto.Count(b => b.Fala.Length > 0) >= 6 && comTexto.Count(b => b.Narra.Length > 0) >= 3 && cruNoBalao != null && bordaQueCome != null,
+			  $"{comTexto.Length} beats com texto");
+		if (cruNoBalao == null || bordaQueCome == null) return;
+		await Segundos(1.2);   // o balao do chat de antes (a fala digitada) cumpre o piso e nao segura a primeira fala da cena na fila
+
+		Transformacao t = Transformacao.Rodar(corpo.GetParent(), corpo, def, cena, souEu: true);
+		t.SetProcess(false);
+		double relogio = 0;
+		int nFoto = 0;
+		var baloesPt = new List<string>();
+		var chatPt = new List<string>();
+		int baloes = 0, narracoes = 0;
+		string pegouBalao = "(nao rodou)", pegouBorda = "(nao rodou)";
+		bool balaoCruPegou = false, bordaPegou = false;
+		try
+		{
+			foreach (Beat b in comTexto)
+			{
+				bool cru = b.Equals(cruNoBalao.Value), come = b.Equals(bordaQueCome.Value);
+				Transformacao.FalaCruNoBalaoDeTeste = cru;
+				Jandirus.Core.Lingua.Tradutor.BordaComeAPontuacaoDeTeste = come;
+				int antes = Chat.LinhasDeTeste().Count;
+				t._Process(b.Em + 0.01 - relogio);
+				relogio = b.Em + 0.01;
+				List<string> novas = [.. Chat.LinhasDeTeste().Skip(antes).Select(l => l.Texto)];
+
+				if (b.Fala.Length > 0)
+				{
+					string en = Comeco(Idioma.Tradutor.Traduzir(b.Fala)), pt = Comeco(b.Fala);
+					// o balao chegou a ESTA fala (numa lingua ou na outra): sem isto o defeito "pegaria" so por o balao ainda estar na anterior
+					bool chegou = await Ate(() => balao.TextoDeTeste.StartsWith(en, StringComparison.Ordinal) || balao.TextoDeTeste.StartsWith(pt, StringComparison.Ordinal), 3.0);
+					bool emIngles = chegou && balao.Visible && balao.TextoDeTeste.StartsWith(en, StringComparison.Ordinal) && (en == pt || !balao.TextoDeTeste.StartsWith(pt, StringComparison.Ordinal));
+					string minha = novas.FirstOrDefault(l => !l.StartsWith("* ", StringComparison.Ordinal)) ?? "(nenhuma linha)";
+					if (cru)
+					{
+						balaoCruPegou = chegou && !emIngles;
+						pegouBalao = $"balao: '{balao.TextoDeTeste}'";
+					}
+					else
+					{
+						baloes++;
+						if (!emIngles) baloesPt.Add($"{b.Em:0.#}s balao '{balao.TextoDeTeste}' (esperava comecar com '{en}')");
+					}
+					if (Idioma.Tradutor.ParecePortugues(minha)) chatPt.Add($"{b.Em:0.#}s chat '{minha}'");
+				}
+				if (b.Narra.Length > 0)
+				{
+					string linha = novas.FirstOrDefault(l => l.StartsWith("* ", StringComparison.Ordinal)) ?? "(nenhuma narracao no chat)";
+					bool emIngles = linha.StartsWith("* ", StringComparison.Ordinal) && !Idioma.Tradutor.ParecePortugues(linha);
+					if (come)
+					{
+						bordaPegou = linha.StartsWith("* ", StringComparison.Ordinal) && !emIngles;
+						pegouBorda = $"chat: '{linha}'";
+					}
+					else
+					{
+						narracoes++;
+						if (!emIngles) chatPt.Add($"{b.Em:0.#}s narracao '{linha}'");
+					}
+				}
+				Transformacao.FalaCruNoBalaoDeTeste = false;
+				Jandirus.Core.Lingua.Tradutor.BordaComeAPontuacaoDeTeste = false;
+
+				// as fotos: a primeira fala, a primeira narracao e o "AINDA MAIS ALEM!" do fim
+				if (nFoto == 0 && b.Fala.Length > 0 && !cru) { await Foto("cena-ssj3-fala"); nFoto++; }
+				else if (nFoto == 1 && b.Narra.Length > 0 && !come) { await Foto("cena-ssj3-narracao"); nFoto++; }
+				else if (b.Equals(comTexto[^1])) { await Foto("cena-ssj3-alem"); nFoto++; }
+				await Segundos(1.0);   // o piso de leitura do balao (`BalaoDeFala.PisoDeLeitura`): a proxima fala entra na hora, e nao na fila
+			}
+		}
+		finally
+		{
+			Transformacao.FalaCruNoBalaoDeTeste = false;
+			Jandirus.Core.Lingua.Tradutor.BordaComeAPontuacaoDeTeste = false;
+			if (IsInstanceValid(t)) t.Free();
+		}
+		Checa($"os baloes da cena do SSJ3 sairam em ingles ({baloes} falas ate os 30 s, a do 'AINDA MAIS ALEM!' inclusa)", baloes >= 5 && baloesPt.Count == 0,
+			  string.Join(" | ", baloesPt));
+		Checa($"...e o chat dela tambem: a minha linha ('You: ...') e as narracoes ('* ...', {narracoes} delas)", narracoes >= 2 && chatPt.Count == 0,
+			  string.Join(" | ", chatPt));
+		Injeta("o balao com a fala crua (o jogo de antes): ele mostra o portugues e a mesma regua reprova", balaoCruPegou, pegouBalao);
+		Injeta("a borda que come o ponto da narracao (o jogo de antes): o chat mostra o portugues e a mesma regua reprova", bordaPegou, pegouBorda);
+	}
+
+	/// <summary>O comeco de uma frase, pra comparar com o balao: ele quebra em ate tres linhas e corta o resto com reticencia.</summary>
+	private static string Comeco(string frase) => frase[..Math.Min(18, frase.Length)];
 
 	// =====================================================================
 	// O CHAT

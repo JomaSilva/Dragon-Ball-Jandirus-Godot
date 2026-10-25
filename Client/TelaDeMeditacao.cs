@@ -51,6 +51,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 	private Button _normal = null!;
 	private Button _profunda = null!;
 	private Button _focada = null!;
+	private Button _estudando = null!;
 	private Label _motivo = null!;
 
 	/// <summary>
@@ -137,6 +138,16 @@ public partial class TelaDeMeditacao : CanvasLayer
 		_focada.Pressed += EscolherFocada;
 		caixa.AddChild(_focada);
 
+		// (2026-10-25) ESTUDAR MEDITANDO, SEM BANCADA -- o dono: *"faca q tenha como estudar meditando sem research table, mas o ganho de tech
+		// e 1/4, so pra players em planetas isolados conseguirem sair de la"*. Senta como a normal e liga o estudo (`estudar_meditando`).
+		_estudando = new Button
+		{
+			Text = "Meditar estudando",
+			TooltipText = "Senta e estuda de cabeça: ganha tecnologia mesmo sem uma Research Station, com um quarto do ganho dela -- pra quem está num planeta sem bancada conseguir construir o caminho de volta.",
+		};
+		_estudando.Pressed += EscolherEstudando;
+		caixa.AddChild(_estudando);
+
 		// A LINHA DO MOTIVO. Ela e a metade que faz a recusa valer a pena: um botao cinza sem frase
 		// nenhuma e a mesma parede do verb apagado que esta telinha veio substituir.
 		_motivo = new Label
@@ -198,6 +209,8 @@ public partial class TelaDeMeditacao : CanvasLayer
 	}
 
 	private void EscolherFocada() => Responder(EscolhaDaMeditacao.Focada);
+
+	private void EscolherEstudando() => Responder(EscolhaDaMeditacao.Estudando);
 
 	private void Responder(EscolhaDaMeditacao escolha)
 	{
@@ -309,7 +322,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 	{
 		var r = new List<string>();
 		if (!NaTela) return r;
-		foreach (Button b in new[] { _normal, _profunda, _focada })
+		foreach (Button b in new[] { _normal, _profunda, _focada, _estudando })
 			if (IsInstanceValid(b)) r.Add(b.Disabled ? $"{b.Text} (apagado)" : b.Text);
 		return r;
 	}

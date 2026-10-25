@@ -63,9 +63,42 @@ public readonly record struct PerfilDeRegen
 
 	/// <summary>
 	/// O `canheallopped` (`:266-267`): **membro decepado volta SOZINHO**. E o mesmo bit que decide
-	/// se perder um nucleo poe em COMA em vez de matar (`Injuries.dm:277`).
+	/// se perder um nucleo poe em COMA em vez de matar (`Injuries.dm:277`) -- menos na raca que morre
+	/// como todo mundo (<see cref="MorreComoComum"/>, a Kai desde 2026-10-23).
 	/// </summary>
 	public bool MembroVolta => RegenDeMorte >= 1;
+
+	/// <summary>
+	/// ============================ A RACA KAI MORRE COMO TODO MUNDO (dono, 2026-10-23) ============================
+	/// *"kaios n morrem e ficam regenerando"* -- e, perguntado: *"Toda a raca Kai morre normal"*, NPC e jogador. O Kai tem
+	/// `Regeneration = 10` (`races.json`) e o DM lhe da o `canheallopped` (`statkai.dm:34`), que no `Injuries.dm:276-279` poe em COMA
+	/// quem perde um nucleo: o Kai socado deitava, sarava parado e levantava -- os cinco Supremos Kaiohs do Ceu nunca morriam. A regra
+	/// do dono tira SO A PERGUNTA DA MORTE: o membro continua voltando (<see cref="MembroVolta"/>), a cura em combate e a regen 10
+	/// continuam. Quem le este bit e o <see cref="Body.RegeneraDecepado"/>, o "coma em vez de morte" de toda porta da morte.
+	///
+	/// QUEM RESPONDE e o servidor (`GameServer.EixoDeRegen`, pelo <see cref="DoCorpo"/>): no corpo comum, pela raca GRAVADA do corpo; no
+	/// bio-androide, pela doadora que lhe da a regeneracao (`SangueDoBio.RegeneracaoDoBio`) -- o dono, nas sobras do mesmo dia: *"O bio com
+	/// sangue Kai tambem morre"*. Os outros que regeneram (Meta, Tsujin, Yardrat, o bio sem sangue Kai) continuam em coma, e o bio com
+	/// sangue Majin regenera como o Majin (o sangue dele ganha de todos) e se desfaz como ele.
+	/// ===============================================================================================================
+	/// </summary>
+	public bool MorreComoComum { get; init; }
+
+	/// <summary>
+	/// AS RACAS QUE REFAZEM MEMBRO E MORREM COMO TODO MUNDO -- pelo nome (`ServerPlayer.Race`, ou a doadora do bio), comparado como esta.
+	/// So a Kai, pela decisao do dono de 2026-10-23. O meio-Kai (`Fighter.ParentRace`) fica de fora, pela regra literal -- e o port nem
+	/// tem um: Kai so nasce de Kai (`Filhos.RacaDoFilho`), e a conversao em bio grava "BioAndroid" nas duas racas.
+	/// </summary>
+	public static readonly string[] RacasQueMorremComoComum = ["Kai"];
+
+	/// <summary>Esta raca refaz membro e morre como todo mundo? -- ver <see cref="RacasQueMorremComoComum"/>.</summary>
+	public static bool RacaMorreComoComum(string raca) => Array.IndexOf(RacasQueMorremComoComum, raca) >= 0;
+
+	/// <summary>
+	/// Este perfil com a pergunta da morte respondida por <paramref name="raca"/>: a gravada do corpo, ou a doadora que da a regeneracao ao
+	/// bio-androide -- ver <see cref="MorreComoComum"/>.
+	/// </summary>
+	public PerfilDeRegen DoCorpo(string raca) => this with { MorreComoComum = RacaMorreComoComum(raca) };
 
 	/// <summary>O padrao de quem nao tem proto: Humano/Saiyajin, `Regeneration = 1`.</summary>
 	public static PerfilDeRegen Comum => De("Human", 1);
@@ -288,8 +321,12 @@ public static class Regeneracao
 	/// So o `pick()` de qual membro volta usa isto (`Injuries.dm:303`). O resto e determinístico --
 	/// ver o cabecalho da classe.
 	/// </param>
+	/// <param name="costuraParada">
+	/// (dono, 2026-10-24) O CANAL 1 PARADO NESTE TIQUE -- cada membro deixa de se costurar no ritmo dele, e os canais espalhados
+	/// (iguais pra todo membro alcancavel) seguem como sempre. Quem pede e o Kaio-ken aceso (`GameServer.KaiokenParaACosturaG2`).
+	/// </param>
 	public static Resultado Tique(Body corpo, in PerfilDeRegen r, Fighter f, bool emCombate,
-								  ref double buffer, double dt, Random rng)
+								  ref double buffer, double dt, Random rng, bool costuraParada = false)
 	{
 		// `f.dead` SAIU DAQUI (2026-09-04). Quem decide se um morto regenera e o CHAMADOR, porque a
 		// resposta depende do LUGAR, que este Core nao ve: o cadaver dos 2 s no mundo dos vivos nao
@@ -308,7 +345,7 @@ public static class Regeneracao
 			if (p.Vida >= p.VidaMax) continue;
 			faltaAlgo = true;
 
-			double ganho = TaxaDoMembro(p) * dt;
+			double ganho = costuraParada ? 0 : TaxaDoMembro(p) * dt;
 			// `targetable` -- ver `TaxaEspalhada`: cerebro e orgaos ficam so com o canal 1
 			if (p.Papel != Vitalidade.Interno) ganho += espalhada;
 			if (ganho <= 0) continue;

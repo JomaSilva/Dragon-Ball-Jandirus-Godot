@@ -676,11 +676,12 @@ public sealed partial class GameServer
 		ValSecao("8e: o corpo caido", () => ValOCorpoCaido());
 		ValSecao("8f: as falas", () => ValAsFalas());
 		ValSecao("8g: o reembolso do kit", () => ValOReembolsoDoKit());
+		ValSecao("8h: One Hundred e One Training", () => ValOCemNaoSeReembolsa());
 	}
 
 	/// <summary>
-	/// 8b) O REFLEXO DA MENTE E A COPIA DO SPLIT FORM NAO SE ABSORVEM (bio, Soul_Absorb, Absorb_Android, Life_Suck),
-	/// e dentro de uma mente nada se absorve.
+	/// 8b) O REFLEXO DA MENTE E A COPIA DO SPLIT FORM NAO SE ABSORVEM (bio, Soul_Absorb, Absorb_Android, Life_Suck -- e, desde
+	/// 2026-10-23, o Majin), e dentro de uma mente nada se absorve.
 	/// </summary>
 	private void ValAbsorcoes(ZoneKey terra)
 	{
@@ -754,6 +755,44 @@ public sealed partial class GameServer
 				 vitima.Ficha.dead && bio.Ficha.AbsorbBP > antesDaVitima, $"morta {vitima.Ficha.dead}, AbsorbBP {antesDaVitima:0}->{bio.Ficha.AbsorbBP:0} | {Ultimos(legitimo)}");
 		_prontoAbsorver.Remove(bio.Id);
 		_prontoAbsorver.Remove(demonio.Id);
+		Ouvir(() => Verbo(dono, "splitform_destruir", ""));
+
+		// ---- o MAJIN (2026-10-23) -- o dono: *"majin consegue absorver split forms"*. Uma copia NOVA (a de cima foi consumida pelo defeito
+		// do bio), nocauteada ao lado de um Majin que sabe absorver e marcada por ele, pelo verb de producao (`absorver`, que bifurca pela
+		// raca no `AbsorverMajin`).
+		dono.Ficha.Ki = dono.Ficha.MaxKi;
+		Ouvir(() => UsarHabilidade(dono, "SplitForm"));
+		ServerPlayer? copiaDoMajin = _splitformsG12.Where(kv => kv.Value.Master == dono.Id).Select(kv => _players.GetValueOrDefault(kv.Key))
+			.FirstOrDefault(c => c != null && !c.Ficha.dead);
+		ValCheca("(montagem) uma copia nova do Split Form de pe, pro Majin", copiaDoMajin != null);
+		if (copiaDoMajin == null) return;
+		copiaDoMajin.Ficha.KO = true;    // caida, e com vida de sobra (como a de cima)
+		copiaDoMajin.Ficha.HP = 50;
+		ServerPlayer majin = ValGente("MajinDaBancada", "Majin", copiaDoMajin.Pos + new Vec2(0, -T * 0.9f), skills: [Jandirus.Core.Combat.AbsorcaoMajin.Skill]);
+		majin.AlvoId = copiaDoMajin.Id;
+		List<string> doMajin = Ouvir(() => UsarHabilidade(majin, "absorver"));
+		ValCheca("**O MAJIN NAO ABSORVE A COPIA DO SPLIT FORM** (a regra do bio e do Soul_Absorb, `CorpoDerivado`): nocauteada e marcada ao lado "
+				 + "dele, ela nao e devorada e nenhum poder entra nele -- e ele le que e so uma copia, e nao o \"precisa estar NOCAUTEADO\" que mentiria",
+				 !copiaDoMajin.Ficha.dead && majin.Ficha.majin_absorb_bp == 0 && AbsorvidosPor(majin.Id).Count == 0 && Disse(doMajin, "cópia do Split Form"),
+				 $"morta {copiaDoMajin.Ficha.dead}, bonus {majin.Ficha.majin_absorb_bp:0}, registros {AbsorvidosPor(majin.Id).Count} | {Ultimos(doMajin)}");
+
+		AbsorveCorpoDerivadoDeTeste = true;
+		try
+		{
+			_prontoAbsorver.Remove(majin.Id);
+			Ouvir(() => UsarHabilidade(majin, "absorver"));
+			ValCheca("(defeito injetado: o corpo derivado vale como gente) a regua do Majin REPROVA -- ele devora a copia e fica com o poder dela "
+					 + "(10% do BP, a cura e o Ki cheio): a fabrica de poder sem vitima, de 2 em 2 s",
+					 copiaDoMajin.Ficha.dead && majin.Ficha.majin_absorb_bp > 0, $"morta {copiaDoMajin.Ficha.dead}, bonus {majin.Ficha.majin_absorb_bp:0}");
+		}
+		finally
+		{
+			AbsorveCorpoDerivadoDeTeste = false;
+			_prontoAbsorver.Remove(majin.Id);
+			// a copia devorada sairia pelo dreno do fim do tique; quem a tira e a faxina daqui (`DesfazerSplitformG12`), e o Majin solta o bonus
+			_npcsPraTirar.Remove(copiaDoMajin);
+			Ouvir(() => UsarHabilidade(majin, "expelir"));
+		}
 		Ouvir(() => Verbo(dono, "splitform_destruir", ""));
 	}
 
@@ -1026,6 +1065,50 @@ public sealed partial class GameServer
 			finally { ReembolsaODoCargoDeTeste = false; pl.Livro.MarcosLivres = marcos; }
 		}
 		finally { _tronos.Remove("turtle"); }
+	}
+
+	/// <summary>
+	/// 8h) ONE HUNDRED E ONE TRAINING NAO SE REEMBOLSAM (dono, 2026-10-25): *"ta dando pra dar uma leve abusada nele ficar comprando, ai
+	/// treina, reembolsa e compra dnv, ai tu ganha um bonus"* -- e na pergunta, "nao deixar reembolsar". A compra das duas soma `max(1,
+	/// BP*0,05)` do BP DE AGORA e o esquecer devolve so o que ela somou no dia (`GanhoNaCompra.Desfazer`): treinar no meio e comprar de
+	/// novo dava outros 5%, agora de um BP maior. As duas sairam esqueciveis do extrator (o `can_forget` de fabrica do DM), e o
+	/// `skills.json` agora as marca `esquecivel: 0` -- o verbo recusa, e a cascata da arvore tambem nao as leva.
+	/// </summary>
+	private void ValOCemNaoSeReembolsa()
+	{
+		GD.Print("[validacoes] -- 8h) `skill_esquecer` na One Hundred e na One Training e recusado (dono, 2026-10-25) --");
+		if (_skills == null) { ValCheca("(montagem) ha catalogo de skills", false); return; }
+		string[] duas = ["/datum/skill/Bodybuilding/One_Hundred", "/datum/skill/Bodybuilding/One_Training"];
+		if (duas.Any(d => _skills.Get(d) == null)) { ValCheca("(montagem) o catalogo tem a One Hundred e a One Training", false); return; }
+		Vec2 palco = CorredorLivre(24);
+		ServerPlayer pl = ValGente("AtletaDaBancada", "Human", palco);
+
+		// (palco) AS DUAS NO LIVRO, COMO COMPRADAS: o save de antes da lista de compradas conta como comprado tudo o que ninguem ensinou
+		// (`CarregarCompradas(null)`) -- e o caso em que o esquecer pagaria os marcos de volta.
+		foreach (string d in duas) pl.Livro!.Dar(d);
+		pl.Livro!.CarregarCompradas(null);
+		ValCheca("(montagem) ...as duas no livro, contando como compradas", duas.All(d => pl.Livro.Sabe(d) && pl.Livro.FoiComprada(d)));
+
+		foreach (string d in duas)
+		{
+			string nome = _skills.Get(d)!.Nome;
+			int marcos = pl.Livro.MarcosLivres;
+			double bp = pl.Ficha.BP;
+			List<string> recusa = Ouvir(() => Verbo(pl, "skill_esquecer", d));
+			ValCheca($"**{nome.ToUpperInvariant()} NAO SE REEMBOLSA** (o dono: comprar, treinar, reembolsar e comprar de novo dava outro +5% do BP): "
+					 + "esquecer e recusado -- ela fica no livro, nenhum marco entra e o BP nao muda",
+					 pl.Livro.Sabe(d) && pl.Livro.MarcosLivres == marcos && pl.Ficha.BP == bp && Disse(recusa, "nao se esquece"),
+					 $"sabe {pl.Livro.Sabe(d)}, marcos {marcos}->{pl.Livro.MarcosLivres} | {Ultimos(recusa)}");
+		}
+
+		// CONTRA-EXEMPLO: a One Hundred esquecivel de novo (o `can_forget` de fabrica) -- o verbo a esquece e paga os marcos.
+		Jandirus.Core.Skills.Skill cem = _skills.Get(duas[0])!;
+		int marcosAntes = pl.Livro.MarcosLivres;
+		cem.Esquecivel = true;
+		try { Ouvir(() => Verbo(pl, "skill_esquecer", duas[0])); }
+		finally { cem.Esquecivel = false; }
+		ValCheca("(defeito injetado: a One Hundred esquecivel, o jogo de antes) o verbo a esquece e devolve o marco -- a regua de cima REPROVA",
+				 !pl.Livro.Sabe(duas[0]) && pl.Livro.MarcosLivres > marcosAntes, $"sabe {pl.Livro.Sabe(duas[0])}, marcos {marcosAntes}->{pl.Livro.MarcosLivres}");
 	}
 
 	/// <summary>

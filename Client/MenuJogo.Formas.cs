@@ -123,6 +123,9 @@ public partial class MenuJogo
 		// `gravFelt` do DM, que soma na base). O dono: *"essa parte do aclimado q vc comentou, deveria aparecer na aba de formas,
 		// aparecendo quando vc sofre do buff de aclimado, falando quantos % vc ta ganhando de multiplicador nessa gravidade"*.
 		if (TextoDaAclimatacao(_atributos.Aclimatacao) is { } aclimatado) Linha("Aclimatado", aclimatado, Tema.Bom, agora);
+		// (2026-10-23) A ASCENSAO, QUANDO EXISTE: o bonus de PODER das racas sem transformacao, que sobe com o BP base (o `BPBoost`, ver
+		// `Core.Races.Ascensao`). Ao lado do aclimatado porque e da mesma natureza -- um pedaco que ja esta dentro do multiplicador total.
+		if (!AscensaoForaDaAbaDeTeste && TextoDaAscensao(_atributos.Ascensao) is { } ascensao) Linha("Ascensão", ascensao, Tema.Bom, agora);
 		NotaComDica(Nota("O multiplicador é o que o seu BP base virou agora; o poder efetivo é quanto dele o corpo "
 						 + "consegue botar pra fora.", agora),
 			"Transformar mexe no multiplicador e NÃO no poder efetivo: a forma multiplica os dois lados dessa conta.\n"
@@ -133,6 +136,13 @@ public partial class MenuJogo
 
 		// (v0.3.0) O KAIO-KEN E A MAESTRIA DELE -- ver `CartaoDoKaioken`.
 		if (PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)) CartaoDoKaioken();
+
+		// (2026-10-25) O KI DIVINO E A MAESTRIA DELE, como o Kaio-ken -- o dono: *"a maestria do ki divino deveria aparecer em forms tb,
+		// pq la so aparece a maestria do ssj god, blue etc mas nao do god ki em si, pq no instinto superior e ultra ego mostra a maestria da
+		// tecnica tb"*. As mesmas linhas do cartao da aba World (`LinhasDaMaestriaDivina`), pra quem ja despertou: e ela que abre os
+		// degraus das formas divinas desta mesma aba.
+		if (!KiDivinoForaDaAbaFormasDeTeste && GameClient.Instance is { KiDivino.Desperto: true } comKiDivino)
+			LinhasDaMaestriaDivina(comKiDivino.KiDivino, Cartao("Ki divino"));
 
 		// SO O QUE JA DESPERTOU. Maestria > 0 quer dizer que este corpo ja esteve nessa forma
 		// alguma vez -- e o unico registro honesto de "eu sei fazer isto".
@@ -199,6 +209,9 @@ public partial class MenuJogo
 		double dreno = Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(d.Id, livro) * 100;
 		Linha("dreno de Ki", dreno > 0 ? $"{dreno:0.##}% do Ki por segundo" : "nenhum: dá pra viver nela",
 			  dreno > 0 ? Tema.Texto : Tema.Bom, corpo);
+
+		// (2026-10-23) O SUPER MAJIN: o estagio de agora e a regra da trava pelo poder -- ver `MenuJogo.SuperMajin.cs`.
+		TravaDoSuperMajin(d, corpo);
 	}
 
 	/// <summary>A legenda da faixa quando se esta numa forma: "maestria 37,2%  ·  dreno 0,5% do Ki/s".</summary>
@@ -367,11 +380,18 @@ public partial class MenuJogo
 	///
 	/// (v0.4.2) E A RECUSA DO KAIO-KEN NO CARTAO, pela frase: a forma ja esta na basica, mas a classe e a maestria divina (os 50% do
 	/// Blue, que chegam no `S2C.GodKi`) nao -- o corpo que cruzasse os 50% com a aba aberta continuaria lendo a recusa.
+	///
+	/// (2026-10-23) E A LINHA "Ascensão", pelo TEXTO que ela escreve: ela anda com o BP base, e sem isto so mudaria quando o
+	/// multiplicador total la de cima mudasse de texto por outro motivo.
+	///
+	/// (2026-10-25) E O CARTAO "Ki divino": o desperto e a maestria divina a um decimo, como a barra a escreve -- ela chega no
+	/// `S2C.GodKi`, e nada da basica muda quando so ela sobe.
 	/// </summary>
 	private string ExtraDaAssinaturaDeFormas(SheetState f) =>
 		$"{PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)}|{_atributos.KaiokenMaestria:0.#}"
-		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}|{_atributos.Aclimatacao:0.##}"
-		+ $"|{(GameClient.Instance is { } cli && !RecusaForaDaAssinaturaDeTeste ? TelaDeKaioken.RecusaDaForma(cli) : "")}";
+		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}|{_atributos.Aclimatacao:0.##}|{TextoDaAscensao(_atributos.Ascensao)}"
+		+ $"|{(GameClient.Instance is { } cli && !RecusaForaDaAssinaturaDeTeste ? TelaDeKaioken.RecusaDaForma(cli) : "")}"
+		+ $"|{(GameClient.Instance is { } divino ? $"{divino.KiDivino.Desperto}:{divino.KiDivino.Maestria:0.0}" : "")}";
 
 	/// <summary>DEFEITO INJETADO (robo --diagkaiokenveto): a recusa do Kaio-ken fica fora da assinatura da aba Forms, e o cartao congela quando so a maestria divina muda. Falso em jogo, sempre.</summary>
 	public static bool RecusaForaDaAssinaturaDeTeste;
@@ -381,4 +401,17 @@ public partial class MenuJogo
 	/// ou nulo quando nao ha -- e a linha nao existe. Publico pra bancada das abas comparar a tela com o fio.
 	/// </summary>
 	public static string? TextoDaAclimatacao(float bonus) => bonus > 1.005f ? $"+{(bonus - 1) * 100:0}% nesta gravidade" : null;
+
+	/// <summary>
+	/// (2026-10-23) O TEXTO DA LINHA "Ascensão": o `BPBoost` da ficha lenta (`AtributosState.Ascensao`) escrito como o multiplicador total
+	/// (`MultTexto`), ou nulo sem Ascensao -- e a linha nao existe (a raca que se transforma, o BP abaixo de 1 milhao, a forma absoluta que
+	/// toma o lugar dela). Publico pro robo `--diagascensao` comparar a tela com o fio.
+	/// </summary>
+	public static string? TextoDaAscensao(float mult) => mult > 1.005f ? MultTexto(mult) : null;
+
+	/// <summary>DEFEITO INJETADO (robo --diagascensao): a linha "Ascensão" some da aba Forms -- o jogo sem a tela da Ascensao. Falso em jogo, sempre.</summary>
+	public static bool AscensaoForaDaAbaDeTeste;
+
+	/// <summary>(2026-10-25) DEFEITO INJETADO (robo --diagabas): o cartao "Ki divino" some da aba Forms -- o jogo de antes, com a maestria divina so na aba World. Falso em jogo, sempre.</summary>
+	public static bool KiDivinoForaDaAbaFormasDeTeste;
 }

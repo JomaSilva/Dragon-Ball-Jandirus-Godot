@@ -31,18 +31,21 @@ namespace Jandirus.Server;
 ///      nunca e (o espaco, a Terra) e o que e por natureza (o Reino dos Deuses).
 ///   3. A ATMOSFERA -- abaixo do requisito nada acumula e a frase e uma; acima, o tempo enche o medidor;
 ///      planeta comum nao; nao zera ao sair; o cadaver nao respira.
-///   4. O DESPERTAR -- o que ele escreve (marco, bonus, excecoes), quem ouve, e o que o resto do jogo passa
-///      a enxergar: o perfil de formas, o Super Saiyajin God e o fato do "Challenge God of Destruction".
+///   4. O DESPERTAR -- o que ele escreve (marco, excecoes) e o que NAO escreve mais (os 2,5x de poder pra sempre: o
+///      dono os tirou em 2026-10-23), quem ouve, e o que o resto do jogo passa a enxergar: o perfil de formas, o
+///      Super Saiyajin God e o fato do "Challenge God of Destruction".
 ///   5. A LUTA -- o golpe dado e o recebido, o revide, o teto por minuto, o caido, o golpe que nao
 ///      encosta, o reflexo de um deus, o NPC numa forma divina, e os dois caminhos somando.
 ///   6. A MAESTRIA DIVINA -- so sobe usando o ki divino, dezesseis horas de uso, o dobro em combate.
-///   7. O SAVE -- a exposicao parcial e o despertar atravessam o disco e o login.
+///   7. O SAVE -- a exposicao parcial e o despertar atravessam o disco e o login; e o save de antes de 2026-10-23,
+///      com o bonus gravado, entra sem ele.
 ///   8. OS VERBS DE ADMIN -- `admin_godki` e `admin_mundo_divino`, com o pouso de verdade.
 /// ==========================================================================
 ///
-/// SETE DEFEITOS INJETADOS, um por regra: `GodKiSemRequisitoDeTeste`, `GodKiEmQualquerChaoDeTeste`,
+/// OITO DEFEITOS INJETADOS, um por regra: `GodKiSemRequisitoDeTeste`, `GodKiEmQualquerChaoDeTeste`,
 /// `GodKiSemRevideDeTeste`, `GodKiSemTetoDeLutaDeTeste`, `GodKiNaoDespertaDeTeste`,
-/// `MaestriaDivinaParadaDeTeste` e, no Core, `AtmosferaDivina.GarantiaDesligadaDeTeste`.
+/// `MaestriaDivinaParadaDeTeste` e, no Core, `AtmosferaDivina.GarantiaDesligadaDeTeste` e
+/// `Fighter.BonusDoGodKiPraSempreDeTeste` (os 2,5x pra sempre de antes de 2026-10-23).
 ///
 ///     Godot --headless --path . --host --rede 8250 --godkiteste --raca Saiyan
 ///                      --conta bancada_godki --nome Deus
@@ -90,7 +93,7 @@ public partial class GameServer
 		string origemGuardada = pl.PlanetaDeOrigem;
 		double bpGuardado = f.BP, kiGuardado = f.Ki, vigorGuardado = f.stamina, gravidadeGuardada = f.GravMastered;
 		GodKiState? godkiGuardado = f.godki;
-		double exposicaoGuardada = f.ExposicaoDivina, bonusGuardado = f.godki_give_mult;
+		double exposicaoGuardada = f.ExposicaoDivina;
 		double marcoGuardado = f.bp_milestone_mult;
 		var marcosGuardados = new HashSet<string>(f.bp_milestones_done, StringComparer.Ordinal);
 		bool mortoGuardado = f.dead, koGuardado = f.KO;
@@ -147,6 +150,7 @@ public partial class GameServer
 			GodKiSemRequisitoDeTeste = GodKiEmQualquerChaoDeTeste = GodKiSemRevideDeTeste = false;
 			GodKiSemTetoDeLutaDeTeste = GodKiNaoDespertaDeTeste = MaestriaDivinaParadaDeTeste = false;
 			AtmosferaDivina.GarantiaDesligadaDeTeste = false;
+			Fighter.BonusDoGodKiPraSempreDeTeste = false;
 			EscutaDoGodKi = escutaAntes;
 			EscutaDoDespertar = despertarAntes;
 
@@ -161,7 +165,6 @@ public partial class GameServer
 				f.GravMastered = gravidadeGuardada;
 				f.godki = godkiGuardado;
 				f.ExposicaoDivina = exposicaoGuardada;
-				f.godki_give_mult = bonusGuardado;
 				f.bp_milestone_mult = marcoGuardado;
 				f.bp_milestones_done = marcosGuardados;
 				f.dead = mortoGuardado;
@@ -497,8 +500,8 @@ public partial class GameServer
 				  + $"(a constante: {DespertarDivino.SegundosNaAtmosfera:0} s)",
 				  DespertarDivino.JaDespertou(f) && Math.Abs(total - DespertarDivino.SegundosNaAtmosfera) <= 1, $"{total} s");
 		AfirmarGk("...passando pelas etapas de 50% e 75%, ditas ao jogador", Disse(falas, "(50%)") && Disse(falas, "(75%)"), "");
-		AfirmarGk("o jogador ouve o despertar, o bonus e o marco", Disse(falas, "O KI DIVINO DESPERTOU EM VOCÊ")
-				  && (f.godki_give_mult <= 0 || Disse(falas, "pra sempre")) && Disse(falas, "MARCO DE PODER"), Ultimos(falas));
+		AfirmarGk("o jogador ouve o despertar e o marco -- e nenhuma frase promete poder \"pra sempre\" (o bonus saiu: dono, 2026-10-23)",
+				  Disse(falas, "O KI DIVINO DESPERTOU EM VOCÊ") && !Disse(falas, "pra sempre") && Disse(falas, "MARCO DE PODER"), Ultimos(falas));
 		// QUEM OUVE: os corpos da zona dentro da vista (o vizinho, a 3 tiles), e nao os de fora dela (o distante, a 60).
 		int naVista = ZoneList(pl.Zone.Hash).Count(o => o != pl && (o.Pos - pl.Pos).LengthSquared <= RaioDaVista * RaioDaVista);
 		int ouviram = falas.Count(x => x.Contains("o KI DIVINO despertou nele", StringComparison.Ordinal));
@@ -517,14 +520,14 @@ public partial class GameServer
 				  f.bp_milestones_done.Contains(DespertarDivino.MarcoDoDespertar)
 				  && f.bp_milestone_mult == Math.Max(marcoAntes, Milestones.Valor(DespertarDivino.MarcoDoDespertar)),
 				  $"x{marcoAntes:0.##} -> x{f.bp_milestone_mult:0.##}");
-		bool primal = f.SaiyanLineage == Oozaru.LinhagemPrimal;
+		// (2026-10-23) O PODER NAO MUDA MAIS NO DESPERTAR: os 2,5x pra sempre do DM (`godki_give_mult`) sairam. A regua com o contra-exemplo
+		// vem mais abaixo, num Humano forjado -- o host pode ser Primal, e o Primal nunca teve o bonus.
 		f.PowerLevel(agoraMs: NowMs());
-		AfirmarGk(primal
-					  ? "o host e Primal: o `godki_give_mult` fica em zero e o poder nao muda"
-					  : $"o BONUS de poder (`godki_give_mult = godki_boost`): o poder expresso multiplicou por {f.godki_boost:0.#}, sem forma nenhuma",
-				  primal ? f.godki_give_mult == 0 && Math.Abs(f.expressedBP / expressoAntes - 1) < 0.01
-						 : f.godki_give_mult == f.godki_boost && Math.Abs(f.expressedBP / expressoAntes - f.godki_boost) < 0.02 * f.godki_boost,
-				  $"{expressoAntes:N0} -> {f.expressedBP:N0} (x{f.expressedBP / expressoAntes:0.###})");
+		AfirmarGk("GKB1. **O DESPERTAR NAO MULTIPLICA MAIS O PODER** (dono, 2026-10-23: *\"o god ki dobrar o bp quando pega n achei mt legal nao, "
+				  + "so as formas e as passivas de god ki ja estao bons\"*): o poder expresso do host, sem forma nenhuma, e o de antes",
+				  Math.Abs(f.expressedBP / expressoAntes - 1) < 0.01,
+				  $"{expressoAntes:N0} -> {f.expressedBP:N0} (x{f.expressedBP / expressoAntes:0.###}; "
+				  + $"{(f.SaiyanLineage == Oozaru.LinhagemPrimal ? "Primal" : "nao e Primal")})");
 		AfirmarGk("o retrato do cliente: DESPERTO (e a maestria passa a viajar)",
 				  GkUltimoRetrato(pl) is { } r2 && (r2.Bits & (byte)Protocol.BitsDoGodKi.Desperto) != 0 && r2.Pct == 100, GkRetratoEmTexto(pl));
 
@@ -537,11 +540,11 @@ public partial class GameServer
 				  && RequisitosDosVerbos.DoVerbo("cargo_desafiar").Atende(PosseDe(pl)));
 
 		// IDEMPOTENTE: despertar de novo nao dobra nada.
-		double bonus = f.godki_give_mult, marco = f.bp_milestone_mult;
+		double marco = f.bp_milestone_mult;
 		bool deNovo = DespertarOGodKi(pl, FonteDaExposicao.Admin);
 		for (int i = 0; i < 30; i++) TickDoGodKi(1);
 		AfirmarGk("despertar duas vezes nao existe: a segunda chamada devolve falso, e mais meio minuto de atmosfera nao muda nada",
-				  !deNovo && f.godki_give_mult == bonus && f.bp_milestone_mult == marco && f.ExposicaoDivina == DespertarDivino.ExposicaoCheia);
+				  !deNovo && f.bp_milestone_mult == marco && f.ExposicaoDivina == DespertarDivino.ExposicaoCheia);
 
 		// AS EXCECOES DO ORIGINAL, em corpos forjados (pelo funil do servidor).
 		ServerPlayer saiyajin = GkForjar("gk: Saiyajin Normal", "Saiyan", zonaDivina, noDivino, req, forjados);
@@ -558,14 +561,16 @@ public partial class GameServer
 		ServerPlayer primalSaiyan = GkForjar("gk: Primal", "Saiyan", zonaDivina, noDivino, req, forjados);
 		primalSaiyan.Ficha.SaiyanLineage = Oozaru.LinhagemPrimal;
 		DespertarOGodKi(primalSaiyan, FonteDaExposicao.Admin);
-		AfirmarGk("o PRIMAL desperta sem o bonus de poder (`godkiattain.dm:38`): `godki_give_mult` zero, e o marco ele ganha",
-				  primalSaiyan.Ficha.godki is { awakened: true } && primalSaiyan.Ficha.godki_give_mult == 0
+		AfirmarGk("o PRIMAL desperta e ganha o marco (o bonus de poder que o DM ja lhe negava, `godkiattain.dm:38`, desde 2026-10-23 nao e de ninguem)",
+				  primalSaiyan.Ficha.godki is { awakened: true }
 				  && primalSaiyan.Ficha.bp_milestones_done.Contains(DespertarDivino.MarcoDoDespertar));
 
 		ServerPlayer kai = GkForjar("gk: Kai", "Kai", zonaDivina, noDivino, req, forjados);
 		ServerPlayer filhoDeDemonio = GkForjar("gk: filho de Demonio", "Human", zonaDivina, noDivino, req, forjados);
 		filhoDeDemonio.Ficha.ParentRace = "Demon";
 		ServerPlayer humano = GkForjar("gk: Humano", "Human", zonaDivina, noDivino, req, forjados);
+		humano.Ficha.PowerLevel(agoraMs: NowMs());
+		double humanoAntes = humano.Ficha.expressedBP;
 		DespertarOGodKi(kai, FonteDaExposicao.Admin);
 		DespertarOGodKi(filhoDeDemonio, FonteDaExposicao.Admin);
 		DespertarOGodKi(humano, FonteDaExposicao.Admin);
@@ -574,6 +579,30 @@ public partial class GameServer
 				  && filhoDeDemonio.Ficha.godki?.mastery == DespertarDivino.MaestriaDoSangueDivino
 				  && humano.Ficha.godki is { awakened: true, mastery: 0 },
 				  $"Kai {kai.Ficha.godki?.mastery:0}, filho de Demonio {filhoDeDemonio.Ficha.godki?.mastery:0}, Humano {humano.Ficha.godki?.mastery:0}");
+
+		// (2026-10-23) O PODER NAO MUDA NO DESPERTAR, num corpo que com certeza nao e Primal (o Humano): a regua e o contra-exemplo dela. O
+		// defeito injetado e o jogo de antes (`Fighter.BonusDoGodKiPraSempreDeTeste`, lido pela propria linha do `GodKiFactor`).
+		long agora = NowMs();
+		humano.Ficha.PowerLevel(agoraMs: agora);
+		double humanoDepois = humano.Ficha.expressedBP, humanoComBonus;
+		Fighter.BonusDoGodKiPraSempreDeTeste = true;
+		try
+		{
+			humano.Ficha.PowerLevel(agoraMs: agora);
+			humanoComBonus = humano.Ficha.expressedBP;
+		}
+		finally
+		{
+			Fighter.BonusDoGodKiPraSempreDeTeste = false;
+			humano.Ficha.PowerLevel(agoraMs: agora);
+		}
+		AfirmarGk("GKB2. **...E NO HUMANO DESPERTO TAMBEM**: o poder expresso e o de antes do despertar -- ficam so as formas divinas e as passivas",
+				  DespertarDivino.JaDespertou(humano.Ficha) && Math.Abs(humanoDepois / humanoAntes - 1) < 0.01,
+				  $"{humanoAntes:N0} -> {humanoDepois:N0} (x{humanoDepois / humanoAntes:0.###})");
+		AfirmarGk($"   (defeito injetado: os {humano.Ficha.godki_boost:0.#}x pra sempre de antes de 2026-10-23) a mesma regua REPROVA: o Humano desperto vale "
+				  + $"x{humano.Ficha.godki_boost:0.#} sem forma nenhuma",
+				  Math.Abs(humanoComBonus / humanoAntes - humano.Ficha.godki_boost) < 0.02 * humano.Ficha.godki_boost,
+				  $"{humanoAntes:N0} -> {humanoComBonus:N0} (x{humanoComBonus / humanoAntes:0.###})");
 	}
 
 	// =====================================================================
@@ -946,16 +975,78 @@ public partial class GameServer
 		forjados.Add(deus);
 		deus.Pos = la;
 		Fighter g = deus.Ficha;
-		AfirmarGk("**O DESPERTAR ATRAVESSA O LOGIN**: `awakened`, a maestria, o bonus de poder e o marco voltam do disco",
-				  g.godki is { awakened: true, mastery: 12.5 } && g.godki_give_mult == f.godki_give_mult
+		AfirmarGk("**O DESPERTAR ATRAVESSA O LOGIN**: `awakened`, a maestria e o marco voltam do disco",
+				  g.godki is { awakened: true, mastery: 12.5 }
 				  && g.bp_milestone_mult == f.bp_milestone_mult && g.bp_milestones_done.Contains(DespertarDivino.MarcoDoDespertar)
 				  && g.ExposicaoDivina == DespertarDivino.ExposicaoCheia,
-				  $"awakened={g.godki?.awakened} maestria={g.godki?.mastery:0.##} bonus=x{g.godki_give_mult:0.##} marco=x{g.bp_milestone_mult:0.##}");
+				  $"awakened={g.godki?.awakened} maestria={g.godki?.mastery:0.##} marco=x{g.bp_milestone_mult:0.##}");
 		AfirmarGk("...e o resto do jogo continua enxergando: o perfil de formas e o fato do desafio",
 				  Perfil(deus).GodKi == 12.5 && (FatosDe(deus) & Fatos.GodKiDesperto) != 0);
-		AfirmarGk("...e ele NAO desperta de novo (nem o bonus dobra)", !DespertarOGodKi(deus, FonteDaExposicao.Admin) && g.godki_give_mult == f.godki_give_mult);
+		double marcoDoDeus = g.bp_milestone_mult;
+		AfirmarGk("...e ele NAO desperta de novo (nem o marco sobe)", !DespertarOGodKi(deus, FonteDaExposicao.Admin) && g.bp_milestone_mult == marcoDoDeus);
 		GkRecolher(deus);
 		forjados.Remove(deus);
+
+		// ---------------------------------------------------------------- (c) O SAVE DE ANTES DE 2026-10-23, COM O BONUS GRAVADO
+		// Ate a v0.4.4 o despertar gravava na ficha os 2,5x de poder pra sempre (`godki_give_mult`, o campo do DM). O campo saiu da ficha, e a
+		// decisao e que quem ja despertou perca o bonus no login. A bancada escreve no disco o save como a v0.4.4 o gravava -- o mesmo JSON,
+		// com o campo em 2,5 numa ficha de Saiyajin comum (o Primal nunca teve o bonus) -- e loga por ele, pelo funil de sempre. Duas reguas
+		// numa: o poder dele e o do MESMO save sem o campo (o numero gravado nao conta) e o da mesma ficha sem ki divino nenhum (o despertar nao
+		// conta).
+		string arquivo = System.IO.Path.Combine(_store.Pasta, AccountStore.NomeDeArquivo(ContaDaBancadaDoGodKi) + ".json");
+		System.Text.Json.Nodes.JsonNode? raiz = System.Text.Json.Nodes.JsonNode.Parse(System.IO.File.ReadAllText(arquivo));
+		if (raiz?["Slots"]?[0]?["Ficha"] is not System.Text.Json.Nodes.JsonObject fichaNoDisco)
+		{
+			AfirmarGk("(montagem) o save do host no disco tem a ficha no slot 0", false);
+			return;
+		}
+		long t = NowMs();
+		fichaNoDisco["SaiyanLineage"] = "Saiyan";
+		fichaNoDisco.Remove("godki_give_mult");
+		System.IO.File.WriteAllText(arquivo, raiz!.ToJsonString());
+		ServerPlayer controle = Logar(ContaDaBancadaDoGodKi, 0, 0);
+		forjados.Add(controle);
+		controle.Pos = la;
+		controle.Ficha.PowerLevel(agoraMs: t);
+		double doMesmoSaveSemOCampo = controle.Ficha.expressedBP;
+		GkRecolher(controle);
+		forjados.Remove(controle);
+
+		fichaNoDisco["godki_give_mult"] = f.godki_boost;   // o save da v0.4.4
+		System.IO.File.WriteAllText(arquivo, raiz!.ToJsonString());
+		bool campoNoDisco = System.IO.File.ReadAllText(arquivo).Contains("\"godki_give_mult\"", StringComparison.Ordinal);
+		ServerPlayer antigo = Logar(ContaDaBancadaDoGodKi, 0, 0);
+		forjados.Add(antigo);
+		antigo.Pos = la;
+		Fighter v = antigo.Ficha;
+		v.PowerLevel(agoraMs: t);
+		double comKiDivino = v.expressedBP, semKiDivino, comODefeito;
+		GodKiState? kiDivinoDoSave = v.godki;
+		v.godki = null;   // a mesma ficha sem ki divino nenhum
+		v.PowerLevel(agoraMs: t);
+		semKiDivino = v.expressedBP;
+		v.godki = kiDivinoDoSave;
+		Fighter.BonusDoGodKiPraSempreDeTeste = true;
+		try
+		{
+			v.PowerLevel(agoraMs: t);
+			comODefeito = v.expressedBP;
+		}
+		finally
+		{
+			Fighter.BonusDoGodKiPraSempreDeTeste = false;
+			v.PowerLevel(agoraMs: t);
+		}
+		AfirmarGk("GKB3. **QUEM JA TINHA O BONUS O PERDE NO LOGIN** (2026-10-23): o save de antes, com os 2,5x gravados, entra desperto e com o "
+				  + "poder do mesmo save sem o campo -- que e o poder de quem nao tem ki divino nenhum",
+				  campoNoDisco && DespertarDivino.JaDespertou(v) && v.SaiyanLineage == "Saiyan"
+				  && Math.Abs(comKiDivino / doMesmoSaveSemOCampo - 1) < 0.01 && Math.Abs(comKiDivino / semKiDivino - 1) < 0.01,
+				  $"campo no disco={campoNoDisco}; linhagem '{v.SaiyanLineage}'; com o campo {comKiDivino:N0}, sem o campo {doMesmoSaveSemOCampo:N0}, "
+				  + $"sem ki divino {semKiDivino:N0}");
+		AfirmarGk($"   (defeito injetado: o bonus pra sempre de antes) a mesma regua REPROVA: o save entraria valendo x{f.godki_boost:0.#}",
+				  Math.Abs(comODefeito / semKiDivino - f.godki_boost) < 0.02 * f.godki_boost, $"x{comODefeito / semKiDivino:0.###}");
+		GkRecolher(antigo);
+		forjados.Remove(antigo);
 	}
 
 	// =====================================================================
@@ -1064,7 +1155,6 @@ public partial class GameServer
 		Fighter f = c.Ficha;
 		f.godki = null;
 		f.ExposicaoDivina = 0;
-		f.godki_give_mult = 0;
 		f.bp_milestones_done.Remove(DespertarDivino.MarcoDoDespertar);
 		f.bp_milestone_mult = 1;
 		f.BP = bp;

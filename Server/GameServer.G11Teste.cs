@@ -443,14 +443,21 @@ public sealed partial class GameServer
 				   Disse(falas, "Ki cheio") && kai.Zone.Name == "Earth" && colado.Zone.Name == "Earth"
 				   && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi / 2) < 1e-9, Ultimos(falas));
 
-		// a lista vem DEPOIS da porta do Ki (`if(...Ki>=MaxKi...) { input }`, `kai.dm:115-117`)
+		// a lista vem DEPOIS da porta do Ki (`if(...Ki>=MaxKi...) { input }`, `kai.dm:115-117`) -- e desde 2026-10-23 ela vai pra TELA
+		// do Kai Kai (`S2C.DestinosDoKaiKai`), e nao pro chat. Ver `GameServer.KaiKai.cs` e a `--kaikaiteste`.
 		kai.Ficha.Ki = kai.Ficha.MaxKi;
-		falas = ApertarEOuvir(kai, "Kai_Kai");
-		AfirmarG11("sem destino ele LISTA (com o Ceu, que o Kai Kai alcanca) e nao viaja nem cobra",
-				   Disse(falas, "Heaven") && kai.Zone.Name == "Earth" && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi) < 1e-9,
+		List<(int Quem, List<DestinoDoKaiKai> Lista)> tela = [];
+		EscutaDoKaiKai = tela;
+		try { falas = ApertarEOuvir(kai, "Kai_Kai"); }
+		finally { EscutaDoKaiKai = null; }
+		AfirmarG11("sem destino ele manda a LISTA pra tela do Kai Kai (com o Ceu, que o Kai Kai alcanca) e nao viaja nem cobra",
+				   tela.Exists(t => t.Quem == kai.Id && t.Lista.Exists(d => d.Chave == "Heaven"))
+				   && kai.Zone.Name == "Earth" && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi) < 1e-9,
 				   Ultimos(falas));
 
+		// (o salto do Kai Kai pisca 0,2 s antes de sumir, pra quem fica ver o clarao: a bancada vence o relogio -- `GameServer.KaiKai.cs`)
 		UsarHabilidade(kai, "Kai_Kai:Namek");
+		TerminarOKaiKaiDeTeste(kai.Id);
 		AfirmarG11("com Ki cheio o Kaioshin CHEGA em Namek, sem uma gota de Ki",
 				   kai.Zone.Name == "Namek" && kai.Ficha.Ki == 0, $"{kai.Zone.Name}, Ki {kai.Ficha.Ki}");
 		AfirmarG11("...quem estava COLADO chegou junto", colado.Zone.Name == "Namek", colado.Zone.Name);
@@ -459,6 +466,7 @@ public sealed partial class GameServer
 		_saltoPronto.Remove(kai.Id);
 		kai.Ficha.Ki = kai.Ficha.MaxKi;
 		UsarHabilidade(kai, "Kai_Kai:Heaven");
+		TerminarOKaiKaiDeTeste(kai.Id);
 		AfirmarG11("o Kai Kai alcanca o Ceu", kai.Zone.Name == "Heaven", kai.Zone.Name);
 
 		ServerPlayer demo = ForjarG11("Demonio", CorredorLivre(12), 5_000, PathDevilG11T);
@@ -520,6 +528,7 @@ public sealed partial class GameServer
 		_transmissaoG11[yd.Id].QuandoMs = NowMs() - 1;
 		double kiAntesDaChegada = yd.Ficha.Ki;
 		TickDoEfetorG11();
+		TerminarATransmissaoDeTeste(yd.Id);   // (2026-10-24) a saida piscando e o clarao da chegada -- a familia S da `--teleporteteste`
 		AfirmarG11("vencida a concentracao, o Yardrat aparece ao LADO do farol",
 				   Vec2.Distance(yd.Pos, farol.Pos) <= 1.5 * ZoneCollision.TileSize, $"{Vec2.Distance(yd.Pos, farol.Pos):0} px");
 		AfirmarG11("...quem estava COLADO DE PE nao foi (a carona agora e quem medita junto), e quem estava longe tambem nao",
@@ -536,9 +545,12 @@ public sealed partial class GameServer
 		// cobrava `kireq*BaseDrain` (`:146`) e zerava qualquer tanque acima de 140 -- consertado por decisao do dono.
 		yd.Ficha.teleskill = 200;
 		yd.Ficha.Ki = yd.Ficha.MaxKi;
+		// (2026-10-23) A viagem de cima ja deu MAESTRIA ao Yardrat (+3%), e ela baixaria o custo: esta regua mede o `kireq` puro.
+		// A maestria tem a familia dela na `--teleporteteste` (M).
+		yd.Ficha.MaestriaDaTransmissao = 0;
 		UsarHabilidade(yd, $"Instant_Transmission:{farol.Assinatura}");
 		bool concentrou = _transmissaoG11.TryGetValue(yd.Id, out TransmissaoG11? t2);
-		if (concentrou) { t2!.QuandoMs = NowMs() - 1; TickDoEfetorG11(); }
+		if (concentrou) { t2!.QuandoMs = NowMs() - 1; TickDoEfetorG11(); TerminarATransmissaoDeTeste(yd.Id); }
 		AfirmarG11($"com teleskill 200 a viagem cobra kireq = MaxKi/2 e DEIXA metade do Ki (o DM cobrava kireq*BaseDrain = {yd.Ficha.MaxKi / 2 * yd.Ficha.BaseDrain():0} deste tanque de {yd.Ficha.MaxKi:0} -- e ZERA qualquer tanque acima de 140, yardrat.dm:146)",
 				   concentrou && Math.Abs(yd.Ficha.Ki - yd.Ficha.MaxKi / 2) < 1e-6 && yd.Ficha.Ki > 0,
 				   $"concentrou {concentrou}, ki {yd.Ficha.Ki:0} de {yd.Ficha.MaxKi:0}, BaseDrain {yd.Ficha.BaseDrain():0.##}");

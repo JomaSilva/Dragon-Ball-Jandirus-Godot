@@ -30,7 +30,7 @@ namespace Jandirus.Server;
 ///
 ///   voo      voar sobe o BP        x  quem esta no chao nao sobe
 ///   nado     nadar sobe o BP       x  nadar em linha reta nao sobe
-///   marco    BPBoost 5 da patamar  x  BPBoost 4 nao da
+///   marco    a porta do SSJ1 da patamar  x  1,4 milhao nao da
 ///   velhice  o corpo de 75 morre   x  o de 25 atravessa o mesmo funil e vive
 ///   exp      a bola sobe a arvore  x  as arvores de raio e de debuff ficam em ZERO
 ///   genoma   o filho herda dos 2   x  o neto nao colapsa em dois nomes
@@ -42,7 +42,7 @@ namespace Jandirus.Server;
 ///
 ///   `FlightGain`               "voar TREINA"                (`GameServer.Voo.cs`, TickDoVoo)
 ///   `SwimGain`                 "NADAR TREINA"               (`GameServer.Nado.cs`, TickDoNado)
-///   `CheckAscensionMilestone`  "BPBoost 5 rompe o marco"    (`GameServer.cs`, Treinar)
+///   `CheckAscensionMilestone`  "o marco `asc5` rompe"       (`GameServer.cs`, Treinar)
 ///   `MorreuDeVelhice`          "o aniversario de 75 MATA"   (`GameServer.SalaSessao.cs`)
 ///   `Creditar` (contador)      "ATIRAR credita exp"         (`GameServer.Projeteis.cs`)
 ///   `Creditar` (Light Buster)  "o Light Buster credita 1"   (`GameServer.Tecnicas.G3.cs`)
@@ -303,47 +303,48 @@ public partial class GameServer
 			// 2. CheckAscensionMilestone -- `ascensioncontrols.dm:83`, ligado no `Treinar`
 			// =====================================================================
 			{
-				ServerPlayer a = Forjar("AscendidoDeTeste", "Human", 25, NoCentroDe(44, 40));
+				ServerPlayer a = Forjar("AscendidoDeTeste", "Kai", 25, NoCentroDe(44, 40));
 
 				Checa("um corpo novo nao tem marco de ascensao nenhum",
 					  Math.Abs(a.Ficha.bp_milestone_mult - 1) < 1e-9,
 					  $"bp_milestone_mult nasceu {a.Ficha.bp_milestone_mult}");
 
-				// A RACA E HUMANA DE PROPOSITO. O marco de ascensao existe "pras racas que nao tem
-				// forma" (`Fighter.Training.cs:40`): um Saiyajin tem a escada SSJ como outro caminho
-				// pro patamar, e medir o degrau NELE nao responderia a pergunta do dono. Se um dia
-				// esta raca ganhar escada, esta linha reprova antes de a prova mentir.
-				Checa("...e o corpo da prova nao tem escada de forma (e a raca que o marco atende)",
-					  !a.Ficha.canSSJ && a.Ficha.SaiyanLineage.Length == 0,
-					  $"canSSJ={a.Ficha.canSSJ}, linhagem='{a.Ficha.SaiyanLineage}' -- a prova mediria outra coisa");
+				// A RACA E KAI DE PROPOSITO. O marco de ascensao existe "pras racas que nao tem forma"
+				// (`Fighter.Training.cs:40`): um Saiyajin tem a escada SSJ como outro caminho pro patamar, e
+				// medir o degrau NELE nao responderia a pergunta do dono. (2026-10-23) ERA HUMANA, e o Humano
+				// ganhou a escada da Tensao na v0.4.0 sem esta linha perceber -- ela olhava o `canSSJ` e a
+				// linhagem, e nao a escada. Agora quem responde e a regra da Ascensao (`Races.Ascensao.Ascende`,
+				// pelo catalogo): se o Kai ganhar escada, esta linha reprova antes de a prova mentir.
+				Checa("...e o corpo da prova e de uma raca que ASCENDE (sem escada racial no catalogo)",
+					  Jandirus.Core.Races.Ascensao.Ascende(a.Race, a.Ficha.Class),
+					  $"{a.Race}/{a.Ficha.Class} -- a prova mediria outra coisa");
 
-				// ============ ABAIXO DA LINHA NAO GANHA NADA, E SEM ISTO AS DUAS DE BAIXO SAO CEGAS ============
+				// ============ ABAIXO DA PORTA NAO GANHA NADA, E SEM ISTO AS DUAS DE BAIXO SAO CEGAS ============
 				// Um `CheckAscensionMilestone` que devolvesse patamar pra qualquer `BPBoost` -- ou um
 				// `ReachMilestone` que aceitasse qualquer etiqueta -- deixaria as duas conferencias
-				// positivas VERDES. O degrau tem que ser o `>= 5`, e nao "houve degrau".
-				a.Ficha.BPBoost = 4;
+				// positivas VERDES. O degrau tem que ser o da porta do SSJ1 (BPBoost 2), e nao "houve degrau".
+				a.Ficha.BP = 1_400_000;
 				Treinar(a);
-				Checa("...e BPBoost 4 (um abaixo do `asc5`) NAO da patamar nenhum",
+				Checa("...e 1,4 milhao de BP base (BPBoost ~1,8: abaixo da porta do SSJ1) NAO da patamar nenhum",
 					  Math.Abs(a.Ficha.bp_milestone_mult - 1) < 1e-9,
-					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} com BPBoost 4 (esperado 1)");
+					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} com BPBoost {a.Ficha.BPBoost:0.###} (esperado 1)");
 
-				// ============ O `BPBoost` E LEVANTADO NA MAO, E ISSO E O PONTO ============
-				// A Ascensao (`Auto_Gain`) NAO esta portada: nenhum caminho de producao escreve
-				// `BPBoost`, entao em jogo este marco esta DORMENTE hoje. A bancada faz o papel do
-				// sistema que falta -- ela poe o `BPBoost` no valor que o `Auto_Gain` poria e
-				// cobra o degrau. Assim a chamada fica guardada desde ja: se ela sumir, isto
-				// reprova, mesmo que nada no jogo ainda a exercite.
-				a.Ficha.BPBoost = 5;
+				// ============ (2026-10-23) O `BPBoost` E O DA PRODUCAO, E ISSO E O PONTO ============
+				// Ate aqui a bancada levantava o `BPBoost` na mao, fazendo o papel da Ascensao que faltava. Ela
+				// entrou: o `Treinar` escreve o `BPBoost` de todo JOGADOR pelo BP base (`GameServer.AfirmarAAscensao`)
+				// logo antes do marco, e este corpo e jogador (o `Peer` e o do host). A bancada sobe o BP: se a
+				// chamada do marco sumir, isto reprova -- e se a do escritor sumir, tambem.
+				a.Ficha.BP = Jandirus.Core.Forms.Catalogo.PortaSsj1;
 				Treinar(a);
-				Checa("BPBoost 5 rompe o marco `asc5` pelo funil do `Treinar` (x2 no ganho)",
+				Checa("na porta do SSJ1 (BPBoost 2) o marco `asc5` rompe pelo funil do `Treinar` (x2 no ganho)",
 					  Math.Abs(a.Ficha.bp_milestone_mult - 2) < 1e-9,
-					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} (esperado 2)");
+					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} com BPBoost {a.Ficha.BPBoost:0.###} (esperado 2)");
 
-				a.Ficha.BPBoost = 20;
+				a.Ficha.BP = Jandirus.Core.Forms.Catalogo.PortaSsj3;
 				Treinar(a);
-				Checa("...e BPBoost 20 sobe pro `asc20` (x4)",
+				Checa("...e na porta do SSJ3 (BPBoost 16) sobe pro `asc20` (x4)",
 					  Math.Abs(a.Ficha.bp_milestone_mult - 4) < 1e-9,
-					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} (esperado 4)");
+					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} com BPBoost {a.Ficha.BPBoost:0.###} (esperado 4)");
 
 				// O MARCO TEM QUE CHEGAR NA BASE DO GANHO, senao ele e so um numero guardado.
 				Checa("...e o marco MULTIPLICA a base de ganho (`BpGainBase`)",

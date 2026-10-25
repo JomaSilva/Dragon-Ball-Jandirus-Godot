@@ -154,6 +154,12 @@ public readonly struct Percepcao
 	/// </summary>
 	public bool Arremessado { get; init; }
 
+	/// <summary>
+	/// (2026-10-25) O OPONENTE DA ARENA ME CHAMOU DE COVARDE, e eu luto no chao o resto da luta -- o dono: *"se for IA vs IA a q ta
+	/// voando ao ser xingada volta pra arena e luta sem voar"*. Quem escreve e o servidor (`GameServer.FoiChamadoDeCovarde`).
+	/// </summary>
+	public bool ChamadoDeCovarde { get; init; }
+
 	// =====================================================================
 	// A AGUA -- ver `Travessia`
 	// =====================================================================

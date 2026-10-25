@@ -397,8 +397,10 @@ public partial class RoboDeMostrador : Node
 		// NA PRIMEIRA RODADA este quociente deu 0,98 na base -- e nao 1,00. Nao e folga de tolerancia:
 		// e o `AgeDiv`, que e fator de condicao de verdade e entra na conta como manda a definicao.
 		// =====================================================================================================
-		double qBase = _naBase.Inteireza / Math.Max(Math.Min(1, _naBase.RazaoKi), 1e-9);
-		double qForma = a.Inteireza / Math.Max(Math.Min(1, a.RazaoKi), 1e-9);
+		// (2026-10-24) O DIVISOR E A FUNCAO DO JOGO (`Fighter.RazaoDoKiNoPoder`), e nao uma copia dela: 1 da metade do tanque ate o cheio,
+		// o bonus linear acima, e abaixo da metade a descida ate o piso -- o dono.
+		double qBase = _naBase.Inteireza / Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(_naBase.RazaoKi, 1);
+		double qForma = a.Inteireza / Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(a.RazaoKi, 1);
 
 		Conferir(Math.Abs(qForma - qBase) < 0.03,
 				 $"e a % efetivo NAO viu a forma: `inteireza/razaoKi` era {qBase:0.000} na base e e "
@@ -441,11 +443,14 @@ public partial class RoboDeMostrador : Node
 	{
 		Amostra a = Ler("5-ki-caido");
 
-		Conferir(a.Inteireza < _naBase.Inteireza - 0.05,
-				 $"a % efetivo CAIU com o Ki ({_naBase.Inteireza * 100:0.0}% -> {a.Inteireza * 100:0.0}%)");
+		// (2026-10-24) CONTRA O KI CARREGADO (a aba Forms, com o Ki acima de 100%), e nao contra o repouso: o dreno vai a ~92%, e da metade
+		// do tanque ate o cheio o Ki nao tira mais poder (o dono) -- a queda que se ve e a do bonus acima do cheio.
+		Conferir(a.Inteireza < _naAbaForms.Inteireza - 0.05,
+				 $"a % efetivo CAIU com o Ki ({_naAbaForms.Inteireza * 100:0.0}% com o Ki a {_naAbaForms.RazaoKi * 100:0.0}% -> "
+			   + $"{a.Inteireza * 100:0.0}% com {a.RazaoKi * 100:0.0}%)");
 
-		double qBase = _naBase.Inteireza / Math.Max(Math.Min(1, _naBase.RazaoKi), 1e-9);
-		double qAgora = a.Inteireza / Math.Max(Math.Min(1, a.RazaoKi), 1e-9);
+		double qBase = _naBase.Inteireza / Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(_naBase.RazaoKi, 1);
+		double qAgora = a.Inteireza / Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(a.RazaoKi, 1);
 
 		Conferir(Math.Abs(qAgora - qBase) < 0.03,
 				 $"e ela caiu na MEDIDA do Ki, e nao por outro motivo: `inteireza/razaoKi` continua "

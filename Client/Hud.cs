@@ -473,14 +473,17 @@ public partial class Hud : CanvasLayer
 	///      ler poder -- ver <c>GameServer.Sigilo.SemLeitura</c>. Nao ha o que esconder porque
 	///      nao ha o que mostrar, e nem um cliente modificado tira numero de onde nao tem.
 	///   2. O NUMERO VEIO MAS EU NAO TENHO SCOUTER. Enquanto o corte do servidor nao estiver
-	///      ligado nos dois envios de ficha, a tela nao pode contradizer a regra.
+	///      ligado nos dois envios de ficha, a tela nao pode contradizer a regra. (2026-10-24) ESTA PORTA
+	///      SAIU: o corte esta nos dois envios (`GameServer.FichaVisivel`), e sem scouter o numero passou a
+	///      chegar de proposito pra quem tem o Sense no nivel 4 -- o proprio poder (`SenteOProprioPoder`).
+	///      Quem decide e o servidor; a tela escreve o que chega.
 	///
 	/// So o BP EXPRESSO e mostrado, e e o que o HUD do BYOND fazia (HUD.dm:24-28: `beepee =
 	/// usr.expressedBP`). O BP base e a conta interna do treino; quem le poder le o que o corpo
 	/// esta expressando AGORA.
 	/// </summary>
 	private string Leitura(double bp) =>
-		double.IsNaN(bp) || !_temScouter ? "???" : Numero(bp);
+		double.IsNaN(bp) ? "???" : Numero(bp);
 
 	public override void _Process(double delta)
 	{

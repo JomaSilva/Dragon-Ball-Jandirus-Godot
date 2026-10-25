@@ -51,14 +51,17 @@ public partial class MenuJogo
 		// e uma ausencia, nao um valor -- e o numero de verdade sai no laranja da casa. A porta de
 		// bancada le a faixa como "grande + legenda", que e exatamente o texto de antes.
 		bool scouter = _atributos.Tem(Protocol.Poder.Scouter);
-		PanelContainer faixa = scouter
+		// (2026-10-24) SEM SCOUTER, O NUMERO SO CHEGA PRA QUEM SENTE O PROPRIO PODER -- o Sense no nivel 4 (`GameServer.SenteOProprioPoder`):
+		// o servidor manda os dois, e a faixa os escreve como escreveria os do aparelho.
+		bool sinto = !scouter && !double.IsNaN(f.ExpressedBP);
+		PanelContainer faixa = scouter || sinto
 			? Faixa("Battle Power", Lido(f.ExpressedBP), $"(base {Lido(f.BP)})", double.IsNaN(f.ExpressedBP) ? Tema.TextoFraco : null)
 			: Faixa("Battle Power", "???", "(sem scouter)", Tema.TextoFraco);
-		faixa.TooltipText = DicaDaFaixaDeBp(scouter, f);
+		faixa.TooltipText = DicaDaFaixaDeBp(scouter, sinto, f);
 
 		// COM O SCOUTER A FAIXA E VIVA (2026-10-19): o BP sobe a cada tique de treino, e o numero se reescreve no lugar
 		// em vez de remontar a aba inteira (ver `Viva`). Sem ele ela e o "???" parado -- nada a reescrever.
-		if (scouter)
+		if (scouter || sinto)
 		{
 			(Label grande, Label legenda) = PartesDaFaixa(faixa);
 			Color corDoGrande = double.IsNaN(f.ExpressedBP) ? Tema.TextoFraco : Tema.Destaque;
@@ -69,7 +72,7 @@ public partial class MenuJogo
 				legenda.Text = $"(base {Lido(s.BP)})";
 				Color cor = double.IsNaN(s.ExpressedBP) ? Tema.TextoFraco : Tema.Destaque;
 				if (cor != corDoGrande) { grande.AddThemeColorOverride("font_color", cor); corDoGrande = cor; }
-				faixa.TooltipText = DicaDaFaixaDeBp(true, s);
+				faixa.TooltipText = DicaDaFaixaDeBp(scouter, sinto, s);
 			});
 		}
 
@@ -91,9 +94,11 @@ public partial class MenuJogo
 	private static string Lido(double bp) => double.IsNaN(bp) ? "???" : $"{bp:N0}";
 
 	/// <summary>A dica da faixa do BP: sem scouter, com ele, e com ele estourado. Uma conta pra montagem e pra viva.</summary>
-	private static string DicaDaFaixaDeBp(bool scouter, SheetState f) =>
-		!scouter
-			? "Ninguém lê o próprio poder de luta sem um aparelho que meça. Ligue um scouter na aba Equip."
+	private static string DicaDaFaixaDeBp(bool scouter, bool sinto, SheetState f) =>
+		sinto
+			? "O seu Sense, no nível do sistema ou acima, sente o seu próprio poder: o expresso e o base. O dos outros, só um scouter lê."
+		: !scouter
+			? "Ninguém lê o próprio poder de luta sem um aparelho que meça, ou sem o Sense no nível do sistema. Ligue um scouter na aba Equip."
 			: double.IsNaN(f.ExpressedBP) || double.IsNaN(f.BP)
 				? "O scouter não lê poder acima de 100 milhões, nem ki divino: o que ele não alcança aparece como ???."
 				: "O poder que o mundo lê (expresso) e o que o treino sobe (base). Só existe em número com o scouter ligado.";
@@ -266,7 +271,10 @@ public partial class MenuJogo
 		float vigor = _atributos.VigorMult;
 		if (vigor >= 1.02f) partes.Add(($"{vigor:0.##}x vigor", Tema.Bom));
 		else if (vigor > 0 && vigor <= 0.98f) partes.Add(($"{vigor:0.##}x vigor", Tema.Perigo));
-		if (_atributos.PesoMult > 1.001f) partes.Add(($"{_atributos.PesoMult:0.##}x pesos", Tema.Destaque));
+		// (2026-10-23) PESO DEMAIS: a pilula dos pesos diz que assim nao se treina, e nao o "8x pesos" do `weight` -- ver `PesoDemaisNaFicha`
+		if (PesoDemaisNaFicha)
+			partes.Add(($"peso demais (acima de {Jandirus.Core.Stats.GainKnobs.RazaoQueImpedeOTreino:0.#}x o limite): não se treina", Tema.Perigo));
+		else if (_atributos.PesoMult > 1.001f) partes.Add(($"{_atributos.PesoMult:0.##}x pesos", Tema.Destaque));
 		if (_atributos.ZonaMult > 1.001f) partes.Add(($"Sala {_atributos.ZonaMult:0}x", Tema.Destaque));
 		else if (_atributos.ZonaMult < 0.999f) partes.Add(($"zona {_atributos.ZonaMult:0.##}x", Tema.Perigo));
 
@@ -311,6 +319,19 @@ public partial class MenuJogo
 			: "Gravidade, pesos e a Sala do Tempo multiplicam o que cada tique de treino rende. Acima do que o corpo aguenta, o chão esmaga: perde vida e velocidade, e a 4x prende.", c);
 	}
 
+	/// <summary>
+	/// (2026-10-23) O PESO VESTIDO PASSA DE 8x O LIMITE DO CORPO? Assim nao se treina (dono), e o servidor manda o ganho do painel em ZERO --
+	/// so nesse caso ele e zero (`Fighter.MultiplicadorDeGanho`). A pilula dos pesos (aba Stats) e a linha "Ganho no treino" (aba Equip) dizem
+	/// isso, e nao o "8x" do `weight` (que continua 8: ele ainda divide o poder). O cliente nao refaz a regra: le o zero que veio pronto.
+	/// </summary>
+	private bool PesoDemaisNaFicha => _atributos.PesoKg > 0 && _atributos.GanhoDeTreino <= 0 && !PesoDemaisCaladoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diaggravmeta`): a tela ignora o zero do peso demais -- a aba Stats volta a dizer "8x pesos" e a Equip o "8x"
+	/// do `weight`, o jogo de antes de 2026-10-23. Lido pelo <see cref="PesoDemaisNaFicha"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PesoDemaisCaladoDeTeste;
+
 	// =====================================================================
 	// ESTADO -- quem eu sou e como estou (STATE + PROGRESS & CURRENCY do original, HtmlUI.dm:219-228)
 	// =====================================================================
@@ -329,7 +350,7 @@ public partial class MenuJogo
 
 		// CONDICAO E GOLPE SAO PILULAS: "NOCAUTEADO" e "LETAL" se leem sem ler -- e sao os dois
 		// estados que mudam o que as teclas fazem.
-		LinhaComPilula("Condição", f.Morto ? "MORTO" : f.KO ? "NOCAUTEADO" : "de pé",
+		LinhaComPilula("Condição", f.Morto ? "MORTO" : f.KO ? "NOCAUTEADO" : "vivo",
 			f.Morto || f.KO ? Tema.Perigo : Tema.Bom, c);
 		LinhaComPilula("Golpe", f.Letal ? "LETAL" : "não-letal", f.Letal ? Tema.Perigo : Tema.Texto, c);
 		// O `relaxedstate` do original, no lugar onde ele o escreve (`[Emotion] / [relaxedstate]`, HtmlUI.dm:221):
@@ -379,7 +400,7 @@ public partial class MenuJogo
 
 	/// <summary>
 	/// A LINHA CUJO VALOR E UM ESTADO: rotulo apagado a esquerda e uma PILULA a direita, no lugar do
-	/// texto -- "de pé", "NOCAUTEADO", "LETAL" se leem sem ler. O metadado `estado` leva o rotulo e a
+	/// texto -- "vivo", "NOCAUTEADO", "LETAL" se leem sem ler. O metadado `estado` leva o rotulo e a
 	/// pilula leva o proprio texto (ver `Pilula`): e por eles que a bancada acha a linha. Nao leva o
 	/// metadado `linha` de proposito -- `ValorDesenhado` espera um Label no lugar do valor, e aqui
 	/// nao ha um.
@@ -414,7 +435,7 @@ public partial class MenuJogo
 	private string ExtraDaAssinaturaDeStats(SheetState f)
 	{
 		GameClient? c = GameClient.Instance;
-		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{f.VigorMax:0}|{f.NutricaoMax:0}"
+		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{double.IsNaN(f.ExpressedBP)}|{f.VigorMax:0}|{f.NutricaoMax:0}"
 			 + $"|{_atributos.KiDef:0.##}|{_atributos.Technique:0.##}|{_atributos.KiSkill:0.##}|{_atributos.Esoteric:0.##}"
 			 + $"|{_atributos.Willpower:0.##}|{_atributos.ZonaMult:0.##}|{_atributos.SalaFase}|{_atributos.SalaMinutos:0.#}"
 			 + $"|{_atributos.Raca}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.NomeDoLugar}|{AssinaturaDoPoderEmUso()}";

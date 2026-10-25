@@ -73,6 +73,8 @@ public partial class GameServer
 			LimparTudoDaBancada();
 			PwRelaxar();
 			LimparTudoDaBancada();
+			PwFormaDominada();
+			LimparTudoDaBancada();
 			PwEscondidoNaoEntregaBp();
 			LimparTudoDaBancada();
 			PwAsValidacoes();
@@ -95,6 +97,8 @@ public partial class GameServer
 			PoderEmUso.RelaxadoNaoEscondeDeTeste = PoderEmUso.BarraEscondeDeTeste = PoderEmUso.CargaNaoAcordaDeTeste = false;
 			PoderMexeCaidoDeTeste = RelaxarSemControleDeTeste = PoderVemDoDiscoDeTeste = RetratoDoPoderCongeladoDeTeste = false;
 			SenseContraOPisoDeTeste = MultiplicadorEntregaOBpDeTeste = false;
+			RelaxaEmQualquerFormaDeTeste = false;
+			Jandirus.Core.Forms.Catalogo.DrenoSemLiberacaoDeTeste = false;
 			try { LimparTudoDaBancada(); } catch (Exception e) { GD.PrintErr($"[poder]   (limpeza) {e.Message}"); }
 			GD.Print($"[poder] ================ {_pwOk} OK, {_pwFalhou} FALHA(S) ================");
 		}
@@ -571,6 +575,84 @@ public partial class GameServer
 	// =====================================================================
 	// 5) ESCONDIDO NAO ENTREGA O BP DE NINGUEM
 	// =====================================================================
+	// =====================================================================
+	// 4b) (2026-10-25) RELAXAR SO NUMA FORMA DOMINADA, E A BARRA QUE ALIVIA O CONSUMO DA FORMA
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"caso o personagem abaixe seu poder de luta propositalmente, ele diminui a perda de energia das transformacoes, a depender da
+	/// maestria delas [...] e ele so consegue relaxar quando masterizar a forma"*. As duas metades pelos caminhos de producao: o botao de
+	/// relaxar, a troca de forma (`EntrarNaForma`, que passa pelo `AnunciarForma`) e o tique da forma (`TickDaForma`), cada uma com o seu
+	/// contra-exemplo.
+	/// </summary>
+	private void PwFormaDominada()
+	{
+		GD.Print("[poder] -- 4b) (2026-10-25) relaxar so numa forma dominada, e a barra que alivia o consumo da forma pela maestria");
+		Vec2 c = CorredorLivre(28);
+		ServerPlayer eu = PwCorpo("Dominador", c, 50_000, comAPorta: true);
+		Jandirus.Core.Forms.FormaDef ssj2 = Jandirus.Core.Forms.Catalogo.Def("ssj2")!;
+
+		// ---- relaxar numa forma que nao domina e recusado, dizendo a maestria ----
+		eu.Forma.Maestria.Por("ssj2", 50);
+		VestirForma(eu, "ssj2");
+		List<string> f = ApertarEOuvir(eu, "prontidao");
+		AfirmarPw("**SO SE RELAXA NUMA FORMA DOMINADA** (o dono: 'ele so consegue relaxar quando masterizar a forma'): no SSJ2 a 50% de maestria "
+				  + "relaxar e RECUSADO, dizendo a maestria",
+				  !eu.Ficha.relaxado && Disse(f, "forma dominada") && Disse(f, "50%"), Ultimos(f));
+		// (o botao e liga/desliga: o contra-exemplo parte do corpo PRONTO, venha a regua de cima como vier -- senao um relaxar que passou nela
+		// faria este aperto desrelaxar, e a contraprova acusaria as duas)
+		if (eu.Ficha.relaxado) ApertarEOuvir(eu, "prontidao");
+		RelaxaEmQualquerFormaDeTeste = true;
+		try
+		{
+			ApertarEOuvir(eu, "prontidao");
+			AfirmarPw("(defeito injetado: relaxa em qualquer forma, o jogo de antes) o mesmo SSJ2 a 50% relaxa -- a regua de cima REPROVA", eu.Ficha.relaxado);
+		}
+		finally { RelaxaEmQualquerFormaDeTeste = false; }
+		if (eu.Ficha.relaxado) ApertarEOuvir(eu, "prontidao");
+		eu.Forma.Maestria.Por("ssj2", 100);
+		f = ApertarEOuvir(eu, "prontidao");
+		AfirmarPw("...e com o SSJ2 DOMINADO ele relaxa", eu.Ficha.relaxado, Ultimos(f));
+		if (eu.Ficha.relaxado) ApertarEOuvir(eu, "prontidao");
+
+		// ---- relaxado na base, quem sobe pra uma forma que nao domina fica pronto ----
+		VestirForma(eu, Jandirus.Core.Forms.Catalogo.IdBase);
+		eu.Forma.Maestria.Por("ssj2", 50);
+		ApertarEOuvir(eu, "prontidao");
+		bool relaxouNaBase = eu.Ficha.relaxado;
+		f = Ouvir(() => EntrarNaForma(eu, ssj2, semCena: true));
+		AfirmarPw("**QUEM SOBE RELAXADO PRA UMA FORMA QUE NAO DOMINA FICA PRONTO**: relaxado na base, ele entra no SSJ2 a 50% e o relaxado cai, "
+				  + "com a frase",
+				  relaxouNaBase && !eu.Ficha.relaxado && eu.Forma.Atual == "ssj2" && Disse(f, "forma dominada"),
+				  $"relaxou na base {relaxouNaBase}; relaxado {eu.Ficha.relaxado}; forma '{eu.Forma.Atual}' | {Ultimos(f)}");
+
+		// ---- o consumo pela barra, pelo tique de producao ----
+		double Gasto(double barra, double maestria)
+		{
+			eu.Forma.Maestria.Por("ssj2", maestria);
+			eu.Ficha.relaxado = false;
+			eu.Ficha.powerMod = barra;
+			eu.Ficha.Ki = eu.Ficha.MaxKi;
+			TickDaForma(eu, 1.0);
+			return (eu.Ficha.MaxKi - eu.Ficha.Ki) / eu.Ficha.MaxKi;
+		}
+		double hoje = 0.045 * 0.32, dominado = 0.015 * 0.32;
+		double g100 = Gasto(1.0, 10), g10 = Gasto(0.1, 10), g55 = Gasto(0.55, 10), gDominada = Gasto(1.0, 100);
+		AfirmarPw("**ABAIXAR O PODER ALIVIA O CONSUMO DA FORMA PELA MAESTRIA** (o dono): no SSJ2 a 10% de maestria, o poder inteiro gasta o de hoje; "
+				  + "a barra em 10% gasta o DOMINADO; em 55%, o meio dos dois; e dominado, o menor com o poder inteiro",
+				  PertoPw(g100, hoje, 1e-6) && PertoPw(g10, dominado, 1e-6) && PertoPw(g55, (hoje + dominado) / 2, 1e-6) && PertoPw(gDominada, dominado, 1e-6),
+				  $"{g100:0.######} / {g10:0.######} / {g55:0.######} / {gDominada:0.######} (hoje {hoje:0.######}, dominado {dominado:0.######})");
+		Jandirus.Core.Forms.Catalogo.DrenoSemLiberacaoDeTeste = true;
+		try
+		{
+			double g10Antes = Gasto(0.1, 10);
+			AfirmarPw("(defeito injetado: a barra nao mexe no consumo, o jogo de antes) a barra em 10% volta a gastar o de hoje -- a regua de cima REPROVA",
+					  PertoPw(g10Antes, hoje, 1e-6), $"{g10Antes:0.######}");
+		}
+		finally { Jandirus.Core.Forms.Catalogo.DrenoSemLiberacaoDeTeste = false; }
+		eu.Ficha.powerMod = PoderEmUso.Cheio;
+		VestirForma(eu, Jandirus.Core.Forms.Catalogo.IdBase);
+	}
+
 	private void PwEscondidoNaoEntregaBp()
 	{
 		GD.Print("[poder] -- 5) A REGRA PRINCIPAL DO BP: relaxado (expresso = 5, uma constante), nenhuma leitura relativa vira numero");

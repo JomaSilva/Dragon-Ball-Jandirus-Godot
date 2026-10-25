@@ -1141,6 +1141,24 @@ public sealed partial class GameServer
 		if (t.ReengajarEm <= 0) { t.ReengajarEm = 3; Engajar(t); }
 	}
 
+	// =====================================================================
+	// O XINGAMENTO DA ARENA (2026-10-25)
+	// =====================================================================
+	/// <summary>
+	/// QUEM FOI CHAMADO DE COVARDE NUMA LUTA DE ARENA, e ate quando vale (relogio real, ms) -- o dono: *"se for IA vs IA a q ta voando
+	/// ao ser xingada volta pra arena e luta sem voar"*. Quem marca e o cerebro de quem xingou (`Comando.ChamouDeCovarde`, no tique da
+	/// IA); quem le e a percepcao da IA xingada (`Percepcao.ChamadoDeCovarde`). Vale a luta inteira (o teto dela e o
+	/// <see cref="XingamentoDuraMs"/>), e o fim da luta o apaga (<see cref="TerminarLuta"/>). Jogador xingado so le a frase.
+	/// </summary>
+	private readonly Dictionary<int, long> _xingadosDeCovarde = [];
+
+	/// <summary>Quanto vale o xingamento: a luta mais longa do torneio (os 240 s do `torneio.json`), com folga.</summary>
+	private const long XingamentoDuraMs = 300_000;
+
+	private void MarcarComoCovarde(ServerPlayer quem) => _xingadosDeCovarde[quem.Id] = NowMs() + XingamentoDuraMs;
+
+	private bool FoiChamadoDeCovarde(ServerPlayer quem) => _xingadosDeCovarde.TryGetValue(quem.Id, out long ate) && NowMs() < ate;
+
 	private void TerminarLuta(TorneioVivo t, string vencedor, string como)
 	{
 		string perdedor = vencedor == t.ChaveA ? t.ChaveB : t.ChaveA;
@@ -1152,6 +1170,7 @@ public sealed partial class GameServer
 		{
 			ServerPlayer? c = CorpoDaChave(chave);
 			if (c == null) continue;
+			_xingadosDeCovarde.Remove(c.Id);   // (2026-10-25) o xingamento e desta luta: a proxima comeca do zero
 			Desengajar(c);
 			if (!EhJogador(c) && c.Voando) AlternarVoo(c);   // `tourney_standdown`: pousa, o voo era ferramenta da luta
 			if (EhJogador(c) && t.LetalAntes.Remove(c.Id, out bool letal)) c.Combate.Letal = letal;

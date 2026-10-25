@@ -333,8 +333,12 @@ public sealed partial class GameServer
 			Checa($"a tabela tem {tabela.Count} linhas, sem chave repetida, cada uma com rotulo, aba e requisito de verdade",
 				  tabela.Count >= 50 && tabela.Select(v => v.Chave).Distinct().Count() == tabela.Count
 				  && tabela.All(v => v.Rotulo.Length > 0 && v.Onde.Length > 0 && !v.Requisito.Livre));
-			Checa("...e a chave de um botao de verbo carrega o argumento quando ele muda o gesto (`db_estatua supremo`)",
-				  RequisitosDosVerbos.Linha("verbo:db_estatua supremo") is { Comando: "db_estatua", Arg: "supremo", EhVerbo: true }
+			// (2026-10-23, `ag/ritualkai`) A TESTEMUNHA DO ARGUMENTO ERA O `db_estatua supremo`, e a linha saiu da tabela em 2026-10-22 (o supremo
+			// virou uma caixa do menu da estatua): a afirmacao reprovava e o `VeChave` dela, mais abaixo, estourava a bancada inteira num
+			// `NullReferenceException`. A testemunha agora e o "Derrubar a estatua", que carrega argumento do mesmo jeito.
+			string derrubar = RequisitosDosVerbos.ChaveDoVerbo("db_menu", "foco " + Jandirus.Core.Magic.AcoesDoDragao.Derrubar);
+			Checa("...e a chave de um botao de verbo carrega o argumento quando ele muda o gesto (`db_menu foco derrubar`)",
+				  RequisitosDosVerbos.Linha(derrubar) is { Comando: "db_menu", EhVerbo: true } l && l.Arg == "foco " + Jandirus.Core.Magic.AcoesDoDragao.Derrubar
 				  && RequisitosDosVerbos.Linha("hab:fus_namek") is { Comando: "fus_namek", Arg: "", EhHabilidade: true });
 
 			GD.Print("[verbs]   A TABELA (verb -> requisito -> onde aparece):");
@@ -463,7 +467,8 @@ public sealed partial class GameServer
 				  && elenco.Where(e => e.Corpo != bioDeLab).All(e => doDna.All(ch => !VeChave(e.Corpo, ch))),
 				  string.Join(", ", doDna.Where(ch => VeChave(bioDeLab, ch))));
 
-			string[] doClaDoDragao = ["verbo:db_estatua", "verbo:db_estatua supremo", "verbo:db_reviver"];
+			// (2026-10-23) sem o `db_estatua supremo`, que saiu da tabela em 2026-10-22 -- o supremo e uma caixa do menu da estatua agora
+			string[] doClaDoDragao = ["verbo:db_estatua", "verbo:db_reviver"];
 			string[] doSplitForm = [.. tabela.Where(v => v.Chave.StartsWith("verbo:splitform_", StringComparison.Ordinal)).Select(v => v.Chave)];
 			Checa("**O SAIYAJIN DA FOTO**: sem radar ele nao ve a linha do RADAR nem o botao; nao e do Cla do Dragao e nao ve "
 				  + "Erguer Estatua, Erguer + SUPREMO nem Despertar as esferas",
@@ -481,8 +486,8 @@ public sealed partial class GameServer
 			Checa("...e o que E dele continua la: o Saiyajin ve Voltar ao normal, os graus do SSJ e a linha de sucessao de Vegeta",
 				  VeChave(saiyajin, "hab:oozaru") && VeChave(saiyajin, "verbo:graus") && VeChave(saiyajin, "verbo:cargo_herdeiros"));
 
-			Checa("O NAMEKUSEIJIN DO CLA DO DRAGAO ve Erguer Estatua e Erguer + SUPREMO (num mundo sem estatua), a fusao Namekuseijin e Regenerar",
-				  VeChave(doCla, "verbo:db_estatua") && VeChave(doCla, "verbo:db_estatua supremo")
+			Checa("O NAMEKUSEIJIN DO CLA DO DRAGAO ve Erguer Estatua (num mundo sem estatua), a fusao Namekuseijin e Regenerar",
+				  VeChave(doCla, "verbo:db_estatua")
 				  && VeChave(doCla, "hab:fus_namek") && VeChave(doCla, "hab:regenerar"));
 			Checa("...e o Namekuseijin de OUTRA classe ve a fusao (aprendeu a skill dela) e o Regenerar (e da raca), mas NAO os verbs do Cla",
 				  VeChave(guerreiro, "hab:fus_namek") && VeChave(guerreiro, "hab:regenerar") && doClaDoDragao.All(c => !VeChave(guerreiro, c)));
@@ -590,7 +595,9 @@ public sealed partial class GameServer
 			Checa($"...e as {tabela.Count - cobraveis.Count} linhas sem recusa a cobrar sao recorte de LUGAR, de sentido ou pagina de menu (nao viajam), e estao nomeadas",
 				  tabela.Where(v => v.Recusa.Length == 0).Select(v => v.Chave).Order().SequenceEqual(
 					  // (o `sdb_invocar` saiu daqui em 2026-10-10: o servidor passou a recusar quem o manda de terra firme)
-					  new[] { RequisitosDosVerbos.LinhaDoRadar, "verbo:cargo_herdeiros", "verbo:graus", "verbo:sdb_status",
+					  // (2026-10-25) e o `divinas_c` (o C duplo das formas divinas, 2026-10-23), irmao do `graus`: o servidor guarda a
+					  // preferencia de qualquer um, e a linha nasceu sem recusa de proposito (`RequisitosDosVerbos`) -- faltava so aqui.
+					  new[] { RequisitosDosVerbos.LinhaDoRadar, "verbo:cargo_herdeiros", "verbo:graus", "verbo:divinas_c", "verbo:sdb_status",
 							  "verbo:lab_menu labs", "verbo:and_menu androide",
 							  "verbo:tuffle_menu tuffle" }.Order()),   // (2026-10-18) a pagina da conversao do Neo Tuffle, irma das duas de cima
 				  string.Join(", ", tabela.Where(v => v.Recusa.Length == 0).Select(v => v.Chave)));
@@ -909,6 +916,18 @@ public sealed partial class GameServer
 				  VeChave(kaioshin, "verbo:aprendiz_nomear") && VeChave(kaioshin, "verbo:aprendiz_dispensar")
 				  && Tem(convidado, Fatos.OfertaDeAprendiz) && VeChave(convidado, "verbo:aprendiz_aceitar") && VeChave(convidado, "verbo:aprendiz_recusar")
 				  && !VeChave(novato, "verbo:aprendiz_nomear") && !VeChave(novato, "verbo:aprendiz_aceitar"));
+			// (2026-10-23) O RITUAL MISTICO DO VELHO KAIOHSHIN -- a linha do `ag/ritualkai` (a regra inteira e da `--ritualkaiteste`; aqui e a
+			// plateia da familia 7): o Kaioshin no trono ve o botao do ritual, e o novato nao.
+			Checa("O RITUAL MISTICO DO VELHO KAIOHSHIN: o Kaioshin no trono ve o botao do ritual -- e o novato nao",
+				  VeChave(kaioshin, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Ranks.RitualDoKaioshin.Verbo)
+				  && !VeChave(novato, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Ranks.RitualDoKaioshin.Verbo));
+			// (2026-10-24) O BIO COM SANGUE MAJIN TEM AS DUAS ABSORCOES -- a linha do `ag/biomajin` (a regra inteira e da `--bioteste`, familia
+			// 4c; aqui e a plateia da familia 7): o bio de sangue Majin que comprou Buu Absorb ve o "Absorver como Majin" ao lado do "Absorver".
+			ServerPlayer bioMajin = Gente("BioDeSangueMajin", Jandirus.Core.Races.BioAndroids.Raca, skills: [Jandirus.Core.Combat.AbsorcaoMajin.Skill]);
+			bioMajin.Ficha.bio_racas_dna = ["Majin"];
+			Checa("O BIO COM SANGUE MAJIN que sabe Buu Absorb ve o Absorver e o Absorver como Majin -- o Majin, o bio comum e o novato nao veem o segundo",
+				  VeChave(bioMajin, "hab:absorver") && VeChave(bioMajin, "hab:absorver_majin") && !VeChave(majin, "hab:absorver_majin")
+				  && !VeChave(bio, "hab:absorver_majin") && !VeChave(novato, "hab:absorver_majin"));
 			_ofertasDeAprendiz.Remove(convidado.Conta);
 			_tronos.Remove(Jandirus.Core.Ranks.AprendizDeKaioshin.CargoDoMestre);
 
@@ -969,7 +988,7 @@ public sealed partial class GameServer
 			SetDeEsferas? estatua = _sets.Find(s => s.Zona.Hash == terra.Hash);
 			Checa("O NAMEKUSEIJIN DO CLA ERGUE A ESTATUA (pelo verb): ele passa a ver Despertar as esferas e DEIXA de ver Erguer (ja ha uma aqui)",
 				  estatua != null && Tem(doCla, Fatos.CriouAEstatuaDaqui) && VeChave(doCla, "verbo:db_reviver")
-				  && !VeChave(doCla, "verbo:db_estatua") && !VeChave(doCla, "verbo:db_estatua supremo"), Ultimos(erguer));
+				  && !VeChave(doCla, "verbo:db_estatua"), Ultimos(erguer));
 			Checa("...e TODO MUNDO neste mundo passa a ver Ver as esferas daqui / Pegar / Largar / INVOCAR -- mas Despertar e so de quem ergueu",
 				  new[] { "verbo:db_ver", "verbo:db_pegar", "verbo:db_largar", "verbo:db_invocar" }.All(c => VeChave(saiyajin, c) && VeChave(novato, c))
 				  && !VeChave(saiyajin, "verbo:db_reviver") && !VeChave(guerreiro, "verbo:db_reviver")
@@ -1142,6 +1161,37 @@ public sealed partial class GameServer
 		if (!_players.TryGetValue(id, out ServerPlayer? pl) || pl.Conta.Length == 0) return false;
 		_ofertasDeJuventudeG8[pl.Conta] = ("bancada", 20, NowMs() + PrazoDaOfertaDeJuventudeMsG8);
 		return true;
+	}
+
+	/// <summary>
+	/// SO PRA BANCADA (`--diagverbs`, F10): `quantas` copias do Split Form de pe, tres tiles pra um lado e pro outro do jogador (o clique
+	/// precisa achar uma de cada vez, e o menu aberto no meio da tela nao pode cobrir a que leva o duplo clique). A divisao e a de producao (`DividirOCorpoG12`, que manda o `S2C.MinhasCopias`); a pericia e o Ki
+	/// sao postos o bastante. Devolve os ids.
+	/// </summary>
+	internal List<int> CopiasDeTeste(int dono, int quantas)
+	{
+		if (!_players.TryGetValue(dono, out ServerPlayer? pl)) return [];
+		pl.Ficha.splitformMastery = Math.Max(pl.Ficha.splitformMastery, 0.2 * (quantas - 1));
+		var ids = new List<int>();
+		for (int i = 0; i < quantas; i++)
+		{
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			DividirOCorpoG12(pl);
+			int nova = _splitformsG12.Where(kv => kv.Value.Master == dono && !ids.Contains(kv.Key)).Select(kv => kv.Key).FirstOrDefault();
+			if (nova == 0 || !_players.TryGetValue(nova, out ServerPlayer? c)) break;
+			ids.Add(nova);
+			c.Pos = pl.Pos + new Vec2((i % 2 == 0 ? 3 : -3) * ZoneCollision.TileSize, 0);
+		}
+		return ids;
+	}
+
+	/// <summary>SO PRA BANCADA (`--diagverbs`, F10): a ordem que a copia segue ("Parado", "Seguir"...), ou nulo se ela nao existe mais.</summary>
+	internal string? OrdemDaCopiaDeTeste(int copia) => _splitformsG12.TryGetValue(copia, out SplitformG12? sf) ? sf.Funcao.ToString() : null;
+
+	/// <summary>SO PRA BANCADA (`--diagverbs`, F10): desfaz as copias deste jogador (a faxina do fim da familia).</summary>
+	internal void DesfazerCopiasDeTeste(int dono)
+	{
+		foreach (int id in _splitformsG12.Where(kv => kv.Value.Master == dono).Select(kv => kv.Key).ToList()) DesfazerSplitformG12(id);
 	}
 
 	/// <summary>SO PRA BANCADA (`--diagverbs`): um mainframe de androides aparafusado aos pes do jogador, e dele -- ou some com ele.</summary>

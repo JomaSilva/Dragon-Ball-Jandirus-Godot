@@ -352,10 +352,9 @@ public partial class GameServer
 		Checa("multiplicador da base = 1", Math.Abs(pl.Ficha.ssjBuff - 1) < 1e-9, $"{pl.Ficha.ssjBuff}");
 
 		// ============================ O DOM DO MISTICO -- O GANCHO DO RITUAL ============================
-		// O ritual do Kaioshin nao existe ainda; `ConcederMistico` existe, e e por ele que o ritual
-		// vai falar quando existir. Esta bancada e quem prova que o gancho FUNCIONA -- sem ela, o
-		// unico caminho pra o Mistico seria o verb de admin, e o dia em que o ritual chamasse isto
-		// seria o dia de descobrir se a concessao pega.
+		// (2026-10-23) O ritual do Kaioshin EXISTE: o Ritual Mistico do Velho Kaiohshin chama `ConcederMistico` no fim
+		// (`GameServer.RitualDoKaioshin.cs`, provado na `--ritualkaiteste`), e a forma se chama Potential Unleashed na tela. Esta
+		// bancada continua provando o gancho SOZINHO -- a porta que o ritual e o desejo usam.
 		//
 		// O QUE ESTA SENDO MEDIDO, na ordem: a forma e INVISIVEL sem concessao (nem com BP de sobra),
 		// a concessao a torna alcancavel na hora, e conceder duas vezes nao e conceder duas vezes.
@@ -1436,10 +1435,18 @@ public partial class GameServer
 		// A checagem mais importante desta secao inteira. "Tecla 3 = SSJ3" e exatamente o que um
 		// jogador espera ao ligar a tecla, e exatamente o que NAO pode acontecer -- senao o atalho
 		// passa por cima da escada e o jogo perde a progressao que ele tem.
+		//
+		// (2026-10-23) ...ABAIXO DE 50% DE MAESTRIA NO SSJ3: desde o adendo do dono a tecla da forma com 50%+ NELA pula os degraus de
+		// antes (`EstadoDeForma.VaiDiretoPelaTecla`; o salto e da `--formasteclasteste`). A maestria que este corpo juntou nas secoes de
+		// cima nao pode decidir esta regua: ela fica abaixo da porta do salto durante o pedido e volta logo depois.
+		double ssj3Antes = pl.Forma.Maestria.De("ssj3");
+		pl.Forma.Maestria.Por("ssj3", Math.Min(ssj3Antes, EstadoDeForma.MaestriaQuePulaDegrau - 1));
 		EscutaDeAvisos = [];
 		Verbo(pl, "forma", "ssj3");
 		List<string> recusa3 = Ouvido();
-		Checa("[tecla] pedir SSJ3 da base NAO transforma", pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
+		pl.Forma.Maestria.Por("ssj3", ssj3Antes);
+		Checa("[tecla] pedir SSJ3 da base NAO transforma (abaixo de 50% de maestria nele -- dono, 2026-10-23)",
+			  pl.Forma.Atual == Catalogo.IdBase, pl.Forma.Atual);
 		Checa("[tecla] ...e a recusa diz que ele vem DEPOIS de outra forma",
 			  recusa3.Any(a => a.Contains("vem depois", StringComparison.OrdinalIgnoreCase)),
 			  string.Join(" | ", recusa3));

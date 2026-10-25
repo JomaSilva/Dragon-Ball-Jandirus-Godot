@@ -71,7 +71,7 @@ public static class StatBench
         Caso("Mistico x2", "2000", f => f.MysticPcnt = 2);
         Caso("Kaio-ken x3 + Mistico x2", "4000 (soma: 1+2+1)", f => { f.KaioPcnt = 3; f.MysticPcnt = 2; });
         Caso("SSJ 6x + Kaio-ken x3", "18000 (soma ANTES do x6)", f => { f.ssjBuff = 6; f.KaioPcnt = 3; });
-        Caso("gravidade dominada (100 em 1g)", "~1530", f => f.GravMastered = 100);
+        Caso("gravidade dominada (100 em 1g)", "~1137 (teto +25% a 500x)", f => f.GravMastered = 100);   // (2026-10-23) era ~1530, o divisor 40 do DM
 
         Console.WriteLine("\n  -- GOD KI: substitui a escada SSJ --");
         Caso("God (sem SSJ)", "22000", f => { f.godki = Deus(0); });
@@ -97,7 +97,8 @@ public static class StatBench
         // (2026-10-17) a larva e sempre RELAXADA (o dono): 5, pela trava do relaxado -- que le o expresso do tique anterior (2 ticks)
         Caso("larva de bio-androide (sempre relaxada)", "5", f => { f.bio_lab_born = true; f.bio_stage = 1; f.ssjBuff = 6; }, ticks: 2);
         Caso("Frost mutante vazando (0.3)", "300", f => f.fd_release = 0.3);
-        Caso("revive por Zeni (1a hora)", "250", f => f.zeni_revive_debuff_until = 1);
+        // (2026-10-23) o debuff de 25% do revive por Zeni saiu (o dono): o prazo gravado no save de antes nao corta mais nada
+        Caso("revive por Zeni (prazo do save velho)", "1000 (sem debuff)", f => f.zeni_revive_debuff_until = 1);
         Caso("poder escondido (2 ticks)", "5", f => f.isconcealed = true, ticks: 2);
         Caso("meio morto (HP 10) + sem folego", "180", f => { f.HP = 10; f.staminadeBuff = 30; });
 

@@ -48,6 +48,9 @@ namespace Jandirus.Client;
 ///      da mao (onde esta o boneco) nem alem do plano da ponta (onde esta quem o raio empurra).
 ///   8. (v0.3.1) A ENERGIA QUE CHEGA NA GENKIDAMA SO CORRE COM ELA NA MAO: duas Genkidamas, uma na mao e uma lancada, e
 ///      os pontos de luz contados no anel em volta de cada uma -- com o defeito que os deixa sempre.
+///   9. (2026-10-23) A ESFERA DO HAKAI, os dois tiros do kit do Deus da Destruicao como a imagem que o dono mandou: o retrato no
+///      quase preto dela, e no verde as oito pecas (miolo, corpo, borda escura, arcos fora e por cima, halo, raios, graos), a cor
+///      da arte e a esfera maior que a Fury -- com a camada desligada (`PintorDeKi.HakaiApagadoDeTeste`) reprovando.
 ///
 /// ============================ ELA MEDE PIXEL, E ISSO E O PONTO ============================
 /// Este projeto tem registro de quatro defeitos visuais que passaram por quatro mil checagens verdes
@@ -171,6 +174,10 @@ public partial class RoboDeArteDeKi : Node2D
 		ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Nenhum;
 		Feixe.AlcanceFixoDeTeste = false;
 		ProjetilDesenhado.EnergiaChegaSempreDeTeste = false;
+		// (2026-10-23) a familia 9: a camada do Hakai, e o relogio e a semente que ela crava pra foto sair sempre a mesma
+		PintorDeKi.HakaiApagadoDeTeste = false;
+		ProjetilDesenhado.TempoDeTeste = null;
+		PintorDeKi.SementeDeTeste = null;
 	}
 
 	// =====================================================================
@@ -236,9 +243,10 @@ public partial class RoboDeArteDeKi : Node2D
 		("Psycho_Thread", ArteDeKi.KiHead, "click.dm:18,26"),
 		("Ki_Targets", ArteDeKi.Blast14, "Stats/Training/Meditate.dm:26"),
 
-		// ---- os dois tiros do Deus da Destruicao (o kit do titulo, `GameServer.KitDoDeus.cs`)
-		("God_Fury_Beam", ArteDeKi.Blast12, "Ranks/GodOfDestruction.dm:272"),
-		("God_Destroyer_Sphere", ArteDeKi.Blast12, "Ranks/GodOfDestruction.dm:316"),
+		// ---- os dois tiros do Deus da Destruicao (o kit do titulo, `GameServer.KitDoDeus.cs`): a ESFERA DO HAKAI desde 2026-10-23,
+		//      pedido do dono -- no DM eram a `12.dmi` com tinta fixa (a coluna cita a linha de la e o pedido)
+		("God_Fury_Beam", ArteDeKi.HakaiFuria, "Ranks/GodOfDestruction.dm:272 + o pedido do dono de 2026-10-23"),
+		("God_Destroyer_Sphere", ArteDeKi.HakaiEsfera, "Ranks/GodOfDestruction.dm:316 + o pedido do dono de 2026-10-23"),
 	];
 
 	private void Familia1()
@@ -348,6 +356,20 @@ public partial class RoboDeArteDeKi : Node2D
 		   ArteDeProjetil.PermitidasPara(TipoDeProjetil.Blast).Contains(ArteDeKi.Blast14)
 		   && !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam).Contains(ArteDeKi.Blast14)
 		   && !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Guided).Contains(ArteDeKi.Blast14));
+
+		// ============================ A ESFERA DO HAKAI (dono, 2026-10-23) ============================
+		// "Os tiros do kit": so os dois do Deus da Destruicao a vestem (a lista de cima confere quais); o Ki Wave e o Basic Blast do
+		// Bills ficam como estavam -- a raca dele nao tem bola propria, e a tabela nao olha quem atira. E ela e do TITULO: nenhum menu
+		// de tecnica inventada a oferece.
+		// ===============================================================================================
+		ArteDeKi[] doHakai = [ArteDeKi.HakaiEsfera, ArteDeKi.HakaiFuria];
+		Ok("o Ki Wave e o Basic Blast do Bills continuam os de sempre (Beam3 e a bola padrao) -- so os dois tiros do kit mudaram",
+		   ArteDeProjetil.De("Ki_Wave", Jandirus.Core.Npc.BillsEWhis.RacaDoBills, "", 1) == ArteDeKi.Beam3
+		   && ArteDeProjetil.De("Basic_Blast", Jandirus.Core.Npc.BillsEWhis.RacaDoBills, "", 1) == ArteDeKi.Blast1);
+		Ok("a esfera do Hakai NAO entra em menu nenhum da tecnica inventada (e o tiro do titulo, fora das tres pastas da mesa)",
+		   doHakai.All(a => !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Beam).Contains(a)
+							&& !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Blast).Contains(a)
+							&& !ArteDeProjetil.PermitidasPara(TipoDeProjetil.Guided).Contains(a)));
 
 		// =====================================================================
 		// A CAMADA RACIAL
@@ -762,6 +784,29 @@ public partial class RoboDeArteDeKi : Node2D
 			case 51:
 				MedirAsDuasGenkidamas("8-2-defeito-energia-sempre", defeito: true);
 				ProjetilDesenhado.EnergiaChegaSempreDeTeste = false;
+				break;
+
+			// ============================ FAMILIA 9 -- A ESFERA DO HAKAI (2026-10-23) ============================
+			// O dono mandou uma imagem: *"faca bills usar skills de hakai q tem esse efeito nos ataques de ki dele como na imagem"*.
+			// As duas artes do kit do Deus da Destruicao a escala 4, com o relogio e a semente cravados (a foto sai sempre a mesma):
+			// primeiro no fundo quase preto da imagem (o retrato, pro olho), depois no verde (as reguas) -- e de novo com a camada do
+			// Hakai DESLIGADA, em que as reguas da borda, dos arcos, do halo, dos raios e dos graos tem que reprovar.
+			// ==================================================================================================
+			case 52:
+				Familia("9", "a ESFERA DO HAKAI (dono, 2026-10-23): miolo claro com raios, corpo magenta, borda escura, arcos escuros, halo grande, graos");
+				PorAsEsferasDoHakai(noEscuro: true);
+				break;
+			case 53: FotografarOHakaiNoEscuro(); break;
+			case 54: PorAsEsferasDoHakai(noEscuro: false); break;
+			case 55: MedirOHakai("9-2-hakai-no-verde", defeito: false); break;
+			case 56:
+				PintorDeKi.HakaiApagadoDeTeste = true;   // a camada desligada: a bola roxa, sem nada da imagem
+				PorAsEsferasDoHakai(noEscuro: false);
+				break;
+			case 57:
+				MedirOHakai("9-3-defeito-hakai-apagado", defeito: true);
+				PintorDeKi.HakaiApagadoDeTeste = false;
+				ProjetilDesenhado.TempoDeTeste = null;
 				break;
 
 			default: Encerrar(); break;
@@ -1249,6 +1294,270 @@ public partial class RoboDeArteDeKi : Node2D
 
 	/// <summary>Quantos pixels de ponto a bola na mao tem de ter, no minimo -- e quantos a lancada pode ter, no maximo.</summary>
 	private const int PisoDosPontosDeEnergia = 12, TetoSemPontosDeEnergia = 2;
+
+	// =====================================================================
+	// FAMILIA 9 -- A ESFERA DO HAKAI (dono, 2026-10-23)
+	// =====================================================================
+	/// <summary>
+	/// A ESCALA DAS DUAS NA FOTO: quatro vezes (a esfera de 16 px vira 64 de raio, a Fury de 10 vira 40) -- o tamanho em que a
+	/// borda, os arcos e os graos tem pixel pra medir. O desenho e todo em raios de bola, entao e o mesmo da escala 1, maior.
+	/// </summary>
+	private const float EscalaDoHakai = 4f;
+
+	/// <summary>
+	/// O INSTANTE E AS SEMENTES DA FOTO, cravados: o desenho se mexe sozinho (os arcos giram, os graos andam, o plasma corre), e
+	/// as reguas desta familia contam pixels que mudam de quadro pra quadro. Escolhidos na conta de papel do shader
+	/// (`_rascunho_6199e7/ag/hakaibills/ferr`) entre sementes que mostram a imagem inteira; o robo em jogo (`--diaghakaibills`)
+	/// mede as mesmas pecas em quadros sorteados, com folga maior.
+	/// </summary>
+	private const double TempoDoHakai = 0.6;
+
+	private const float SementeDaEsfera = 3.3f, SementeDaFuria = 1.3f;
+
+	/// <summary>O fundo do retrato: o quase preto da imagem do dono. As reguas de pixel continuam no verde.</summary>
+	private static readonly Color EscuroDaImagem = new(0.03f, 0.02f, 0.04f);
+
+	/// <summary>As duas artes do kit lado a lado: a Destroyer Sphere a esquerda, a Fury a direita.</summary>
+	private void PorAsEsferasDoHakai(bool noEscuro)
+	{
+		LimparOPalco();
+		_fundo.Color = noEscuro ? EscuroDaImagem : Fundo;
+		ProjetilDesenhado.TempoDeTeste = TempoDoHakai;
+		Vector2 t = Tela;
+		PintorDeKi.SementeDeTeste = SementeDaEsfera;
+		NovaBola(ArteDeKi.HakaiEsfera, EscalaDoHakai, new Vector2(t.X * 0.30f, t.Y * 0.5f), Vermelho, "Destroyer Sphere");
+		PintorDeKi.SementeDeTeste = SementeDaFuria;
+		NovaBola(ArteDeKi.HakaiFuria, EscalaDoHakai, new Vector2(t.X * 0.76f, t.Y * 0.5f), Vermelho, "Destruction God's Fury");
+		PintorDeKi.SementeDeTeste = null;
+		Assentar();
+	}
+
+	/// <summary>
+	/// O RETRATO, no quase preto da imagem -- e pro OLHO: e a foto que se compara com a imagem do dono. A regua dele e so de
+	/// presenca: em volta de cada esfera o roxo aceso (o corpo e o halo) cobre o anel de 0,5 a 1,8 raio.
+	/// </summary>
+	private void FotografarOHakaiNoEscuro()
+	{
+		Chapa? c = Foto("9-1-hakai-retrato-no-escuro");
+		if (c == null) return;
+		var partes = new List<string>();
+		bool todas = _palco.Count == 2;
+		foreach (TiroNoPalco b in _palco)
+		{
+			float raio = RaioDoEstilo(b);
+			(int roxo, int total) = NoAnel(c, b.Cabeca, raio * 0.5f, raio * 1.8f, (r, g, bl) => r + bl > 160 && g < Math.Min(r, bl));
+			float f = total > 0 ? roxo / (float)total : 0f;
+			partes.Add($"{b.Rotulo} {f:P0}");
+			todas &= f >= PisoDoRoxoNoEscuro;
+		}
+		Ok($"no fundo escuro da imagem as duas esferas ACENDEM roxo em volta ({string.Join(", ", partes)} do anel de 0,5 a 1,8 raio)", todas);
+	}
+
+	/// <summary>
+	/// Quanto do anel de 0,5 a 1,8 raio o roxo aceso cobre no retrato -- so PRESENCA (a esfera esta la e acende). Na conta de papel,
+	/// 67% e 72% com a camada e 42% e 46% sem ela: o piso fica abaixo dos dois, porque quem reprova a camada sao as reguas do verde.
+	/// </summary>
+	private const float PisoDoRoxoNoEscuro = 0.35f;
+
+	/// <summary>
+	/// O QUE A FOTO DE UMA ESFERA MOSTRA, peca por peca da imagem -- medido em RAIOS DO ESTILO (o raio x a escala), pra que a
+	/// esfera e a Fury respondam na mesma unidade.
+	/// </summary>
+	private readonly record struct PecasDoHakai(float Miolo, float Corpo, float Borda, float RaioDaBorda, float ArcosFora, float ArcosPorCima,
+										 float Halo, int Raios, int Graos)
+	{
+		public bool TemMiolo => Miolo >= PisoDoMiolo;
+		public bool TemCorpo => Corpo >= PisoDoCorpo;
+		public bool TemBorda => Borda >= PisoDaBorda && RaioDaBorda is >= 0.85f and <= 1.03f;
+		public bool TemArcosFora => ArcosFora >= PisoDosArcosFora;
+		public bool TemArcosPorCima => ArcosPorCima >= PisoDosArcosPorCima;
+		public bool TemHalo => Halo >= PisoDoHalo;
+		public bool TemRaios => Raios >= PisoDosRaios;
+		public bool TemGraos => Graos >= PisoDosGraos;
+
+		/// <summary>Nenhuma das seis pecas que so a camada do Hakai desenha (o defeito injetado tem que deixar assim).</summary>
+		public bool SemACamada => !TemBorda && !TemArcosFora && !TemArcosPorCima && !TemHalo && !TemRaios && !TemGraos;
+
+		public override string ToString() =>
+			$"miolo claro {Miolo:P0}, corpo roxo {Corpo:P0}, borda escura em {Borda:P0} dos rumos (a {RaioDaBorda:0.00} raio), "
+			+ $"arcos {ArcosFora:0.000} raio^2 fora e {ArcosPorCima:0.000} por cima, halo ate {Halo:0.00} raio, {Raios} raio(s) de luz, "
+			+ $"{Graos} px de graos";
+	}
+
+	// ============================ OS PISOS DA FAMILIA 9 ============================
+	// Medidos na conta de papel do shader (`ag/hakaibills/ferr/regua_hakai.py`) com a camada e sem ela, nas duas sementes da foto e
+	// em mais tres quadros. COM a camada: miolo 100%, corpo 85-93%, borda 100% dos rumos a 0,92-0,98 raio, arcos 0,10-0,27 fora e
+	// 0,07-0,14 por cima, halo ate 2,0-2,1 raios, 2-11 raios de luz, 8-64 px de graos. SEM ela: corpo ~100%, borda 0%, arcos 0, halo
+	// ate 1,44-1,51, 0-1 raio de luz e 0 graos. Cada piso fica no vao entre os dois.
+	// ==============================================================================
+	private const float PisoDoMiolo = 0.85f, PisoDoCorpo = 0.55f, PisoDaBorda = 0.80f;
+	private const float PisoDosArcosFora = 0.05f, PisoDosArcosPorCima = 0.03f, PisoDoHalo = 1.75f;
+	private const int PisoDosRaios = 2, PisoDosGraos = 6;
+
+	private static bool EscuroDoHakai(byte r, byte g, byte b) => Math.Max(r, Math.Max(g, b)) < 80;
+
+	private static bool RoxoDoHakai(byte r, byte g, byte b) => r > 90 && b > 120 && g + 40 < r && g + 40 < b;
+
+	private static bool ClaroDoHakai(byte r, byte g, byte b) => r > 225 && b > 225 && g > 160;
+
+	/// <summary>Quantos pixels de um anel (raios em px de MUNDO, do centro) passam no teste, e quantos o anel tem.</summary>
+	private static (int Sim, int Total) NoAnel(Chapa c, Vector2 centro, float de, float ate, Func<byte, byte, byte, bool> teste)
+	{
+		Vector2 p0 = c.DoMundo * centro;
+		float r0 = de * c.PxPorMundo, r1 = ate * c.PxPorMundo;
+		int sim = 0, total = 0;
+		for (int y = Mathf.FloorToInt(p0.Y - r1) - 1; y <= Mathf.CeilToInt(p0.Y + r1) + 1; y++)
+			for (int x = Mathf.FloorToInt(p0.X - r1) - 1; x <= Mathf.CeilToInt(p0.X + r1) + 1; x++)
+			{
+				if (!c.Dentro(x, y)) continue;
+				float d = new Vector2(x + 0.5f - p0.X, y + 0.5f - p0.Y).Length();
+				if (d < r0 || d > r1) continue;
+				total++;
+				(byte r, byte g, byte b) = c.Cor(x, y);
+				if (teste(r, g, b)) sim++;
+			}
+		return (sim, total);
+	}
+
+	/// <summary>O pixel da foto num rumo e numa distancia do centro (em px de mundo).</summary>
+	private static (int X, int Y) NoRumo(Chapa c, Vector2 centro, float angulo, float dist)
+	{
+		Vector2 p = c.DoMundo * centro + new Vector2(MathF.Cos(angulo), MathF.Sin(angulo)) * dist * c.PxPorMundo;
+		return (Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y));
+	}
+
+	/// <summary>
+	/// AS OITO PECAS DE UMA ESFERA, de dentro pra fora:
+	///   * MIOLO: o disco de 0,12 raio, quase branco;
+	///   * CORPO: o anel de 0,5 a 0,8 raio, magenta e violeta;
+	///   * BORDA: em 120 rumos, o primeiro escuro entre 0,82 e 1,06 raio (a fracao de rumos que o tem, e onde ele cai);
+	///   * ARCOS: escuro no anel de 1,08 a 1,52 raio (fora da bola, ate onde as orbitas vao) e no de 0,25 a 0,8 (a metade da
+	///     frente cruzando por cima dela), em raios ao quadrado;
+	///   * HALO: em 120 rumos, a ultima tinta antes de 4 raios -- a mediana;
+	///   * RAIOS: em 360 rumos, ate onde o claro vai a partir do centro; um raio de luz e um pico estreito disso (passa os
+	///     vizinhos a 12 graus por 0,08 raio) -- o miolo sem raios e um disco, e o nucleo da bola comum varia devagar;
+	///   * GRAOS: escuro no anel de 1,62 a 2,35 raios, onde os arcos nao chegam.
+	/// </summary>
+	private static PecasDoHakai LerOHakai(Chapa c, TiroNoPalco b)
+	{
+		float raio = RaioDoEstilo(b);
+		Vector2 o = b.Cabeca;
+		float passo = 0.5f / c.PxPorMundo;
+
+		(int claro, int disco) = NoAnel(c, o, 0f, raio * 0.12f, ClaroDoHakai);
+		(int roxo, int anel) = NoAnel(c, o, raio * 0.5f, raio * 0.8f, RoxoDoHakai);
+
+		int comBorda = 0;
+		var ondeABorda = new List<float>();
+		for (int i = 0; i < 120; i++)
+		{
+			float a = MathF.Tau * i / 120f;
+			for (float d = raio * 0.82f; d <= raio * 1.06f; d += passo)
+			{
+				(int x, int y) = NoRumo(c, o, a, d);
+				if (!c.Dentro(x, y)) break;
+				(byte r, byte g, byte bl) = c.Cor(x, y);
+				if (!EscuroDoHakai(r, g, bl)) continue;
+				comBorda++;
+				ondeABorda.Add(d / raio);
+				break;
+			}
+		}
+
+		(int escFora, _) = NoAnel(c, o, raio * 1.08f, raio * 1.52f, EscuroDoHakai);
+		(int escCima, _) = NoAnel(c, o, raio * 0.25f, raio * 0.8f, EscuroDoHakai);
+		(int graos, _) = NoAnel(c, o, raio * 1.62f, raio * 2.35f, EscuroDoHakai);
+		float px2 = c.PxPorMundo * c.PxPorMundo * raio * raio;
+
+		var alcances = new List<float>();
+		for (int i = 0; i < 120; i++)
+		{
+			float a = MathF.Tau * i / 120f, ultimo = 0f;
+			for (float d = raio * 1.06f; d <= raio * 4f; d += 1f / c.PxPorMundo)
+			{
+				(int x, int y) = NoRumo(c, o, a, d);
+				if (!c.Dentro(x, y)) break;
+				if (c.Tinta(x, y)) ultimo = d;
+			}
+			alcances.Add(ultimo / raio);
+		}
+
+		const int Rumos = 360, Vizinho = 12;
+		float[] alcanceDoClaro = new float[Rumos];
+		for (int i = 0; i < Rumos; i++)
+		{
+			float a = MathF.Tau * i / Rumos, ultimo = 0f;
+			for (float d = 0f; d <= raio * 0.9f; d += passo)
+			{
+				(int x, int y) = NoRumo(c, o, a, d);
+				if (!c.Dentro(x, y)) break;
+				(byte r, byte g, byte bl) = c.Cor(x, y);
+				if (!ClaroDoHakai(r, g, bl)) break;
+				ultimo = d;
+			}
+			alcanceDoClaro[i] = ultimo / raio;
+		}
+		int raios = 0, ultimoPico = -Rumos;
+		for (int i = 0; i < Rumos; i++)
+		{
+			float v = alcanceDoClaro[i];
+			if (v < alcanceDoClaro[(i + Rumos - 1) % Rumos] || v < alcanceDoClaro[(i + 1) % Rumos]) continue;
+			if (v - MathF.Max(alcanceDoClaro[(i + Rumos - Vizinho) % Rumos], alcanceDoClaro[(i + Vizinho) % Rumos]) <= 0.08f) continue;
+			if (i - ultimoPico <= Vizinho) continue;
+			raios++;
+			ultimoPico = i;
+		}
+
+		ondeABorda.Sort();
+		alcances.Sort();
+		return new PecasDoHakai(
+			disco > 0 ? claro / (float)disco : 0f,
+			anel > 0 ? roxo / (float)anel : 0f,
+			comBorda / 120f,
+			ondeABorda.Count > 0 ? ondeABorda[ondeABorda.Count / 2] : 0f,
+			escFora / px2, escCima / px2,
+			alcances[alcances.Count / 2],
+			raios, graos);
+	}
+
+	private void MedirOHakai(string nome, bool defeito)
+	{
+		Chapa? c = Foto(nome);
+		if (c == null || _palco.Count < 2) return;
+		TiroNoPalco esfera = _palco[0], furia = _palco[1];
+		PecasDoHakai he = LerOHakai(c, esfera), hf = LerOHakai(c, furia);
+		Nota($"{esfera.Rotulo}: {he}");
+		Nota($"{furia.Rotulo}: {hf}");
+
+		if (defeito)
+		{
+			Ok("[injecao] `PintorDeKi.HakaiApagadoDeTeste` (a camada desligada): as duas saem ROXAS (a cor e da arte), e a MESMA regua "
+			   + "REPROVA a borda escura, os arcos (fora e por cima), o halo grande, os raios de luz e os graos nas duas",
+			   he.TemCorpo && hf.TemCorpo && he.SemACamada && hf.SemACamada);
+			return;
+		}
+
+		PecasDoHakai[] duas = [he, hf];
+		Ok("o MIOLO e quase branco (branco-rosado) nas duas: o disco de 0,12 raio claro", duas.All(h => h.TemMiolo));
+		Ok("o CORPO e magenta e violeta, em manchas de plasma: o anel de 0,5 a 0,8 raio roxo", duas.All(h => h.TemCorpo));
+		Ok("a BORDA ESCURA fecha as duas: um preto-arroxeado na casca em quase todo rumo", duas.All(h => h.TemBorda));
+		Ok("os ARCOS ESCUROS orbitam as duas, por fora da bola", duas.All(h => h.TemArcosFora));
+		Ok("...e cruzam POR CIMA dela (a metade da frente da orbita passa na frente do corpo)", duas.All(h => h.TemArcosPorCima));
+		Ok("o HALO e GRANDE: o roxo em volta vai alem de 1,75 raio", duas.All(h => h.TemHalo));
+		Ok("RAIOS DE LUZ saem do miolo (picos estreitos do claro)", duas.All(h => h.TemRaios));
+		Ok("GRAOS ESCUROS soltos em volta, onde os arcos nao chegam", duas.All(h => h.TemGraos));
+
+		// A COR E DA ARTE (`EstiloDeBola.CorPropria`): a luz e o estouro saem do roxo do Hakai, e nao do vermelho do ki de teste.
+		Color cor = ArteDeKiNoCliente.CorDoHakai;
+		Ok($"a cor da luz e do estouro das duas e o roxo do Hakai, e nao o vermelho do ki de quem atira ({esfera.No.Cor} e {furia.No.Cor})",
+		   _palco.Take(2).All(b => b.No.Cor.IsEqualApprox(cor)));
+
+		// AS DUAS ARTES DO KIT: a esfera e maior que a Fury (16 contra 10 px de raio no estilo). Pela corrida de tinta que atravessa o
+		// centro (a da Death Ball, na 2b): ela nao depende da camada, e a contraprova da camada nao a derruba junto.
+		float daEsfera = CorridaDeTinta(c, esfera.Cabeca, Vector2.Right), daFuria = CorridaDeTinta(c, furia.Cabeca, Vector2.Right);
+		Ok($"a Destroyer Sphere e MAIOR que a Fury: {daEsfera:0} px de tinta atravessando o centro dela, {daFuria:0} na Fury",
+		   daFuria > 0f && daEsfera >= daFuria * 1.3f);
+	}
 
 	/// <summary>
 	/// A CORRIDA DE TINTA QUE ATRAVESSA UM PONTO, numa direcao e na oposta, em px de mundo. Zero se o

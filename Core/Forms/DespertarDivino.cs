@@ -17,9 +17,8 @@ public enum FonteDaExposicao : byte
 /// <summary>O que o despertar fez nesta ficha, pra quem chamou poder contar ao jogador.</summary>
 /// <param name="Despertou">Falso = ja estava desperto, e nada foi escrito.</param>
 /// <param name="Marco">O novo multiplicador de ganho (5x), ou 0 se o marco nao subiu nada.</param>
-/// <param name="BonusDeBp">O multiplicador permanente de poder (2,5x), ou 0 pra quem nao o recebe.</param>
 /// <param name="Maestria">A maestria divina com que ele sai do despertar (33 no sangue divino, 0 nos outros).</param>
-public readonly record struct ResultadoDoDespertar(bool Despertou, double Marco, double BonusDeBp, double Maestria, bool SangueDivino);
+public readonly record struct ResultadoDoDespertar(bool Despertou, double Marco, double Maestria, bool SangueDivino);
 
 /// <summary>
 /// O TETO POR TEMPO da exposicao que vem de LUTA: uma janela corrida de
@@ -274,10 +273,12 @@ public static class DespertarDivino
 	///   * `godki.awakened = 1`                       -- aqui. O `GodKiState` nasce neste instante: ate o
 	///                                                   despertar a ficha nao tem datum de ki divino nenhum.
 	///   * `bp_milestone_reach("godki")`              -- aqui: o marco de GANHO (5x, `Milestones.Tabela`).
-	///   * `godki_give_mult = godki_boost`            -- aqui: 2,5x de poder PRA SEMPRE, forma ou nao
-	///                                                   (`base.dm:134`; o `Fighter.GodKiFactor` ja o aplicava,
-	///                                                   so que ninguem escrevia o campo).
-	///   * Primal Saiyan: `godki_give_mult = 0`       -- aqui. No Primal o ki divino so abre o Limit Breaker.
+	///   * `godki_give_mult = godki_boost`            -- NAO VEM MAIS (2026-10-23): eram 2,5x de poder PRA SEMPRE,
+	///                                                   forma ou nao (`base.dm:134`), e o dono os tirou -- *"o god ki
+	///                                                   dobrar o bp quando pega n achei mt legal nao, so as formas e
+	///                                                   as passivas de god ki ja estao bons"*. O campo saiu da ficha
+	///                                                   (ver `Fighter.GodKiFactor`); o marco de ganho acima FICA.
+	///   * Primal Saiyan: `godki_give_mult = 0`       -- sem objeto, pelo mesmo motivo (o Primal nunca teve o bonus).
 	///   * Kai/Demonio: maestria no nivel do Blue     -- aqui (<see cref="SangueDivino"/>).
 	///   * `godki.b_efficiency = godki_mod`           -- NAO VEIO: o port nao tem `godki_mod` (ele e sempre 1, e o
 	///                                                   Rose daqui e decidido pela classe -- `GameServer.Desejos.cs`).
@@ -299,12 +300,11 @@ public static class DespertarDivino
 		f.ExposicaoDivina = ExposicaoCheia;
 
 		double marco = f.ReachMilestone(MarcoDoDespertar);
-		f.godki_give_mult = f.SaiyanLineage == Oozaru.LinhagemPrimal ? 0 : f.godki_boost;
 
 		bool sangue = SangueDivino(f);
 		if (sangue) f.godki.mastery = Math.Max(f.godki.mastery, MaestriaDoSangueDivino);
 
-		return new ResultadoDoDespertar(true, marco, f.godki_give_mult, f.godki.mastery, sangue);
+		return new ResultadoDoDespertar(true, marco, f.godki.mastery, sangue);
 	}
 
 	// =====================================================================
@@ -360,8 +360,9 @@ public static class DespertarDivino
 	/// <summary>
 	/// (2026-10-18) O KI DIVINO EM USO AGORA -- o que o scouter nao detecta e o Sense so sente com ki divino (`Core/Stats/Scouter.cs`): o corpo
 	/// numa forma que usa o ki divino (<see cref="UsaOKiDivino"/>), da classe <see cref="ClasseDeKiDivino"/>, ou deus de oficio
-	/// (<paramref name="usaSempre"/>). Quem so DESPERTOU e esta na forma base nao esta usando: ele e lido e sentido como qualquer um -- e e
-	/// ele que sente os outros (`GameServer.SenteKiDivino`, pelo <see cref="CarregaKiDivino"/>).
+	/// (<paramref name="usaSempre"/>). Quem so DESPERTOU e esta na forma base nao esta usando: o scouter o le como qualquer um. O Sense, desde
+	/// 2026-10-23, nao: ele pergunta se o corpo CARREGA ki divino (<see cref="CarregaKiDivino"/>, `GameServer.KiDivinoForaDoSense`) -- a mesma
+	/// pergunta que diz quem sente os outros (`GameServer.SenteKiDivino`).
 	/// </summary>
 	public static bool KiDivinoEmUso(FormaDef? forma, string classe, string linhagem, bool usaSempre) =>
 		usaSempre || string.Equals(classe, ClasseDeKiDivino, StringComparison.OrdinalIgnoreCase) || UsaOKiDivino(forma, classe, linhagem);

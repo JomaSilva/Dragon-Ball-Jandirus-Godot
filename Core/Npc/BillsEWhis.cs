@@ -66,12 +66,19 @@ public readonly record struct CasaDeBills(PlanetaNoEspaco Corpo, int Sx, int Sy,
 ///   ele vai usar 100% do poder dele e usar a forma fury (...) e se o player derrotar o bills, ele vira o novo
 ///   deus da destruicao."*
 ///
+/// (2026-10-23) O PODER MUDOU, pelo dono: *"dobre o bp do boss bills"*, fechado em duas respostas -- *"bills teria 1 tri
+/// mas ao ativar o fury multiplica por 77x, whis seria 100 tri"* e "Na Terra o dobro (300 bi)". Na Terra ele luta com
+/// 30% (<see cref="FracaoNaTerra"/>), no desafio a Fury DELE multiplica por 77x (<see cref="MultDaFuryDoBills"/>), e o
+/// Whis em repouso tem cem trilhoes (<see cref="PoderDoWhis"/>). O treino continua "o triplo de quem treina".
+///
 /// AQUI FICAM OS NUMEROS (todos com nome), as contas puras, a escolha do planeta e as FALAS. Quem poe os corpos
 /// no mundo, guia as lutas e troca o titulo e o servidor (`GameServer.Bills.cs` e `GameServer.BillsTreino.cs`).
 ///
 /// ============================ A REGRA PRINCIPAL DO BP VALE AQUI DENTRO ============================
-/// O trilhao, os 15% e "o triplo" sao regra de SERVIDOR. Nenhuma fala, rotulo de menu ou pacote deste sistema
-/// escreve numero de poder -- o que o jogador sabe do Bills e o que o scouter dele ja mostrava de qualquer corpo.
+/// O trilhao, os 30% da Terra, os 77x da Fury dele, os cem trilhoes do Whis e "o triplo" sao regra de SERVIDOR.
+/// Nenhuma fala, rotulo de menu ou pacote deste sistema escreve numero de poder -- o que o jogador sabe do Bills e o
+/// que o scouter dele ja mostrava de qualquer corpo (e o scouter nem os le: o ki divino deles nao aparece no vidro,
+/// `GameServer.KiDivinoEscondido`; so o Sense de quem tambem tem ki divino os sente, em porcentagem).
 /// ==================================================================================================
 /// </summary>
 public static class BillsEWhis
@@ -141,35 +148,128 @@ public static class BillsEWhis
 	// 2. O PODER
 	// =====================================================================
 
-	/// <summary>O poder do Bills a 100%: um trilhao.</summary>
+	/// <summary>O poder do Bills a 100%: um trilhao. E o base dele em casa (o repouso) e no desafio pelo titulo.</summary>
 	public const double PoderTotal = 1_000_000_000_000;
 
-	/// <summary>Na Terra ele luta com esta fracao do poder: 15%, ou cento e cinquenta bilhoes.</summary>
-	public const double FracaoNaTerra = 0.15;
+	/// <summary>
+	/// Na Terra ele luta com esta fracao do poder: 30%, ou TREZENTOS BILHOES. Era 15% (os 150 bilhoes do pedido de
+	/// 2026-10-11); em 2026-10-23 o dono pediu *"dobre o bp do boss bills"* e, perguntado onde, escolheu "Na Terra o dobro
+	/// (300 bi)" -- e nao "1 tri tambem na Terra" nem "na Terra continua 150 bi". La ele continua SEM a Fury.
+	/// </summary>
+	public const double FracaoNaTerra = 0.30;
 
-	/// <summary>O BP BASE cravado no corpo dele na Terra (e o que o scouter de quem o tem mede com ele descansado).</summary>
+	/// <summary>
+	/// O BP BASE cravado no corpo dele na Terra. (O scouter nao o le: o ki divino dele nao aparece no vidro. Quem tem ki
+	/// divino o SENTE, em porcentagem do proprio poder -- e e o expresso que entra na razao.)
+	/// </summary>
 	public static double PoderNaTerra => PoderTotal * (FracaoDeTeste > 0 ? FracaoDeTeste : FracaoNaTerra);
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada): a fracao com que ele luta na Terra (1 = o poder inteiro). Lido por
-	/// <see cref="PoderNaTerra"/>. Zero em jogo, sempre.
+	/// DEFEITO INJETADO (bancada): a fracao com que ele luta na Terra (1 = o poder inteiro; 0,15 = a regra de antes de
+	/// 2026-10-23). Lido por <see cref="PoderNaTerra"/>. Zero em jogo, sempre.
 	/// </summary>
 	public static double FracaoDeTeste;
 
+	// ============================ (2026-10-25) O BILLS DA TERRA ACOMPANHA QUEM O ENFRENTA ============================
 	/// <summary>
-	/// O TREINO: o adversario tem este tanto do poder de quem o chamou. O dono: "o whis sempre tem o triplo do bp do
-	/// player q o chamou pra lutar" -- e o treino com o Bills "e a mesma coisa".
+	/// O PODER DO BILLS NA TERRA SOBE COM QUEM O ENFRENTA, E NAO DESCE -- o dono: *"O bills q vai na terra tem uma leve diferença o bp q ele
+	/// começa é 300 bilhoes, mas ele sobe caso um player passe disso, ate superar em 50% o bp desse player (bp transformado/atual) e caso o
+	/// player perca poder ou saia da forma o bills n abaixa esse novo poder dele ele fica 50% mais forte q o teto de poder q esse jogador teve
+	/// na luta"*. O EXPRESSO dele e este tanto do PICO do expresso de quem esta na briga (`GameServer.AcompanharNaTerra`).
+	/// </summary>
+	public const double FolgaNaTerra = 1.5;
+
+	/// <summary>
+	/// O EXPRESSO QUE O BILLS DA TERRA QUER TER: 50% acima do pico de quem o enfrenta, nunca abaixo de <see cref="PoderNaTerra"/> e no maximo
+	/// o teto da fase em que ele esta. As fases sao do servidor (`GameServer.AcompanharNaTerra`) -- o dono: *"caso um player na luta da terra
+	/// passe do bp maximo dele sem contar fury ou UE ele vai ativar o UE na luta da terra, mas abaixa o poder de proposito pra ficar 50% mais
+	/// forte q o poder do jogador atual, caso o jogador de alguma forma passe do bp maximo do bills no UE na luta na terra ele vira o fury e
+	/// mantendo a regra dos 50% e se mesmo assim o jogador estar mais forte q isso tudo ai é o padrao"*.
+	/// </summary>
+	public static double ExpressoNaTerra(double pico, double tetoDaFase) =>
+		Math.Min(Math.Max(PoderNaTerra, pico * FolgaNaTerra), Math.Max(tetoDaFase, PoderNaTerra));
+
+	/// <summary>As fases da luta da Terra: o corpo de sempre, o Ultra Ego e a Fury. Elas so sobem enquanto a briga dura.</summary>
+	public enum FaseNaTerra { Base, UltraEgo, Fury }
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--billsteste`): o Bills da Terra volta a lutar sempre nos 300 bilhoes, sem subir nem trocar de forma -- o
+	/// jogo de antes de 2026-10-25. Lido por `GameServer.AcompanharNaTerra`. E e tambem o que ISOLA as cenas antigas do kit e do Whis na Terra
+	/// (as da `--billsteste` que pesam o kit e o Whis com o poder fixo de quando foram escritas). Falso em jogo, sempre.
+	/// </summary>
+	public static bool TerraSemAcompanharDeTeste;
+
+	/// <summary>
+	/// QUEM AGUENTA QUATRO MINUTOS DE BRIGA COM ELE NA TERRA ganha: ele se da por satisfeito, diz onde mora e vai embora -- o dono: *"se o
+	/// player sobreviver 4 minutos de luta, o bills vai embora e fala qual o planeta dele"* e *"Jogador q sobreviver os 4 minutos o chat fala
+	/// q o bills desistiu de destruir a terra e ficou satisfeito com a luta"*. O relogio e o da BRIGA: comeca quando alguem o acorda batendo e
+	/// conta enquanto ele tiver com quem lutar; se ele desiste da briga e volta a cochilar, zera.
+	/// </summary>
+	public const double SegundosPraSatisfazer = 240;
+
+	/// <summary>DEFEITO INJETADO (bancada): o prazo da satisfacao, encurtado (0 = o de jogo) -- a bancada nao espera quatro minutos. Zero em jogo, sempre.</summary>
+	public static double SatisfazerEmDeTeste;
+
+	/// <summary>O prazo da satisfacao que vale agora: o do dono, ou o encurtado da bancada.</summary>
+	public static double PrazoDaSatisfacao => SatisfazerEmDeTeste > 0 ? SatisfazerEmDeTeste : SegundosPraSatisfazer;
+
+	/// <summary>DEFEITO INJETADO (bancada): ele nunca se da por satisfeito -- a visita sem prazo de antes. Falso em jogo, sempre.</summary>
+	public static bool TerraSemSatisfacaoDeTeste;
+
+	/// <summary>
+	/// O PODER DO WHIS EM REPOUSO: cem trilhoes. O dono, em 2026-10-23: *"whis seria 100 tri"* -- ate ali ele dividia o
+	/// trilhao do Bills. E o poder de quem ele e FORA da aula (parado ao lado do Bills, na Terra ou em casa); na aula o
+	/// servidor crava o triplo de quem treina, como sempre (<see cref="PoderDoTreino"/>).
+	/// </summary>
+	public const double PoderDoWhis = 100_000_000_000_000;
+
+	/// <summary>
+	/// O PODER DE REPOUSO de cada um -- o base cravado quando ele nasce fora da luta e quando uma luta da casa acaba: o
+	/// Bills, o trilhao; o Whis, os cem trilhoes. (O Bills NA TERRA luta com <see cref="PoderNaTerra"/>, e quem decide
+	/// isso e o servidor, que sabe onde ele esta.)
+	/// </summary>
+	public static double PoderDeRepouso(QuemFala quem) =>
+		quem == QuemFala.Whis && !WhisNoTrilhaoDeTeste ? PoderDoWhis : PoderTotal;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--billsteste`): o Whis volta a repousar no trilhao do Bills -- o jogo de antes de
+	/// 2026-10-23. Lido por <see cref="PoderDeRepouso"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool WhisNoTrilhaoDeTeste;
+
+	/// <summary>
+	/// O TREINO COM O WHIS: o BASE dele tem este tanto do MAIOR poder que o parceiro mostrou na aula. O dono (2026-10-24):
+	/// *"no treino o whis é sempre pelomenos 3x mais forte q o player q quer treinar (3x o bp maximo do jogador no bp base do whis, se
+	/// considerar o UI ele vai ter mt mais ...), whis n tem um bp maximo, ele por ser um anjo é sempre mais forte q qualquer um"*.
 	///
-	/// DECISAO (o dono nao disse de QUAL poder): e o EXPRESSO de quem treina, medido A CADA TIQUE. O base nao
-	/// serviria -- um Super Saiyajin (50x) atropelaria um adversario de 3x o base dele --, e medir so na hora do
-	/// pedido deixaria quem se transforma no meio da luta passar na frente. "Sempre" e sempre: carregou ki,
-	/// transformou, cansou -- o adversario acompanha.
+	/// O PICO, e nao o de agora: transformou, o Whis acompanha; saiu da forma, ele NAO desce. E e o BASE, e nao o expresso (como era ate
+	/// 2026-10-24, quando o treino com o Bills era "a mesma coisa"): o Ultra Instinto Perfeito dele (<see cref="FormaDoWhis"/>) multiplica
+	/// por cima -- e nao ha teto nenhum.
 	/// </summary>
 	public const double VezesOPoderDoParceiro = 3;
 
-	/// <summary>O poder expresso que o adversario de treino tem de ter agora.</summary>
-	public static double PoderDoTreino(double expressoDoParceiro) =>
-		Math.Max(expressoDoParceiro, 1) * (TreinoSemMultiploDeTeste ? 1 : VezesOPoderDoParceiro);
+	/// <summary>O BP BASE do Whis no treino: o triplo do pico do poder expresso do parceiro na aula.</summary>
+	public static double PoderDoTreino(double picoDoParceiro) =>
+		Math.Max(picoDoParceiro, 1) * (TreinoSemMultiploDeTeste ? 1 : VezesOPoderDoParceiro);
+
+	/// <summary>
+	/// (2026-10-24) O BILLS NO TREINO: o BASE dele iguala o BASE de quem treina, ate o trilhao dele (<see cref="PoderTotal"/>) -- o dono:
+	/// *"o bills no treinamento ele sempre iguala o bp base ao bp base do jogador ate chegar no bp do 100% dele, mas ja q ele ta no UE (com
+	/// multiplicador normal ds forma) ele ta sempre extremamente forte"*. O Ultra Ego (<see cref="FormaDoBillsNoTreino"/>) multiplica por cima.
+	/// </summary>
+	public static double BaseDoBillsNoTreino(double baseDoParceiro) => Math.Min(Math.Max(baseDoParceiro, 1), PoderTotal);
+
+	/// <summary>
+	/// (2026-10-24) A FORMA EM QUE O WHIS ESTA SEMPRE -- o dono: *"o whis deveria sempre estar na forma ultra instinto perfeito mas sem efeito
+	/// visual nenhum"*. Ela vale no servidor e ninguem a ve. Ver `GameServer.VestirAFormaDoWhis`.
+	/// </summary>
+	public const string FormaDoWhis = "ui_perfected";
+
+	/// <summary>
+	/// (2026-10-24) A FORMA DO BILLS NO TREINO, com o visual e a aura -- o dono: *"no modo treino com beels ele deve usar o ultra ego, e pode
+	/// manter o visual nele com a aura do ultra ego"*. Ver `GameServer.VestirOUltraEgoDoBills`.
+	/// </summary>
+	public const string FormaDoBillsNoTreino = "ultra_ego";
 
 	/// <summary>DEFEITO INJETADO (bancada): o adversario de treino fica com o MESMO poder do parceiro. Lido por <see cref="PoderDoTreino"/>.</summary>
 	public static bool TreinoSemMultiploDeTeste;
@@ -189,10 +289,35 @@ public static class BillsEWhis
 
 	/// <summary>
 	/// O DESAFIO PELO TITULO: "ele vai usar 100% do poder dele e usar a forma fury". Leitura adotada: o trilhao e o
-	/// BASE, e a Fury multiplica POR CIMA (72x no catalogo) -- as duas coisas somadas sao o que faz do titulo o
-	/// topo do jogo. Com `false`, o trilhao passa a ser o poder JA NA FURY (o base e dividido pelo multiplicador).
+	/// BASE, e a Fury multiplica POR CIMA (a dele, <see cref="MultDaFuryDoBills"/>) -- as duas coisas somadas sao o que
+	/// faz do titulo o topo do jogo. O dono confirmou a leitura em 2026-10-23 (*"bills teria 1 tri mas ao ativar o fury
+	/// multiplica por 77x"*). Com `false`, o trilhao passa a ser o poder JA NA FURY (o base e dividido pelo multiplicador).
 	/// </summary>
 	public const bool AFuryMultiplicaOTotal = true;
+
+	/// <summary>
+	/// A FURY DO BILLS MULTIPLICA POR 77x -- a DELE, e so a dele. O dono, em 2026-10-23: *"bills teria 1 tri mas ao
+	/// ativar o fury multiplica por 77x"*. No desafio o base e o trilhao e o expresso, 77 trilhoes.
+	///
+	/// A FORMA E A MESMA (`god_fury`, a do kit, pela porta do kit): o que muda e o NUMERO que ela da a este corpo. A
+	/// entrada do catalogo continua 72x (`Ranks.KitDoDeus.FuryMult`, o `GOD_FURY_MULT` do DM) e e ela que o JOGADOR com o
+	/// titulo de Deus da Destruicao veste -- o dono falou do Bills, e a regra vale pro que ele nomeou (decisao do
+	/// orquestrador, 2026-10-23). Quem aplica e o funil do multiplicador de forma do servidor, o mesmo que escreve o
+	/// `ssjBuff` de todo corpo (`GameServer.FuryDoBills`, chamado pelo `MultiplicadorDaForma`).
+	/// </summary>
+	public const double MultDaFuryDoBills = 77;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--billsteste`): a Fury do Bills volta a dar o numero do catalogo (72x) -- o jogo de antes
+	/// de 2026-10-23. Lido por `GameServer.FuryDoBills`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FuryDoCatalogoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--billsteste`): os 77x valem pra Fury de QUALQUER corpo -- o jogador com o titulo
+	/// incluso. Lido por `GameServer.FuryDoBills`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FuryDoBillsPraTodosDeTeste;
 
 	/// <summary>
 	/// O id da forma Fury no catalogo de formas: o do kit do Deus da Destruicao (<see cref="Ranks.KitDoDeus.IdDaFury"/>).
@@ -201,12 +326,12 @@ public static class BillsEWhis
 	public const string IdDaFury = Ranks.KitDoDeus.IdDaFury;
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada `--billsteste`): o Bills aceita o desafio SEM entrar na Fury -- o titulo passaria a
+	/// DEFEITO INJETADO (bancada `--billsteste`): na virada do desafio o Bills se levanta SEM entrar na Fury -- o titulo passaria a
 	/// valer um trilhao seco. Lido pela propria linha que o poe na forma (`GameServer.BillsVesteAFury`).
 	/// </summary>
 	public static bool DesafioSemFuryDeTeste;
 
-	/// <summary>O BP base do Bills no desafio, dado o multiplicador que a Fury tem no catalogo.</summary>
+	/// <summary>O BP base do Bills no desafio, dado o multiplicador que a Fury da a ele (o do funil: <see cref="MultDaFuryDoBills"/>).</summary>
 	public static double PoderNoDesafio(double multDaFury) =>
 		AFuryMultiplicaOTotal || multDaFury <= 0 ? PoderTotal : PoderTotal / multDaFury;
 
@@ -551,8 +676,64 @@ public static class BillsEWhis
 	/// <summary>O treino acaba sozinho depois disto (em segundos), pra a vez passar a quem espera.</summary>
 	public const double SegundosDeTreino = 5 * 60;
 
-	/// <summary>Quem treina e se afasta mais que isto (em tiles) do lugar do mestre larga o treino.</summary>
-	public const float TilesDoTreino = 40;
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--billsteste`): a aula volta a acabar quando o aluno passa de quarenta tiles do POSTO do mestre -- o jogo de
+	/// antes de 2026-10-24, em que o primeiro arremesso longo encerrava o treino (o log do dono: "acabou: ParceiroSaiu"). O dono: *"deixa o
+	/// planeta todo ser a area da luta sem terminar ela em 40 tiles"*. Lido pelo `GameServer.Julgar`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool AulaComCercaDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) QUANTO O TREINO COM ELES RENDE -- o dono: *"faça o treino deles render bastante bp igual no anime"*. O fator da luta
+	/// (`GameServer.FatorDaLuta`) dos dois lados de todo golpe entre o mestre e o aluno, enquanto a aula durar: cinco vezes o de uma luta
+	/// comum, por cima do ganho de encarar alguem mais forte (`Fighter.FightGainMult`, que ja da o teto de 2x contra eles).
+	/// </summary>
+	public const double GanhoDoTreino = 5;
+
+	/// <summary>DEFEITO INJETADO (bancada): o treino com eles volta a render o de uma luta comum. Lido pelo `GameServer.FatorDaLuta`. Falso em jogo, sempre.</summary>
+	public static bool TreinoRendeOComumDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) O ENSINO DOS PRINCIPIOS -- o dono: *"apos alguns treinos ambos whis ou bills começam a ensinar os principios do UE (bills)
+	/// ou do UI (whis) ao qual dps de um tempo vc libera a técnica de ambos"*. Em TEMPO DE LUTA acumulado com cada mestre (a aula que acaba
+	/// cedo conta o que durou): tres aulas inteiras e ele comeca a ensinar; mais tres e a tecnica e sua. Ver `GameServer.CreditarAAula`.
+	/// </summary>
+	public const double SegundosPraComecarAEnsinar = 3 * SegundosDeTreino;
+
+	/// <summary>Ver <see cref="SegundosPraComecarAEnsinar"/>: seis aulas inteiras de luta, e a disciplina do mestre e aprendida.</summary>
+	public const double SegundosPraLiberar = 6 * SegundosDeTreino;
+
+	/// <summary>(2026-10-24) Derrubar o mestre no treino vale uma aula inteira a mais no ensino -- e o que acontece quando ele cai.</summary>
+	public const double SegundosPeloMestreCaido = SegundosDeTreino;
+
+	/// <summary>DEFEITO INJETADO (bancada): o tempo de aula nao ensina nada. Lido pelo `GameServer.CreditarAAula`. Falso em jogo, sempre.</summary>
+	public static bool TreinoNaoEnsinaDeTeste;
+
+	/// <summary>
+	/// (2026-10-24) O WHIS NA DEFENSIVA -- o dono: *"ele é uma IA defensiva, ataca raramente e nao usa ataques de ki ... quando ele bater ele
+	/// bate forte"*. Segundos entre uma janela de golpe e a proxima (com o sorteio de 0,75 a 1,25 do cerebro); fora dela ele orbita e deixa
+	/// o instinto desviar. Ver `Cerebro.Defensivo`.
+	/// </summary>
+	public const double SegundosEntreGolpesDoWhis = 7;
+
+	/// <summary>(2026-10-24) A chance de o golpe do Whis sair PESADO -- "quando ele bater ele bate forte".</summary>
+	public const double ChanceDePesadoDoWhis = 0.9;
+
+	/// <summary>DEFEITO INJETADO (bancada): o Whis volta a lutar com o cerebro de qualquer chefe. Lido pelo `GameServer.ParOuDespertar`. Falso em jogo, sempre.</summary>
+	public static bool WhisAgressivoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o Ki dos dois volta a acabar -- o jogo de antes de 2026-10-24 (o dono: *"lembrando q bills e whis devem ter
+	/// ki infinito"*). Lido pelo `GameServer.NascerODivino`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool KiDivinoFinitoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o Bills e o Whis voltam a poder ser levados pra fora do planeta (a carona, o teleporte, a absorcao) -- o
+	/// dono: *"n deixe bills e whis sairem do planeta tanto na terra ou no planeta deles em si, eles devem ficar sempre dentro do planeta"*.
+	/// Lido pelo `GameServer.MoveToZone` e pelo `PorQueNaoSaiDaqui`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DivinoSaiDoPlanetaDeTeste;
 
 	/// <summary>
 	/// O FOLEGO DE QUEM SAI DE UMA LUTA DA CASA, em segundos: nesse tempo ninguem o atinge. O mestre para na hora em
@@ -580,8 +761,9 @@ public static class BillsEWhis
 	public static bool InstintoQueCansaDeTeste;
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada): o Whis ENTRA NA FORMA do Instinto ao treinar (cabelo prateado, aura) -- o efeito
-	/// visual que o dono disse que um Anjo nao tem. Lido pelo `GameServer.VestirADisciplina`. Falso em jogo, sempre.
+	/// DEFEITO INJETADO (bancada): o Ultra Instinto Perfeito do Whis APARECE (cabelo prateado, aura, o anuncio de forma) -- o efeito visual
+	/// que o dono disse que um Anjo nao tem. (Ate 2026-10-24 ele nem entrava na forma; desde entao esta SEMPRE nela, calado.) Lido pelo
+	/// `GameServer.AnunciarForma` e pelo `GameServer.PacotesDeEstado`. Falso em jogo, sempre.
 	/// </summary>
 	public static bool InstintoComFormaDeTeste;
 
@@ -689,6 +871,27 @@ public static class BillsEWhis
 		"BILLS FOI DERRUBADO NA TERRA por {nome}! O Deus da Destruição abriu a própria casa a quem quiser treinar: "
 		+ "{coordenadas} ({mundo}). A carta estelar de todos passou a marcar o lugar.";
 
+	/// <summary>(2026-10-25) QUEM AGUENTOU OS QUATRO MINUTOS: ele se da por satisfeito e diz onde mora. Ver <see cref="SegundosPraSatisfazer"/>.</summary>
+	public static readonly Fala[] FalasDeSatisfeito =
+	[
+		new(QuemFala.Bills, "Chega. Fazia tempo que eu não me divertia assim."),
+		new(QuemFala.Bills, "Desisto de destruir este planeta. Quem aguenta isso merece treino de verdade, e não uma cratera."),
+		new(QuemFala.Bills, "Apareçam na minha casa. Coordenadas galácticas: {coordenadas}. Anotem, que eu não repito."),
+		new(QuemFala.Whis, "Ele repete, sim. {coordenadas} -- nas cartas de vocês o mundo aparece como {mundo}. E levem um lanche. Pra mim, de preferência."),
+		new(QuemFala.Bills, "Whis, vamos embora. Lutar dá fome."),
+	];
+
+	/// <summary>(2026-10-25) O mundo inteiro ouve, quando os dois vao embora satisfeitos -- o texto do dono, e a casa aberta como na derrota.</summary>
+	public const string AvisoDeSatisfeito =
+		"Bills desistiu de destruir a Terra e ficou satisfeito com a luta! O Deus da Destruição abriu a própria casa a quem quiser treinar: "
+		+ "{coordenadas} ({mundo}). A carta estelar de todos passou a marcar o lugar.";
+
+	/// <summary>(2026-10-25) Na Terra, quando quem o enfrenta passa do maximo dele e ele veste o Ultra Ego.</summary>
+	public const string BillsVesteOEgoNaTerra = "Hmph. Passou do ponto. Então eu também passo.";
+
+	/// <summary>(2026-10-25) Na Terra, quando quem o enfrenta passa ate do Ultra Ego dele e ele entra na Fury.</summary>
+	public const string BillsEntraNaFuryNaTerra = "Agora você me irritou de verdade.";
+
 	/// <summary>A visita que acaba SEM luta (o titulo dele foi tomado enquanto ele estava na Terra): quem fala e o Whis, se estiver la.</summary>
 	public const string WhisEncerraAVisita =
 		"O senhor Bills não carrega mais o título, então a visita acaba aqui. Eu continuo recebendo quem quiser treinar: {coordenadas}.";
@@ -780,6 +983,31 @@ public static class BillsEWhis
 	public const string BillsAcabouOTempo = "Cansei. Não de você -- de ficar de pé.";
 	public const string BillsAlunoParou = "Já vai? Ótimo. Eu ia sugerir a mesma coisa.";
 	public const string BillsAlunoFugiu = "Correu. Sábio, até.";
+
+	// ---- (2026-10-24) O ENSINO DOS PRINCIPIOS (ver `SegundosPraComecarAEnsinar`) ----
+	public const string WhisComecaAEnsinar =
+		"Você já não se mexe como um mortal qualquer. Daqui em diante eu lhe mostro como o corpo se move sozinho -- preste atenção.";
+	public const string BillsComecaAEnsinar =
+		"Hmph. Você aguenta apanhar. Então escute: o ego de um destruidor não pede licença pra ninguém.";
+	public const string WhisLiberou = "Pronto. O Instinto agora é seu -- o resto é treino. Muito treino.";
+	public const string BillsLiberou = "O Ultra Ego é seu. Não me faça passar vergonha.";
+	public const string AvisoDoWhisEnsinando =
+		"o Whis começou a te ensinar os princípios do Ultra Instinto: continue treinando com ele, e com o tempo a técnica é sua.";
+	public const string AvisoDoBillsEnsinando =
+		"o Bills começou a te ensinar os princípios do Ultra Ego: continue treinando com ele, e com o tempo a técnica é sua.";
+	public const string AvisoDoInstintoAprendido =
+		"você aprendeu o Ultra Instinto com o Whis. Ligue 'Autonomous Evasion' na aba Skills -- e evolua lutando com ele ligado, até as formas.";
+	public const string AvisoDoEgoAprendido =
+		"você aprendeu o Poder da Destruição (o caminho do Ultra Ego) com o Bills. Ligue 'Aura of Destruction' na aba Skills -- e evolua lutando com ela ligada, até as formas.";
+
+	// ---- (2026-10-24) por que o tempo de aula chegou e a tecnica nao veio -- dito a quem treina, uma frase por recusa do `PodeAprender` ----
+	public static string NaoLiberaPelaOutraDisciplina(bool whis) => whis
+		? "o Whis não pode te ensinar o Ultra Instinto: você já trilha o Poder da Destruição (o Ultra Ego), e os dois caminhos se excluem."
+		: "o Bills não pode te ensinar o Ultra Ego: você já trilha o Ultra Instinto, e os dois caminhos se excluem.";
+	public static string NaoLiberaSemGodKi(bool whis, double godKiPraAprender) => (whis ? "o Whis" : "o Bills")
+		+ $" já te mostrou os princípios, mas a técnica pede o ki divino desperto ({godKiPraAprender:0}% de maestria divina). Desperte-o e volte a treinar.";
+	public const string NaoLiberaClasseRara = "classe rara não aprende essa técnica -- o treino ainda rende poder.";
+	public const string NaoLiberaAinda = "a técnica ainda não pode ser sua.";
 	public const string BillsIntrometido = "Dois contra um é falta de educação. Sumam, os dois.";
 	public const string BillsOcupado = "Estou ocupado. Entre na fila -- ou vá incomodar o Whis.";
 
@@ -794,6 +1022,27 @@ public static class BillsEWhis
 
 	public const string AvisoDoDesafio =
 		"DUELO PELO TÍTULO DE GOD OF DESTRUCTION: Bills (Deus) VS {nome} (desafiante)! Um contra um; nocaute decide.";
+
+	/// <summary>
+	/// (2026-10-25) A VIRADA DO DESAFIO: o Bills perdendo o duelo pelo titulo se levanta inteiro e entra na Fury -- o dono: *"o bills quando
+	/// estiver perdendo o desafio pra virar god ele deve recuperar toda a vida e vigor (lembrando q bills e whis devem ter ki infinito) e virar
+	/// a forma fury"*. "Perdendo" e a vida dele abaixo deste tanto (em %), ou o nocaute -- o que vier primeiro; UMA vez por duelo. O duelo
+	/// comeca sem a Fury: ela e a virada (`GameServer.VirarNaFury`).
+	/// </summary>
+	public const double VidaDaVirada = 30;
+
+	/// <summary>DEFEITO INJETADO (bancada `--billsteste`): o Bills perdendo o desafio so perde -- sem se levantar e sem a Fury. Falso em jogo, sempre.</summary>
+	public static bool DesafioSemViradaDeTeste;
+
+	/// <summary>(2026-10-25) O que os dois dizem na virada do desafio.</summary>
+	public static readonly Fala[] FalasDaVirada =
+	[
+		new(QuemFala.Bills, "Chega de brincadeira."),
+		new(QuemFala.Whis, "Ah, ele ficou bravo de verdade. Isso não costuma acabar bem pra ninguém."),
+	];
+
+	/// <summary>(2026-10-25) O mundo inteiro ouve a virada do duelo pelo titulo.</summary>
+	public const string AvisoDaVirada = "BILLS ENTROU NA FÚRIA no duelo pelo título contra {nome}!";
 
 	public const string BillsVenceuODesafio = "Volte quando doer menos.";
 	public const string BillsAcabouOPrazo = "O tempo acabou e eu continuo de pé. O título fica onde está.";

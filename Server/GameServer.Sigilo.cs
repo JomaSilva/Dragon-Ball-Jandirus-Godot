@@ -76,6 +76,21 @@ public partial class GameServer
 	public static bool TemScouter(ServerPlayer pl) => (pl.Poderes & Protocol.Poder.Scouter) != 0;
 
 	/// <summary>
+	/// (2026-10-24) O SENSE NO NIVEL 4 (O SISTEMA) OU MAIS SENTE O PROPRIO PODER, sem scouter. O dono: *"faça com quem tenha sense lvl 4 ou
+	/// mais consiga sentir o PROPRIO bp sem scouter, nao o bp dos outros"*. So o proprio: a ficha do dono (<see cref="FichaVisivel"/>) e as
+	/// frases em que o numero e dele (<see cref="ScouterMostra"/> com o dono no lugar do leitor). O poder dos outros continua so no scouter.
+	/// E sem o vidro do aparelho -- sem o teto de 100 milhoes e sem o veto do ki divino: o ki e dele.
+	/// </summary>
+	public static bool SenteOProprioPoder(ServerPlayer pl) =>
+		!SenseNaoSenteOProprioDeTeste && TemSense(pl) && NivelDoSense(pl) >= Jandirus.Core.Skills.SenseEmNiveis.Sistema;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--sentidosteste`, familia 7): o jogo de antes de 2026-10-24 -- o proprio poder so com scouter. Lido pelo
+	/// <see cref="SenteOProprioPoder"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SenseNaoSenteOProprioDeTeste;
+
+	/// <summary>
 	/// O QUE O CLIENTE PODE SABER QUE SABE FAZER. Uma porta so pros bits de
 	/// <see cref="Protocol.Poder"/> que saem no pacote de atributos.
 	///
@@ -168,6 +183,13 @@ public partial class GameServer
 	public SheetState FichaVisivel(ServerPlayer pl)
 	{
 		SheetState s = pl.Sheet();
+		// (2026-10-24) O SENSE NO NIVEL 4 OU MAIS SENTE O PROPRIO PODER: os dois numeros vao inteiros, sem o vidro do scouter. Ver
+		// `SenteOProprioPoder`.
+		if (SenteOProprioPoder(pl))
+		{
+			s.Class = "";
+			return s;
+		}
 		// (2026-10-18) COM O SCOUTER, O QUE O VIDRO NAO LE CHEGA "???" -- cada numero sozinho: acima do teto, ou o ki divino do proprio dono (o
 		// aparelho nao o sente). Ver `Core/Stats/Scouter.cs`.
 		if (TemScouter(pl))
@@ -221,12 +243,14 @@ public partial class GameServer
 	/// (2026-10-18) O SCOUTER DE <paramref name="leitor"/> MOSTRA ESTES NUMEROS DE PODER DE <paramref name="dono"/>? O aparelho ligado no olho de
 	/// quem le, o ki do dono que NAO e divino (<see cref="KiDivinoEscondido"/>; dono nulo = o numero nao e ki de ninguem, como o poder de uma
 	/// arma) e CADA numero dentro do teto (`Scouter.TetoDeLeitura`). Toda frase do servidor que diz poder em numero pergunta aqui
-	/// (`PoderNaFrase.EmNumero(ScouterMostra(...))`): o que o vidro nao le, a frase diz sem numero.
+	/// (`PoderNaFrase.EmNumero(ScouterMostra(...))`): o que o vidro nao le, a frase diz sem numero. (2026-10-24) E o Sense no nivel 4 ou mais
+	/// le o PROPRIO numero, sem o vidro (<see cref="SenteOProprioPoder"/>): o View Session, os desejos, a agua sagrada.
 	/// </summary>
 	internal bool ScouterMostra(ServerPlayer leitor, ServerPlayer? dono, params double[] numeros) =>
-		TemScouter(leitor) && (dono == null || !KiDivinoEscondido(dono))
-		&& (dono == null || dono == leitor || !AndroideSemKi(dono))   // (2026-10-19) o vidro nao le o androide alheio -- ver `AndroideSemKi`
-		&& Array.TrueForAll(numeros, Jandirus.Core.Stats.Scouter.Le);
+		(dono == leitor && SenteOProprioPoder(leitor))
+		|| (TemScouter(leitor) && (dono == null || !KiDivinoEscondido(dono))
+			&& (dono == null || dono == leitor || !AndroideSemKi(dono))   // (2026-10-19) o vidro nao le o androide alheio -- ver `AndroideSemKi`
+			&& Array.TrueForAll(numeros, Jandirus.Core.Stats.Scouter.Le));
 
 	/// <summary>
 	/// (2026-10-18) O DEUS DE OFICIO USA O KI DIVINO SEMPRE: o Bills e o Whis (os NPCs, e quem tem os cargos deles -- Deus da Destruicao e
@@ -244,8 +268,9 @@ public partial class GameServer
 																										  UsaKiDivinoSempre(o));
 
 	/// <summary>
-	/// (2026-10-18) ESTE CORPO SE ESCONDE DO SCOUTER E DO SENSE DE MORTAL: o ki divino em uso. O scouter nunca o le nem o lista; o Sense (e a
-	/// telepatia, o Observe e o Instant Transmission, que tambem procuram ENERGIA) so o acha quem tambem tem ki divino (<see cref="SenteKiDivino"/>).
+	/// (2026-10-18) ESTE CORPO SE ESCONDE DO SCOUTER: o ki divino em uso. O scouter nunca o le nem o lista. O Sense (e a telepatia, o Observe e o
+	/// Instant Transmission, que tambem procuram ENERGIA) esconde este corpo E mais um -- desde 2026-10-23 ele pergunta ao
+	/// <see cref="KiDivinoForaDoSense"/>.
 	/// </summary>
 	internal bool KiDivinoEscondido(ServerPlayer o) => !KiDivinoAparecerDeTeste && KiDivinoEmUso(o);
 
@@ -256,18 +281,39 @@ public partial class GameServer
 	internal bool SenteKiDivino(ServerPlayer eu) => Jandirus.Core.Forms.DespertarDivino.CarregaKiDivino(eu.Ficha, eu.Forma.Atual) || KiDivinoEmUso(eu);
 
 	/// <summary>
+	/// (2026-10-23) ESTE CORPO SE ESCONDE DO SENSE DE QUEM NAO TEM KI DIVINO: o ki divino em uso (<see cref="KiDivinoEscondido"/>) e quem so o
+	/// DESPERTOU, mesmo na forma base. O dono: *"quem tem god ki despertado (...) n deve ter o ki sentido por ki sense, a nao ser q o usuario do
+	/// sense tb tenha god ki"*. E a MESMA pergunta do lado de quem sente (<see cref="SenteKiDivino"/>: carrega ki divino) -- dois despertos se
+	/// sentem, e nenhum mortal sente um deles.
+	///
+	/// O SCOUTER NAO MUDA: o pedido e do "ki sense", e o aparelho continua lendo o desperto na forma base (ele so pergunta ao
+	/// <see cref="KiDivinoEscondido"/>). Pergunta aqui quem procura ENERGIA: o Sense, a telepatia e o Observe (pelo <see cref="AchoAEnergia"/>) e
+	/// a lista do Instant Transmission (`TravaNaEnergia`). O androide sai antes desta pergunta (<see cref="AchoAEnergiaG4"/> e
+	/// <see cref="AndroideSemKi"/>): nem quem tem ki divino o sente.
+	/// </summary>
+	internal bool KiDivinoForaDoSense(ServerPlayer o) =>
+		KiDivinoEscondido(o) || (!DespertoAparecerNoSenseDeTeste && !KiDivinoAparecerDeTeste && SenteKiDivino(o));
+
+	/// <summary>
 	/// (2026-10-18) <paramref name="eu"/> ACHA A ENERGIA DE <paramref name="o"/>? Os tres testes do DM (<see cref="AchoAEnergiaG4"/>: escondido,
-	/// Android, o piso dos 5) e o ki divino, que so quem tambem o tem sente. A pergunta de toda tecnica que procura energia: o Sense, a
-	/// telepatia e o Observe. (2026-10-18) E o corpo escondido de quem o Neo Tuffle possui nao se acha -- ver `GameServer.NeoTuffle.cs`.
+	/// Android, o piso dos 5) e o ki divino, que so quem tambem o tem sente (<see cref="KiDivinoForaDoSense"/> -- desde 2026-10-23, tambem o de quem
+	/// so despertou). A pergunta de toda tecnica que procura energia: o Sense, a telepatia e o Observe. (2026-10-18) E o corpo escondido de quem
+	/// o Neo Tuffle possui nao se acha -- ver `GameServer.NeoTuffle.cs`.
 	/// </summary>
 	internal bool AchoAEnergia(ServerPlayer eu, ServerPlayer o) =>
-		AchoAEnergiaG4(o) && (!KiDivinoEscondido(o) || SenteKiDivino(eu)) && !HospedeEscondido(o);
+		AchoAEnergiaG4(o) && (!KiDivinoForaDoSense(o) || SenteKiDivino(eu)) && !HospedeEscondido(o);
 
 	/// <summary>
 	/// DEFEITO INJETADO (`--sentidosteste`): o ki divino volta a aparecer no scouter e no Sense de qualquer um -- o jogo de antes. Falso em jogo,
 	/// sempre.
 	/// </summary>
 	internal static bool KiDivinoAparecerDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--sentidosteste`, familia 5): quem so DESPERTOU o ki divino, na forma base, volta a ser sentido por qualquer Sense (e
+	/// achado pela telepatia, pelo Observe e pelo Instant Transmission) -- o jogo de antes de 2026-10-23. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DespertoAparecerNoSenseDeTeste;
 
 	/// <summary>
 	/// (2026-10-19) ESTE CORPO E UM ANDROIDE: nao ha ki nele que o Sense sinta ou que o scouter leia. O dono: *"androides nem deveriam aparecer

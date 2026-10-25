@@ -28,7 +28,10 @@ public sealed class Settings
     public sealed class LigacaoDeTecla
     {
         public string Acao = "";
-        /// <summary>O nome do `Godot.Key` (`"J"`). Vazio = a acao ficou SEM tecla.</summary>
+        /// <summary>
+        /// O nome do `Godot.Key` (`"J"`) -- ou, desde 2026-10-23, `"Mouse3"`/`"Mouse4"`/`"Mouse5"`: os botoes do mouse que
+        /// valem tecla (ver `MouseComoTecla`; vale tambem pro <see cref="AtalhoGravado.Tecla"/>). Vazio = a acao ficou SEM tecla.
+        /// </summary>
         public string Tecla = "";
     }
 

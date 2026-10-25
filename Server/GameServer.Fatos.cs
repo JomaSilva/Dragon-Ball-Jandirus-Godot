@@ -75,6 +75,7 @@ public sealed partial class GameServer
 		if (ficha.bio_lab_born && ficha.bio_nucleo.Length == 0) f |= Fatos.NucleoPorEscolher;   // `EscolherNucleo`, Nucleo.cs (2026-10-17)
 		if (Jandirus.Core.Races.SkillsRaciais.AindaEscolhe(ficha) > 0) f |= Fatos.SkillDoDnaPorEscolher;   // `EscolherSkillDoDna`, SkillsDoDna.cs
 		if (TemAVoltaDoJuiz(pl)) f |= Fatos.VoltaDoOutroMundo;              // `AtravessarOOutroMundo`, TravessiaDoJuiz.cs (2026-10-19)
+		if (RitualDe(pl) != null) f |= Fatos.RitualDoKaioshin;              // `UsarVerboDoRitual`, RitualDoKaioshin.cs (2026-10-23): interrompe
 		if (pl.UltraInstinct.Aprendida && !pl.PoderDaDestruicao.Aprendida && EhDeusDaDestruicao(pl))
 			f |= Fatos.KitDaDestruicaoEmprestado;                           // `UsarOKitEmprestado`, KitDoDeus.cs
 		if (Nutricao.VigorInfinitoDaRaca(ficha)) f |= Fatos.VigorInfinito;  // `ComprarNaMesa`, Customizadas.cs (2026-10-19): sem folego na mesa

@@ -781,6 +781,44 @@ public partial class GameServer
 			Checa("...e um Saiyajin de outra classe CONTINUA fechado (o portao e real)",
 				  doMolde is RecusaForma.LinhaFechada or RecusaForma.SemClasse, $"recusa: {doMolde}");
 
+			// ============================ O ZENKAI DO KAIO NAO SE APOSENTA (dono, 2026-10-24) ============================
+			// *"o unico q n deveria ter cap de zenkai é o kaioshin q roubou corpo de saiyajin pelas esferas"*. O DM ja dizia isso
+			// (`combatgains.dm:36`), e o port tinha o parametro sem chamador: o Kaio se aposentava no teto de todo Saiyajin. Medido no
+			// `GainZenkai` DE PRODUCAO, com o BP base no DOBRO do teto e um inimigo muito mais forte: o Kaio ganha, e o molde -- como
+			// Saiyajin comum e depois como Legendary -- se aposenta no mesmo BP.
+			// ===========================================================================================================
+			Jandirus.Core.Stats.Fighter.ZenkaiResult ZenkaiNoDobroDoTeto(ServerPlayer quem, string classe)
+			{
+				string classeDaFicha = quem.Ficha.Class;
+				double bpDaFicha = quem.Ficha.BP;
+				long prontoDaFicha = quem.Ficha.zenkaiReady;
+				try
+				{
+					if (classe.Length > 0) quem.Ficha.Class = classe;
+					double tetoDaFicha = quem.Ficha.ZenkaiCeiling();
+					quem.Ficha.BP = tetoDaFicha * 2;
+					quem.Ficha.zenkaiReady = 0;
+					return quem.Ficha.GainZenkai(tetoDaFicha * 400, NowMs());
+				}
+				finally { quem.Ficha.Class = classeDaFicha; quem.Ficha.BP = bpDaFicha; quem.Ficha.zenkaiReady = prontoDaFicha; }
+			}
+			var zenkaiDoKaio = ZenkaiNoDobroDoTeto(zamasu, "");
+			var zenkaiDoComum = ZenkaiNoDobroDoTeto(molde, "Normal");
+			var zenkaiDoLendario = ZenkaiNoDobroDoTeto(molde, "Legendary");
+			Checa("ZENKAI SEM TETO SO NO KAIO (dono, 2026-10-24): o Kaioshin no corpo Saiyajin ganha Zenkai com o BP base no dobro do teto, e o Saiyajin comum e o Legendary no mesmo BP se aposentam",
+				  zenkaiDoKaio == Jandirus.Core.Stats.Fighter.ZenkaiResult.Concedido
+				  && zenkaiDoComum == Jandirus.Core.Stats.Fighter.ZenkaiResult.Aposentado
+				  && zenkaiDoLendario == Jandirus.Core.Stats.Fighter.ZenkaiResult.Aposentado,
+				  $"Kaio {zenkaiDoKaio}; comum {zenkaiDoComum}; Legendary {zenkaiDoLendario}");
+			Jandirus.Core.Stats.Fighter.KaioSeAposentaDeTeste = true;
+			try
+			{
+				var zenkaiDoKaioComDefeito = ZenkaiNoDobroDoTeto(zamasu, "");
+				Checa("   (defeito injetado: `KaioSeAposentaDeTeste`, o jogo de antes) o Kaio se APOSENTA no teto -- a regua de cima REPROVA",
+					  zenkaiDoKaioComDefeito == Jandirus.Core.Stats.Fighter.ZenkaiResult.Aposentado, $"Kaio {zenkaiDoKaioComDefeito}");
+			}
+			finally { Jandirus.Core.Stats.Fighter.KaioSeAposentaDeTeste = false; }
+
 			// =====================================================================
 			// 13. SOBREVIVE AO REINICIO?
 			// =====================================================================

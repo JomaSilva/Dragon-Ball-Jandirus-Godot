@@ -49,7 +49,8 @@ public partial class Hud
 
 	private void MostrarOsAvisosDoCorpo(SheetState f)
 	{
-		List<(string Texto, Color Cor)> avisos = AvisosDoCorpoMudosDeTeste ? [] : AvisosDoCorpo(f);
+		// O PESO VEM DA FICHA LENTA (o mesmo `weight` que o servidor usa no custo do treino): ele sobe o fundo do "EXAUSTO".
+		List<(string Texto, Color Cor)> avisos = AvisosDoCorpoMudosDeTeste ? [] : AvisosDoCorpo(f, GameClient.Instance?.Atributos.PesoMult ?? 1);
 
 		// AS LINHAS SAO REAPROVEITADAS: a ficha chega cinco vezes por segundo, e criar e soltar um Label a cada uma
 		// seria lixo pro coletor por um texto que quase nunca muda.
@@ -77,6 +78,14 @@ public partial class Hud
 	// =====================================================================
 	public const string AvisoDeGuarda = "GUARDA LEVANTADA";
 	public const string AvisoDeAtordoado = "ATORDOADO";
+	public const string AvisoDeExausto = "EXAUSTO · sem vigor pra treinar · descanse";
+	public const string AvisoDeSemComida = "SEM COMIDA · o vigor não volta · coma alguma coisa";
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagvigortreino`): o painel volta a calar o vigor e a comida -- o HUD de antes de 2026-10-24, em que o
+	/// treino parava e o poder "congelava" sem a tela dizer por que. Lido pelas duas linhas do <see cref="AvisosDoCorpo"/>. Falso em jogo.
+	/// </summary>
+	public static bool AvisosDoVigorMudosDeTeste;
 
 	/// <summary>
 	/// O QUE O PAINEL DIZ DESTE CORPO AGORA, de cima pra baixo. Caido (o nocaute, o cadaver) nao ha aviso: o corpo no chao ja e
@@ -86,7 +95,9 @@ public partial class Hud
 	/// corte era o `Imobilizado` cru (`KO || Morto`), e o morto de pe -- no Outro Mundo, de visita, de passagem -- anda, luta e ergue a
 	/// guarda desde 2026-09-04. A regra e a do corpo local (`LocalPlayer.Caido`): o nocaute e o cadaver.
 	/// </summary>
-	public static List<(string Texto, Color Cor)> AvisosDoCorpo(SheetState f)
+	/// <param name="pesoDoTreino">O peso do corpo (o `PesoMult` da ficha lenta): ele encarece o passe do treino, e com ele o fundo do
+	/// "EXAUSTO". Sem ficha lenta, 1.</param>
+	public static List<(string Texto, Color Cor)> AvisosDoCorpo(SheetState f, double pesoDoTreino = 1)
 	{
 		List<(string, Color)> l = [];
 		if (LocalPlayer.Caido(f)) return l;
@@ -103,6 +114,22 @@ public partial class Hud
 		// (v0.4.0) AS PASSIVAS E ATIVAS RACIAIS -- ja vem escritas do servidor, uma por linha (`SheetState.Raciais`).
 		if (!string.IsNullOrEmpty(f.Raciais))
 			foreach (string linha in f.Raciais.Split('\n', StringSplitOptions.RemoveEmptyEntries)) l.Add((linha, Tema.Ki));
+
+		// ============================ O VIGOR E A COMIDA (dono, 2026-10-24: "Avisar e mostrar no HUD") ============================
+		// O treino parava no fim do vigor e o poder "congelava" sem a tela dizer por que -- o relato dos jogadores. Duas linhas, no pe da
+		// coluna (embaixo das barras de vida, Ki, vigor e nutricao, que e onde o olho ja procura o folego), e so quando valem:
+		//   * EXAUSTO: o vigor nao paga nem um passe de treino -- a MESMA conta que recusa o T no servidor (`Cansaco.AguentaTreinar`);
+		//   * SEM COMIDA: o estomago vazio, que nao devolve vigor nenhum (`Nutricao.Digerir` sai na entrada) -- so com o vigor fora do cheio:
+		//     quem o tem travado no cheio (o Majin, o androide de energia infinita, o morto) nao precisa de comida pra ele.
+		// So com a ficha ja chegada (`VigorMax`/`NutricaoMax` acima de zero). O EXAUSTO no vermelho do perigo (ele trava o T); o SEM
+		// COMIDA na cor da barra de nutricao, logo acima. (Desenho meu, minimo: duas linhas de texto, sem icone nem barra nova.)
+		// =========================================================================================================================
+		if (!AvisosDoVigorMudosDeTeste && f.VigorMax > 0)
+		{
+			if (!Jandirus.Core.Stats.Cansaco.AguentaTreinar(f.Vigor, f.VigorMax, pesoDoTreino, Jandirus.Core.Stats.Cansaco.SegundosDoPasseDoTreino))
+				l.Add((AvisoDeExausto, Tema.Perigo));
+			if (f.NutricaoMax > 0 && f.Nutricao <= 0 && f.Vigor < f.VigorMax) l.Add((AvisoDeSemComida, Tema.Nutricao));
+		}
 		return l;
 	}
 }

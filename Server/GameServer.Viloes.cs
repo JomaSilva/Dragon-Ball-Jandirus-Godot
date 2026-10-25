@@ -15,7 +15,8 @@ namespace Jandirus.Server;
 ///   2. NASCE um NPC do molde `vilao_avulso` numa VAGA DO HABITAT -- a mesma fonte de "terra firme" do
 ///      povoamento e das sagas (`Habitat`, que so conhece celula navegavel) --, escolhida entre as que ficam a
 ///      uma distancia jogavel de alguem. Ele nasce HOSTIL sem uma linha a mais: a IA caca jogador pra todo
-///      papel que nao e pacifico (`PresaDoHostil`).
+///      papel que nao e pacifico (`PresaDoHostil`). (2026-10-23) A FORCA e a media de BP de quem esta VIVO NAQUELE planeta
+///      (<see cref="MediaDoPlaneta"/>), e nao a do servidor inteiro.
 ///   3. O PLANETA E AVISADO (`AnunciarNoPlaneta`), com o nome dele e pra que lado de cada um ele esta.
 ///   4. ACABA de um de tres jeitos: alguem o DERROTA (nocaute ou morte -- o karma vai pra esse alguem, uma
 ///      vez), o PRAZO vence (ele vai embora, sem karma pra ninguem), ou o corpo some por outra porta.
@@ -175,13 +176,38 @@ public sealed partial class GameServer
 	/// <summary>A lista reusada das vagas dentro da faixa -- ver <see cref="LugarDeVilao"/>.</summary>
 	private readonly List<Vec2> _vagasDeVilao = [];
 
+	/// <summary>
+	/// ============================ A FORCA DO VILAO E A DO PLANETA (dono, 2026-10-23) ============================
+	/// *"os viloes aleatorios q aparecem deveriam escalar com o poder do planeta atual e nao do server, galera novata tava apanhando
+	/// mt dos villoes"*. Perguntado, o dono escolheu: a media do BP BASE dos jogadores VIVOS naquele planeta (a zona) no instante em que
+	/// o vilao nasce -- o mesmo sorteio de 85-115% e o mesmo piso do molde por cima. Ate aqui o vilao nascia pela media do SERVIDOR
+	/// inteiro (`MediaDoServidor`, que conta toda zona e os mortos): um veterano no Inferno fazia o vilao da Terra nascer pra ele, e quem
+	/// apanhava era o novato que estava la.
+	///
+	/// QUEM CONTA e o mesmo conjunto do <see cref="LugarDeVilao"/> (os jogadores vivos da lista da zona, perto de quem ele aparece) --
+	/// pelo funil do `EhJogador` (o clone e o boneco do corpo largado nao contam duas vezes, ver o `MediaDoServidor`) e com BP de
+	/// verdade. Ninguem vivo no planeta = zero (o piso do molde segura), e o nascimento nem chega aqui assim: o tique so visita zona com
+	/// jogador vivo, e o lugar sem ninguem por perto e nulo.
+	/// ========================================================================================================
+	/// </summary>
+	private double MediaDoPlaneta(ZoneKey zona)
+	{
+		double soma = 0;
+		int n = 0;
+		foreach (ServerPlayer p in ZoneList(zona.Hash))
+			if (EhJogador(p) && !p.Ficha.dead && p.Ficha is { BP: > 0 }) { soma += p.Ficha.BP; n++; }
+		return n == 0 ? 0 : soma / n;
+	}
+
 	/// <summary>Poe um vilao naquele planeta e avisa quem esta la. Devolve o corpo, ou nulo se nao nasceu.</summary>
 	private ServerPlayer? NascerVilao(ZoneKey zona, long agora)
 	{
 		if (LugarDeVilao(zona) is not { } onde) return null;
 
 		ulong lugar = ++_lugarDosViloes;
-		ServerPlayer? npc = NascerNpc(VilaoAvulso.Molde, zona, onde, lugar);
+		// (2026-10-23) A FORCA E A DO PLANETA -- ver `MediaDoPlaneta`. O sorteio de 85-115% e o piso do molde continuam os mesmos.
+		double media = VilaoPelaMediaDoServidorDeTeste ? MediaDoServidor() : MediaDoPlaneta(zona);
+		ServerPlayer? npc = NascerNpc(VilaoAvulso.Molde, zona, onde, lugar, media);
 		if (npc?.Papel == null) return null;
 
 		var e = new EventoDeVilao
@@ -196,10 +222,11 @@ public sealed partial class GameServer
 		{
 			if (p.Peer == null) continue;
 			Avisar(p, $"UM VILÃO APARECEU: {e.Nome} está espalhando o terror {RumoDe(p.Pos, onde)}. "
-					+ $"Quem o derrotar ganha karma (+{VilaoAvulso.KarmaPorDerrotar}). Ele vai embora em {VilaoAvulso.DuracaoS / 60:0} minutos.");
+					+ $"Quem o derrotar ganha karma (+{VilaoAvulso.KarmaPorDerrotar}) e reputação com o planeta (+{VilaoAvulso.ReputacaoPorDerrotar:0}). "
+					+ $"Ele vai embora em {VilaoAvulso.DuracaoS / 60:0} minutos.");
 		}
-		GD.Print($"[viloes] {e.Nome} (BP {npc.Ficha.BP:N0}) apareceu em {zona.Name} em ({onde.X:0}, {onde.Y:0}); "
-			   + $"{_viloes.Count} evento(s) de pe");
+		GD.Print($"[viloes] {e.Nome} ({npc.Race}, BP {npc.Ficha.BP:N0}, media do planeta {media:N0}) apareceu em {zona.Name} "
+			   + $"em ({onde.X:0}, {onde.Y:0}); {_viloes.Count} evento(s) de pe");
 		return npc;
 	}
 
@@ -248,6 +275,12 @@ public sealed partial class GameServer
 		{
 			SomarKarma(heroi, VilaoAvulso.KarmaPorDerrotar, $"você {(morreu ? "acabou com" : "derrotou")} o vilão {e.Nome}.");
 
+			// (2026-10-25) ...E O PLANETA FICA DEVENDO -- o dono: *"faca vencer viloes q aparecem no planeta ao serem derrotados alem de
+			// karma ganha reputacao com o planeta"*. A reputacao com o planeta em que o vilao apareceu (`e.Zona`), pelo funil de sempre
+			// (`SomarReputacao`, que avisa quem cruza limiar), na mesma vez unica do karma -- a guarda do `Derrotado` logo acima.
+			if (!VilaoNaoDaReputacaoDeTeste)
+				SomarReputacao(e.Zona.Name, heroi, VilaoAvulso.ReputacaoPorDerrotar, "derrotou-vilao");
+
 			// ============================ ...E FICA COM O ZENI DELE (dono, 2026-10-13) ============================
 			// *"matar vilao deveria dar zenni como reward"*. O premio e a BOLSA que ele carrega desde que nasceu
 			// (`BolsaDeNpc`), e ela vai direto pra carteira de quem o derrotou -- como o karma da linha de cima, e nao
@@ -278,10 +311,22 @@ public sealed partial class GameServer
 	internal bool VilaoPagaDeNovoDeTeste;
 
 	/// <summary>
+	/// (2026-10-25) DEFEITO INJETADO (bancada `--vilaoteste`): derrotar o vilao volta a nao dar reputacao com o planeta -- so o karma e o
+	/// zeni, o jogo de antes. Lido pela propria linha que soma, em <see cref="VilaoFoiDerrotado"/>.
+	/// </summary>
+	internal bool VilaoNaoDaReputacaoDeTeste;
+
+	/// <summary>
 	/// DEFEITO INJETADO (bancada `--v021teste`): derrotar o vilao volta a nao render zeni nenhum -- a v0.2.0, em que o
 	/// premio era so o karma. Lido pela propria linha que paga, em <see cref="VilaoFoiDerrotado"/>.
 	/// </summary>
 	internal bool VilaoNaoPagaZeniDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--vilaoteste`): o vilao volta a nascer pela media do SERVIDOR inteiro -- o jogo de antes de 2026-10-23,
+	/// em que o veterano de outro planeta fazia o vilao do novato. Lido pela propria linha que escolhe a media, em <see cref="NascerVilao"/>.
+	/// </summary>
+	internal bool VilaoPelaMediaDoServidorDeTeste;
 
 	/// <summary>Quantos eventos estao de pe (no servidor, e naquele planeta). SO PRA BANCADA.</summary>
 	internal (int NoServidor, int NoPlaneta) ViloesDeTeste(ZoneKey zona) =>

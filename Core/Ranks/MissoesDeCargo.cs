@@ -309,9 +309,12 @@ public static class MissoesDeCargo
 	/// <summary>`rq_promo_ready` (`:179`): renome bastante pra almejar o degrau de cima.</summary>
 	public static bool PodeAscender(int renome) => renome >= TarefasParaAscender;
 
-	/// <summary>Os nomes dos degraus acima, pro texto (`rq_promo_txt`, `:194`).</summary>
+	/// <summary>
+	/// Os nomes dos degraus acima, pro texto (`rq_promo_txt`, `:194`). (2026-10-24) Com " / ", e nao " ou ": entre dois nomes proprios o
+	/// tradutor nao tem o que trocar, e o "ou" ficava em portugues no meio da frase inglesa ("Grand Kai ou Kaioshin").
+	/// </summary>
 	public static string TextoDosDegraus(string chave) =>
-		string.Join(" ou ", DegrausAcima(chave).Select(r => r.Nome));
+		string.Join(" / ", DegrausAcima(chave).Select(r => r.Nome));
 
 	// =====================================================================
 	// TEXTO
@@ -329,23 +332,96 @@ public static class MissoesDeCargo
 	public static string TextoDeTempo(double segundos)
 	{
 		if (segundos < 0) segundos = 0;
-		return $"{Math.Round(segundos / Espaco.SegundosPorDiaInGame * 24)}h in-game "
+		return $"{Math.Round(segundos / Espaco.SegundosPorDiaInGame * 24)} horas do jogo "
 			 + $"(~{Math.Round(segundos / 60)} min reais)";
 	}
 
-	/// <summary>A tarefa em palavras -- o `rq_task_desc` (`:476`).</summary>
-	public static string Descricao(FichaDeMissao f) => f.Tarefa switch
+	// ============================ O TEXTO DAS TAREFAS, PRA QUEM JOGA ENTENDER (dono, 2026-10-24) ============================
+	// *"Explique melhor oq tem q fazer aqui e reescreva essas quests de rank de uma forma mais entendivel"*, com o print de um
+	// jogador (*"I cannot comprehend what this actually means"*) sobre o SERVICO de antes: "visitantes qualificados a 6 tiles: vivos
+	// TREINANDO para os mestres, almas MORTAS para o Outro Mundo" -- as duas metades da regra pra todo cargo, e um "Falhar corroi o
+	// trono (0/3)" que nao dizia que a terceira falha tira o cargo. Agora cada aviso diz O QUE FAZER (so a parte do cargo de quem le),
+	// como o progresso anda, o que o prazo vencido custa e o que cumprir rende. Moram AQUI, e nao no servidor, pra a bancada da
+	// lingua (Tools/AssetPipeline) traduzir os MESMOS textos que o jogador recebe.
+	// =========================================================================================================================
+
+	/// <summary>A tarefa em palavras -- o `rq_task_desc` (`:476`), reescrito. <paramref name="doOutroMundo"/> escolhe a metade do servico.</summary>
+	public static string Descricao(FichaDeMissao f, bool doOutroMundo) => f.Tarefa switch
 	{
-		TipoDeTarefa.Libertar => $"LIBERTAR {NomeVisivel(f.Planeta)} do domínio inimigo (conquista)",
-		TipoDeTarefa.Vilao => $"CAÇAR o vilão {f.AlvoNome} (eliminá-lo enquanto online)",
-		TipoDeTarefa.Heroi => $"ESMAGAR o herói {f.AlvoNome} (eliminá-lo enquanto online)",
+		TipoDeTarefa.Libertar => $"LIBERTAR {NomeVisivel(f.Planeta)}: o seu planeta foi conquistado por outro jogador -- tire o domínio "
+							   + "dele (o planeta fica livre ou passa a ser seu)",
+		TipoDeTarefa.Vilao => $"CAÇAR o vilão {f.AlvoNome}: mate-o enquanto ele estiver online (se ele sair do jogo, a tarefa é "
+							+ "cancelada sem falha)",
+		TipoDeTarefa.Heroi => $"ESMAGAR o herói {f.AlvoNome}: mate-o enquanto ele estiver online (se ele sair do jogo, a tarefa é "
+							+ "cancelada sem falha)",
 		TipoDeTarefa.Planeta => $"DESTRUIR o planeta {f.Planeta}",
-		TipoDeTarefa.Verba => $"DEPOSITAR {VerbaDoPresidente:N0} zeni no cofre da Terra (verb Rank Duty)",
+		TipoDeTarefa.Verba => $"FINANCIAR a Terra: deposite {VerbaDoPresidente:N0} zeni no cofre dela com o botão Fund Earth (aba Other)",
+		// `ContaComoServico`: o Outro Mundo atende ALMAS; o mestre, quem TREINA -- e mestre morto nao da aula (`PodeServir`)
+		TipoDeTarefa.Servico when doOutroMundo =>
+			$"ATENDER ALMAS: fique a até {TilesDoServico} tiles de jogadores MORTOS -- cada um vale 1 ponto por minuto "
+			+ $"(até {TetoDoServico} por minuto). Pontos: {Math.Min(f.Progresso, f.Meta)}/{f.Meta}",
 		TipoDeTarefa.Servico =>
-			$"SERVIÇO: {Math.Min(f.Progresso, f.Meta)}/{f.Meta} pontos (visitantes qualificados a "
-			+ $"{TilesDoServico} tiles: vivos TREINANDO para os mestres, almas MORTAS para o Outro Mundo)",
+			$"ENSINAR: estando vivo, fique a até {TilesDoServico} tiles de jogadores vivos que estejam TREINANDO -- cada um vale 1 "
+			+ $"ponto por minuto (até {TetoDoServico} por minuto). Pontos: {Math.Min(f.Progresso, f.Meta)}/{f.Meta}",
 		_ => "nenhuma",
 	};
+
+	/// <summary>A tarefa em poucas palavras, pro aviso de cumprida -- repetir a descricao inteira ali seria repetir as regras.</summary>
+	public static string NomeCurto(FichaDeMissao f, bool doOutroMundo) => f.Tarefa switch
+	{
+		TipoDeTarefa.Libertar => $"libertar {NomeVisivel(f.Planeta)}",
+		TipoDeTarefa.Vilao => $"caçar o vilão {f.AlvoNome}",
+		TipoDeTarefa.Heroi => $"esmagar o herói {f.AlvoNome}",
+		TipoDeTarefa.Planeta => $"destruir o planeta {f.Planeta}",
+		TipoDeTarefa.Verba => "financiar a Terra",
+		TipoDeTarefa.Servico => doOutroMundo ? "atender almas" : "ensinar quem treina",
+		_ => "nenhuma",
+	};
+
+	/// <summary>
+	/// O AVISO DE TAREFA NOVA, em tres linhas: o que fazer; o prazo e o que acontece se ele acabar; o que cumprir rende e onde ver o
+	/// andamento (o `Rank Duty`, `GameServer.VerboMeusDeveres`).
+	/// </summary>
+	public static string[] AvisoDeTarefaNova(string cargo, FichaDeMissao f, bool doOutroMundo, bool maligno) =>
+	[
+		$"{cargo}: NOVA TAREFA -- {Descricao(f, doOutroMundo)}.",
+		$"Prazo: {TextoDeTempo(SegundosDePrazo)}. Se o prazo acabar, você leva 1 falha (tem {f.Falhas} de {FalhasQueDestituem}); "
+		+ $"com {FalhasQueDestituem} falhas, perde o cargo.",
+		maligno
+			? $"Cumprir paga {ZeniPorTarefa:N0} zeni e apaga 1 falha. Veja o andamento no botão Rank Duty (aba Other)."
+			: $"Cumprir paga {ZeniPorTarefa:N0} zeni e {KarmaPorTarefa} de karma, e apaga 1 falha. Veja o andamento no botão Rank Duty "
+			  + "(aba Other).",
+	];
+
+	/// <summary>O servico andou -- a cada cinco pontos (`:572`).</summary>
+	public static string AvisoDeServico(string cargo, FichaDeMissao f) =>
+		$"{cargo}: {Math.Min(f.Progresso, f.Meta)}/{f.Meta} pontos de serviço.";
+
+	/// <summary>O alvo da caca saiu do jogo: a tarefa se anula SEM punir (`:544-548`).</summary>
+	public static string AvisoDeAlvoQueSaiu(string cargo) =>
+		$"{cargo}: o alvo saiu do jogo -- a tarefa foi cancelada, sem falha. Outra chega em breve.";
+
+	/// <summary>
+	/// A TAREFA CUMPRIDA: o que pagou, a falha que caiu e o renome. <paramref name="oque"/> e o <see cref="NomeCurto"/> -- da tarefa de
+	/// ANTES de a ficha ser limpa.
+	/// </summary>
+	public static string AvisoDeCumprida(string cargo, string oque, FichaDeMissao f, bool maligno, string renome) =>
+		$"{cargo}: TAREFA CUMPRIDA ({oque})! +{ZeniPorTarefa:N0} zeni" + (maligno ? "" : $", +{KarmaPorTarefa} karma")
+		+ $", e 1 falha a menos (agora {f.Falhas}/{FalhasQueDestituem}). {renome}";
+
+	/// <summary>O prazo venceu. A terceira falha destitui -- e o aviso diz isso.</summary>
+	public static string AvisoDeFalhada(string cargo, FichaDeMissao f) =>
+		$"{cargo}: TAREFA FALHADA -- o prazo acabou. Falhas: {f.Falhas}/{FalhasQueDestituem} (com {FalhasQueDestituem}, você perde o cargo).";
+
+	/// <summary>O RENOME, pro aviso de cumprida e pro painel (`rq_promo_txt`). <paramref name="temDegrauAcima"/> = a escada continua.</summary>
+	public static string TextoDeRenome(int cumpridas, bool temDegrauAcima) =>
+		temDegrauAcima
+			? $"Renome: {Math.Min(cumpridas, TarefasParaAscender)}/{TarefasParaAscender} tarefas cumpridas pra poder subir de cargo."
+			: $"Renome: {cumpridas} tarefa(s) cumprida(s) neste cargo.";
+
+	/// <summary>O renome encheu e ha degrau vago acima: o aviso de ascensao (`:586-590`), uma vez por degrau.</summary>
+	public static string AvisoDeAscensao(string cargo, string degraus) =>
+		$"{cargo}: com {TarefasParaAscender} tarefas cumpridas, você já pode subir para {degraus}. Reivindique o cargo na aba Cargos.";
 
 	/// <summary>"Earth" e nome de zona; "Terra" e o que se le. Mesmo par do `conq_pname`.</summary>
 	private static string NomeVisivel(string zona) =>

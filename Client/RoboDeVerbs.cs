@@ -26,7 +26,8 @@ namespace Jandirus.Client;
 ///   F6  a tecla E no mainframe: as opcoes de humano so pra humano;
 ///   F7  o verb sem corpo nao vira botao;
 ///   F8  do cargo, so o ataque de ki vira "Ensinar" (dono, 2026-10-23: a chave da Sala do Tempo nao se ensina);
-///   F9  sem ninguem marcado, a chave da Sala do Tempo e o destrancar vao no proprio id (dono, 2026-10-23).
+///   F9  sem ninguem marcado, a chave da Sala do Tempo e o destrancar vao no proprio id (dono, 2026-10-23);
+///   F10 o clique numa copia minha do Split Form abre as ordens dela, e a ordem e so dela (dono, 2026-10-24).
 ///
 /// O defeito injetado e o de sempre da regra: `Requisito.MostrarTudoDeTeste` (o menu de antes).
 ///
@@ -81,6 +82,7 @@ public partial class RoboDeVerbs : Node
 		Requisito.MostrarTudoDeTeste = false;
 		PosseDoCliente.DeTeste = null;
 		Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = false;
+		Jandirus.Core.Skills.EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste = false;
 		VerbosDoJogo.SoNoAlvoMarcadoDeTeste = false;
 		if (S is { } srv) srv.SinalSemRadarDeTeste = false;
 
@@ -125,6 +127,7 @@ public partial class RoboDeVerbs : Node
 		await F7_OVerbSemCorpoNaoEBotao(menu, cli);
 		await F8_OEnsinarDoCargo(menu, cli);
 		F9_AChaveEmMim(cli);
+		await F10_OCliqueNaCopia(menu, cli, srv);
 
 		menu.Fechar();
 		Encerrar(_falha == 0 && _injFalha == 0 ? 0 : 1);
@@ -317,9 +320,11 @@ public partial class RoboDeVerbs : Node
 		Jandirus.Core.Races.SkillRacial sangueInteiro = Jandirus.Core.Races.SkillsRaciais.Todas.Aggregate(
 			Jandirus.Core.Races.SkillRacial.Nenhuma, (s, d) => s | d.Bit);
 
+		// (2026-10-23) ...e o convite de APRENDIZ DE KAIOSHIN, cujos dois botoes ficaram sem plateia desde 2026-10-20 (a F2 reprovava
+		// "110 de 114" por eles e pelo Name/Dismiss Apprentice, que o Kaioshin do elenco desenha agora).
 		const Fatos ofertas = Fatos.ConviteDeMestre | Fatos.ConviteDeFusao | Fatos.ConviteDeAbsorcao | Fatos.LicaoOferecida
 							| Fatos.OfertaDeJuventude | Fatos.OfertaDePotencial | Fatos.PedidoDeGenkidama | Fatos.OfertaDeAssento
-							| Fatos.DesafioAoTitulo | Fatos.PedidoDeFilho;
+							| Fatos.DesafioAoTitulo | Fatos.PedidoDeFilho | Fatos.OfertaDeAprendiz;
 		(string Nome, PosseEscrita Quem)[] elenco =
 		[
 			("humano novato", Gente("Human", "Normal", terra)),
@@ -346,6 +351,9 @@ public partial class RoboDeVerbs : Node
 			("humano com controle de ki", Gente("Human", "Normal", terra, tecnicas: [Jandirus.Core.Stats.PoderEmUso.VerboDoControle])),
 			("Majin com Buu Absorb", Gente("Majin", "Normal", terra, tecnicas: [Jandirus.Core.Combat.AbsorcaoMajin.Verbo])),
 			("bio-androide", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra)),
+			// (2026-10-24) O BIO DE SANGUE MAJIN QUE COMPROU BUU ABSORB desenha o "Absorver como Majin" ao lado do "Absorver" (`ag/biomajin`).
+			("bio-androide de sangue Majin com Buu Absorb", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra,
+				tecnicas: [Jandirus.Core.Combat.AbsorcaoMajin.Verbo])),
 			("bio-androide de DNA Saiyajin", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.EscadaSuperSaiyajin)),
 			// (2026-10-17) O BIO QUE SAIU DE UM TANQUE veste a larva (`Fatos.BioDeLaboratorio`), e so a LARVA se enterra (`Fatos.EmLarva`).
 			("bio-androide de laboratório", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.BioDeLaboratorio | Fatos.NucleoPorEscolher)),
@@ -378,6 +386,10 @@ public partial class RoboDeVerbs : Node
 			// (`Fatos.VoltaDoOutroMundo`, `GameServer.TravessiaDoJuiz.cs`).
 			("King Yemma", Gente("Human", "Normal", terra, cargos: [Jandirus.Core.World.TravessiaDoJuiz.Cargo])),
 			("ex-King Yemma vivo no Outro Mundo, com a volta guardada", Gente("Human", "Normal", terra, Fatos.VoltaDoOutroMundo)),
+			// (2026-10-23) O KAIOSHIN: o Ritual Mistico do Velho Kaiohshin e do trono dele (e o Name/Dismiss Apprentice) -- e quem
+			// RECEBE o ritual ve o mesmo botao enquanto ele dura, pra interromper (`Fatos.RitualDoKaioshin`, `GameServer.RitualDoKaioshin.cs`).
+			("Kaioshin", Gente("Kai", "Normal", terra, cargos: [Jandirus.Core.Ranks.RitualDoKaioshin.Cargo])),
+			("humano no meio de um Ritual Místico", Gente("Human", "Normal", terra, Fatos.RitualDoKaioshin)),
 		];
 
 		var telas = new Dictionary<string, Dictionary<string, HashSet<string>>>();
@@ -525,10 +537,13 @@ public partial class RoboDeVerbs : Node
 		await Quadros(3);
 		Jandirus.Core.Skills.SkillCatalog? cat = MenuJogo.CatalogoPublico();
 		const string chave = "/datum/skill/rank/Permission", tiro = "/datum/skill/rank/Makkankosappo", danca = "/datum/skill/rank/Fusion_Dance";
+		// (2026-10-23) ...e o Potential Unleashed (a skill `kai/Mystic`), que tambem deixou de se ensinar: so o ritual o da (F8m).
+		const string mistico = Jandirus.Core.Ranks.RitualDoKaioshin.SkillDoMistico;
 		string nChave = cat?.Get(chave)?.Nome ?? "", nTiro = cat?.Get(tiro)?.Nome ?? "", nDanca = cat?.Get(danca)?.Nome ?? "";
-		Checa("F8. PRECONDICAO: o catalogo do cliente tem as tres (a chave da Sala, o Makankosappo e a Fusion Dance)",
-			  nChave.Length > 0 && nTiro.Length > 0 && nDanca.Length > 0, $"'{nChave}' '{nTiro}' '{nDanca}'");
-		List<string> postas = [.. new[] { chave, tiro, danca }.Where(cli.SkillsAprendidas.Add)];
+		string nMistico = cat?.Get(mistico)?.Nome ?? "";
+		Checa("F8. PRECONDICAO: o catalogo do cliente tem as quatro (a chave da Sala, o Makankosappo, a Fusion Dance e o Potential Unleashed)",
+			  nChave.Length > 0 && nTiro.Length > 0 && nDanca.Length > 0 && nMistico.Length > 0, $"'{nChave}' '{nTiro}' '{nDanca}' '{nMistico}'");
+		List<string> postas = [.. new[] { chave, tiro, danca, mistico }.Where(cli.SkillsAprendidas.Add)];
 		static bool NaAprendizado(Dictionary<string, HashSet<string>> tela, string texto) =>
 			tela.TryGetValue(Verbos.Aprendizado, out HashSet<string>? b) && b.Contains(texto);
 		try
@@ -540,16 +555,26 @@ public partial class RoboDeVerbs : Node
 				  !NaAprendizado(tela, $"Ensinar: {nChave}") && NaAprendizado(tela, $"Esquecer a licao: {nChave}"), doLearning);
 			Checa($"F8b. ...e ve \"Ensinar: {nTiro}\" (ataque de ki do cargo) e \"Ensinar: {nDanca}\" (escolha do dono)",
 				  NaAprendizado(tela, $"Ensinar: {nTiro}") && NaAprendizado(tela, $"Ensinar: {nDanca}"), doLearning);
+			Checa($"F8m. quem tem o Potential Unleashed NAO ve \"Ensinar: {nMistico}\" (so o ritual o da, 2026-10-23) -- e o \"Esquecer a licao: {nMistico}\" continua la",
+				  !NaAprendizado(tela, $"Ensinar: {nMistico}") && NaAprendizado(tela, $"Esquecer a licao: {nMistico}"), doLearning);
 
 			Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = true;
 			Habilidades.Montar(cli.Atributos.Raca ?? "");
 			Dictionary<string, HashSet<string>> antes = await Tela(menu, null);
 			Injeta($"F8x. com o kit de cargo ensinavel de novo, o \"Ensinar: {nChave}\" volta pra aba Learning -- o botao de antes de 2026-10-23",
 				   NaAprendizado(antes, $"Ensinar: {nChave}"), string.Join(" | ", antes.GetValueOrDefault(Verbos.Aprendizado) ?? []));
+			Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = false;
+
+			Jandirus.Core.Skills.EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste = true;
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			Dictionary<string, HashSet<string>> comMistico = await Tela(menu, null);
+			Injeta($"F8mx. com o Potential Unleashed ensinavel de novo, o \"Ensinar: {nMistico}\" volta pra aba Learning -- o botao de antes de 2026-10-23",
+				   NaAprendizado(comMistico, $"Ensinar: {nMistico}"), string.Join(" | ", comMistico.GetValueOrDefault(Verbos.Aprendizado) ?? []));
 		}
 		finally
 		{
 			Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = false;
+			Jandirus.Core.Skills.EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste = false;
 			foreach (string p in postas) cli.SkillsAprendidas.Remove(p);
 			Habilidades.Montar(cli.Atributos.Raca ?? "");
 			await Tela(menu, null);
@@ -602,6 +627,166 @@ public partial class RoboDeVerbs : Node
 			VerbosDoJogo.SoNoAlvoMarcadoDeTeste = false;
 			GameClient.EspiaoDeVerbos = espiaoDeAntes;
 		}
+	}
+
+	// =====================================================================
+	// F10 -- O CLIQUE NA COPIA (dono, 2026-10-24)
+	// =====================================================================
+	/// <summary>
+	/// O dono, 2026-10-24: *"Eu clicava na copia como no DM e nao aparecia nada; nao achei onde dar as ordens"*. O clique DE VERDADE (o
+	/// mouse aperta e solta, empurrado no viewport na coordenada de tela da copia) numa copia minha abre o menu do `Click()` do DM, e a
+	/// ordem sai com o id DELA -- medida no servidor deste processo (`--host`): so a clicada obedece. As copias vem da divisao de producao
+	/// (`GameServer.CopiasDeTeste`), e o cliente as conhece pelo `S2C.MinhasCopias`.
+	/// </summary>
+	private async Tarefa F10_OCliqueNaCopia(MenuJogo menu, GameClient cli, Jandirus.Server.GameServer srv)
+	{
+		Nota("--- F10: o clique na copia abre as ordens dela, e a ordem e so dela (dono, 2026-10-24) ---");
+		string[] ordens = ["Follow", "Stop", "Attack Target", "Attack Nearest", "Destroy Splitforms"];
+		menu.Fechar();
+		if (E is { NaTela: true }) { ApertarE(); await Quadros(2); }
+		Vector2? NoMundo(int id) => World.Instancia?.PosicaoDesenhadaDe(id);
+		bool Afastada(int id) => NoMundo(id) is { } p && NoMundo(cli.LocalId) is { } eu && p.DistanceTo(eu) > 48;
+		List<int> copias = srv.CopiasDeTeste(cli.LocalId, 2);
+		Func<string, string, bool>? espiaoDeAntes = GameClient.EspiaoDeVerbos;
+		try
+		{
+			bool chegaram = await Ate(() => copias.Count == 2 && copias.All(cli.MinhasCopias.Contains)
+										&& (cli.Fatos & Fatos.TemCopias) != 0 && copias.All(Afastada), 6);
+			await Quadros(10);
+			Checa("F10. (palco) duas copias minhas de pe, uma de cada lado: o servidor as conta pro cliente (`S2C.MinhasCopias`) e elas estao desenhadas",
+				  chegaram, $"copias {string.Join(",", copias)}; minhas {string.Join(",", cli.MinhasCopias)}; fatos {cli.Fatos}");
+			if (!chegaram) return;
+			int a = copias[0], b = copias[1];
+
+			// ---- 1. o clique de verdade na A ----
+			await ClicarNoMundo(NoMundo(a)!.Value);
+			List<string> botoes = E is { NaTela: true } e1 ? e1.BotoesDesenhados() : [];
+			Checa("F10a. **O CLIQUE NA COPIA ABRE AS ORDENS DELA** (o `Click()` do DM): Follow, Stop, Attack Target, Attack Nearest e Destroy Splitforms -- e o menu e o DELA",
+				  botoes.SequenceEqual(ordens) && E?.CopiaAbertaDeTeste == a, $"{string.Join(" | ", botoes)}; copia aberta {E?.CopiaAbertaDeTeste}");
+
+			// ---- 2. Follow: so a A ----
+			List<(string Cmd, string Arg)> saiu = [];
+			GameClient.EspiaoDeVerbos = (cmd, arg) => { saiu.Add((cmd, arg)); return true; };
+			E?.ApertarDesenhado("Follow");
+			GameClient.EspiaoDeVerbos = espiaoDeAntes;
+			bool soA = await Ate(() => srv.OrdemDaCopiaDeTeste(a) == "Seguir" && srv.OrdemDaCopiaDeTeste(b) == "Parado", 3);
+			Checa("F10b. **...E A ORDEM E SO DELA**: 'Follow' manda `splitform_seguir` com o id da A, a A segue e a B continua parada -- e o menu fecha",
+				  soA && saiu.Count == 1 && saiu[0] == ("splitform_seguir", a.ToString()) && E is { NaTela: false },
+				  $"fio {string.Join(" | ", saiu.Select(s => s.Cmd + ":" + s.Arg))}; A {srv.OrdemDaCopiaDeTeste(a)}, B {srv.OrdemDaCopiaDeTeste(b)}");
+
+			// ---- o contra-exemplo: a ordem do clique pra todas (o servidor de antes) ----
+			cli.SendVerbo("splitform_parar", "");
+			await Ate(() => srv.OrdemDaCopiaDeTeste(a) == "Parado" && srv.OrdemDaCopiaDeTeste(b) == "Parado", 3);
+			Jandirus.Server.GameServer.OrdemDaCopiaPraTodasDeTeste = true;
+			try
+			{
+				await ClicarNoMundo(NoMundo(a)!.Value);
+				E?.ApertarDesenhado("Follow");
+				bool asDuas = await Ate(() => srv.OrdemDaCopiaDeTeste(a) == "Seguir" && srv.OrdemDaCopiaDeTeste(b) == "Seguir", 3);
+				Injeta("F10x. com a ordem do clique valendo pra todas (o jogo de antes), a B segue junto -- a regua F10b REPROVA", asDuas,
+					   $"A {srv.OrdemDaCopiaDeTeste(a)}, B {srv.OrdemDaCopiaDeTeste(b)}");
+			}
+			finally { Jandirus.Server.GameServer.OrdemDaCopiaPraTodasDeTeste = false; }
+			if (E is { NaTela: true }) { ApertarE(); await Quadros(2); }
+			cli.SendVerbo("splitform_parar", "");
+			await Ate(() => srv.OrdemDaCopiaDeTeste(a) == "Parado" && srv.OrdemDaCopiaDeTeste(b) == "Parado", 3);
+			await Segundos(0.5);
+
+			// ---- 3. o clique em mim e no chao vazio: nada ----
+			Vector2 eu = NoMundo(cli.LocalId)!.Value;
+			await ClicarNoMundo(eu);
+			bool emMim = E is { NaTela: true };
+			if (emMim) { ApertarE(); await Quadros(2); }
+			await ClicarNoMundo(eu + new Vector2(0, 5 * 32));
+			bool noChao = E is { NaTela: true };
+			if (noChao) { ApertarE(); await Quadros(2); }
+			Checa("F10c. CONTRA-EXEMPLO: o clique em MIM e no chao vazio nao abre menu nenhum", !emMim && !noChao, $"em mim {emMim}, no chao {noChao}");
+
+			// ---- 4. o duplo clique na copia: o menu que o primeiro clique abriu fecha, e o segundo clique nao vira ordem ----
+			async System.Threading.Tasks.Task<(bool Aberto, int Ordens)> Duplo()
+			{
+				List<(string Cmd, string Arg)> noDuplo = [];
+				GameClient.EspiaoDeVerbos = (cmd, arg) => { noDuplo.Add((cmd, arg)); return true; };
+				try { await ClicarNoMundo(NoMundo(b)!.Value, duplo: true); }
+				finally { GameClient.EspiaoDeVerbos = espiaoDeAntes; }
+				bool aberto = E is { NaTela: true };
+				if (aberto) { ApertarE(); await Quadros(2); }
+				return (aberto, noDuplo.Count(v => v.Cmd.StartsWith("splitform_", StringComparison.Ordinal)));
+			}
+			(bool Aberto, int Ordens) duplo = await Duplo();
+			Checa("F10d. O DUPLO CLIQUE NA COPIA nao deixa o menu dela aberto, nem vira ordem: o primeiro clique o abre, o segundo o fecha e segue pro mundo (o gesto de marcar alvo)",
+				  !duplo.Aberto && duplo.Ordens == 0, $"aberto {duplo.Aberto}, ordens {duplo.Ordens}");
+			MenuDeInteracao.DuploDeixaOMenuDaCopiaDeTeste = true;
+			try
+			{
+				(bool Aberto, int Ordens) comDefeito = await Duplo();
+				Injeta("F10y. com o duplo clique deixando o menu da copia aberto, o segundo clique cai no menu -- a regua F10d REPROVA",
+					   comDefeito.Aberto || comDefeito.Ordens > 0, $"aberto {comDefeito.Aberto}, ordens {comDefeito.Ordens}");
+			}
+			finally { MenuDeInteracao.DuploDeixaOMenuDaCopiaDeTeste = false; }
+			cli.SendAlvo(0);
+			cli.SendVerbo("splitform_parar", "");
+			await Ate(() => srv.OrdemDaCopiaDeTeste(a) == "Parado" && srv.OrdemDaCopiaDeTeste(b) == "Parado", 3);
+
+			// ---- 5. Destroy Splitforms pelo menu de uma: as duas se desfazem, a lista chega vazia, e o clique ali nao abre mais nada ----
+			Vector2 ondeEstavaA = NoMundo(a)!.Value;
+			await ClicarNoMundo(ondeEstavaA);
+			E?.ApertarDesenhado("Destroy Splitforms");
+			bool sumiram = await Ate(() => cli.MinhasCopias.Count == 0 && srv.OrdemDaCopiaDeTeste(a) == null && srv.OrdemDaCopiaDeTeste(b) == null, 4);
+			await Quadros(5);
+			await ClicarNoMundo(ondeEstavaA);
+			Checa("F10e. 'Destroy Splitforms' (o do DM: todas): as duas se desfazem, o cliente fica sem copia nenhuma -- e o clique onde a A estava nao abre nada",
+				  sumiram && E is { NaTela: false }, $"minhas {cli.MinhasCopias.Count}; A {srv.OrdemDaCopiaDeTeste(a)}, B {srv.OrdemDaCopiaDeTeste(b)}");
+			if (E is { NaTela: true }) { ApertarE(); await Quadros(2); }
+
+			// ---- o contra-exemplo do pacote: calado, o cliente nao sabe da copia, e o clique nela nao abre nada ----
+			Jandirus.Server.GameServer.CopiasCaladasDeTeste = true;
+			try
+			{
+				List<int> calada = srv.CopiasDeTeste(cli.LocalId, 1);
+				bool desenhada = await Ate(() => calada.Count == 1 && Afastada(calada[0]), 4);
+				await Quadros(10);
+				if (desenhada) await ClicarNoMundo(NoMundo(calada[0])!.Value);
+				Injeta("F10z. com o pacote das copias calado, o cliente nao sabe que a copia e dele e o clique nela NAO abre o menu -- a regua F10a REPROVA",
+					   desenhada && E is { NaTela: false }, $"desenhada {desenhada}, menu {E?.NaTela}");
+			}
+			finally { Jandirus.Server.GameServer.CopiasCaladasDeTeste = false; }
+		}
+		finally
+		{
+			GameClient.EspiaoDeVerbos = espiaoDeAntes;
+			MenuDeInteracao.DuploDeixaOMenuDaCopiaDeTeste = false;
+			Jandirus.Server.GameServer.OrdemDaCopiaPraTodasDeTeste = false;
+			Jandirus.Server.GameServer.CopiasCaladasDeTeste = false;
+			if (E is { NaTela: true }) { ApertarE(); await Quadros(2); }
+			srv.DesfazerCopiasDeTeste(cli.LocalId);
+		}
+	}
+
+	/// <summary>
+	/// UM CLIQUE DE VERDADE NUM PONTO DO MUNDO: o mouse chega, aperta e solta (e, `duplo`, aperta de novo como duplo clique) -- empurrado
+	/// no viewport na coordenada de TELA desse ponto (o caminho inverso do que o `World` faz com o clique), e passa por quem estiver em
+	/// cima, como o mouse do jogador.
+	/// </summary>
+	private async Tarefa ClicarNoMundo(Vector2 mundo, bool duplo = false)
+	{
+		Vector2 p = (World.Instancia?.GetCanvasTransform() ?? GetViewport().GetCanvasTransform()) * mundo;
+		void Botao(bool desce, bool dobra) =>
+			GetViewport().PushInput(new InputEventMouseButton
+			{
+				ButtonIndex = MouseButton.Left, Pressed = desce, DoubleClick = dobra, Position = p, GlobalPosition = p,
+				ButtonMask = desce ? MouseButtonMask.Left : 0,
+			}, true);
+		GetViewport().PushInput(new InputEventMouseMotion { Position = p, GlobalPosition = p }, true);
+		Botao(true, false);
+		Botao(false, false);
+		if (duplo)
+		{
+			await Quadros(1);
+			Botao(true, true);
+			Botao(false, false);
+		}
+		await Quadros(3);
 	}
 
 	// =====================================================================

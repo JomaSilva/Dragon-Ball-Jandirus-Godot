@@ -47,12 +47,30 @@ public sealed class Tradutor
 	public static bool PedacoCruDeTeste;
 
 	/// <summary>
-	/// QUANTO UM TEXTO PODE SE DESDOBRAR: o pedaco de um molde que e outro molde, cujo pedaco e uma frase composta...
-	/// O mais fundo de hoje e o requisito de arvore dentro do cartao da aba Learning ("abre com: dominio corporal ≥ 2 e
-	/// prontidao corporal ≥ 2   ·   regra de ..."): molde, conta, "e", nome -- quatro andares, e um de folga. O teto existe
-	/// pra que um texto patologico nao vire recursao sem fim (cada andar corta o texto, entao ele nunca cresce).
+	/// DEFEITO INJETADO (bancada `lingua`): a frase composta nao faz os dois cortes que a ficha de skill pede -- o NUMERO COM
+	/// SINAL do fim ("ataque fisico +0,4", "tecnica x1,2") e a <see cref="Seta"/> da casa escolhida --, e essas linhas voltam
+	/// em portugues (o jogo de antes de 2026-10-23). Lido pelo corte de <see cref="NumeroNoFim"/> e pelo da seta, os dois em
+	/// <see cref="Cortes"/>. Falso em jogo, sempre.
 	/// </summary>
-	public const int AndaresMaximos = 5;
+	public static bool SemOsCortesDaFichaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `lingua`): a borda come a pontuacao que e da FRASE -- "* o chao comeca a tremer." procura so
+	/// "o chao comeca a tremer", sem o ponto que a chave tem, e a narracao de toda cinematica volta em portugues (o jogo de
+	/// antes de 2026-10-23). Lido pelo <see cref="PelasBordas"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BordaComeAPontuacaoDeTeste;
+
+	/// <summary>
+	/// QUANTO UM TEXTO PODE SE DESDOBRAR: o pedaco de um molde que e outro molde, cujo pedaco e uma frase composta...
+	/// Era 5, pelo requisito de arvore dentro do cartao da aba Learning ("abre com: dominio corporal ≥ 2 e prontidao
+	/// corporal ≥ 2   ·   regra de ..."): molde, conta, "e", nome -- quatro andares, e um de folga. (2026-10-23) O mais fundo
+	/// passou a ser o RESUMO da ficha de skill dentro da dica do cartao: a linha da dica, a lista do resumo, o "; " dos
+	/// niveis, "ate o nivel N:", "nivel N:", "habilidade nova:" e o detalhe entre parenteses -- SETE andares (medido: com 5 tres
+	/// resumos e seis dicas ficavam meio em portugues; com 6 so as dicas), e um de folga. O teto existe pra que um texto
+	/// patologico nao vire recursao sem fim (cada andar corta o texto, entao ele nunca cresce).
+	/// </summary>
+	public const int AndaresMaximos = 8;
 
 	/// <summary>
 	/// O MOLDE FRACO NAO TRADUZ SOZINHO: um molde com menos letras fixas que isto ("{0} com {1}") casaria com
@@ -265,6 +283,13 @@ public sealed class Tradutor
 	/// "TREINAR:" acha "Treinar" e devolve "TRAIN:" -- a pontuacao e o enfeite das bordas ("» ", "- ", "...", o
 	/// parentese do "(medio)" colado num numero, as aspas) voltam pro lugar. So a frase inteira e o molde; a frase
 	/// composta e outro passo.
+	///
+	/// (2026-10-23) A PONTUACAO DO FIM PODE SER DA FRASE, e nao enfeite: a chave do dicionario e "o chao comeca a tremer."
+	/// COM o ponto, e a narracao da cinematica chega ao chat como "* o chao comeca a tremer." -- sem o "* " E sem o ponto, o
+	/// miolo nao achava nada, e as narracoes de todas as cenas ficavam em portugues. O mesmo com o marcador da ficha de skill
+	/// ("escolha unica entre:", "trilha Arlian escolhida (1)" atras do marcador). Quando o miolo sozinho nao acha, ele e
+	/// procurado de novo COM a pontuacao do fim -- so quando ha enfeite no comeco: sem ele, o miolo com a pontuacao e o
+	/// proprio pedido, que ja foi procurado.
 	/// </summary>
 	private string? PelasBordas(string s, int andar)
 	{
@@ -273,7 +298,12 @@ public sealed class Tradutor
 		string antes = m.Groups[1].Value, miolo = m.Groups[2].Value, depois = m.Groups[3].Value;
 		if (miolo.Length == 0 || (antes.Length == 0 && depois.Length == 0)) return null;
 		string? t = _exatas.TryGetValue(miolo, out string? e) ? e : SemCaixa(miolo) ?? PeloMolde(miolo, andar);
-		return t == null ? null : antes + t + depois;
+		if (t != null) return antes + t + depois;
+		string fim = depois.TrimEnd();
+		if (antes.Length == 0 || fim.Length == 0 || BordaComeAPontuacaoDeTeste) return null;
+		string comFim = miolo + fim;
+		t = _exatas.TryGetValue(comFim, out e) ? e : SemCaixa(comFim) ?? PeloMolde(comFim, andar);
+		return t == null ? null : antes + t + depois[fim.Length..];
 	}
 
 	private static readonly Regex Bordas = new(@"^([\s»•·\-\*>–—\(\[""“'«]*)(.*?)([\s:;,\.…!?\)\]""”'»]*)$", RegexOptions.Singleline);
@@ -346,7 +376,13 @@ public sealed class Tradutor
 		return true;
 	}
 
-	private static readonly string[] Juntas = ["\n", " · ", " | ", " — ", " -- ", "  ", "; "];
+	private static readonly string[] Juntas = ["\n", " · ", " | ", " — ", " -- ", "  ", "; ", Seta];
+
+	/// <summary>
+	/// (2026-10-23) A SETA, a ultima junta: a ficha de skill cola a casa escolhida e a tecnica que ela da ("Van-sama", seta,
+	/// "Provocacao"). Cortada como as outras, cada lado se traduz sozinho.
+	/// </summary>
+	private const string Seta = " → ";
 
 	/// <summary>
 	/// AS JUNTAS DA CONTA ("dominio corporal ≥ 2"): o requisito de arvore e montado colando o nome do campo, o comparador
@@ -366,9 +402,20 @@ public sealed class Tradutor
 	private static readonly Regex ComParentese = new(@"^(?<a>.*\S)(?<b>\s+\([^()]*\))$", RegexOptions.Singleline);
 
 	/// <summary>
+	/// "Rotulo +N": o NUMERO COM SINAL no fim, colado num nome ("ataque fisico +0,4", "percepcao de Ki -1", "tecnica" e o
+	/// fator "vezes 1,2"). E como a ficha de skill (`FichaDeSkill`) escreve o que cada compra e cada nivel dao: o nome do campo
+	/// tem traducao (`NomesLegiveis`), o par nome + numero nao -- e um molde "{0} +{1}" seria leve demais pra entrar no indice
+	/// (<see cref="PesoMinimo"/>). So com SINAL (mais, menos, o menos tipografico e o vezes): o numero solto no fim ("Nivel 5")
+	/// fica com quem ja o traduzia. O numero volta como veio, com a virgula decimal do portugues, como todo numero do jogo em
+	/// ingles ("1.500 zeni").
+	/// </summary>
+	private static readonly Regex NumeroNoFim = new(@"^(?<a>.*\S)(?<b>\s+[+\-−×]\d[\d.,]*)$", RegexOptions.Singleline);
+
+	/// <summary>
 	/// A FRASE COMPOSTA: corta nas juntas que o jogo usa pra colar texto, traduz cada pedaco e cola de volta com a
 	/// MESMA junta. Os cortes, na ordem: as juntas (linha, " · ", " -- ", "; "...); as FRASES, em grupos (ver
-	/// <see cref="PorFrases"/>); o "rotulo: valor"; o detalhe entre parenteses no fim; a conta ("X ≥ 2"); o "e"/"ou".
+	/// <see cref="PorFrases"/>); o "rotulo: valor"; o detalhe entre parenteses no fim; o numero com sinal no fim ("X +0,4");
+	/// a conta ("X ≥ 2"); o "e"/"ou".
 	///
 	/// FICA O PRIMEIRO QUE SAI INTEIRO EM INGLES, e nao o primeiro que mudou alguma coisa: o "; " no meio de duas frases
 	/// coladas cortaria o grupo que o dicionario conhece e devolveria meio a meio. So se nenhum sai inteiro, o primeiro
@@ -392,7 +439,7 @@ public sealed class Tradutor
 	{
 		foreach (string j in Juntas)
 		{
-			if (!s.Contains(j)) continue;
+			if (!s.Contains(j) || (j == Seta && SemOsCortesDaFichaDeTeste)) continue;
 			string[] partes = s.Split(j);
 			yield return TraduzirPartes(partes, andar) ? string.Join(j, partes) : null;
 		}
@@ -411,6 +458,14 @@ public sealed class Tradutor
 		{
 			string[] lados = [mp.Groups["a"].Value, mp.Groups["b"].Value];
 			yield return TraduzirPartes(lados, andar) ? lados[0] + lados[1] : null;
+		}
+
+		// o nome com o numero com sinal no fim: so o nome se traduz, o numero fica onde estava
+		Match mn = NumeroNoFim.Match(s);
+		if (mn.Success && !SemOsCortesDaFichaDeTeste)
+		{
+			string[] nome = [mn.Groups["a"].Value];
+			yield return TraduzirPartes(nome, andar) ? nome[0] + mn.Groups["b"].Value : null;
 		}
 
 		foreach (string j in JuntasDeConta)

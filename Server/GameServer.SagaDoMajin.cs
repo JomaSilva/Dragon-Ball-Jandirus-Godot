@@ -104,7 +104,10 @@ public partial class GameServer
 	internal static double FatorDeMaestriaDoCorpo(ServerPlayer pl) =>
 		!EcoSemFatorDeTeste && ComAFormaPura(pl) ? SagaDoMajin.FatorDeMaestria : 1;
 
-	/// <summary>Este Majin segura alguem dentro agora? A chave do `_dentroDoMajin` some quando a lista esvazia.</summary>
+	/// <summary>
+	/// Este Majin segura alguem dentro agora? A chave do `_dentroDoMajin` some quando a lista esvazia. O NPC devorado que voltou do
+	/// disco no login conta (dono, 2026-10-23: "Conta") -- o `AcordarSemAbsorcao` recria o registro dele.
+	/// </summary>
 	private bool AlguemDentro(ServerPlayer pl) => _dentroDoMajin.ContainsKey(pl.Id);
 
 	// =====================================================================
@@ -796,6 +799,9 @@ public partial class GameServer
 	/// O LOGIN, ANTES DA FORMA VOLTAR DO DISCO: o repouso imposto tem que estar escrito quando o `RestaurarFormaEDisciplina` perguntar
 	/// pelo piso -- o dono: *"quando ele entrar no jogo novamente ele vai estar na pure form novamente"*. Quem saiu insano volta
 	/// insano (a sanidade foi pro disco), e a IA o assume no primeiro tique. Quem estava na forma 2 ganha a outra metade de volta.
+	///
+	/// (2026-10-23) SO SEM NINGUEM DENTRO: o NPC devorado volta com ele (o `AcordarSemAbsorcao`, que o `Entrar` chama ANTES disto) e
+	/// conta como alguem dentro -- o dono: o Corrupted volta FORA da Forma Pura ate expelir, e a sanidade sobe com ele la dentro.
 	/// </summary>
 	private void PrepararOMajinPuroNoLogin(ServerPlayer pl)
 	{

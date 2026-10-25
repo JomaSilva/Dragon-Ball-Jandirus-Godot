@@ -99,6 +99,13 @@ public sealed class Obra
 	public bool Aparafusada;        // `Bolted`: aparafusada nao se carrega, e so o dono desfaz
 
 	/// <summary>
+	/// (2026-10-25) LIBERADA PRA TODOS -- o dono: *"permita com q o criador da tech libere ela quando quiser pra qualquer um mexer nela,
+	/// desparafusar, pegar, etc, tudo q o dono pode fazer"*. Ligada, quem chegar mexe nela como o dono (`GameServer.MexeComoDono`); quem a liga
+	/// e desliga e so o dono (o botao da linha dela na aba Tech, `LiberarObra`). Vai pro `mundo.json` com o resto, e a obra recolhida a esquece.
+	/// </summary>
+	public bool Liberada;
+
+	/// <summary>
 	/// VEIO DO MAPA, e nao de alguem que a ergueu.
 	///
 	/// ============================ POR QUE ELA NAO VAI PRO DISCO ============================
@@ -957,7 +964,8 @@ public partial class GameServer
 		// O que se perde e poder ANDAR com o prisioneiro; o que se mantem e a interacao que importa,
 		// que e quebrar o pote pra solta-lo. Ver `GameServer.Selo.cs`.
 		if (PoteEstaSelado(o)) { Avisar(pl, "há alguém selado aí dentro -- isso não sai do lugar."); return; }
-		if (o.DonoConta.Length > 0 && !string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		// (2026-10-25) o dono -- ou o Neo Tuffle no corpo dele --, ou qualquer um com ela liberada: ver `MexeComoDono`
+		if (!MexeComoDono(o, pl, semDonoEDeTodos: true))
 		{ Avisar(pl, $"{NomeDaObra(o)} é de {o.DonoNome}."); return; }
 		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }
 		// (v0.2.1) COM COISA DENTRO NAO SE RECOLHE: o que ela guardava sumiria com ela -- a gaveta da maquina recolhida
@@ -1006,13 +1014,104 @@ public partial class GameServer
 	{
 		Obra? o = ObraPerto(pl);
 		if (o == null) { Avisar(pl, "nao ha nada aqui pra aparafusar."); return; }
-		if (o.DonoConta != pl.Conta) { Avisar(pl, "isso nao e seu."); return; }
+		// (2026-10-25) ...e o que o dono liberou, e o do corpo que o Neo Tuffle dirige: ver `MexeComoDono`
+		if (o.DonoConta != pl.Conta && !MexeComoDono(o, pl, semDonoEDeTodos: false)) { Avisar(pl, "isso nao e seu."); return; }
 
 		o.Aparafusada = !o.Aparafusada;
 		GravarMundo();
 		Avisar(pl, o.Aparafusada
 			? $"voce aparafusa {NomeDaObra(o)} no chao."
 			: $"voce solta {NomeDaObra(o)} do chao.");
+		MandarObras(pl.Zone);
+	}
+
+	// =====================================================================
+	// (2026-10-25) QUEM MEXE NA TECH COMO DONO -- o pedido 74
+	// =====================================================================
+	/// <summary>
+	/// A CONTA DONA E A DESTE CORPO -- a dele mesmo, ou (o dono: *"Faca q personagens q viraram neotuffle ou bio, consigam usar os itens tech
+	/// do personagem anterior antes dele ser substituido"*) a do corpo que o Neo Tuffle esta dirigindo: dentro do hospede, a tech do hospede
+	/// responde a ele como responderia ao dono. O bio nao precisa de nada aqui: ele e o MESMO save, com a mesma conta (`NascerBioAndroide`).
+	///
+	/// E a pergunta das TRAVAS que so o dono de verdade poe -- a senha da clonagem e da Capital Ship, a cifra do supercomputador: a obra
+	/// LIBERADA nao entra nela, senao qualquer um trancaria a maquina do dono pra sempre (a senha da clonagem e permanente).
+	/// </summary>
+	private bool EDaContaDona(string conta, ServerPlayer pl) =>
+		conta.Length > 0
+		&& (string.Equals(conta, pl.Conta, StringComparison.OrdinalIgnoreCase)
+			|| (!TuffleSemATechDoHospedeDeTeste && PosseDoTuffleDe(pl.Id) is { } posse && posse.Tuffle == pl
+				&& string.Equals(conta, posse.Hospede.Conta, StringComparison.OrdinalIgnoreCase)));
+
+	/// <summary>
+	/// MEXE NESTA OBRA COMO DONO? O dono (<see cref="EDaContaDona"/>), ou qualquer um se o dono a LIBEROU (`Obra.Liberada` -- o pedido: *"permita
+	/// com q o criador da tech libere ela quando quiser pra qualquer um mexer nela, desparafusar, pegar, etc, tudo q o dono pode fazer"*). A
+	/// obra SEM dono responde como cada porta ja respondia (<paramref name="semDonoEDeTodos"/>): o pegar e a Drill a davam a quem chegasse; o
+	/// parafuso, o laboratorio e o deposito, a ninguem.
+	/// </summary>
+	private bool MexeComoDono(Obra o, ServerPlayer pl, bool semDonoEDeTodos) =>
+		o.DonoConta.Length == 0 ? semDonoEDeTodos : (o.Liberada && !LiberadaNaoValeDeTeste) || EDaContaDona(o.DonoConta, pl);
+
+	/// <summary>O mesmo, pra nave parada (`Nave.Liberada`): recolher, recondicionar, melhorar, e embarcar sem o codigo.</summary>
+	private bool MexeNaNaveComoDono(Nave n, ServerPlayer pl, bool semDonoEDeTodos) =>
+		n.DonoConta.Length == 0 ? semDonoEDeTodos : (n.Liberada && !LiberadaNaoValeDeTeste) || EDaContaDona(n.DonoConta, pl);
+
+	/// <summary>DEFEITO INJETADO (`--v021teste`): a tech liberada continua so do dono -- o jogo de antes de 2026-10-25. Falso em jogo, sempre.</summary>
+	internal static bool LiberadaNaoValeDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--tuffleteste`): dentro do hospede, o Neo Tuffle nao mexe na tech dele -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool TuffleSemATechDoHospedeDeTeste;
+
+	/// <summary>O que ouve quem pede pra liberar uma construcao que nao esta (mais) na zona dele.</summary>
+	internal const string FraseDaObraLonge = "essa construção não está mais nesta zona.";
+
+	/// <summary>
+	/// LIBERAR / TRANCAR -- o botao da linha de cada construcao na aba Tech ("Suas construções nesta zona"). O argumento e o id do pacote das
+	/// obras (`S2C.Construcoes`): positivo e obra, negativo e nave parada. So o dono troca (a conta, ou o Neo Tuffle no corpo dele), e de
+	/// qualquer ponto da zona -- a aba so lista o que esta nela.
+	/// </summary>
+	private void LiberarObra(ServerPlayer pl, string arg)
+	{
+		if (!int.TryParse(arg.TrimStart('#'), out int id) || id == 0) { Avisar(pl, "isso não existe."); return; }
+		if (id < 0)
+		{
+			Nave? n = _naves.FirstOrDefault(x => x.Id == -id);
+			if (n == null || !n.Zona.Equals(pl.Zone)) { Avisar(pl, FraseDaObraLonge); return; }
+			if (!EDaContaDona(n.DonoConta, pl)) { Avisar(pl, $"só o dono libera {NomeDaNave(n)}."); return; }
+			n.Liberada = !n.Liberada;
+			GravarNaves();
+			Avisar(pl, n.Liberada
+				? $"{NomeDaNave(n)} está liberada: qualquer um mexe nela como você -- recolhe, melhora, embarca."
+				: $"{NomeDaNave(n)} volta a ser só sua.");
+			MandarObras(pl.Zone);
+			return;
+		}
+		Obra? o = _noChao.FirstOrDefault(x => x.Id == id);
+		if (o == null || !o.Zona.Equals(pl.Zone)) { Avisar(pl, FraseDaObraLonge); return; }
+		if (!EDaContaDona(o.DonoConta, pl)) { Avisar(pl, $"só o dono libera {NomeDaObra(o)}."); return; }
+		o.Liberada = !o.Liberada;
+		GravarMundo();
+		Avisar(pl, o.Liberada
+			? $"{NomeDaObra(o)} está liberada: qualquer um mexe nela como você -- aparafusa, solta, pega, usa."
+			: $"{NomeDaObra(o)} volta a ser só sua.");
+		MandarObras(pl.Zone);
+	}
+
+	/// <summary>
+	/// A TECH DO HUMANO QUE MORREU FICA COM O BIO, NO NOME DELE -- o dono: *"meu amigo q virou bio n tava conseguindo usar o simulator dps q
+	/// virou bio androide (simulator ele fez quando ainda era humano/androide)"*. A posse sempre foi da CONTA, e o bio e o mesmo save; mas o
+	/// nome do dono que cada obra e cada nave guardam ficava o do morto: a aba Tech ("Suas construções") lista pelo nome e o deixava de fora,
+	/// e a recusa a terceiros dizia de quem nao existe mais. Chamada pelo parto (`NascerBioAndroide`), com o nome de antes.
+	/// </summary>
+	private void PassarATechProNomeNovo(ServerPlayer pl, string antes)
+	{
+		int n = 0;
+		foreach (Obra o in _noChao.Where(o => o.DonoNome == antes && string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase)))
+		{ o.DonoNome = pl.Name; n++; }
+		foreach (Nave x in _naves.Where(x => x.DonoNome == antes && string.Equals(x.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase)))
+		{ x.DonoNome = pl.Name; n++; }
+		if (n == 0) return;
+		GravarMundo();
+		GravarNaves();
 		MandarObras(pl.Zone);
 	}
 
@@ -1044,6 +1143,11 @@ public partial class GameServer
 	/// esta: <b>so se ganha tecnologia numa estacao</b> ("Research Stations are the only really
 	/// good way of getting Tech XP at all"). Estudar sozinho no campo nao existe.
 	///
+	/// (2026-10-25) **MENOS MEDITANDO, COM UM QUARTO DO GANHO** -- o dono: *"faca q tenha como estudar meditando sem research table, mas o ganho
+	/// de tech e 1/4, so pra players em planetas isolados conseguirem sair de la"*. DIVERGENCIA DECLARADA do `Experiment()`: sem mesa por perto
+	/// e meditando (`Ficha.med`), o laco rende <see cref="FracaoDoEstudoMeditando"/> do da mesa; parou de meditar longe da mesa, o estudo cai.
+	/// O gesto e a telinha da tecla M ("Meditar estudando", o comando `estudar_meditando`).
+	///
 	/// Sem material pra sacrificar (o port ainda nao tem itens), o custo e TEMPO: a estacao rende
 	/// por segundo enquanto a pessoa fica nela. O ganho passa pelo `techmod`, como la.
 	/// </summary>
@@ -1053,17 +1157,17 @@ public partial class GameServer
 		{
 			if (!pl.Estudando || pl.Ficha.KO || CaidoPelaMorte(pl)) continue;
 
-			Obra? est = _noChao.FirstOrDefault(o => o.Tipo == "Research_Station" && o.Aparafusada
-				&& o.Zona.Equals(pl.Zone)
-				&& Math.Abs(o.X - pl.Pos.X) <= AlcanceDeUso && Math.Abs(o.Y - pl.Pos.Y) <= AlcanceDeUso);
-			if (est == null)
+			Obra? est = BancadaDeEstudoPerto(pl);
+			bool meditando = pl.Ficha.med && !EstudoSoNaMesaDeTeste;
+			if (est == null && !meditando)
 			{
 				pl.Estudando = false;
-				Avisar(pl, "voce precisa de uma Research Station aparafusada por perto pra estudar.");
+				Avisar(pl, FraseDoEstudoQueCaiu);
 				continue;
 			}
 
-			int subiu = pl.Ficha.Estudar(XpDeEstudoPorSegundo);
+			// (2026-10-25) sem a mesa, meditando: um quarto -- ver o cabecalho
+			int subiu = pl.Ficha.Estudar(est != null ? XpDeEstudoPorSegundo : XpDeEstudoPorSegundo * FracaoDoEstudoMeditando);
 
 			// O PAINEL TEM QUE ANDAR ENQUANTO SE ESTUDA. Um nivel leva mais de vinte minutos no
 			// topo da curva; sem a barra de XP mexendo, quem estuda nao tem NENHUM sinal de que a
@@ -1087,6 +1191,33 @@ public partial class GameServer
 	/// que transforma um humano comum num androide.
 	/// </summary>
 	private const double XpDeEstudoPorSegundo = 15;
+
+	/// <summary>(2026-10-25) QUANTO DO GANHO DA MESA O ESTUDO MEDITANDO RENDE, sem mesa nenhuma: um quarto (o dono). Ver `TickDoEstudo`.</summary>
+	internal const double FracaoDoEstudoMeditando = 0.25;
+
+	/// <summary>(2026-10-25) O que ouve quem pede o estudo meditando sem mesa por perto.</summary>
+	internal const string FraseDoEstudoMeditando = "voce medita e estuda de cabeca: sem uma Research Station por perto, o estudo rende um quarto do que renderia nela.";
+
+	/// <summary>(2026-10-25) O que ouve quem estava estudando e ficou sem mesa e sem meditar.</summary>
+	internal const string FraseDoEstudoQueCaiu = "voce para de estudar: sem uma Research Station aparafusada por perto, so se estuda meditando (tecla M), com um quarto do ganho.";
+
+	/// <summary>DEFEITO INJETADO (bancada `--cidadeteste`): so se estuda na mesa -- o jogo de antes de 2026-10-25. Falso em jogo, sempre.</summary>
+	internal static bool EstudoSoNaMesaDeTeste;
+
+	/// <summary>A Research Station aparafusada ao alcance deste corpo, ou nula -- a de estudar.</summary>
+	private Obra? BancadaDeEstudoPerto(ServerPlayer pl) =>
+		_noChao.FirstOrDefault(o => o.Tipo == "Research_Station" && o.Aparafusada && o.Zona.Equals(pl.Zone)
+								 && Math.Abs(o.X - pl.Pos.X) <= AlcanceDeUso && Math.Abs(o.Y - pl.Pos.Y) <= AlcanceDeUso);
+
+	/// <summary>
+	/// (2026-10-25) "MEDITAR ESTUDANDO" (o botao da tecla M): liga o estudo -- e nao alterna, como o `estudar` da mesa: a meditacao e que o
+	/// segura. Com mesa por perto e o estudo de sempre.
+	/// </summary>
+	private void ComecarAEstudarMeditando(ServerPlayer pl)
+	{
+		pl.Estudando = true;
+		Avisar(pl, BancadaDeEstudoPerto(pl) != null ? "voce se debruca sobre a bancada." : FraseDoEstudoMeditando);
+	}
 
 	// =====================================================================
 	// OS LABORATORIOS
@@ -1460,6 +1591,8 @@ public partial class GameServer
 		DerrubarBuffs(pl);                                      // `clearbuffs()`
 
 		pl.Name = $"Bio-Androide de {antes}";
+		// (2026-10-25) ...e a tech do humano que ele era passa pro nome novo -- ver `PassarATechProNomeNovo`
+		PassarATechProNomeNovo(pl, antes);
 		pl.Race = Jandirus.Core.Races.BioAndroids.Raca;
 		pl.Class = "";                      // `Class = "None"` -- o tipo Cell
 		pl.Ficha.Race = pl.Race;
@@ -1921,6 +2054,7 @@ public partial class GameServer
 			// por isso a parede do console esta assada no bitset dela. Ver `NaveGrande.Montar`.
 			w.Put(p.Densa);
 			w.Put((byte)0);       // mobilia de nave nao tem melhoria (ver `MelhoriasFeitas`, logo abaixo das obras)
+			w.Put(false);         // (2026-10-25) "liberada": a mobilia e da nave, e a nave tem a dela
 		}
 		foreach (Nave n in navesDaZona)
 		{
@@ -1939,6 +2073,7 @@ public partial class GameServer
 			w.Put((float)(cn?.PixelY ?? 0));
 			w.Put(cn?.Densa ?? false);
 			w.Put((byte)0);
+			w.Put(n.Liberada);    // (2026-10-25) o botao "Liberar"/"Trancar" da aba Tech (`LiberarObra`)
 		}
 		foreach (Obra o in daZona)
 		{
@@ -1972,6 +2107,8 @@ public partial class GameServer
 			// ...E O QUE ESTA MAQUINA JA TEM de melhoria de uma vez so: e por este byte que o menu da tecla E tira da
 			// lista o que nao da mais pra comprar NESTA maquina. Ver `Interacoes.BitQueEsconde`.
 			w.Put(MelhoriasFeitas(o));
+			// (2026-10-25) ...e se o dono a LIBEROU pra todos: o botao "Liberar"/"Trancar" da linha dela na aba Tech (`LiberarObra`)
+			w.Put(o.Liberada);
 		}
 		foreach (ServerPlayer pl in _players.Values)
 			if (pl.Zone.Equals(zona)) pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
@@ -2095,10 +2232,13 @@ public partial class GameServer
 			case "posicionar": Posicionar(pl, arg); break;
 			case "pegar": PegarObra(pl); break;
 			case "aparafusar": Aparafusar(pl); break;
+			case "liberar": LiberarObra(pl, arg); break;   // (2026-10-25) o botao "Liberar"/"Trancar" da aba Tech
 			case "estudar":
 				pl.Estudando = !pl.Estudando;
 				Avisar(pl, pl.Estudando ? "voce se debruca sobre a bancada." : "voce para de estudar.");
 				break;
+			// (2026-10-25) o estudo de cabeca, da telinha da tecla M -- ver `ComecarAEstudarMeditando`
+			case "estudar_meditando": ComecarAEstudarMeditando(pl); break;
 			// A MOEDA E O ARGUMENTO (vazio = zeni, o de sempre; "recursos" = o dobro em recursos).
 			case "androide_absorcao": VirarAndroide(pl, infinito: false, Recurso.LerPedidoPago(arg).Moeda); break;
 			case "androide_infinito": VirarAndroide(pl, infinito: true, Recurso.LerPedidoPago(arg).Moeda); break;

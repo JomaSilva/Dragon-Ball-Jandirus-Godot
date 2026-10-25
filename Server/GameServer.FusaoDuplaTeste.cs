@@ -1334,9 +1334,14 @@ public partial class GameServer
 				  accDono.Slots[dono.Slot] != null
 				  && Math.Abs((accDono.Slots[dono.Slot]?.Ficha.BP ?? 0) - dono.Ficha.BP) < 1.0);
 
-		// ---- A RECARGA DE 1 h FOI COBRADA DE QUEM ABSORVEU (`Fusion.dm:320`) ----
-		AfirmarFd("J23 quem absorveu leva a recarga de 1 h (nao da pra comer o servidor inteiro seguido)",
-				  dono.Ficha.fusion_cooldown_until > NowMs());
+		// ---- A RECARGA FOI COBRADA DE QUEM ABSORVEU (`Fusion.dm:320`), PROPORCIONAL AO MULTIPLICADOR (dono, 2026-10-24) ----
+		// *"o mesmo pra fusao namek"* -- a regra do Zenkai: 2,5 h por "x". Absorver jogador e sempre 2x ou mais (`(A+B)*2`).
+		double horasDoJogador = (dono.Ficha.fusion_cooldown_until - NowMs()) / 3_600_000.0;
+		double horasEsperadas = Jandirus.Core.Stats.GainKnobs.RecargaProporcionalMs(bpDono, dono.Ficha.BP) / 3_600_000.0;
+		AfirmarFd("J23 quem absorveu leva a recarga PROPORCIONAL ao multiplicador -- 2,5 h por x (dono, 2026-10-24) -- e nao da pra comer o "
+				+ "servidor inteiro seguido",
+				  Math.Abs(horasDoJogador - horasEsperadas) < 0.01 && horasEsperadas >= 5,
+				  $"{horasDoJogador:0.00} h (esperado {horasEsperadas:0.00} h; {dono.Ficha.BP / bpDono:0.00}x)");
 
 		dono.Ficha.fusion_cooldown_until = 0;
 	}
@@ -1421,6 +1426,13 @@ public partial class GameServer
 				+ $"({ganho:N0} contra {ganhoSeFosseJogador:N0})",
 				  ganho < ganhoSeFosseJogador / 10);
 
+		// ---- E A RECARGA DO NPC TAMBEM E PROPORCIONAL (2026-10-24): rendeu pouco, recarga pouco acima da do "1x" ----
+		double horasDoNpc = (dono.Ficha.fusion_cooldown_until - NowMs()) / 3_600_000.0;
+		double horasEsperadasDoNpc = Jandirus.Core.Stats.GainKnobs.RecargaProporcionalMs(bpDono, dono.Ficha.BP) / 3_600_000.0;
+		AfirmarFd("J27b ...e a recarga tambem e proporcional: o NPC rende pouco, e ela fica em pouco mais de 2,5 h (e nao nas 5 h de quem dobra)",
+				  Math.Abs(horasDoNpc - horasEsperadasDoNpc) < 0.01 && horasDoNpc < 3,
+				  $"{horasDoNpc:0.00} h (esperado {horasEsperadasDoNpc:0.00} h; {dono.Ficha.BP / bpDono:0.000}x)");
+
 		// ---- N4: E MENOS BONUS ----
 		AfirmarFd("J28 o NPC NAO passa stat nenhum (30 continua 30)",
 				  Math.Abs(dono.Ficha.physoff - 30) < 1e-6, $"{dono.Ficha.physoff}");
@@ -1454,6 +1466,17 @@ public partial class GameServer
 				  Ultimos(comScouter));
 		AfirmarFd("J31d (defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
 				  rodadas.Count == 3 && TrazOPoder(comDefeito, rodadas[2].Depois), Ultimos(comDefeito));
+
+		// ---- J31e: O CONTRA-EXEMPLO DA RECARGA (a hora fixa de antes de 2026-10-24) ----
+		ServerPlayer maisUm = ForjarNaFusaoDupla("Aldeao9", "Namekian", 400_000, sabeDancar: false, 1);
+		maisUm.Papel = new Jandirus.Core.Npc.PapelDeNpc(
+			new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "aldeao" }, 0);
+		Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = true;
+		try { AbsorverNamekuseijin(dono, maisUm); }
+		finally { Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = false; }
+		double horasComDefeito = (dono.Ficha.fusion_cooldown_until - NowMs()) / 3_600_000.0;
+		AfirmarFd("J31e (defeito injetado: a hora fixa de antes) a absorcao volta a deixar 1 h, de qualquer tamanho -- a regua J27b reprovaria",
+				  Math.Abs(horasComDefeito - 1) < 0.01, $"{horasComDefeito:0.00} h");
 
 		// ---- O CONTRA-EXEMPLO DO PORTAO: clone e boneco NAO sao absorviveis ----
 		// `EhNamekNpcAbsorvivel` e estreito de proposito: o terceiro grupo do `Gente` (clone da mente,

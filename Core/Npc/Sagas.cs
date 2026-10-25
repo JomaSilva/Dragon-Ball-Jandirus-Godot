@@ -249,6 +249,58 @@ public sealed class TropaDaSaga
 	public string AnuncioDaPartida = "";
 }
 
+/// <summary>
+/// (2026-10-24) OS CORPOS DA TROPA DO FREEZA -- o dono: *"os aliens soldados dele deveriam usar esses sprites base [...] sendo aleatorio o
+/// sprite escolhido ao spawnar cada npcs soldado"*. Seis folhas da pasta dos aliens, e cada soldado com uma, SORTEADA quando ele nasce.
+///
+/// ============================ POR QUE UMA FAIXA RESERVADA, E NAO A LISTA DO ALIEN ============================
+/// As seis nao estao na lista de corpos do Alien do catalogo (`visual.json`), e nao entram nela: aquela lista e a da TELA DE CRIACAO (o
+/// jogador passaria a escolher a folha do soldado sem ninguem ter pedido) e tambem a do sorteio do POVO Alien (o cidadao comum nasceria com
+/// a cara da tropa). Elas viajam numa faixa reservada do `Appearance.Corpo` (<see cref="PrimeiroCorpo"/>, 211 a 216), pelo caminho do Guru
+/// (<see cref="Patriarca.Corpo"/>, 202) e da 18 (<see cref="Androides.CorpoDa18"/>, 203): o servidor escreve o indice depois do saneamento
+/// (`GameServer.AparenciaDeNpc`), e o `VisualCatalog.CorpoSprite` o devolve como folha nos dois lados do fio.
+///
+/// QUEM GANHA: o molde que crava o corpo <see cref="NomeNoMolde"/> (o `"corpo"` do `soldado_do_freeza` no `npcs.json`) -- a regra e do
+/// molde, como a folha da 18, e nao do tipo `soldado`. A raca continua `Alien` (a armadura do exercito vem dela, `RoupaDeNpc`), e os olhos
+/// de gente continuam por cima: nas seis folhas eles caem em cima dos olhos desenhados, como no corpo do Konatsu (conferido quadro a quadro
+/// em 2026-10-24).
+///
+/// AS FALTAS DE ARTE, CONHECIDAS: a `Alien 1` nao tem `blast_*` (o raio cai no soco, pela escada do `CharacterVisual`) e a `CavemanAlien`
+/// nao tem `flight_mov_*` (o voo cai no `flight_*` dela). Nenhuma das seis tem `train_*` -- e soldado nao treina.
+/// ===========================================================================================================
+/// </summary>
+public static class FolhasDaTropa
+{
+	/// <summary>O `"corpo"` que o molde crava pra ganhar uma das seis. Nao e o nome de folha nenhuma: e a chave da faixa.</summary>
+	public const string NomeNoMolde = "Tropa do Freeza";
+
+	/// <summary>
+	/// 211 A 216: longe da saga do Majin (101 a 104), do Cell Jr (201), do Guru (202) e da 18 (203) -- um indice por folha, e nenhum com
+	/// dois sentidos.
+	/// </summary>
+	public const int PrimeiroCorpo = 211;
+
+	/// <summary>As seis folhas, na ordem em que o dono as listou.</summary>
+	public static readonly string[] Folhas =
+	[
+		"res://Assets/Sprites/Character Icons/Aliens/Alien 9.tres",
+		"res://Assets/Sprites/Character Icons/Aliens/Alien 4.tres",
+		"res://Assets/Sprites/Character Icons/Aliens/Alien 8.tres",
+		"res://Assets/Sprites/Character Icons/Aliens/Alien 1.tres",
+		"res://Assets/Sprites/Character Icons/Aliens/Race Kui.tres",
+		"res://Assets/Sprites/Character Icons/Aliens/CavemanAlien.tres",
+	];
+
+	/// <summary>Este indice de corpo e um dos da tropa?</summary>
+	public static bool EhCorpoDaTropa(int corpo) => corpo >= PrimeiroCorpo && corpo < PrimeiroCorpo + Folhas.Length;
+
+	/// <summary>A folha deste indice de corpo, ou nula quando ele nao e da tropa.</summary>
+	public static string? FolhaDoCorpo(int corpo) => EhCorpoDaTropa(corpo) ? Folhas[corpo - PrimeiroCorpo] : null;
+
+	/// <summary>O indice de UMA das seis, pelo sorteador que o nascimento passa (o da semente do lugar do soldado).</summary>
+	public static int Sortear(Random r) => PrimeiroCorpo + r.Next(Folhas.Length);
+}
+
 /// <summary>O estado VIVO de um chefe dentro de um elo. Vai pro disco.</summary>
 public sealed class EstadoDoChefe
 {

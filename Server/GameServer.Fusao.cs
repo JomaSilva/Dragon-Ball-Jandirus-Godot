@@ -36,8 +36,11 @@ public sealed partial class GameServer
 	///
 	/// VIVO, nao vai pro disco -- mesma regra do `PedidoDeLicao`: um convite
 	/// e um gesto do momento.
+	///
+	/// (2026-10-23) <paramref name="PelosBrincos"/>: o convite saiu dos brincos da mochila (`OferecerOsBrincos`), e por isso so fecha com os
+	/// brincos ainda na mao de quem convidou -- ver `ConviteDosBrincosSemOsBrincos`.
 	/// </summary>
-	private sealed record PedidoDeFusao(int DeQuem, string Nome, TipoDeFusao Tipo, long Ate);
+	private sealed record PedidoDeFusao(int DeQuem, string Nome, TipoDeFusao Tipo, long Ate, bool PelosBrincos = false);
 
 	private readonly Dictionary<int, PedidoDeFusao> _pedidosDeFusao = [];
 
@@ -557,10 +560,11 @@ public sealed partial class GameServer
 	/// passageiro) e o port fazia igual. Com o carimbo indo pro DISCO agora, duas escritas do mesmo
 	/// numero sao duas chances de uma delas ficar pra tras.
 	/// </summary>
-	private void CobrarARecargaDeFusao(ServerPlayer p, long agora)
+	/// <param name="segundos">(2026-10-24) quanto dura -- a hora de toda fusao, ou a proporcional da absorcao Namekuseijin.</param>
+	private void CobrarARecargaDeFusao(ServerPlayer p, long agora, double segundos = Fusao.RecargaSegundos)
 	{
 		if (_paradaEmCurso) return;   // quando e a PARADA do servidor que desfaz a fusao, ninguem paga a hora (dono, 2026-10-11) -- ver GameServer.Parada.cs
-		p.Ficha.fusion_cooldown_until = agora + (long)(Fusao.RecargaSegundos * 1000);
+		p.Ficha.fusion_cooldown_until = agora + (long)(segundos * 1000);
 	}
 
 	/// <summary>
@@ -733,9 +737,18 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// (2026-10-23) O CONVITE DOS BRINCOS SO FECHA COM OS BRINCOS NA MAO: quem jogou o par e depois o deu ou largou nao funde com ele --
+		// senao um par valeria duas fusoes. Ver `ConviteDosBrincosSemOsBrincos`.
+		if (ConviteDosBrincosSemOsBrincos(p, quem))
+		{
+			Avisar(pl, $"{quem.Name} não está mais com os brincos Potara: a fusão não fecha.");
+			Avisar(quem, $"a fusão com {pl.Name} não fechou: os brincos Potara não estão mais com você.");
+			return;
+		}
+
 		// ============================ A POTARA NAO TEM DANCA ============================
 		// Pedido do dono, literal: *"aceitando funde na hora, SEM QTE"*. E faz sentido no proprio
-		// desenho -- o que a Potara cobra e o ITEM (e o item so cai no colo de um Kaioshin), e a
+		// desenho -- o que a Potara cobra e o ITEM (que o Kaioshin recebe do cargo e da a quem quiser), e a
 		// coreografia e o que a Danca cobra NO LUGAR de um item.
 		// ===============================================================================
 		// "SEM QTE" NAO E "SEM CENA" NEM "NA HORA". O que o dono dispensou aqui foi a COREOGRAFIA; o
@@ -1762,6 +1775,10 @@ public sealed partial class GameServer
 		// (`Fusion.dm:29`) existe exatamente por isso, e a razao de la vale igual aqui.
 		if (_fundidos.ContainsKey(dono.Id) || _fundidos.ContainsKey(passageiro.Id)) return;
 
+		// (2026-10-23) O PAR DE QUEM NAO E KAIOSHIN SE GASTA AQUI, na fusao que aconteceu (e nao no convite nem no aceite: puxao e cena
+		// que morrem no caminho nao custam o par). Ver `GastarOsBrincosNaFusao`.
+		if (tipo == TipoDeFusao.Potara) GastarOsBrincosNaFusao(dono);
+
 		var f = new FusaoAtiva
 		{
 			Dono = dono,
@@ -2238,10 +2255,14 @@ public sealed partial class GameServer
 			return;
 		}
 		Convidar(pl, alvo, TipoDeFusao.Potara);
+
+		// (2026-10-23) O CONVITE SAIU DOS BRINCOS, e por isso so fecha com eles ainda na mao -- ver `ConviteDosBrincosSemOsBrincos`.
+		if (_pedidosDeFusao.TryGetValue(alvo.Id, out PedidoDeFusao? p) && p.DeQuem == pl.Id && p.Tipo == TipoDeFusao.Potara)
+			_pedidosDeFusao[alvo.Id] = p with { PelosBrincos = true };
 	}
 
 	/// <summary>
-	/// OS BRINCOS SAO INSIGNIA DE CARGO -- o Kaioshin ganha ao assumir, e perde ao sair.
+	/// OS BRINCOS CHEGAM COM O CARGO -- o Kaioshin ganha um par ao assumir, e o cargo lhe entrega outro por dia dali em diante.
 	///
 	/// ============================ NO DM ELES SAO INALCANCAVEIS ============================
 	/// O unico lugar do original que instancia um `Potara_Earring` e um bloco **COMENTADO** da
@@ -2255,36 +2276,39 @@ public sealed partial class GameServer
 	/// idempotente e derivado --, e nao por um evento de "virou Kaioshin" que seis caminhos
     /// diferentes teriam que lembrar de disparar.
 	///
-	/// **E ELES VOLTAM PRO COFRE COM O CARGO.** Insignia nao e loot: quem deixou de ser Kaioshin nao
-	/// leva os brincos embora, do mesmo jeito que nao leva o Mistico. E como eles voltam sozinhos
-	/// quando o cargo continua de pe, largar os brincos no chao nao e uma maneira de se trancar fora
-	/// da propria Potara.
+	/// ============================ (2026-10-23) E ELES NAO VOLTAM MAIS PRO COFRE ============================
+	/// Ate aqui eram insignia: quem nao era Kaioshin perdia o par no tique seguinte, e por isso o par que
+	/// um Kaioshin passasse a alguem sumia em 1 s. O dono trocou a regra -- *"Kaioshin entrega o par"*:
+	/// quem recebe fica com ele ate a fusao o gastar (`GastarOsBrincosNaFusao`), e quem perde o cargo fica
+	/// com o par que tinha (decisao minha: e um par comum dali em diante). O que segura a fabrica e o dia:
+	/// o cargo so entrega outro par 24 h depois do ultimo (`ParDePotara.CargoEntrega`). O sumico de antes
+	/// so volta pelo defeito injetado <see cref="ParVoltaAoCofreDeTeste"/>.
 	/// ======================================================================================
 	/// </summary>
 	private void ReconciliarOsBrincos(ServerPlayer pl)
 	{
 		if (!EhPessoa(pl)) return;
 
-		// PELA TABELA DE INSIGNIAS e nao pelo kit de skills: o kit e uma lista de TYPEPATHS, e a
-		// bancada `--portasteste` afirma que todos os 51 existem no catalogo de skills. Um id de item
-		// enfiado la deixaria essa afirmacao vermelha por um motivo que nao tem nada a ver com ela.
-		bool deveTer = Jandirus.Core.Ranks.DadivaDeCargo.ItensDe(CargoDe(pl.Conta))
-			.Contains(CatalogoDeItens.BrincosPotara, StringComparer.OrdinalIgnoreCase);
 		int tem = pl.Mochila.Quantos(CatalogoDeItens.BrincosPotara);
+		if (!CargoDaOsBrincos(pl))
+		{
+			// O JOGO DE ANTES, so com o defeito injetado: o par de quem nao e Kaioshin voltava pro cofre.
+			if (ParVoltaAoCofreDeTeste && tem > 0)
+			{
+				pl.Mochila.Tirar(CatalogoDeItens.BrincosPotara, tem);
+				MandarMochila(pl);
+				Avisar(pl, "os brincos Potara voltam pro cofre dos Kaioshin junto com o cargo.");
+			}
+			return;
+		}
 
-		if (deveTer && tem == 0)
-		{
-			pl.Mochila.Guardar(CatalogoDeItens.BrincosPotara);
-			MandarMochila(pl);
-			Avisar(pl, "um par de brincos Potara chega as suas maos com o cargo. Mire alguem e use "
-					 + "os brincos pra oferecer a fusao.");
-		}
-		else if (!deveTer && tem > 0)
-		{
-			pl.Mochila.Tirar(CatalogoDeItens.BrincosPotara, tem);
-			MandarMochila(pl);
-			Avisar(pl, "os brincos Potara voltam pro cofre dos Kaioshin junto com o cargo.");
-		}
+		long antes = pl.Ficha.ParDePotaraEm;
+		if (!ParDePotara.CargoEntrega(ref pl.Ficha.ParDePotaraEm, tem > 0, NowMs())) return;
+		// MOCHILA CHEIA NAO GASTA O DIA: o carimbo volta e o tique seguinte tenta de novo, como sempre tentou.
+		if (pl.Mochila.Guardar(CatalogoDeItens.BrincosPotara) > 0) { pl.Ficha.ParDePotaraEm = antes; return; }
+		MandarMochila(pl);
+		Avisar(pl, "um par de brincos Potara chega às suas mãos com o cargo. Mire alguém e use os brincos pra oferecer a fusão, "
+				 + "ou dê o par a alguém (\"Dar ao alvo marcado\"). O cargo entrega um par por dia.");
 	}
 
 	// =====================================================================

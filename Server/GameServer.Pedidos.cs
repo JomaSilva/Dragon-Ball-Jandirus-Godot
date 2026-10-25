@@ -83,6 +83,9 @@ public sealed partial class GameServer
 							  $"{OnlinePorConta(potencial.Quem)?.Name ?? "Alguém"} oferece despertar o seu potencial.",
 							  SegundosAte(potencial.Ate, agora)));                                           // Tecnicas.G11.cs:1083
 
+			// (2026-10-23) O CONVITE DO RITUAL MISTICO usa o MESMO cartao (e os mesmos botoes) do despertar -- RitualDoKaioshin.cs
+			PedidoDoRitual(pl, saida, agora);
+
 			if (_convitesDeAnciao.TryGetValue(pl.Conta, out (string Assento, string Nomeador) assento))
 				saida.Add(new(Fatos.OfertaDeAssento,
 							  $"{OnlinePorConta(assento.Nomeador)?.Name ?? "Alguém"} te oferece um assento de Ancião.", 0));   // CargoPortas.cs:413

@@ -680,23 +680,32 @@ public partial class GameServer
 		//
 		// No DM as duas metades sao o par `after_learn`/`before_forget` de `/datum/skill/kai/Mystic`
 		// (`Race Trees/kai.dm:24-29`): a skill DA o verb da forma e esquece-la TIRA o verb.
+		//
+		// (2026-10-23) A REGRA MUDOU, DO DONO: o kit do Kaioshin perdeu a skill e ganhou o Ritual Mistico do Velho Kaiohshin, e a
+		// forma (o Potential Unleashed) virou um direito gravado que so o ritual -- e o desejo do Namekuseijin -- da. As duas
+		// afirmacoes viraram o avesso: o cargo NAO da mais a forma, e o Kaioshin de antes da regra perde a que o cargo tinha dado.
+		// A regra inteira (o ritual, a migracao, a forma que nao some) e da `--ritualkaiteste`.
 		// ==========================================================================================================================
 		_tronos.Clear();
 		_tronos["kaioshin"] = dono.Conta;
 		TickDosCargos();
-		C("o Kaioshin recebe a skill do Mistico -- E A FORMA ABRE JUNTO",
-		  dono.Livro.Sabe("/datum/skill/kai/Mystic")
-		  && dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico),
-		  $"skill={dono.Livro.Sabe("/datum/skill/kai/Mystic")} "
-		  + $"forma={dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)}");
-
-		_tronos.Clear();
-		TickDosCargos();
-		C("...e largando o cargo a skill sai E a forma se fecha junto",
+		C("(2026-10-23, o dono) o Kaioshin NAO recebe mais a skill do Mistico -- e o cargo NAO abre a forma (o Potential Unleashed so vem pelo ritual)",
 		  !dono.Livro.Sabe("/datum/skill/kai/Mystic")
 		  && !dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico),
 		  $"skill={dono.Livro.Sabe("/datum/skill/kai/Mystic")} "
 		  + $"forma={dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)}");
+
+		// O KAIOSHIN DE ANTES DA REGRA: a skill que o cargo dava, e a forma que ela abria.
+		dono.Livro.Dar("/datum/skill/kai/Mystic");
+		dono.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdMistico);
+		TickDosCargos();
+		C("...e o Kaioshin de antes da regra perde as duas no tique seguinte: a skill sai do livro E a forma se fecha",
+		  !dono.Livro.Sabe("/datum/skill/kai/Mystic")
+		  && !dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico),
+		  $"skill={dono.Livro.Sabe("/datum/skill/kai/Mystic")} "
+		  + $"forma={dono.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)}");
+		_tronos.Clear();
+		TickDosCargos();
 	}
 
 	// =====================================================================

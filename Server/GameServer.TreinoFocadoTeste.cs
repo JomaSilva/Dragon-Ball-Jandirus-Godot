@@ -8,7 +8,8 @@ namespace Jandirus.Server;
 /// <summary>
 /// A BANCADA DO TREINO FOCADO (<c>--treinofocadoteste</c>). Roda no boot, sem cliente: a conta pura, o
 /// passe de producao do <c>Treinar</c> (o AFK em 1x e o focado a 2x, no treino e na meditacao), a letra
-/// que muda, o prazo que aperta, o vigor do erro, a faixa da respiracao e a pausa do embate.
+/// que muda, o prazo que NAO aperta (dono, 2026-10-24), o vigor do erro, a faixa da respiracao, o ping (2026-10-24: a letra e a
+/// respiracao descontam a rede) e a pausa do embate.
 ///
 ///     Godot --headless --path . --server --port 10150 --treinofocadoteste
 /// </summary>
@@ -58,7 +59,9 @@ public partial class GameServer
 			TreinoFocado.BonusNaoSobeDeTeste = false;
 			TreinoFocado.BonusNaoMultiplicaDeTeste = false;
 			TreinoFocado.AfkLevaOBonusDeTeste = false;
-			TreinoFocado.PrazoNaoApertaDeTeste = false;
+			TreinoFocado.PrazoApertaDeTeste = false;
+			TreinoFocado.LetraSemCompensarAtrasoDeTeste = false;
+			TreinoFocado.SemFolgaDaRedeDeTeste = false;
 			TreinoFocado.LetraFixaDeTeste = false;
 			TreinoFocado.ErroNaoCustaDeTeste = false;
 			TreinoFocado.RespiracaoSempreDentroDeTeste = false;
@@ -111,17 +114,18 @@ public partial class GameServer
 		}
 		finally { TreinoFocado.BonusNaoSobeDeTeste = false; }
 
-		AfirmarFoco("T6. o prazo aperta com a sequencia e para no piso",
+		// (2026-10-24) O PRAZO NAO APERTA MAIS -- o dono: *"e tira clicar no timing de treino no T acelerar quanto mais vc acerta"*.
+		AfirmarFoco("T6. O PRAZO NAO APERTA (dono, 2026-10-24): a letra tem o mesmo prazo do comeco, acerte quanto acertar",
 			TreinoFocado.PrazoDaLetra(0) == TreinoFocado.PrazoInicialMs
-			&& TreinoFocado.PrazoDaLetra(20) == TreinoFocado.PisoDoPrazoMs
-			&& TreinoFocado.PrazoDaLetra(20) < TreinoFocado.PrazoDaLetra(0));
+			&& TreinoFocado.PrazoDaLetra(20) == TreinoFocado.PrazoInicialMs,
+			$"0 acertos {TreinoFocado.PrazoDaLetra(0)} ms, 20 acertos {TreinoFocado.PrazoDaLetra(20)} ms");
 		try
 		{
-			TreinoFocado.PrazoNaoApertaDeTeste = true;
-			AfirmarFoco("T6b. (defeito injetado: o prazo nao aperta) a mesma regua REPROVA",
-				TreinoFocado.PrazoDaLetra(20) == TreinoFocado.PrazoInicialMs);
+			TreinoFocado.PrazoApertaDeTeste = true;
+			AfirmarFoco("T6b. (defeito injetado: o prazo aperta, o jogo de antes) a mesma regua REPROVA",
+				TreinoFocado.PrazoDaLetra(20) == TreinoFocado.PisoDoPrazoMs);
 		}
-		finally { TreinoFocado.PrazoNaoApertaDeTeste = false; }
+		finally { TreinoFocado.PrazoApertaDeTeste = false; }
 
 		AfirmarFoco("T5. o erro custa vigor", TreinoFocado.VigorDoErro(100) == 100 * TreinoFocado.FracaoDeVigorPorErro);
 		try
@@ -250,8 +254,8 @@ public partial class GameServer
 		}
 		AfirmarFoco("T7. a letra sorteada nao e sempre a mesma", vistas.Count >= 2, string.Join("", vistas));
 		long prazoCheio = Math.Max(0, _foco[pl.Id].Prazo - NowMs());
-		AfirmarFoco("T6c. depois dos acertos o prazo da proxima letra e mais curto",
-			prazoCheio < prazo0 - 100, $"comeco {prazo0} agora {prazoCheio}");
+		AfirmarFoco("T6c. depois de 24 acertos o prazo da proxima letra e o MESMO do comeco (pelo passe de producao)",
+			Math.Abs(prazoCheio - prazo0) < 100, $"comeco {prazo0} agora {prazoCheio}");
 
 		try
 		{
@@ -282,6 +286,59 @@ public partial class GameServer
 		TicarTreinoFocado();
 		AfirmarFoco("T6d. a letra que vence sem aperto e erro",
 			_foco[pl.Id].Bonus < bonusAntes && pl.Ficha.stamina < vigorAntes);
+
+		// ============================ (2026-10-24) T9. O PING NA LETRA ============================
+		// O dono: *"dps faça um ping compensation pra galera q tem ping alto pra meditaçao e treino no T q tem q tem timing"*. Com 200 ms de ida e volta o jogador ve a letra 100 ms depois de ela sair, e o aperto chega 100 ms depois de
+		// dado: o aperto no fim do prazo que ELE viu chega 200 ms depois do prazo do servidor. Antes, isso era erro -- e o tique ja tinha
+		// vencido a letra e sorteado outra, contra a qual o aperto a caminho era julgado.
+		// ========================================================================================
+		bool ApertoAtrasadoAcerta(long atrasoMs)
+		{
+			SessaoFocada r = _foco[pl.Id];
+			r.Bonus = TreinoFocado.PisoDoBonus;
+			r.Acertos = 0;
+			IdaEVoltaDeTeste = 200;
+			try
+			{
+				r.Prazo = NowMs() - atrasoMs;
+				TeclaDoTreinoFocado(pl, r.Letra);
+			}
+			finally { IdaEVoltaDeTeste = null; }
+			return _foco[pl.Id].Bonus > TreinoFocado.PisoDoBonus;
+		}
+		bool aos150 = ApertoAtrasadoAcerta(150);
+		bool aos300 = ApertoAtrasadoAcerta(300);
+		AfirmarFoco("T9. COM 200 ms DE IDA E VOLTA, A LETRA APERTADA NO PRAZO QUE O JOGADOR VIU ACERTA: chegando 150 ms depois do prazo do "
+					+ "servidor ela conta, e 300 ms depois (alem da ida e volta e da folga da rede) nao",
+			aos150 && !aos300, $"150 ms: {aos150}; 300 ms: {aos300}");
+		bool semCompensar;
+		try
+		{
+			TreinoFocado.LetraSemCompensarAtrasoDeTeste = true;
+			semCompensar = ApertoAtrasadoAcerta(150);
+		}
+		finally { TreinoFocado.LetraSemCompensarAtrasoDeTeste = false; }
+		AfirmarFoco("T9b. (defeito injetado: a letra julgada na hora crua da chegada, o jogo de antes) a mesma regua REPROVA", !semCompensar);
+
+		bool TiqueVenceAos(long atrasoMs)
+		{
+			SessaoFocada r = _foco[pl.Id];
+			char antes = r.Letra;
+			r.Bonus = TreinoFocado.Teto;
+			IdaEVoltaDeTeste = 200;
+			try
+			{
+				r.Prazo = NowMs() - atrasoMs;
+				TicarTreinoFocado();
+			}
+			finally { IdaEVoltaDeTeste = null; }
+			return _foco[pl.Id].Bonus < TreinoFocado.Teto;
+		}
+		bool venceuAos150 = TiqueVenceAos(150);
+		bool venceuAos300 = TiqueVenceAos(300);
+		AfirmarFoco("T9c. ...e o TIQUE NAO VENCE A LETRA enquanto o aperto pode estar a caminho: 150 ms depois do prazo ela continua, 300 ms "
+					+ "depois ela vence (erro)",
+			!venceuAos150 && venceuAos300, $"150 ms: {venceuAos150}; 300 ms: {venceuAos300}");
 
 		_foco.Remove(pl.Id);
 	}
@@ -362,6 +419,34 @@ public partial class GameServer
 		finally { TreinoFocado.RespiracaoSemCompensarAtrasoDeTeste = false; }
 		AfirmarFoco("T8f2. (defeito injetado: o julgamento usa a hora crua da chegada) a mesma regua REPROVA", !semCompensar,
 			$"bonus {_foco[pl.Id].Bonus:0.##}");
+
+		// (2026-10-24) T8g. A FOLGA DA REDE LONGA, PRO LADO DE LA: com 200 ms de ida e volta (folga de 50), o instante descontado caiu
+		// 30 ms ANTES de o marcador entrar na faixa -- a oscilacao da rede. Com a folga ele conta; sem ela, erra.
+		bool ComOscilacaoAcerta()
+		{
+			SessaoFocada r = _foco[pl.Id];
+			r.Bonus = TreinoFocado.PisoDoBonus;
+			r.TravaAte = 0;
+			IdaEVoltaDeTeste = 200;
+			try
+			{
+				// o marcador entra na faixa (0,41) aos 328 ms da volta: o instante visto (a chegada menos 200) cai aos 298
+				r.InicioResp = NowMs() - 200 - 298;
+				EspacoDaRespiracao(pl);
+			}
+			finally { IdaEVoltaDeTeste = null; }
+			return _foco[pl.Id].Bonus > TreinoFocado.PisoDoBonus;
+		}
+		AfirmarFoco("T8g. COM 200 ms DE IDA E VOLTA, A RESPIRACAO 30 ms ANTES DA FAIXA (a oscilacao da rede) ACERTA pela folga da rede longa",
+			ComOscilacaoAcerta(), $"bonus {_foco[pl.Id].Bonus:0.##}");
+		bool semFolga;
+		try
+		{
+			TreinoFocado.SemFolgaDaRedeDeTeste = true;
+			semFolga = ComOscilacaoAcerta();
+		}
+		finally { TreinoFocado.SemFolgaDaRedeDeTeste = false; }
+		AfirmarFoco("T8g2. (defeito injetado: sem a folga da rede longa) a mesma regua REPROVA", !semFolga, $"bonus {_foco[pl.Id].Bonus:0.##}");
 		_foco.Remove(pl.Id);
 	}
 

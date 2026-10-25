@@ -11,8 +11,12 @@ namespace Jandirus.Server;
 /// --, de armadura Saiyajin / do exercito do Freeza.
 ///   P.  PULAR OS DIAS -- `admin_saga_agora` poe no mundo, na hora, o Freeza que estava a caminho; a saga adormecida dispara e ele chega; um id
 ///       que nao existe e recusado. Contra: `AgoraEsperaAViradaDeTeste`.
-///   T1. O DESEMBARQUE -- com o Freeza em Namek, a tropa chega (seis de uma vez, um a cada 20 s ate doze), soldados da raca Alien, de armadura,
-///       hostis e nao-letais, e o planeta ouve. Contra: `TropaNaoVemDeTeste`.
+///   T1. O DESEMBARQUE -- com o Freeza em Namek, a tropa chega (os numeros sao os do `npcs.json`: desde 2026-10-24, vinte de uma vez e um a
+///       cada 5 s ate quarenta), soldados da raca Alien, de armadura, hostis e nao-letais, e o planeta ouve. Contra: `TropaNaoVemDeTeste`.
+///   T1b. QUARENTA PELO MAPA TODO (2026-10-24) -- o teto e de quarenta ou mais, e no teto ha soldado nos quatro quadrantes de Namek. Contra:
+///       a mutacao do `npcs.json` de volta ao teto de doze.
+///   T1c. AS SEIS FOLHAS (2026-10-24) -- todo soldado veste uma das seis folhas que o dono escolheu, sorteada quando ele nasce (quatro ou mais
+///       delas entre os do teto). Contra: `TropaComOCorpoDoPovoDeTeste`.
 ///   T2. A ESFERA DO CHAO -- pelo tique de producao o soldado vai ate ela e a pega, o planeta ouve, e ela fica na mao dele. Contra:
 ///       `SoldadoNaoSeguraEsferaDeTeste`.
 ///   T3. O POVO -- o soldado ataca o Namekuseijin NPC e deixa o vizinho Humano, mais perto; o Namekuseijin que apanhou nao vai pra cima do
@@ -135,6 +139,34 @@ public sealed partial class GameServer
 			int noTeto = SoldadosDoElo(elo.Id).Count;
 			AfirmarCh($"...e depois chega um a cada {tropa.SegundosEntre:0} s, ate o teto de {tropa.Quantos} -- e para ali",
 					  depoisDeUm == tropa.ChegamJuntos + 1 && noTeto == tropa.Quantos, $"depois de um intervalo {depoisDeUm}; no fim {noTeto}");
+
+			// ---------------------------------------------------------- T1b e T1c. os quarenta pelo mapa todo, cada um com a sua folha (2026-10-24)
+			List<ServerPlayer> noTetoDaTropa = SoldadosDoElo(elo.Id);
+			int quadrantes = noTetoDaTropa.Select(s => (s.Pos.X >= mapa.Width * t / 2 ? 1 : 0) + (s.Pos.Y >= mapa.Height * t / 2 ? 2 : 0))
+										  .Distinct().Count();
+			AfirmarCh($"T1b. **QUARENTA PELO MAPA TODO** (o pedido do dono: \"pelomenos uns 40 pelo mapa todo\"): o teto da tropa e {tropa.Quantos} -- "
+					  + "quarenta ou mais -- e, no teto, ha soldado nos QUATRO quadrantes de Namek (eles nascem nas vagas de habitante, que cobrem o "
+					  + "planeta)", tropa.Quantos >= 40 && noTetoDaTropa.Count == tropa.Quantos && quadrantes == 4,
+					  $"teto {tropa.Quantos}; de pe {noTetoDaTropa.Count}; quadrantes com soldado {quadrantes}");
+
+			string FolhaDe(ServerPlayer s) => _visual?.CorpoSprite(s.Visual, s.Race, s.Genero) ?? "";
+			static string Contagem(List<string> l) =>
+				string.Join(", ", l.GroupBy(System.IO.Path.GetFileNameWithoutExtension).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"));
+			List<string> folhas = noTetoDaTropa.Select(FolhaDe).ToList();
+			int distintas = folhas.Distinct().Count();
+			AfirmarCh("T1c. **CADA SOLDADO NASCE COM UMA DAS SEIS FOLHAS QUE O DONO ESCOLHEU** (Alien 9, Alien 4, Alien 8, Alien 1, Race Kui e "
+					  + "CavemanAlien), SORTEADA quando ele nasce: todo soldado da tropa veste uma delas, e os do teto nao sao todos iguais -- quatro "
+					  + "ou mais das seis aparecem",
+					  folhas.Count > 0 && folhas.TrueForAll(f => FolhasDaTropa.Folhas.Contains(f)) && distintas >= 4, Contagem(folhas));
+
+			// CONTRA-EXEMPLO: o soldado que nasce com um corpo da lista do povo Alien -- o jogo de antes.
+			TirarATropaDaBancada();
+			TropaComOCorpoDoPovoDeTeste = true;
+			try { for (int i = 0; i < 6; i++) NascerSoldado(elo, tropa, namek); }
+			finally { TropaComOCorpoDoPovoDeTeste = false; }
+			List<string> doPovo = SoldadosDoElo(elo.Id).Select(FolhaDe).ToList();
+			AfirmarCh("CONTRA-EXEMPLO (defeito injetado: o soldado nasce com um corpo da lista do povo Alien, o jogo de antes): nenhum veste uma das "
+					  + "seis -- a regua de T1c REPROVA", doPovo.Count > 0 && !doPovo.Exists(f => FolhasDaTropa.Folhas.Contains(f)), Contagem(doPovo));
 
 			TirarATropaDaBancada();
 			TropaNaoVemDeTeste = true;

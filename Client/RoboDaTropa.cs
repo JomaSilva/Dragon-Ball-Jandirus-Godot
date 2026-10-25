@@ -12,7 +12,9 @@ namespace Jandirus.Client;
 /// `--host` (o host e admin), nascendo Humano no campo da Terra:
 ///   R1. a aba Admin, o cartao Sagas, "Ver as sagas": cada saga com o "Chegar agora" ao lado do "Resetar" -- foto `tropa-1-admin-chegar-agora`;
 ///   R2. o "Chegar agora" da saga do Freeza de Namek: ele chega na hora, com a cena da chegada pra todos -- foto `tropa-2-freeza-chegou`;
-///   R3. Namek: a tropa desembarcou (seis de uma vez), e tres soldados vem pra perto -- de armadura -- foto `tropa-3-soldados-de-armadura`;
+///   R3. Namek: a tropa desembarcou (o desembarque do `npcs.json`: vinte de uma vez desde 2026-10-24), e tres soldados vem pra perto -- de
+///       armadura -- foto `tropa-3-soldados-de-armadura`;
+///   R3b. (2026-10-24) os soldados na tela vestem as seis folhas que o dono escolheu -- lidas no BONECO de cada um, no cliente;
 ///   R4. um Namekuseijin na frente de um soldado: o soldado o ataca -- foto `tropa-4-ataca-namekuseijin`; CONTRA-EXEMPLO
 ///       (`SoldadoComoHostilComumDeTeste`, o "AI nao ataca AI" do hostil comum): o Namekuseijin sai sem um arranhao (e o soldado vai pra cima
 ///       do fotografo, o unico jogador a vista) -- foto `tropa-4b-defeito-hostil-comum`;
@@ -104,6 +106,16 @@ public partial class RoboDaTropa : Node
 					 "R3. EM NAMEK, A TROPA DESEMBARCOU, e tres soldados vem pra perto -- todos de armadura do exercito "
 					 + $"[em Namek {foi}; de pe {dePe}; de armadura {deArmadura}; vieram {vieram}]");
 
+			// ---------------------------------------------------------- R3b. as seis folhas, vistas no cliente (2026-10-24)
+			// O dono: *"os aliens soldados dele deveriam usar esses sprites base [...] sendo aleatorio o sprite escolhido ao spawnar cada npcs
+			// soldado"*. A regua le a folha que o BONECO de cada soldado na tela veste: o indice da faixa reservada atravessou o fio, e o
+			// `VisualCatalog.CorpoSprite` do cliente o devolveu como folha.
+			string[] seis = Jandirus.Core.Npc.FolhasDaTropa.Folhas.Select(f => System.IO.Path.GetFileNameWithoutExtension(f)).ToArray();
+			List<string> naTela = srv.PalcoT_IdsDaTropa().Select(Folha).Where(f => f.Length > 0).ToList();
+			Conferir(naTela.Count >= 3 && naTela.TrueForAll(f => seis.Contains(f)),
+					 "R3b. OS SOLDADOS NA TELA VESTEM AS FOLHAS QUE O DONO ESCOLHEU (Alien 9, Alien 4, Alien 8, Alien 1, Race Kui e CavemanAlien) "
+					 + $"[{naTela.Count} na tela: {string.Join(", ", naTela.GroupBy(f => f).OrderBy(g => g.Key).Select(g => $"{g.Key} x{g.Count()}"))}]");
+
 			// ---------------------------------------------------------- R4. o soldado ataca o Namekuseijin
 			(int nk, int soldado) = srv.PalcoT_NamekuseijinESoldado(eu, +1);
 			// A REGUA E A ESCOLHA DA PRESA, e o golpe que a confirma: a vida mede tambem o raspao de uma briga ao lado (ver o contra-exemplo).
@@ -194,6 +206,12 @@ public partial class RoboDaTropa : Node
 
 	private static bool NaTela(GameClient cli, ZoneKey z) =>
 		cli.Zone.Equals(z) && World.Instancia?.ZonaMontadaDeTeste == z.Hash && TelaDeCarregamento.Instancia?.NoAr != true;
+
+	private static CharacterVisual? Boneco(int id) =>
+		(World.Instancia?.FindChild($"Remoto{id}", true, false) as RemotePlayer)?.GetNodeOrNull<CharacterVisual>("Visual");
+
+	/// <summary>O nome da folha do corpo que o boneco veste agora (sem pasta nem extensao), ou "" sem boneco.</summary>
+	private static string Folha(int id) => Boneco(id)?.FolhaDoCorpoDeTeste is { Length: > 0 } f ? System.IO.Path.GetFileNameWithoutExtension(f) : "";
 
 	private static IEnumerable<Node> Todos(Node raiz)
 	{

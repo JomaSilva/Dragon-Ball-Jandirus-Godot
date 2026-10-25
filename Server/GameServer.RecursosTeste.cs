@@ -1408,7 +1408,7 @@ public partial class GameServer
 	/// <summary>
 	/// O ENMA CONTINUA SO EM ZENI -- decisao do dono (2026-10-10): *"o enma mantenha so zeni"*. Esta aqui pra
 	/// ninguem "consertar" depois: o menu dele nao tem botao de recurso, e quem manda a palavra da moeda por
-	/// fora (um cliente mexido) nao e atendido -- o milhao em ZENI e a unica coisa que ele aceita.
+	/// fora (um cliente mexido) nao e atendido -- o preco em ZENI e a unica coisa que ele aceita.
 	/// </summary>
 	private void RcDoEnmaSoEmZeni(Func<ServerPlayer, string, int, Obra> noChao, Action tirarDoChao)
 	{
@@ -1424,21 +1424,21 @@ public partial class GameServer
 		noChao(morto, Alem.TipoDoEnma, 7);   // (palco) a mesa dele, aos pes do morto -- o verb so confere o alcance
 		try
 		{
-			double milhao = Alem.PrecoDoReviveDoEnma;
+			double preco = Alem.PrecoDoReviveDoEnma;
 			morto.Ficha.dead = true;
 			morto.Ficha.Zeni = 0;
-			morto.Ficha.Recursos = 100 * milhao;   // cem vezes o preco, em recursos
+			morto.Ficha.Recursos = 100 * preco;   // cem vezes o preco, em recursos
 
 			List<string> falas = Ouvir(() => Verbo(morto, "enma_reviver", Recurso.PalavraDeRecursos));
-			AfirmarRc("...e um morto com CEM vezes o preco em recursos e zero de zeni, pedindo \"em recursos\", NAO volta: o Enma pede o milhao em zeni e nao toca nos recursos",
-					  morto.Ficha.dead && morto.Ficha.Recursos == 100 * milhao && morto.Ficha.Zeni == 0
+			AfirmarRc("...e um morto com CEM vezes o preco em recursos e zero de zeni, pedindo \"em recursos\", NAO volta: o Enma pede o preco em zeni e nao toca nos recursos",
+					  morto.Ficha.dead && morto.Ficha.Recursos == 100 * preco && morto.Ficha.Zeni == 0
 					  && Disse(falas, "não tem como pagar") && Disse(falas, "zeni") && !Disse(falas, Recurso.PalavraDeRecursos), Ultimos(falas));
 
-			// A CONTRAPROVA: a recusa era da MOEDA. O mesmo morto, o mesmo pedido, com o milhao em zeni.
-			morto.Ficha.Zeni = milhao;
+			// A CONTRAPROVA: a recusa era da MOEDA. O mesmo morto, o mesmo pedido, com o preco em zeni.
+			morto.Ficha.Zeni = preco;
 			falas = Ouvir(() => Verbo(morto, "enma_reviver", Recurso.PalavraDeRecursos));
-			AfirmarRc("(contraprova) o MESMO morto, com o milhao em ZENI, volta -- e o que sai e o zeni; os recursos seguem intactos",
-					  !morto.Ficha.dead && morto.Ficha.Zeni == 0 && morto.Ficha.Recursos == 100 * milhao, Ultimos(falas));
+			AfirmarRc("(contraprova) o MESMO morto, com o preco em ZENI, volta -- e o que sai e o zeni; os recursos seguem intactos",
+					  !morto.Ficha.dead && morto.Ficha.Zeni == 0 && morto.Ficha.Recursos == 100 * preco, Ultimos(falas));
 		}
 		finally { tirarDoChao(); }
 	}

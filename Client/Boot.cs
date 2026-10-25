@@ -375,6 +375,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmutante") >= 0)
 			AddChild(new RoboDoMutante { Name = "RoboDoMutante" });
 
+		// `--diagtelacinza` (2026-10-23): a RECUSA DA CRIACAO -- o nome de um morador do mundo, o erro do servidor, a criacao do filho
+		// desistida -- reabre a criacao com o motivo, e o nome trocado entra no mundo; `--emingles`, o mesmo em ingles. Como a
+		// `--diagmutante`, SEM o `return`: passa pelas telas de producao deste `Boot`. Ver RoboDaTelaCinza.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtelacinza") >= 0)
+			AddChild(new RoboDaTelaCinza { Name = "RoboDaTelaCinza" });
+
 		// AS OPCOES ANTES DA PRIMEIRA TELA. A ordem importa em duas pontas: os botoes do lobby
 		// procuram a `PauseMenu.Instancia` na hora de montar, e a `PauseMenu` pergunta pela
 		// `TelaDeTeclas.Instancia` pra decidir se o botao de teclas fica vivo.
@@ -578,6 +584,11 @@ public partial class Boot : Node2D
 				// =========================================================================================
 				_carga?.Soltar();
 				_status.Text = $"recusado: {motivo}";
+				// (2026-10-23) ...E A RECUSA DA CRIACAO REABRE A CRIACAO, com o motivo: o rotulo acima e o do login, escondido desde a lista
+				// de vagas -- era a "tela cinza". Ver `Boot.RecusaDaCriacao.cs`.
+				ReabrirACriacaoRecusada(motivo);
+				// (2026-10-24) ...e a do "Jogar" fica escrita na selecao, que e a tela que sobra embaixo da cobertura.
+				MostrarARecusaDoJogar(motivo);
 			};
 
 			// A QUEDA DE CONEXAO NAO TEM ASSINANTE AQUI: o `_Process` do `Boot` pergunta ao cliente, a cada
@@ -950,7 +961,9 @@ public partial class Boot : Node2D
 		// (2026-10-17) O BEBE A CAMINHO veio junto com a lista: e o "Criar personagem" que pergunta por ele.
 		_selecao.Bebe = GameClient.Instance?.BebeACaminho;
 		_selecao.Mostrar(slots);
-		_selecao.Visible = true;
+		// (2026-10-23) ...MAS NAO POR CIMA DA CRIACAO ABERTA: a lista que vem junto de uma recusa da criacao (o bebe que ja nasceu, o
+		// erro do servidor) se atualiza por baixo dela. Ver `Boot.RecusaDaCriacao.cs`.
+		_selecao.Visible = !CriacaoNaFrente();
 
 		// O PERSONAGEM QUE REENCARNOU NAO PASSA PELA SELECAO: a criacao abre direto na vaga que ele deixou, com a frase do
 		// Enma em cima -- o `Reincarnate()` do DM devolve o jogador ao painel de criacao (`Reincarnation.dm:43-49`).
@@ -1118,6 +1131,9 @@ public partial class Boot : Node2D
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON, re-escolhidos em jogo -- o `Icer_Form_Settings` do DM, aberto pelo verb da
 		// aba Other. Vive montada e invisivel. Ver `TelaDeFormasDoFrost`.
 		AddChild(new TelaDeFormasDoFrost { Name = "FormasDoFrost" });
+		// (2026-10-23) A TELA DO KAI KAI: os planetas conhecidos, aberta pela lista que o servidor manda ao verbo sem destino. Vive montada
+		// e invisivel. Ver `TelaDoKaiKai`.
+		AddChild(new TelaDoKaiKai { Name = "KaiKai" });
 		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
 		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
@@ -1222,6 +1238,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagminerar") >= 0)
 			AddChild(new RoboDeMinerar { Name = "RoboDeMinerar" });
 
+		// --diagvigortreino: (2026-10-24) O VIGOR DO TREINO NA TELA -- o EXAUSTO e o SEM COMIDA no painel, a tecla T exausta recusada
+		// dizendo quanto falta, o aviso do estomago vazio a cada tentativa e a % efetivo sem vigor, com foto. Ver RoboDoVigorDoTreino.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvigortreino") >= 0)
+			AddChild(new RoboDoVigorDoTreino { Name = "RoboDoVigorDoTreino" });
+
 		// --diagatividade: TREINAR E MEDITAR CONFERIDOS PELO SERVIDOR, pela ponta do cliente -- decolar e andar
 		// derrubam, pedir no ar e recusado, e o corpo local larga a pose. Ver RoboDeAtividade.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagatividade") >= 0)
@@ -1239,6 +1260,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaglimite") >= 0)
 			AddChild(new RoboDoLimite { Name = "RoboDoLimite" });
 
+		// --diagformasteclas: (2026-10-23) O C DO KI DIVINO E A TECLA QUE VAI DIRETO, na tela -- o botao das formas mortais/divinas na
+		// aba Other (as duas posicoes), o C duplo indo pro Super Saiyajin com o ki divino desperto, a tecla do Blue saindo da base e a do
+		// SSJ3 com 50% de maestria saindo da base, com foto de cada passo (so com `--host`, com janela). Ver RoboDasTeclasDeForma.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagformasteclas") >= 0)
+			AddChild(new RoboDasTeclasDeForma { Name = "RoboDasTeclasDeForma" });
+
 		// --diagraiva: A RAIVA POR AMIGO NA TELA E NO SOM -- a cinematica da furia extrema, o tema dela, o Ki do
 		// dono saltando pro teto, e a transformacao cortando o tema (so com `--host`). Ver RoboDaRaiva.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraiva") >= 0)
@@ -1247,6 +1274,11 @@ public partial class Boot : Node2D
 		// --diagirritado: (2026-10-21) o HUD "IRRITADO" e a forma que ele estreia (so com `--host`, janela). Ver RoboDoIrritado.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagirritado") >= 0)
 			AddChild(new RoboDoIrritado { Name = "RoboDoIrritado" });
+
+		// --diaghakaibills: (2026-10-23) A ESFERA DO HAKAI EM JOGO -- o Bills soltando a Destroyer Sphere e a Fury com a arte da imagem do
+		// dono, e o jogador com o titulo soltando a mesma, em foto, com os dois defeitos injetados (so com `--host`). Ver RoboDoHakaiDoBills.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaghakaibills") >= 0)
+			AddChild(new RoboDoHakaiDoBills { Name = "RoboDoHakaiDoBills" });
 
 		// --diagtorneiocell: (2026-10-19) O TORNEIO DO CELL NA TELA -- o Cell esperando na arena, o x1 e o Kamehameha que explode a
 		// Terra (so com `--host`). Ver RoboDoTorneioDoCell.
@@ -1325,6 +1357,12 @@ public partial class Boot : Node2D
 		// Anda junto da `--poderteste` do servidor. Ver RoboDoPoder.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpoder") >= 0)
 			AddChild(new RoboDoPoder { Name = "RoboDoPoder" });
+
+		// --diagascensao: (2026-10-23) A ASCENSAO NA ABA FORMS -- a linha "Ascensão" do cartao Agora pelo BP base de uma raca sem
+		// transformacao (sem linha abaixo de 1 milhao, x2 na porta do SSJ1, x16 na do SSJ3). Modo host; com janela, fotografa. Anda junto
+		// da `--ascensaoteste` do servidor. Ver RoboDaAscensao. (Aqui no meio da lista, e nao no fim.)
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagascensao") >= 0)
+			AddChild(new RoboDaAscensao { Name = "RoboDaAscensao" });
 
 		// --diagsalas: AS SALAS DO TEMPO DE PLANETA NA TELA -- a porta na montanha, a pista da aba World, as regras
 		// com a dilatacao, o interior, a expulsao e a recarga. Modo host; com janela, fotografa. Ver RoboDasSalas.
@@ -1445,6 +1483,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaginferno") >= 0)
 			AddChild(new RoboDoInferno { Name = "RoboDoInferno" });
 
+		// --diaggravmeta: (2026-10-23) O PESO, A GRAVIDADE E O GANHO NA TELA -- o peso acima de 8x o limite do corpo nas abas Stats e Equip e
+		// a recusa do treino no chat, a aclimatacao de no maximo +25% na aba Forms e o morto esmagado no Inferno. Modo host + JANELA. Ver
+		// RoboDaGravMeta. (Aqui no meio, e nao no fim da lista: o fim e de todo mundo.)
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggravmeta") >= 0)
+			AddChild(new RoboDaGravMeta { Name = "RoboDaGravMeta" });
+
 		// --diagmaquinas: O REGENERADOR E A MAQUINA DE GRAVIDADE NA TELA -- o tanque ligado pelo menu da tecla E
 		// (a campanula, a vida subindo), a gravidade ajustada no teclado numerico, e a tinta do campo com a forma
 		// da sala. Modo host + `--campoteste` + JANELA. Ver RoboDasMaquinas.
@@ -1460,6 +1504,11 @@ public partial class Boot : Node2D
 		// (2026-10-21). Modo host + JANELA. Ver RoboDaTravaDeGravidade.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggravtrava") >= 0)
 			AddChild(new RoboDaTravaDeGravidade { Name = "RoboDaTravaDeGravidade" });
+
+		// --diagrastejo: (2026-10-23) QUEM CAI OU FICA PRESO PELA GRAVIDADE SE ARRASTA A 1/4 -- o preso de pe anda, o desmaiado sai do
+		// campo deitado, sem correcao do servidor. Modo host (+ JANELA pras fotos). Ver RoboDoRastejo.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagrastejo") >= 0)
+			AddChild(new RoboDoRastejo { Name = "RoboDoRastejo" });
 
 		// --diagdrill: A DRILL NA TELA -- o menu da tecla E com o painel dela (nivel, taxa, estoque andando, a
 		// reserva do planeta e o preco da proxima melhoria), coletar e melhorar com as duas moedas. Modo host +
@@ -1672,6 +1721,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbancada") >= 0)
 			AddChild(new RoboDeBancada { Name = "RoboDeBancada" });
 
+		// --diagpotara (2026-10-23): o PAR DE BRINCOS POTARA que o Kaioshin da -- a grade da Materialize sem os brincos de roupa, o par na
+		// mochila com o "Dar" e o "Jogar", o par que fica, a fusao que o gasta. Com fotos. Ver RoboDaPotara.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpotara") >= 0)
+			AddChild(new RoboDaPotara { Name = "RoboDaPotara" });
+
 		// --diagbalao: bancada do BALAO DE FALA sobre a cabeca. Confere o portao de canal (OOC nao
 		// e voz de personagem), a busca do corpo pelo NOME que vem no pacote, a quebra de linha, a
 		// substituicao com piso de leitura, e as duas coisas que so aparecem com o corpo no ar ou
@@ -1751,6 +1805,10 @@ public partial class Boot : Node2D
 		// --diagesferae (2026-10-18): a ESFERA DO DRAGAO pela tecla E -- a dica de pegar, o contra-exemplo e o E de verdade. Ver RoboDaEsferaNaTeclaE.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagesferae") >= 0)
 			AddChild(new RoboDaEsferaNaTeclaE { Name = "RoboDaEsferaNaTeclaE" });
+		// --diagkaikai (2026-10-23): a TELA DO KAI KAI -- aberta pelo botao do verbo, o clique, a saida e a chegada com o clarao (o proprio
+		// corpo e o de quem esta perto) e o mundo gerado do livro; fotos e contra-exemplos. Ver RoboDoKaiKai.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagkaikai") >= 0)
+			AddChild(new RoboDoKaiKai { Name = "RoboDoKaiKai" });
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagestrelanegra") >= 0)
 			AddChild(new RoboDaEstrelaNegra { Name = "RoboDaEstrelaNegra" });
 		// --diagestatua (2026-10-22): o menu de criacao do set de esferas, com fotos e o contra-exemplo da forca dividida. Ver RoboDaEstatua.
@@ -1759,6 +1817,9 @@ public partial class Boot : Node2D
 		// --diagsentidos (2026-10-18): o SCOUTER com teto e sem ki divino, e os CINCO NIVEIS do Sense -- fotos e contra-exemplos. Ver RoboDosSentidos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsentidos") >= 0)
 			AddChild(new RoboDosSentidos { Name = "RoboDosSentidos" });
+		// --diagitmaestria (2026-10-23): a MAESTRIA do Instant Transmission -- o cartao da aba Sense, a viagem de 3 s, os 0,2 s no meio da luta. Ver RoboDaMaestriaDaTransmissao.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagitmaestria") >= 0)
+			AddChild(new RoboDaMaestriaDaTransmissao { Name = "RoboDaMaestriaDaTransmissao" });
 		// --diagsenserastro (2026-10-19): a BUSCA e o RASTRO do Sense -- o filtro sem acento, o nome que segue, o selo e a seta do HUD, a pessoa e nao
 		// a linha, o rastro que se perde e volta; fotos e contra-exemplos. Ver RoboDoRastro.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsenserastro") >= 0)
@@ -1802,6 +1863,20 @@ public partial class Boot : Node2D
 		// contra-exemplo do verde de antes. Ver RoboDaPupilaDoGrade3.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpupilagrade3") >= 0)
 			AddChild(new RoboDaPupilaDoGrade3 { Name = "RoboDaPupilaDoGrade3" });
+		// --diagsupermajin (2026-10-23): o SUPER MAJIN do Majin que nao e Corrupted na tela -- o corpo de sempre, a aura rosa, as faiscas do
+		// Electric_Majin e a aba Forms com a barra parada no teto do poder (30%, 60%, 100%). Hospedando, com janela. Ver RoboDoSuperMajin.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsupermajin") >= 0)
+			AddChild(new RoboDoSuperMajin { Name = "RoboDoSuperMajin" });
+
+		// --diagpreludio: o FUNDO DA ESTREIA DO SSJ2 na tela de quem vira (dono, 2026-10-24) -- o jogo some atras do corpo, a linha vermelha se
+		// abre em fogo, ate 4 s e com a musica do SSJ2 desde o comeco, e depois a cena de sempre. Ver `RoboDoPreludioDoSsj2`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpreludio") >= 0)
+			AddChild(new RoboDoPreludioDoSsj2 { Name = "RoboDoPreludioDoSsj2" });
+
+		// --diagestreiadivina: as ESTREIAS DIVINAS na tela (dono, 2026-10-25) -- a coluna de luz e a sombra no branco do UI -Sign-, a
+		// galaxia que comprime no Perfected e o fogo roxo do Ultra Ego, com fotos. Ver `RoboDaEstreiaDivina`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagestreiadivina") >= 0)
+			AddChild(new RoboDaEstreiaDivina { Name = "RoboDaEstreiaDivina" });
 
 		// --diagsombra: a SOMBRA VISTA NA TELA -- o portao com muro (a foto do dono de 2026-09-07) e a
 		// camera do espectador do torneio, com foto e medida (furos, dobra do leque, lutadores a vista).
@@ -1838,6 +1913,10 @@ public partial class Boot : Node2D
 		// Dismiss Apprentice e o fim do vinculo; fotos. Ver RoboDoAprendiz.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagaprendiz") >= 0)
 			AddChild(new RoboDoAprendiz { Name = "RoboDoAprendiz" });
+		// --diagritualkai (2026-10-23): o RITUAL MISTICO DO VELHO KAIOHSHIN na tela -- o botao do Kaioshin, o cartao do convite, os dois
+		// parados com o progresso, a forma Potential Unleashed na aba Forms; em portugues e em ingles, com fotos. Ver RoboDoRitualDoKaioshin.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagritualkai") >= 0)
+			AddChild(new RoboDoRitualDoKaioshin { Name = "RoboDoRitualDoKaioshin" });
 
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe
@@ -2286,6 +2365,11 @@ public partial class Boot : Node2D
 		// senao `TemAureola => true` passaria verde. Ver `RoboDoVelorio` e `testar-velorio.bat`.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--velorio") >= 0)
 			AddChild(new RoboDoVelorio { Name = "RoboDoVelorio" });
+
+		// --diagreviver (2026-10-23): a VOLTA PAGA NA TELA -- o menu da mesa do Enma com os 200 mil, a volta pelo botao, o chat sem o
+		// corpo fragil e o multiplicador inteiro na aba Forms; fotos e o contra-exemplo da regra de antes. Ver RoboDoReviver.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagreviver") >= 0)
+			AddChild(new RoboDoReviver { Name = "RoboDoReviver" });
 
 		// --diagsaida: a bancada do FECHAR O JOGO pelo lobby -- *"fechar o jogo no menu/lobby o jogo
 		// crasha ao inves de fechar"* (o dono, 2026-09-04). O juiz e de FORA (o codigo de saida do

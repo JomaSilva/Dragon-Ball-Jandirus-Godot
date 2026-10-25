@@ -411,6 +411,10 @@ public partial class GameServer
 		}
 
 		string texto = prontas.Count > 0 ? string.Join(", ", prontas) : "";
+		// (2026-10-23) O RITUAL DO KAIOSHIN NAO E SKILL DE LIVRO (e do trono, como a travessia do juiz), e e o que o kit ganhou no lugar
+		// do Mistico (o dono): entra na linha pelo nome, na frente -- e quem escolhe o cargo descobre o ritual aqui.
+		if (string.Equals(chave, RitualDoKaioshin.Cargo, StringComparison.OrdinalIgnoreCase))
+			texto = RitualDoKaioshin.Nome + (texto.Length > 0 ? ", " + texto : "");
 		if (mudas.Count > 0)
 			texto += (texto.Length > 0 ? " | " : "") + "ainda mudo neste servidor: " + string.Join(", ", mudas);
 		return texto;

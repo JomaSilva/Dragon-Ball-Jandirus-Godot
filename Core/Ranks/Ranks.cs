@@ -484,7 +484,9 @@ public static class Cargos
 		new()
 		{
 			Chave = "kaioshin", Global = "Supreme_Kai", Nome = "Kaioshin", Porta = PortaDoCargo.Prova,
-			Desc = "O topo da escada divina. Concede o Místico sem prazo e toma aprendizes.",
+			// (2026-10-23) O CARGO NAO DA MAIS A FORMA (o dono): o Kaioshin faz o Ritual Mistico do Velho Kaiohshin, um por dia, e e o
+			// ritual que abre o Potential Unleashed em quem o recebe. Ver `RitualDoKaioshin`.
+			Desc = "O topo da escada divina. Faz o Ritual Místico do Velho Kaiohshin (o Potential Unleashed, um por dia) e toma aprendizes.",
 			// (2026-10-16) CINCO VAGAS -- dono: *"o cargo de supremo kaioh pode ter ate 5 players no cargo"*. Ver `RankDef.Vagas`.
 			Vagas = 5,
 			TemDeveres = true, Sabedoria = true, DoOutroMundo = true,
@@ -501,7 +503,7 @@ public static class Cargos
 			// A PENDÊNCIA CADUCOU junto com a do Grand Kai -- ver lá.
 			Concede =
 			[
-				"estilo dos Deuses", "Místico", "Guardar Corpo", "Ver Mortos", "Reencarnar", "Reviver",
+				"estilo dos Deuses", "Ritual Místico do Velho Kaiohshin", "Guardar Corpo", "Ver Mortos", "Reencarnar", "Reviver",
 				"Observar", "Permissão do Loft dos Kaios", "Ritual do Poder", "Cura", "Nomear Aprendiz de Kaioshin",
 			],
 		},

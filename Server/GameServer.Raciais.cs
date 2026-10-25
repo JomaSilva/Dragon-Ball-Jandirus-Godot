@@ -22,16 +22,26 @@ public partial class GameServer
 	/// desligado, que e o padrao entre jogadores) NINGUEM morre, entao o Zenkai simplesmente
 	/// nunca aconteceria em treino amistoso -- justamente onde a mecanica mais faz sentido.
 	///
-	/// A recarga de uma hora e que impede o dobro: levar um nocaute e depois o golpe fatal na
-	/// mesma sequencia concede UMA vez.
+	/// A recarga e que impede o dobro: levar um nocaute e depois o golpe fatal na mesma sequencia
+	/// concede UMA vez. (Desde 2026-10-24 ela e proporcional ao multiplicador -- 2,5 h por "x" --, e o
+	/// teto mingua ate o requisito pessoal do SSJ3: ver `Fighter.GainZenkai`.)
 	/// </summary>
+	/// <summary>
+	/// (2026-10-24) O BP BASE QUE O SSJ3 PEDE A ESTE CORPO -- a porta do limiar pessoal (`LimiaresPessoais.Porta`, a mesma que o
+	/// portao da forma cobra), ou a de fabrica (`Catalogo.PortaSsj3`) pro corpo sem limiar sorteado, o de NPC.
+	/// </summary>
+	private static double RequisitoDoSsj3De(ServerPlayer pl) =>
+		Jandirus.Core.Forms.Catalogo.Def("ssj3") is { } ssj3 && pl.Forma?.Limiares is { } lim
+			? lim.Porta(ssj3) : Jandirus.Core.Forms.Catalogo.PortaSsj3;
+
 	private void ZenkaiPorDerrota(ServerPlayer vitima, ServerPlayer vencedor)
 	{
 		if (vitima == vencedor || vitima.Combate == null) return;
 
+		// (2026-10-24) O REQUISITO PESSOAL DO SSJ3 vai junto: e ate ele que o teto do Zenkai mingua (`Fighter.FatorDoTetoDoZenkai`).
 		Fighter.ZenkaiResult z = vitima.Ficha.GainZenkai(
 			Math.Max(vencedor.Ficha.expressedBP, vencedor.Ficha.BP), NowMs(),
-			vitima.Combate.Corpo.MuitoFerido());
+			vitima.Combate.Corpo.MuitoFerido(), RequisitoDoSsj3De(vitima));
 
 		if (z != Fighter.ZenkaiResult.Concedido)
 		{
@@ -241,9 +251,12 @@ public partial class GameServer
 			//
 			// E O MAJIN ENTRA PELO MESMO VERB, bifurcado pela raca como no DM (`Absorption.dm:83`): o bio
 			// CONSOME, o Majin SELA -- a vitima vai viva pro interior dele. Ver `GameServer.AbsorcaoMajin.cs`.
+			// (2026-10-24) O BIO-ANDROIDE BEBE SEMPRE por aqui, com o sangue que tiver: ate a v0.4.4 o de sangue Majin so selava e nao
+			// evoluia. O selo dele e o botao proprio logo abaixo -- ver `GameServer.BioMajin.cs`.
 			case "absorver":
-				if (CorpoDeMajin(pl)) AbsorverMajin(pl); else AbsorverBio(pl);
+				if (SelaPeloAbsorver(pl)) AbsorverMajin(pl); else AbsorverBio(pl);
 				break;
+			case "absorver_majin": AbsorverComoMajin(pl); break;
 			// O `Expel` do mesmo objeto (`Absorption.dm:104-107`): todos de uma vez. Um so chega la embaixo,
 			// como `expelir:<numero>`.
 			case "expelir": ExpelirDoMajin(pl, ""); break;
@@ -301,6 +314,8 @@ public partial class GameServer
 				if (UsarVerboDoTuffle(pl, id)) break;
 				// (2026-10-19) A TRAVESSIA DO KING YEMMA: e do trono, e nao do livro. Ver `GameServer.TravessiaDoJuiz.cs`.
 				if (UsarVerboDoJuiz(pl, id)) break;
+				// (2026-10-23) O RITUAL MISTICO DO VELHO KAIOHSHIN: tambem e do trono. Ver `GameServer.RitualDoKaioshin.cs`.
+				if (UsarVerboDoRitual(pl, id)) break;
 				// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca, e nao do livro. Ver `GameServer.Passivas.cs`.
 				if (UsarAtivaRacial(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");

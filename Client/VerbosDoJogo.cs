@@ -158,6 +158,14 @@ public static class VerbosDoJogo
 			+ "Grade 2 e pelo Grade 3 antes do SSJ2; desligados, vai direto pro SSJ2.",
 			() => C?.SendVerbo("graus")) { Requisito = Do("graus") });
 
+		// (2026-10-23) A FAMILIA DO C DUPLO -- o irmao dos graus, pelo mesmo desenho (o servidor guarda e responde no chat a cada clique; o
+		// botao nao sabe o estado). O dono: *"um botao q troca entre o c duas vezes virar as formas mortais e o c duas vezes virar forma
+		// divina"*. Ver `EstadoDeForma.CPelasDivinas` e `GameServer.VerboFamiliaDoC`.
+		Verbos.Registrar(new Verbo("Toggle C: Mortal/Divine Forms", Verbos.Outros,
+			"Troca o C duplo entre as formas mortais e as divinas: ele sobe primeiro pela família escolhida, e a outra só "
+			+ "entra quando a escolhida não tiver forma acima de você.",
+			() => C?.SendVerbo("divinas_c")) { Requisito = Do("divinas_c") });
+
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM (`icer.dm:77-83`, aba Other), que todo Frost
 		// Demon recebe (`fd_login_check`). O botao abre a tela; quem manda o verb `formas_frost` e o Salvar dela. Ver `TelaDeFormasDoFrost`.
 		Verbos.Registrar(new Verbo("Frost Demon Form Settings", Verbos.Outros,
@@ -283,7 +291,7 @@ public static class VerbosDoJogo
 		// `alert("Give power? It'll drain 10% of your Ki.")` em quem MEDITA (`SpiritBomb.dm:81`): os dois
 		// botoes sao de quem recebe o pedido, pelo mesmo desenho da oferta de juventude acima.
 		Verbos.Registrar(new Verbo("Give Power to Spirit Bomb", Verbos.Outros,
-			"Doa um decimo do seu Ki -- e o seu poder inteiro -- a Genkidama que alguem esta formando neste mundo.",
+			"Doa um decimo do seu Ki -- e o seu poder inteiro -- a Genkidama que alguem esta formando e que pediu a sua energia.",
 			() => C?.SendVerbo("genkidama_doar")) { Requisito = Do("genkidama_doar") });
 		Verbos.Registrar(new Verbo("Refuse Spirit Bomb", Verbos.Outros,
 			"Guarda a sua energia.",

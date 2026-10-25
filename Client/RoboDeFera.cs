@@ -45,7 +45,9 @@ namespace Jandirus.Client;
 ///   4. `ssg`     -- o CONTROLE do pedido 1, e ele fecha de proposito. O SSG e o dono LEGITIMO da
 ///                   `FieryGod` (`AuraObject.dm:174-176`), e uma rodada que so fotografasse o que
 ///                   mudou nao distingue "tirei os dois da folha do God" de "apaguei a folha do God".
-///                   Se a foto 4 deixar de ser pessego/laranja, quem mexeu quebrou o SSG.
+///                   Se a foto 4 deixar de ser o fogo do SSG, quem mexeu quebrou o SSG. (2026-10-24/25: o fogo
+///                   ficou vermelho por um dia e VOLTOU ao pessego/laranja -- *"a aura anterior tava melhor do ssj
+///                   god, o cabelo atual ta top"*. O cabelo vermelho ficou.)
 ///   5. `rose_ssg`-- o SEGUNDO controle, e ele nao e redundante: o `Catalogo.Folha` responde a linha
 ///                   `GodKiRose` por um RAMO PROPRIO (com corte de `Ordem`), e nao pelo ramo do SSG.
 ///                   Uma edicao que acertasse um e derrubasse o outro passaria inteira por uma
@@ -210,7 +212,7 @@ public partial class RoboDeFera : Node
 	private static void OQueOOlhoVaiJulgar()
 	{
 		Nota("  --     1. CHAMA: as fotos 2 (mistico) e 3 (beast) NAO podem ser pessego/laranja. Se");
-		Nota("  --        forem, a `FieryGod` do SSG continua neles -- que e a queixa numero 1.");
+		Nota("  --        forem, a chama do SSG continua neles -- que e a queixa numero 1.");
 		Nota("  --     2. A foto 2 tem que ter a MESMA COR da foto 1 (a chama do jogador, azul claro),");
 		Nota("  --        so que mais densa. Outra cor ali = o `ChamaDoJogador` nao chegou no pixel.");
 		Nota("  --     3. A foto 3 e ROXO-AZULADA (`7d5af0`). O dono nunca descreveu essa cor -- ela e o");
@@ -222,8 +224,9 @@ public partial class RoboDeFera : Node
 		Nota("  --        conhecida e MEDIDA: a faisca da Fera e roxo-claro DENTRO de chama roxa (17");
 		Nota("  --        graus de matiz entre as duas) -- ela le pelo VALOR, 1,76x mais clara. Se nao");
 		Nota("  --        der pra ver, isso e achado e nao falha de bancada.");
-		Nota("  --     7. CONTROLE: a foto 4 (ssg) TEM que continuar pessego/laranja. Ela e a unica que");
-		Nota("  --        nao era pra mudar; se mudou, quem mexeu quebrou o dono legitimo da folha.");
+		Nota("  --     7. CONTROLE: a foto 4 (ssg) e a 5 (rose_ssg) sao o fogo pessego/laranja do SSG, com o");
+		Nota("  --        cabelo VERMELHO vivo (desde 2026-10-24, a pedido do dono). Se o fogo virar a chama da");
+		Nota("  --        base, quem mexeu quebrou o dono legitimo dele.");
 		Nota("");
 	}
 

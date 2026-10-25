@@ -315,7 +315,8 @@ public static class CargaBench
 			("ssj4", 4.5), ("ssj4_limit_breaker", 4.5),
 			("future_ssj", 2.0),
 			("wrathful", 1.3), ("c_type", 2.0), ("legendary", 4.0),
-			("blue", 1.0), ("ui_perfected", 1.0), ("ultra_ego", 1.0), ("beast", 1.0),
+			// (2026-10-25) as divinas do Super Saiyajin DOBRAM o tanque -- o dono (`Catalogo.KiDasDivinasDoSaiyajin`); o resto bate com o DM
+			("ssg", 2.0), ("blue", 2.0), ("rose", 2.0), ("ui_perfected", 1.0), ("ultra_ego", 1.0), ("beast", 1.0),
 		];
 
 		int erros = 0;
@@ -337,7 +338,7 @@ public static class CargaBench
 		// NO PLACAR TAMBEM. Este bloco ja media tudo e ja sabia a resposta -- o que faltava era a
 		// resposta CONTAR: um "3 FORA DO ESPERADO" impresso no meio da tabela com o programa saindo
 		// zero e a mesma bancada decorativa que o cabecalho do `Conferir` descreve.
-		Conferir(erros == 0, $"o teto de Ki das {casos.Length} formas bate com o DM ({erros} fora)");
+		Conferir(erros == 0, $"o teto de Ki das {casos.Length} formas bate com o DM -- e com o dono, nas divinas do Super Saiyajin ({erros} fora)");
 	}
 
 	/// <summary>

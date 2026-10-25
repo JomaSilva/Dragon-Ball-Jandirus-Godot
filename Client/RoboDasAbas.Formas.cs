@@ -325,6 +325,35 @@ public partial class RoboDasAbas
 		}
 		else Checa("PRECONDICAO: o servidor neste processo (`--host`) pra cravar a maestria", false);
 
+		// ---------------- 3c. O KI DIVINO NA ABA FORMS (dono, 2026-10-25) ----------------
+		// *"a maestria do ki divino deveria aparecer em forms tb, pq la so aparece a maestria do ssj god, blue etc mas nao do god ki em
+		// si"*. O ki divino desperto e cravado no servidor deste processo com uma maestria quebrada (37,5%), o `S2C.GodKi` a traz, e a aba
+		// Forms desenha o cartao "Ki divino" com a barra -- a mesma da aba World.
+		if (Jandirus.Server.GameServer.Instance is { } divino)
+		{
+			Jandirus.Core.Stats.GodKiState? kiDeAntes = divino.CravarKiDivinoDeTeste(cli.LocalId, 37.5);
+			bool chegou = await Ate(() => cli.KiDivino.Desperto && Math.Abs(cli.KiDivino.Maestria - 37.5) < 0.05, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			string? maestriaDivina = menu.ValorDesenhado("Forms", "Maestria divina");
+			PanelContainer? cartaoDivino = CartaoComTitulo(pg, "Ki divino");
+			Checa("COM O KI DIVINO DESPERTO, a aba Forms tem o cartao 'Ki divino' com a maestria divina (a mesma barra da aba World)",
+				  chegou && cartaoDivino != null && maestriaDivina == $"{cli.KiDivino.Maestria:0.0}%"
+				  && DentroDoCartao(LinhaEscrita(pg, "Maestria divina"), cartaoDivino),
+				  $"'{maestriaDivina}', no fio {cli.KiDivino.Maestria:0.0} (chegou {chegou})");
+			MenuJogo.KiDivinoForaDaAbaFormasDeTeste = true;
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			Injeta("(defeito injetado: o cartao do ki divino fora da aba Forms) a linha da maestria divina some -- a regua de cima REPROVA",
+				   menu.ValorDesenhado("Forms", "Maestria divina") == null);
+			MenuJogo.KiDivinoForaDaAbaFormasDeTeste = false;
+			divino.DesfazerKiDivinoDeTeste(cli.LocalId, kiDeAntes);
+			await Ate(() => !cli.KiDivino.Desperto || kiDeAntes is { awakened: true }, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+		}
+		else Checa("PRECONDICAO: o servidor neste processo (`--host`) pra cravar o ki divino", false);
+
 		// ---------------- 4. AS INJECOES: cada regra recebe uma amostra estragada ----------------
 		Injeta("a regra do multiplicador reprova o texto sem o × ('1,09')", !MultiplicadorBemEscrito("1,09", 1.09));
 		Injeta("...e reprova o numero que nao bate com a ficha ('×1,09' contra 2,0)", !MultiplicadorBemEscrito("×1,09", 2.0));

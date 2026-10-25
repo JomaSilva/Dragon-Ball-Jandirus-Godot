@@ -22,8 +22,13 @@ public static class GainKnobs
 	/// Passa por aqui todo ganho de BP -- treino, meditacao, luta, ki, gravidade, andar e voar, o buffer de ocio, o potencial
 	/// escondido, as gotas das absorcoes -- e nada mais: desejos, itens e Zenkai nao a leem. A maestria de GRAVIDADE tambem a
 	/// lia, e ela nao e BP: ficou no ritmo do DM (<see cref="BPTickDoDm"/>).
+	///
+	/// (2026-10-23) E AGORA SO A METADE DA DO DM -- dez vezes a de 2026-10-16. O dono, junto do peso e da gravidade que passaram a
+	/// esmagar o morto: *"isso virou meta do jogo, porem pra compensar suba o bp gain em 10x (tinha dividido por 20 antes entao agr seria
+	/// so dividido por 2)"*. O divisor e o dele, e por isso a `--ganhoteste` (familia 5) o confere pelo numero ESCRITO (o mesmo soco de
+	/// producao na taxa do DM rende 2x o de agora), e nao lendo este campo; o contra-exemplo dela e o ritmo de 2026-10-16 (`/ 20`).
 	/// </summary>
-	public static double BPTick = BPTickDoDm / 20;
+	public static double BPTick = BPTickDoDm / 2;
 
 	/// <summary>A taxa global do DM (`BPTick = 0.000056`). So a maestria de gravidade anda nela -- ver <see cref="BPTick"/>.</summary>
 	public const double BPTickDoDm = 0.000056;
@@ -104,8 +109,34 @@ public static class GainKnobs
 	/// <summary>Teto absoluto de maestria de gravidade.</summary>
 	public static double GravityCap = 500;
 
+	/// <summary>
+	/// O BONUS MAXIMO DA ACLIMATACAO, em fracao do BP base: +25% (dono, 2026-10-23: *"o buff de bp do aclimado deveria ser no maximo 25%
+	/// quando vc tem 500x gravidade masterizada e nao 100% , ta mt op"*). E o PODER de quem domina mais gravidade do que o chao puxa (o
+	/// `gravFelt` do DM, `base.dm:89-99`, que soma na base). A curva continua a do DM -- `ln(maestria/gravidade)^2` --, com o divisor
+	/// tirado DESTE numero (a razao no teto da maestria, <see cref="GravityCap"/>, rende exatamente ele) e a razao TRAVADA nesse teto:
+	/// o planeta mais a maquina chegam a ~501x, e a maestria pela luta (`Fighter.AttackGain`) nao tem teto. Com 0,25: 10x +3,4%, 100x
+	/// +13,7%, 500x +25% (no DM, divisor 40: +5,3%, +53%, +96,6%). DIVERGENCIA DECLARADA. Ver `StatCurves.GravFelt`.
+	/// </summary>
+	public static double AclimatacaoMaxima = 0.25;
+
 	/// <summary>Teto do multiplicador de ganho que o PESO da (razao 1 = 2x, 2 = 4x, 4 = 8x).</summary>
 	public static double WeightGainMax = 8;
+
+	/// <summary>
+	/// PESO DEMAIS PRA TREINAR: com a razao do peso (`Fighter.weight_ratio` -- o peso vestido vezes a gravidade, contra o limite do corpo)
+	/// ACIMA disto, o treino nao rende nada. O dono (2026-10-23): *"usar pesos acima de 8x seu limite corporal, vc nem conseguiria treinar
+	/// assim n valendo a pena a usar pesos mt mt mt altos"*. Ate aqui o ganho travava em <see cref="WeightGainMax"/> a partir da razao 4, e
+	/// 8x, 20x ou 100x o limite rendiam o mesmo que 4x. NAO EXISTE NO DM. So o GANHO zera (o T, a luta, a meditacao e o ki, e o servidor
+	/// recusa ou derruba o treino e a meditacao com o aviso); o resto do peso continua como era: o esmagamento, o vigor que o treino cobra e
+	/// o poder dividido pelo `weight`. Ver `Fighter.PesoDemaisPraTreinar`.
+	/// </summary>
+	public static double RazaoQueImpedeOTreino = 8;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--gravmetateste`): o peso acima de 8x o limite do corpo volta a render -- o jogo de antes de 2026-10-23, em
+	/// que a razao 20 treinava como a 4 (8x). Lido por `Fighter.PesoDemaisPraTreinar`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PesoDemaisTreinaDeTeste;
 
 	/// <summary>
 	/// `WEIGHT_ITEM_CAP_MULT = 2`: quanto peso o corpo aceita VESTIR, em multiplos do proprio limite
@@ -226,8 +257,30 @@ public static class GainKnobs
 	public static double ZenkaiPct = 0.1;
 	/// <summary>A mesma, com o corpo em farrapos.</summary>
 	public static double ZenkaiPctInjured = 0.15;
-	/// <summary>Recarga do Zenkai, em milissegundos de relogio real (1 hora).</summary>
-	public static long ZenkaiCooldownMs = 3_600_000;
+	/// <summary>
+	/// (2026-10-24) A RECARGA E PROPORCIONAL AO MULTIPLICADOR: 2,5 h de relogio real por "x" do BP base de depois sobre o de antes. O
+	/// dono: *"coloque o cooldown do zenkai maximo (2x bp) pra 5 horas, ta mt op 1 hora"*, e na pergunta de qual Zenkai: *"e
+	/// proporcional ao 2x, 3x seriam 7,5 horas de cooldown"*. O Zenkai que dobra deixa 5 h, o que triplica (o corpo em farrapos)
+	/// 7,5 h, e um de +20% deixa 3 h; era 1 h fixa pra qualquer tamanho. E a MESMA regra da fusao Namekuseijin (*"o mesmo pra fusao
+	/// namek"*, o passo 6 do `GameServer.AbsorverNamekuseijin`). Ver <see cref="RecargaProporcionalMs"/>.
+	/// </summary>
+	public static long RecargaMsPorMultiplicador = 9_000_000;
+
+	/// <summary>
+	/// A RECARGA DE QUEM FOI DE <paramref name="antes"/> PRA <paramref name="depois"/> DE BP: 2,5 h por "x" (`depois / antes`), e nunca
+	/// menos que a do "1x". Ver <see cref="RecargaMsPorMultiplicador"/>.
+	/// </summary>
+	public static long RecargaProporcionalMs(double antes, double depois) =>
+		(long)(RecargaMsPorMultiplicador * Math.Max(depois / Math.Max(antes, 1e-9), 1));
+
+	/// <summary>A hora fixa de antes de 2026-10-24 -- so o <see cref="RecargaFixaDeTeste"/> a usa.</summary>
+	public const long RecargaFixaMs = 3_600_000;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` e `--fusaoduplateste`): o Zenkai e a absorcao Namekuseijin voltam a deixar a hora fixa de
+	/// antes, de qualquer tamanho. Lido pelo `Fighter.GainZenkai` e pelo `GameServer.AbsorverNamekuseijin`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RecargaFixaDeTeste;
 	/// <summary>
 	/// APOSENTADORIA do Zenkai: teto = `ssj3at` x isto, pra quem nunca rolou o requisito
 	/// pessoal. 0,25 e o ponto medio da formula que sorteia esse requisito.

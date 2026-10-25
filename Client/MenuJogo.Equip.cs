@@ -107,8 +107,12 @@ public partial class MenuJogo
 		// A BARRA VAI DE 1x (sem peso) AO TETO DO SISTEMA: e a escala do `WeightTick`, lida do Core, e
 		// nao uma regra refeita aqui -- o numero vem pronto do servidor.
 		double teto = Jandirus.Core.Stats.GainKnobs.WeightGainMax;
-		LinhaComBarra("Ganho no treino", $"{mult:0.##}x", (mult - 1) / Math.Max(teto - 1, 1e-9),
-			Tema.Destaque, c, vestidos ? Tema.Bom : Tema.Texto);
+		// (2026-10-23) PESO DEMAIS: a linha diz 0x e o porque, e nao o `weight` (que continua 8: ele ainda divide o poder) -- ver `PesoDemaisNaFicha`
+		bool pesoDemais = PesoDemaisNaFicha;
+		LinhaComBarra("Ganho no treino",
+			pesoDemais ? $"0x -- passa de {Jandirus.Core.Stats.GainKnobs.RazaoQueImpedeOTreino:0.#}x o limite do corpo" : $"{mult:0.##}x",
+			pesoDemais ? 0 : (mult - 1) / Math.Max(teto - 1, 1e-9),
+			Tema.Destaque, c, pesoDemais ? Tema.Perigo : vestidos ? Tema.Bom : Tema.Texto);
 		if (vestidos) Linha("Vestindo", $"{_atributos.PesoKg:N0} kg", null, c);
 
 		// sem peso nenhum, o icone dos pesos e o nome SEM o maximo -- "Pesos (50 kg)" ao lado de "não tem" diria de um peso que nao existe
@@ -283,6 +287,7 @@ public partial class MenuJogo
 		GameClient? c = GameClient.Instance;
 		string mochila = c == null ? "" : string.Join(',', c.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"));
 		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{_atributos.PesoKg:0}|{_atributos.PesoVestido}|{_atributos.PesoDegrausDoCorpo}|{_atributos.PesoPct}|{f.SocoMs}|{mochila}"
+			 + $"|{_atributos.GanhoDeTreino <= 0}"   // (2026-10-23) o "0x -- peso demais" da linha de ganho (`CartaoDosPesos`)
 			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}|{Teclas.NomeDaAcao("travar_alvo")}"
 			 // o bloco do radio: a frequencia que o servidor guarda e as duas teclas que a nota dele ensina
 			 + $"|{c?.FrequenciaDoRadio}|{Teclas.NomeDaAcao("falar_radio")}|{Teclas.NomeDaAcao("falar_voz")}";

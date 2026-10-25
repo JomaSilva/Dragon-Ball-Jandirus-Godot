@@ -120,6 +120,7 @@ public partial class RoboDeBancada : Node
 
 		// ---- a ficha
 		public double FiKi, FiTeto, FiInteireza, FiMult, FiNutricao, FiHp, FiBp, FiExpBp;
+		public double FiVidaQuePesa;   // (2026-10-24) a vida que pesa no poder (cada membro so abaixo da metade), refeita pelo corpo do fio
 		public bool TemScouter;
 
 		// ---- a HUD desenhada
@@ -194,6 +195,7 @@ public partial class RoboDeBancada : Node
 
 			FiKi = f.RazaoDeKi, FiTeto = f.TrilhoDeKi, FiInteireza = f.Inteireza,
 			FiMult = f.MultTotal, FiNutricao = f.RazaoDeNutricao, FiHp = f.HP,
+			FiVidaQuePesa = MenuJogo.VidaQuePesaDe(C?.Corpo ?? []),
 			FiBp = f.BP, FiExpBp = f.ExpressedBP,
 			TemScouter = C?.Atributos.Tem(Protocol.Poder.Scouter) ?? false,
 
@@ -651,7 +653,7 @@ public partial class RoboDeBancada : Node
 		_hpFerido = Jandirus.Server.GameServer.Instance?.MachucarDeTeste(C?.LocalId ?? 0, 75) ?? double.NaN;
 		Percurso(_hpFerido is > 60 and < 95,
 				 $"o corpo levou dano de verdade pelo `Corpo.Ferir` e parou em HP {_hpFerido:0.0} -- "
-			   + "acima do piso de 0,6 do `hpratio`, que e onde a % pararia de responder");
+			   + "os bracos e as pernas abaixo da metade (so ali a vida pesa no poder, 2026-10-24), acima do piso de 0,6 do `hpratio`");
 		_espera = 1.0;
 	}
 
@@ -667,8 +669,8 @@ public partial class RoboDeBancada : Node
 		_razaoDeEstamina = Jandirus.Server.GameServer.Instance?.EstaminaDeTeste(C?.LocalId ?? 0, 70)
 						   ?? double.NaN;
 		Percurso(_razaoDeEstamina is > 0.65 and < 0.75,
-				 $"a estamina da conta de poder foi a {_razaoDeEstamina:0.000} -- e ela e uma perna MORTA "
-			   + "no jogo (nada abaixa `staminadeBuff` hoje), entao so a CONTA esta sendo provada");
+				 $"a estamina da conta de poder foi a {_razaoDeEstamina:0.000} -- pelo VIGOR de verdade no fundo do tanque "
+			   + "(a curva do DM, `StaminaDrain.dm:40`, viva desde 2026-10-24), com o estomago seguro vazio enquanto mede");
 		_espera = 1.0;
 	}
 
@@ -791,10 +793,11 @@ public partial class RoboDeBancada : Node
 		// deixaria `SemOKi` 40% maior que no quadro de Ki cheio, e F4.1/F4.2 reprovariam o jogo certo.
 		//
 		// O divisor correto e exatamente o fator que a `Inteireza` contem, que e o `kiratio` do
-		// `PowerLevel`: `max(Ki/MaxKi, 0.6)`. O piso de 0,6 e do jogo (`Fighter.Power.cs:40`) e
-		// tambem faltava aqui -- sem ele um quadro drenado abaixo de 60% inflava o quociente.
+		// `PowerLevel` -- e ele e a FUNCAO do jogo (`Fighter.RazaoDoKiNoPoder`), e nao uma copia: desde
+		// 2026-10-24 (o dono) ele e 1 da metade do tanque ate o cheio, desce abaixo da metade ate o piso de
+		// 0,6 no vazio, e acima do cheio e a propria razao.
 		// ========================================================================================================
-		static double SemOKi(Quadro q) => q.FiInteireza / Math.Max(q.FiKi, 0.6);
+		static double SemOKi(Quadro q) => q.FiInteireza / Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(q.FiKi, 1);
 
 		return
 		[
@@ -1020,9 +1023,11 @@ public partial class RoboDeBancada : Node
 				["base-cheio", "ssj-alto", "ssj-drenado"], qs =>
 				{
 					Quadro alto = Q(qs, "ssj-alto"), seco = Q(qs, "ssj-drenado");
-					if (seco.FiInteireza >= Q(qs, "base-cheio").FiInteireza - 0.03)
+					// (2026-10-24) CONTRA O KI CARREGADO, e nao contra o repouso: o dreno vai de ~130% a 95%, e da metade do tanque ate o
+					// cheio o Ki nao tira mais poder (o dono) -- a queda que se ve e a do bonus acima do cheio, que e linear como sempre.
+					if (seco.FiInteireza >= alto.FiInteireza - 0.03)
 						return (false, $"a % nao desceu: {seco.FiInteireza * 100:0.0}% com o Ki em "
-									 + $"{seco.FiKi * 100:0.0}% -- linha congelada");
+									 + $"{seco.FiKi * 100:0.0}% (era {alto.FiInteireza * 100:0.0}% com {alto.FiKi * 100:0.0}%) -- linha congelada");
 					return Perto(SemOKi(seco), SemOKi(alto), 0.02, "inteireza/razaoKi (Ki alto -> Ki seco)");
 				}),
 
@@ -1031,9 +1036,10 @@ public partial class RoboDeBancada : Node
 				{
 					Quadro r = Q(qs, "base-de-volta"), f = Q(qs, "ferido");
 					if (r.FiHp <= 0) return (false, "sem HP de referencia");
-					// a vida entra como `hpratio = HP/100` (com piso em 0,6): a % nova tem que ser a
-					// antiga vezes a razao das duas vidas, e nada mais.
-					double esperado = r.FiInteireza * (f.FiHp / r.FiHp);
+					// a vida entra como `hpratio` = o fator da VIDA QUE PESA (cada membro so conta abaixo da metade dele --
+					// o dono, 2026-10-24; com piso em 0,6): a % nova tem que ser a antiga vezes a razao dos dois fatores, e nada mais.
+					double esperado = r.FiInteireza * (Jandirus.Core.Combat.DebuffsDeMembro.FatorDoPoder(f.FiVidaQuePesa)
+													  / Jandirus.Core.Combat.DebuffsDeMembro.FatorDoPoder(r.FiVidaQuePesa));
 					if (f.FiInteireza >= r.FiInteireza - 0.01)
 						return (false, $"a % nao desceu com a ferida ({r.FiInteireza * 100:0.0}% -> "
 									 + $"{f.FiInteireza * 100:0.0}%, HP {r.FiHp:0.0} -> {f.FiHp:0.0})");
@@ -1041,7 +1047,7 @@ public partial class RoboDeBancada : Node
 								 $"% com HP {f.FiHp:0.0} (era {r.FiInteireza * 100:0.0}% com HP {r.FiHp:0.0})");
 				}),
 
-			new("F4.4", "e cai quando a ESTAMINA cai (a perna morta do jogo -- so a conta e provada)",
+			new("F4.4", "e cai quando a ESTAMINA cai (o vigor no fundo do tanque, pela curva do DM)",
 				["base-de-volta", "sem-folego"], qs =>
 				{
 					Quadro r = Q(qs, "base-de-volta"), s = Q(qs, "sem-folego");
@@ -1382,8 +1388,9 @@ public partial class RoboDeBancada : Node
 			["F4.3", "F4.4"],
 			qs => Mexer(qs, x => x with
 			{
-				FiInteireza = Math.Max(x.FiKi, 0.6), HudEfetivo = Math.Max(x.FiKi, 0.6),
-				MenuEfetivo = Math.Max(x.FiKi, 0.6),
+				FiInteireza = Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(x.FiKi, 1),
+				HudEfetivo = Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(x.FiKi, 1),
+				MenuEfetivo = Jandirus.Core.Stats.Fighter.RazaoDoKiNoPoder(x.FiKi, 1),
 			})),
 
 		new("efetivo-nao-desenhado", "a ficha traz a % certa e a tela desenha outra coisa",
@@ -1538,6 +1545,9 @@ public partial class RoboDeBancada : Node
 		Nota("  --     provada na bancada de Core; o MOSTRADOR delas nao esta.");
 		Nota("  --     A COR do texto e do segmento: a bancada le posicao e tamanho, nao pixel. Fundo");
 		Nota("  --     claro contra texto branco ja escapou por aqui uma vez -- isso e foto, nao numero.");
-		Nota("  --     A ESTAMINA e perna MORTA no jogo: F4.4 prova a conta, e nada mais que isso.");
+		Nota("  --     A ESTAMINA: F4.4 a prova pelo vigor de verdade no fundo do tanque (viva desde 2026-10-24),");
+		Nota("  --     com o estomago seguro vazio -- o caminho de jogo ate la (treino, luta, fome) e de outra bancada.");
+		// (2026-10-24) O VEREDITO NA ULTIMA LINHA, pra regex de fim do lancador casar com ele e nao com uma nota.
+		Nota(mal == 0 ? $"===== TUDO OK ({ok} ok) =====" : $"===== {mal} FALHA(S), {ok} ok =====");
 	}
 }

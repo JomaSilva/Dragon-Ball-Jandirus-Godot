@@ -49,6 +49,7 @@ public static class FormasBench
 		Linhas();
 		Gates();
 		Subida();
+		ATeclaQueVaiDiretoEAFamiliaDoC();   // (2026-10-23) o adendo do dono -- logo depois da subida, que e o assunto
 		Novas();
 		Save();
 		EstagioNovo();
@@ -60,6 +61,7 @@ public static class FormasBench
 		OsDoisNomesDaLinhaLendaria();
 		AsCoresComoFORMADECOR();
 		AsLinhasRaciais();
+		OSuperMajin();
 		UmDegrauNovoEmCadaLinha();
 		OsGanchosQueFicaram();
 		ORequisitoPessoalDoSuperNamekuseijin();
@@ -131,7 +133,52 @@ public static class FormasBench
 			  Catalogo.DrenoPorSegundo("ssj1", m100), 0);
 		Perto("dreno SSJ3 cru = 2,4%/s", Catalogo.DrenoPorSegundo("ssj3", zero), 0.075 * 0.32);
 		Perto("dreno Grade 3 = 1,6%/s", Catalogo.DrenoPorSegundo("grade3", zero), 0.05 * 0.32);
+		// (2026-10-24) A MAESTRIA DOS GRADES SO BAIXA O DRENO: 10% a menos aos dois tercos, 20% aos 100% -- e o poder nao se mexe
+		var g2Cheio = new Maestrias(); g2Cheio.Por("grade2", 100);
+		var g3DoisTercos = new Maestrias(); g3DoisTercos.Por("grade3", 70);
+		var g3Cheio = new Maestrias(); g3Cheio.Por("grade3", 100);
+		Perto("dreno Grade 2 a 100% = 20% a menos (0,028)", Catalogo.DrenoPorSegundo("grade2", g2Cheio), 0.028 * 0.32);
+		Perto("dreno Grade 3 a 70% = 10% a menos (0,045)", Catalogo.DrenoPorSegundo("grade3", g3DoisTercos), 0.045 * 0.32);
+		Perto("dreno Grade 3 a 100% = 20% a menos (0,04)", Catalogo.DrenoPorSegundo("grade3", g3Cheio), 0.04 * 0.32);
+		Perto("...e o Grade 3 a 100% vale o mesmo poder que no zero",
+			  Catalogo.Multiplicador("grade3", g3Cheio, PerfilDeFormas.Comum), Catalogo.Multiplicador("grade3", zero, PerfilDeFormas.Comum));
+		Checa("os dois grades treinam o SSJ1 e sobem 3x (`TreinaTambem`, `RitmoDaMaestria`); o SSJ1 so a si mesmo, no ritmo da escada",
+			  Catalogo.Def("grade2") is { TreinaTambem: "ssj1", RitmoDaMaestria: Catalogo.RitmoDosGrades }
+			  && Catalogo.Def("grade3") is { TreinaTambem: "ssj1", RitmoDaMaestria: Catalogo.RitmoDosGrades }
+			  && Catalogo.Def("ssj1") is { TreinaTambem: "", RitmoDaMaestria: 1.0 });
 		Perto("dreno da base = 0", Catalogo.DrenoPorSegundo(Catalogo.IdBase, zero), 0);
+
+		// (2026-10-25) O LEGENDARY NA METADE DO TEMPO, O GOD E O BLUE DOMINADOS, E A BARRA QUE ALIVIA O CONSUMO PELA MAESTRIA (o dono)
+		string[] legendarias = [.. Catalogo.Todas.Where(f => f.Linha is LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal).Select(f => f.Id)];
+		Checa("o LEGENDARY NA METADE DO TEMPO (o dono: 'reduz o tempo de maestria do lssj pela metade' -- 'as duas linhas'): as dez formas das duas "
+			  + "linhas sobem 2x (`RitmoDaMaestria`), e o SSJ comum continua no ritmo da escada",
+			  legendarias.Length == 10 && legendarias.All(id => Catalogo.Def(id)!.RitmoDaMaestria == Catalogo.RitmoDoLegendary)
+			  && Catalogo.RitmoDoLegendary == 2 && Catalogo.Def("ssj2") is { RitmoDaMaestria: 1.0 });
+		var dominadas = new Maestrias();
+		foreach (string id in new[] { "ssj1", "ssj2", "ssj3", "ssg", "blue", "rose_ssg", "rose" }) dominadas.Por(id, 100);
+		double Dr(string id, Maestrias m) => Catalogo.DrenoPorSegundo(id, m);
+		Checa("o SSJ GOD DOMINADO GASTA MENOS QUE O SSJ2 DOMINADO, e o BLUE DOMINADO FICA ENTRE O SSJ E O SSJ3 (o dono) -- e o Rose, a mesma forma "
+			  + "na cor da classe, igual",
+			  Dr("ssg", dominadas) < Dr("ssj2", dominadas) && Dr("ssj1", dominadas) < Dr("blue", dominadas) && Dr("blue", dominadas) < Dr("ssj3", dominadas)
+			  && Dr("rose_ssg", dominadas) == Dr("ssg", dominadas) && Dr("rose", dominadas) == Dr("blue", dominadas));
+		Perto("...e sem maestria eles cobram o de antes: o God 0,03 e o Blue 0,045 (o segundo) somados", Dr("ssg", zero) + Dr("blue", zero), (0.03 + 0.045) * 0.32);
+		var ssj2a10 = new Maestrias(); ssj2a10.Por("ssj2", 10);
+		var ssj2a50 = new Maestrias(); ssj2a50.Por("ssj2", 50);
+		double hoje = 0.045 * 0.32, dominado = 0.015 * 0.32;
+		Perto("A BARRA ALIVIA O CONSUMO PELA MAESTRIA (o dono): o SSJ2 a 10% de maestria, com o poder inteiro, cobra o de hoje",
+			  Catalogo.DrenoPorSegundo("ssj2", ssj2a10, 1.0), hoje);
+		Perto("...com a barra em 10% (a maestria), o DOMINADO", Catalogo.DrenoPorSegundo("ssj2", ssj2a10, 0.10), dominado);
+		Perto("...e abaixo dela tambem", Catalogo.DrenoPorSegundo("ssj2", ssj2a10, 0.05), dominado);
+		Perto("...no meio do caminho (55%), o meio dos dois", Catalogo.DrenoPorSegundo("ssj2", ssj2a10, 0.55), (hoje + dominado) / 2);
+		Perto("...a 50% de maestria, metade do poder ja cobra o dominado", Catalogo.DrenoPorSegundo("ssj2", ssj2a50, 0.5), dominado);
+		Perto("...e DOMINADA, o menor em qualquer liberacao", Catalogo.DrenoPorSegundo("ssj2", dominadas, 1.0), dominado);
+		Catalogo.DrenoSemLiberacaoDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: a barra nao mexe no consumo, o jogo de antes) com a barra em 10% o SSJ2 a 10% cobra o de hoje -- a regua da barra REPROVA",
+				  Math.Abs(Catalogo.DrenoPorSegundo("ssj2", ssj2a10, 0.10) - hoje) < 1e-12);
+		}
+		finally { Catalogo.DrenoSemLiberacaoDeTeste = false; }
 		Console.WriteLine();
 	}
 
@@ -662,6 +709,169 @@ public static class FormasBench
 										  new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan",
 															 Classe: "Elite", GodKi: 100)) == RecusaForma.FormaErrada);
 		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 5b. (2026-10-23) A TECLA QUE VAI DIRETO E A FAMILIA DO C -- o adendo do dono
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"atualmente quem libera god ki nao consegue virar as formas mortais, so as divinas, coloque q as transformacoes divinas
+	/// podem ser colocadas em teclas assim indo direto pra elas, ou tendo um botao q troca entre o c duas vezes virar as formas mortais e o
+	/// c duas vezes virar forma divina, outra coisa formas com acima de 50% de maestria q estao colocadas em teclas, podem sim pular etapas
+	/// anteriores"*. As REGRAS, aqui, na conta pura do Core (`EstadoDeForma.Proxima` com `CPelasDivinas`, e o `Avaliar` com `pelaTecla`);
+	/// a CADEIA (o verb, o fio, o disco e o relog) e da `--formasteclasteste`. Os tres avessos de cada regra sao os de sempre desta casa:
+	/// o caso que muda, o caso que NAO pode mudar (o C, o NPC sem dono) e o defeito injetado que faz a regua reprovar.
+	/// </summary>
+	private static void ATeclaQueVaiDiretoEAFamiliaDoC()
+	{
+		Console.WriteLine("[5b] A TECLA QUE VAI DIRETO E A FAMILIA DO C (o adendo do dono, 2026-10-23)");
+		const double bp = 1e15;
+		var deus = new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: "Normal", GodKi: 40);
+		var comum = new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: "Normal");
+
+		// O corpo de partida: o tronco do Super Saiyajin e o SSG ja despertados (sem eles a raiva do luto e o degrau do meio falariam
+		// antes da familia), e uma forma de partida.
+		EstadoDeForma Corpo(bool? divinas, string atual = Catalogo.IdBase)
+		{
+			var e = new EstadoDeForma { CPelasDivinas = divinas };
+			foreach (string id in new[] { "ssj1", "ssj2", "ssj3", "ssg", "blue" }) e.Liberar(id);
+			e.Entrar(atual);
+			return e;
+		}
+		string C(EstadoDeForma e, PerfilDeFormas p, double bpBase = bp) => e.Proxima(bpBase, p)?.Id ?? "nenhuma";
+
+		// ---- A FAMILIA DO C --------------------------------------------------------------------------------------------
+		Checa("sem dono (familia nula, o NPC e a IA): da base o C cai no Super Saiyajin God -- a regra de sempre, o mais forte",
+			  C(Corpo(null), deus) == "ssg", C(Corpo(null), deus));
+		Checa("DIVINAS primeiro (o lado de fabrica): da base, o Super Saiyajin God", C(Corpo(true), deus) == "ssg", C(Corpo(true), deus));
+		Checa("**MORTAIS primeiro: da base o C vai pro Super Saiyajin** -- o defeito do dono, consertado",
+			  C(Corpo(false), deus) == "ssj1", C(Corpo(false), deus));
+		Checa("...e do Super Saiyajin pro 2, e do 2 pro 3 (o tronco mortal inteiro, com o ki divino desperto)",
+			  C(Corpo(false, "ssj1"), deus) == "ssj2" && C(MaestriaNoSsj2(Corpo(false, "ssj2")), deus) == "ssj3",
+			  $"{C(Corpo(false, "ssj1"), deus)} / {C(MaestriaNoSsj2(Corpo(false, "ssj2")), deus)}");
+		EstadoDeForma.CSurdoAFamiliaDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: o C surdo a familia -- o jogo de antes) a mesma regua REPROVA: mortais primeiro, e da base o SSG",
+				  C(Corpo(false), deus) == "ssg", C(Corpo(false), deus));
+		}
+		finally { EstadoDeForma.CSurdoAFamiliaDeTeste = false; }
+
+		// A RESERVA: a familia escolhida sem degrau acima, e o C sobe pela outra -- mortais primeiro, no SSJ1, com o SSJ2 fora do alcance
+		// por poder e o Grade sem maestria: o Blue.
+		var semSsj2 = Corpo(false, "ssj1");
+		Checa("a outra familia e a RESERVA: mortais primeiro, no SSJ1 com o SSJ2 trancado por poder, o C vai pro Blue",
+			  C(semSsj2, deus, Catalogo.PortaSsj2 - 1) == "blue", C(semSsj2, deus, Catalogo.PortaSsj2 - 1));
+
+		// E A FAMILIA VEM ANTES DOS GRAUS SO PRA QUEM ESCOLHEU AS DIVINAS: no SSJ1 com 60% de maestria e os graus ligados, as divinas
+		// primeiro vao pro Blue; as mortais primeiro, pro Grade 2 (a regra dos graus de sempre).
+		EstadoDeForma GrausLigados(bool divinas) { var e = Corpo(divinas, "ssj1"); e.GradesLigados = true; e.Maestria.Por("ssj1", 60); return e; }
+		Checa("divinas primeiro, no SSJ1 com os graus ligados: o Blue (a divina vem antes do Grade 2)",
+			  C(GrausLigados(true), deus) == "blue", C(GrausLigados(true), deus));
+		Checa("mortais primeiro, no mesmo SSJ1: o Grade 2 (os graus continuam no caminho mortal)",
+			  C(GrausLigados(false), deus) == "grade2", C(GrausLigados(false), deus));
+
+		// O ENCALHE QUE A ORDEM EVITA (um filtro duro pararia o C no meio destas duas escadas):
+		var primal = new PerfilDeFormas(Raca: "Saiyan", Linhagem: Oozaru.LinhagemPrimal, GodKi: 0);
+		var noFp = new EstadoDeForma { CPelasDivinas = false, Atual = "ssj4_full_power" };
+		noFp.Maestria.Por("ssj4_full_power", 100);
+		Checa("sem encalhe: o Primal no Full Power (mortal), MORTAIS primeiro, ainda sobe pro Limit Breaker (divino) pela reserva",
+			  C(noFp, primal) == "ssj4_limit_breaker", C(noFp, primal));
+		var prodigial = new PerfilDeFormas(Raca: "Saiyan", Classe: Catalogo.ClasseProdigial, GodKi: 60);
+		var dom = new EstadoDeForma { CPelasDivinas = true };
+		dom.Liberar(Catalogo.IdMistico);
+		dom.Liberar("beast");
+		string daBase = C(dom, prodigial);
+		dom.Entrar(Catalogo.IdMistico);
+		string doMistico = C(dom, prodigial);
+		Checa("sem encalhe: o Prodigial, DIVINAS primeiro, sai da base pro Mistico (mortal, a reserva) e do Mistico pro Beast (divino)",
+			  daBase == Catalogo.IdMistico && doMistico == "beast", $"{daBase} -> {doMistico}");
+
+		// ---- A TECLA: A FORMA COM 50% DE MAESTRIA NELA PULA O CAMINHO -----------------------------------------------------
+		EstadoDeForma ComSsj3(double maestria, bool usada = true)
+		{
+			var e = new EstadoDeForma();
+			e.Liberar("ssj1");
+			e.Liberar("ssj2");
+			if (usada) e.Liberar("ssj3");
+			e.Maestria.Por("ssj2", Catalogo.Ssj3PedeSsj2Pct);
+			e.Maestria.Por("ssj3", maestria);
+			return e;
+		}
+		RecusaForma Tecla(EstadoDeForma e, string alvo, PerfilDeFormas p, double bpBase = bp, double ki = 1) =>
+			e.Avaliar(alvo, bpBase, ki, false, p, pelaTecla: true);
+		double pula = EstadoDeForma.MaestriaQuePulaDegrau;
+
+		Checa($"**a TECLA do SSJ3 com {pula:0}% de maestria NELE sai da base direto pro SSJ3** (o exemplo do dono)",
+			  Tecla(ComSsj3(pula), "ssj3", comum) == RecusaForma.Pode, Tecla(ComSsj3(pula), "ssj3", comum).ToString());
+		Checa($"...e com {pula - 1:0}% continua pedindo o degrau anterior (ForaDeOrdem)",
+			  Tecla(ComSsj3(pula - 1), "ssj3", comum) == RecusaForma.ForaDeOrdem, Tecla(ComSsj3(pula - 1), "ssj3", comum).ToString());
+		EstadoDeForma.MaestriaNaoPulaDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: a maestria nao pula -- o jogo de antes) a mesma regua REPROVA: o SSJ3 a 50% e recusado da base",
+				  Tecla(ComSsj3(pula), "ssj3", comum) == RecusaForma.ForaDeOrdem, Tecla(ComSsj3(pula), "ssj3", comum).ToString());
+		}
+		finally { EstadoDeForma.MaestriaNaoPulaDeTeste = false; }
+		Checa("SO A TECLA: o mesmo SSJ3 a 50%, perguntado como o C (sem `pelaTecla`), continua fora de ordem",
+			  ComSsj3(pula).Avaliar("ssj3", bp, 1, false, comum) == RecusaForma.ForaDeOrdem);
+		var cDaBase = ComSsj3(100);
+		cDaBase.CPelasDivinas = false;
+		Checa("...e o C da base, com o SSJ3 dominado, sobe UM degrau: o Super Saiyajin, e nao o 3",
+			  C(cDaBase, comum) == "ssj1", C(cDaBase, comum));
+
+		// A FORMA NUNCA USADA: a tecla so lista forma ja assumida, e o servidor confere.
+		Checa("a forma que o corpo NUNCA assumiu nao pula, nem com 60% na barra (ForaDeOrdem)",
+			  Tecla(ComSsj3(60, usada: false), "ssj3", comum) == RecusaForma.ForaDeOrdem,
+			  Tecla(ComSsj3(60, usada: false), "ssj3", comum).ToString());
+		EstadoDeForma.PulaFormaNuncaUsadaDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: a tecla pula de forma nunca usada) a mesma regua REPROVA: o SSJ3 nunca assumido entra",
+				  Tecla(ComSsj3(60, usada: false), "ssj3", comum) == RecusaForma.Pode);
+		}
+		finally { EstadoDeForma.PulaFormaNuncaUsadaDeTeste = false; }
+
+		// AS OUTRAS PORTAS CONTINUAM: o salto e so do caminho.
+		var semSsj2Pela = ComSsj3(pula);
+		semSsj2Pela.Maestria.Por("ssj2", Catalogo.Ssj3PedeSsj2Pct - 1);
+		Checa("a porta propria do SSJ3 continua: com 49% no SSJ2, a tecla recusa por MAESTRIA",
+			  Tecla(semSsj2Pela, "ssj3", comum) == RecusaForma.SemMaestria, Tecla(semSsj2Pela, "ssj3", comum).ToString());
+		Checa("a porta de PODER continua (o SSJ3 abaixo da porta: SemPoder)",
+			  Tecla(ComSsj3(pula), "ssj3", comum, Catalogo.PortaSsj3 - 1) == RecusaForma.SemPoder,
+			  Tecla(ComSsj3(pula), "ssj3", comum, Catalogo.PortaSsj3 - 1).ToString());
+		Checa("o Ki minimo continua (5% de Ki: SemKi)",
+			  Tecla(ComSsj3(pula), "ssj3", comum, ki: 0.05) == RecusaForma.SemKi, Tecla(ComSsj3(pula), "ssj3", comum, ki: 0.05).ToString());
+
+		// ---- A TECLA: A FORMA DIVINA JA USADA VAI DIRETO, SEM MAESTRIA -----------------------------------------------------
+		Checa("**a TECLA do Blue sai da BASE direto pro Blue** (a forma divina ja usada, sem o caminho)",
+			  Tecla(Corpo(null), "blue", deus) == RecusaForma.Pode, Tecla(Corpo(null), "blue", deus).ToString());
+		Checa("**a TECLA do SSG sai de dentro do Super Saiyajin** (o exemplo do dono)",
+			  Tecla(Corpo(null, "ssj1"), "ssg", deus) == RecusaForma.Pode, Tecla(Corpo(null, "ssj1"), "ssg", deus).ToString());
+		Checa("SO A TECLA: o Blue da base, perguntado como o C, continua pedindo a camada (FormaErrada)",
+			  Corpo(null).Avaliar("blue", bp, 1, false, deus) == RecusaForma.FormaErrada);
+		EstadoDeForma.DivinaPedeOCaminhoDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: a divina pede o caminho -- o jogo de antes) a mesma regua REPROVA: o Blue da base e recusado",
+				  Tecla(Corpo(null), "blue", deus) == RecusaForma.FormaErrada, Tecla(Corpo(null), "blue", deus).ToString());
+		}
+		finally { EstadoDeForma.DivinaPedeOCaminhoDeTeste = false; }
+		Checa("a porta do KI DIVINO continua: com 20% de maestria divina, o Blue pela tecla e recusado (SemGodKi)",
+			  Tecla(Corpo(null), "blue", deus with { GodKi = 20 }) == RecusaForma.SemGodKi,
+			  Tecla(Corpo(null), "blue", deus with { GodKi = 20 }).ToString());
+		var semBlue = Corpo(null);
+		semBlue.Liberadas.Remove(Catalogo.Rede("blue"));
+		Checa("o Blue que o corpo NUNCA assumiu pede o caminho, pela tecla tambem (FormaErrada)",
+			  Tecla(semBlue, "blue", deus) == RecusaForma.FormaErrada, Tecla(semBlue, "blue", deus).ToString());
+		Console.WriteLine();
+	}
+
+	/// <summary>O corpo no SSJ2 com a maestria que o SSJ3 pede -- a porta propria dele, que nao e o assunto desta secao.</summary>
+	private static EstadoDeForma MaestriaNoSsj2(EstadoDeForma e)
+	{
+		e.Maestria.Por("ssj2", Catalogo.Ssj3PedeSsj2Pct);
+		return e;
 	}
 
 	// =====================================================================
@@ -2043,6 +2253,7 @@ public static class FormasBench
 			(Catalogo.RacaHeran,        LinhaDeForma.Heran),
 			(Catalogo.RacaAlien,        LinhaDeForma.Alien),
 			(Catalogo.RacaHumano,       LinhaDeForma.Tensao),   // (v0.4.0) a lista do amigo do dono
+			(SuperMajin.Raca,           LinhaDeForma.SuperMajin),   // (2026-10-23) o Majin que nao e Corrupted -- ver [19b]
 		];
 
 		foreach ((string raca, LinhaDeForma linha) in donos)
@@ -2262,6 +2473,21 @@ public static class FormasBench
 		Perto("`alien2` usa o `ssjenergymod` tambem (o DM nao sobe o tanque no 2o degrau)",
 			  Catalogo.TetoDeKi(Catalogo.Def("alien2"), corpo), corpo.ssjenergymod);
 
+		// (2026-10-25) AS DIVINAS DO SUPER SAIYAJIN DOBRAM O TANQUE -- o dono: *"faz as formas divinas do ssj tb dobrarem o Ki"*. As duas linhas
+		// inteiras (GodKi e GodKiRose); o Ultra Instinto e o Ultra Ego nao sao do Super Saiyajin e ficam no tanque de sempre.
+		foreach (string id in new[] { "ssg", "blue", "blue_evolution", "rose_ssg", "rose", "rose2" })
+			Perto($"`{id}` (divina do Super Saiyajin) dobra o tanque de Ki, como o SSJ1 (o dono, 2026-10-25)",
+				  Catalogo.TetoDeKi(Catalogo.Def(id), corpo), Catalogo.KiDasDivinasDoSaiyajin);
+		Checa("...e o Ultra Instinto e o Ultra Ego continuam no tanque de sempre (nao sao do Super Saiyajin)",
+			  Catalogo.TetoDeKi(Catalogo.Def("ui_perfected"), corpo) == 1 && Catalogo.TetoDeKi(Catalogo.Def("ultra_ego"), corpo) == 1);
+		Catalogo.DivinasSemKiDobradoDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: as divinas sem o Ki dobrado, o jogo de antes) o Blue volta ao tanque de sempre -- a regua de cima REPROVA",
+				  Catalogo.TetoDeKi(Catalogo.Def("blue"), corpo) == 1);
+		}
+		finally { Catalogo.DivinasSemKiDobradoDeTeste = false; }
+
 		// --- 6. O DRENO DO HERAN ZERA COM A MAESTRIA -------------------------------------
 		// E a recompensa inteira da linha, e ela e o ultimo degrau de `list(0.025, 0.015, 0.008, 0)`.
 		//
@@ -2279,6 +2505,123 @@ public static class FormasBench
 		Perto("o Super Namekuseijin drena 1,5% e a maestria nao muda isso",
 			  Catalogo.DrenoPorSegundo("snamek", dominado), Catalogo.SuperNamekDreno * porSegundo);
 
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 19b. (2026-10-23) O SUPER MAJIN -- o Majin que nao e Corrupted
+	// =====================================================================
+	/// <summary>
+	/// A REGRA DO DONO, NA CONTA PURA: *"faça ela ter uma maestria bem lenta ao ponto q ela possa chegar no ssj3, mesma ideia do future
+	/// super saiyan, mas a maestria dela trava com base no bp atual do majin, se ele ta nivel ssj1 de bp, essa forma vai ater 6x, se ele
+	/// chegar nivel ssj2 ela vai ate 10x, se ele chegar no bp proximo das formas de ssj3 ele consegue masterizar 100% e virar 16x"*. Ver
+	/// `Core/Forms/SuperMajin.cs`. O tique de verdade (o funil do servidor) e da `--supermajinteste`; aqui sao os numeros e as portas.
+	///
+	/// OS NUMEROS DO DONO SAO ESCRITOS POR EXTENSO (6x, 10x, 16x, 30%, 60%, 30 h) e nao lidos das constantes: a regua que le a constante
+	/// mutada aprova o mutante.
+	/// </summary>
+	private static void OSuperMajin()
+	{
+		Console.WriteLine("[19b] O SUPER MAJIN (o Majin que nao e Corrupted, 2026-10-23)");
+		FormaDef? d = Catalogo.Def("super_majin");
+		Checa("a entrada `super_majin` existe, na linha SuperMajin", d is { Linha: LinhaDeForma.SuperMajin });
+		if (d == null) { Console.WriteLine(); return; }
+
+		// --- 1. A LINHA: so o Majin que nao e Corrupted ---
+		var majin = new PerfilDeFormas(Raca: "Majin", Classe: "Majin");
+		var corrupted = new PerfilDeFormas(Raca: "Majin", Classe: "Corrupted Majin");
+		Checa("o Majin (classe Majin) tem a linha, e so ela de escada racial",
+			  Catalogo.LinhasAbertas(majin).SetEquals([LinhaDeForma.SuperMajin]), string.Join(", ", Catalogo.LinhasAbertas(majin)));
+		Checa("o Majin sem classe (save antigo) tambem", Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Majin")).Contains(LinhaDeForma.SuperMajin));
+		Checa("o Corrupted Majin NAO tem a linha (nem escada nenhuma: a dele e a saga)",
+			  Catalogo.LinhasAbertas(corrupted).Count == 0, string.Join(", ", Catalogo.LinhasAbertas(corrupted)));
+		foreach (string outra in new[] { "Saiyan", "Human", "Halfbreed", "Namekian", "Kai" })
+			Checa($"{outra} nao tem a linha do Super Majin", !Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: outra)).Contains(LinhaDeForma.SuperMajin));
+		SuperMajin.CorruptedTambemDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: o Corrupted tambem ganha a linha) a regua do Corrupted REPROVA",
+				  Catalogo.LinhasAbertas(corrupted).Contains(LinhaDeForma.SuperMajin));
+		}
+		finally { SuperMajin.CorruptedTambemDeTeste = false; }
+
+		// --- 2. A PORTA: o nivel do SSJ1, sem raiva e sem skill ---
+		var est = new EstadoDeForma();
+		Checa("um ponto abaixo do nivel do SSJ1 (1,5 M de BP base): recusado por PODER",
+			  est.Avaliar("super_majin", 1_499_999, 1, false, majin) == RecusaForma.SemPoder,
+			  est.Avaliar("super_majin", 1_499_999, 1, false, majin).ToString());
+		Checa("no nivel do SSJ1, calmo e sem skill: abre", est.Avaliar("super_majin", 1_500_000, 1, false, majin) == RecusaForma.Pode,
+			  est.Avaliar("super_majin", 1_500_000, 1, false, majin).ToString());
+		Checa("o Corrupted, com poder de sobra: LinhaFechada", est.Avaliar("super_majin", 1e12, 1, false, corrupted) == RecusaForma.LinhaFechada,
+			  est.Avaliar("super_majin", 1e12, 1, false, corrupted).ToString());
+		Checa("nao nasce da raiva, nao e repouso e sustentar treina",
+			  !Catalogo.NasceDaRaiva(d) && !Catalogo.PodeSerRepouso(d) && Catalogo.SustentarTreina(d));
+
+		// --- 3. A CURVA: a ideia do Future, de 2x em 2x ate 16x, 6x aos 30% e 10x aos 60% ---
+		(double M, double X)[] curva = [(0, 2), (14.9, 2), (15, 4), (29.9, 4), (30, 6), (45, 8), (59.9, 8), (60, 10), (75, 12), (90, 14), (99.9, 14), (100, 16)];
+		foreach ((double m, double x) in curva)
+			Perto($"com {m}% de maestria o Super Majin vale {x}x", Catalogo.MultBruto(d, m, diluido: false), x);
+		var cheia = new Maestrias();
+		cheia.Por("super_majin", 100);
+		Perto("...e pelo multiplicador de producao, a 100% = 16x", Catalogo.Multiplicador("super_majin", cheia, majin), 16);
+
+		// --- 4. O TETO PELO BP BASE: 30% (6x) no nivel do SSJ1, 60% (10x) no do SSJ2, 100% (16x) no do SSJ3 ---
+		(double Bp, double Teto, string Onde)[] faixas =
+		[
+			(1_000_000, 30, "abaixo do nivel do SSJ1 (so com a porta cortada por um mestre)"),
+			(1_500_000, 30, "no nivel do SSJ1"),
+			(583_333_333, 30, "um fio abaixo do nivel do SSJ2 (583,3 M)"),
+			(583_333_334, 60, "no nivel do SSJ2"),
+			(1_999_999_999, 60, "um fio abaixo do nivel do SSJ3 (2 B)"),
+			(2_000_000_000, 100, "no nivel do SSJ3"),
+			(1e13, 100, "muito acima"),
+		];
+		foreach ((double bp, double teto, string onde) in faixas)
+			Perto($"teto {onde}: {teto}%", SuperMajin.TetoDaMaestria(bp, est), teto);
+		var sorteado = new EstadoDeForma { Limiares = LimiaresPessoais.Rolar("Majin", "Majin", 4242) };
+		Checa("o Majin NAO sorteia limiar: com a ficha de nascimento os tres tetos sao os mesmos",
+			  SuperMajin.TetoDaMaestria(1_500_000, sorteado) == 30 && SuperMajin.TetoDaMaestria(583_333_334, sorteado) == 60
+			  && SuperMajin.TetoDaMaestria(2e9, sorteado) == 100);
+
+		// --- 5. O GANHO: 1/10 da escada, cortado no teto, cravado nele; e nada desce ---
+		const double comum = 0.5;
+		Perto("outra forma passa intacta pelo funil", SuperMajin.Ganho("ssj1", 10, comum, 30).Ganho, comum);
+		Perto("no Super Majin o ganho e 1/10 do de uma forma comum", SuperMajin.Ganho("super_majin", 10, comum, 30).Ganho, comum / 10);
+		Perto("...e a escada leva 3 h de 0 a 100%, o Super Majin 30 h", 100 / SuperMajin.MaestriaPorSegundo / 3600, 30);
+		var encosta = SuperMajin.Ganho("super_majin", 29.98, comum, 30);
+		Checa("a 29,98% com teto 30, o ganho para EXATAMENTE no teto e marca o aviso",
+			  Math.Abs(encosta.Ganho - 0.02) < 1e-9 && encosta.NoTeto, $"{encosta}");
+		var parada = SuperMajin.Ganho("super_majin", 30, comum, 30);
+		Checa("encostada, nao sobe e nao repete o aviso", parada.Ganho == 0 && !parada.NoTeto, $"{parada}");
+		var desceu = SuperMajin.Ganho("super_majin", 60, comum, 30);
+		Checa("acima do teto (o BP desceu): ganho zero -- e nunca negativo (nada desce)", desceu.Ganho == 0 && !desceu.NoTeto, $"{desceu}");
+		var noTopo = SuperMajin.Ganho("super_majin", 99.99, comum, 100);
+		Checa("com o teto em 100 nao ha corte: o ganho inteiro (o `Maestrias.Por` crava os 100)", Math.Abs(noTopo.Ganho - comum / 10) < 1e-12 && !noTopo.NoTeto);
+		SuperMajin.SemTravaDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: sem a trava) a 29,98% o ganho passa do teto -- a regua REPROVA",
+				  SuperMajin.Ganho("super_majin", 29.98, comum, 30).Ganho > 0.02 + 1e-9);
+		}
+		finally { SuperMajin.SemTravaDeTeste = false; }
+		SuperMajin.NaTaxaComumDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: no ritmo de uma forma comum) o ganho e o inteiro -- a regua REPROVA",
+				  Math.Abs(SuperMajin.Ganho("super_majin", 10, comum, 30).Ganho - comum) < 1e-12);
+		}
+		finally { SuperMajin.NaTaxaComumDeTeste = false; }
+
+		// --- 6. O VISUAL ESCOLHIDO: o corpo de sempre, a aura rosa e as faiscas do Electric_Majin ---
+		Checa("o corpo continua o do jogador (sem corpo de forma, sem cabelo, sem tinta na pele)",
+			  d.Corpo == CorpoDeForma.Nenhum && d.SufixoDoCabelo.Length == 0 && Catalogo.CorDoCabelo(d) == null && Catalogo.PeleDaForma(d) == null);
+		Checa("a chama e a colorivel, na cor da FORMA (e nao a do jogador)",
+			  Catalogo.Folha(d) == FolhaDeAura.Base && !Catalogo.ChamaDoJogador(d));
+		int r = Convert.ToInt32(d.Aura[..2], 16), g = Convert.ToInt32(d.Aura[2..4], 16), b = Convert.ToInt32(d.Aura[4..], 16);
+		Checa("e ela e ROSA: vermelho no alto, azul no meio, verde embaixo", r >= 220 && b >= g + 60 && r >= b + 30, $"#{d.Aura}");
+		Colada[] coladas = Catalogo.Coladas(d);
+		Checa("as faiscas: UMA colada, a `FaiscaMajin`, sem tinta (a folha ja e carmesim)",
+			  coladas.Length == 1 && coladas[0].Folha == FolhaColada.FaiscaMajin && coladas[0].Tinta == null, string.Join("+", coladas));
 		Console.WriteLine();
 	}
 
@@ -2420,10 +2763,13 @@ public static class FormasBench
 		// E o sistema que falta em TRES das dividas (Gray Full Power, Purification e o teto de 2,8x do
 		// Frost Demon; a quarta, o Super Majin, o dono tirou do jogo em 2026-10-18). O port nao o tem; o que ele tem e o ponto onde o numero
 		// entraria, e e esse ponto que esta secao exercita.
+		// (2026-10-23) A ASCENSAO DO DONO ENTROU, e ela e outra: um bonus pelo BP base, nos degraus do Saiyajin, so pras racas SEM
+		// escada racial e so pra jogador (`Races.Ascensao` + `GameServer.Ascensao.cs`). As tres dividas sao da Ascensao do DM (a
+		// bandeira de mundo e a formula do `Auto_Gain`) e continuam de pe -- o Frost Demon, que tem escada, fica fora da do dono.
 		var corpo = new Jandirus.Core.Stats.Fighter { BP = 1000, Name = "gancho" };
 		corpo.Tick();
 		double semAscensao = corpo.expressedBP;
-		Checa($"a Ascensao esta DESLIGADA num corpo novo (BPBoost = {corpo.BPBoost:0.##})",
+		Checa($"um corpo novo nasce sem Ascensao (BPBoost = {corpo.BPBoost:0.##}): quem a escreve e o servidor, no tique de quem joga",
 			  Math.Abs(corpo.BPBoost - 1) < 1e-9, $"{corpo.BPBoost}");
 
 		// PROVAVEL: escrever o campo multiplica o poder, hoje, sem mais nada. O 2,8 e o `FD_ASC_CAP`
@@ -2441,7 +2787,8 @@ public static class FormasBench
 		// INERTE: nenhuma forma do catalogo depende dela pra dar o numero que promete. A 2a Evolucao
 		// do Frost Demon e a divida concreta -- ela para em 20x onde o DM chega a 56x (`FD_ASC_CAP`),
 		// e o que fica registrado aqui e o numero de HOJE, pra que o dia em que a Ascensao entrar a
-		// bancada mostre a mudanca em vez de a esconder.
+		// bancada mostre a mudanca em vez de a esconder. (2026-10-23: a do dono entrou e nao a muda --
+		// o Frost Demon tem escada, e a Ascensao do dono e so de quem nao tem.)
 		Perto("a 2a Evolucao do Frost Demon vale 20x hoje (o 56x do DM depende da Ascensao)",
 			  Catalogo.Multiplicador("frost7", new Maestrias(),
 									 new PerfilDeFormas(Raca: Jandirus.Core.Races.FormasDeFrost.Raca,
@@ -2451,6 +2798,11 @@ public static class FormasBench
 		// E NINGUEM ESCREVE `BPBoost` NO CODIGO DE PRODUCAO -- a varredura dos fontes, mesmo padrao da
 		// `raiva` [8]. Um dia isto vai ficar vermelho, e sera pelo motivo certo: alguem portou a
 		// Ascensao. A lista de permitidos e onde o campo pode aparecer sem ser um escritor.
+		// ============================ (2026-10-23) FICOU, E PELO MOTIVO CERTO: A ASCENSAO DO DONO ENTROU ============================
+		// Ela tem UM escritor declarado (`GameServer.Ascensao.cs`, chamado do `Treinar` e do `AplicarForma`), e a varredura passa a
+		// cobrar as duas metades disso: ninguem FORA dele escreve o campo (um segundo escritor seria a regra com duas verdades), e ele
+		// escreve de fato -- uma linha, a que a mutacao tira.
+		// ================================================================================================================
 		// ============================ A LISTA VIROU UMA REGRA, PORQUE ELA JA ESTAVA DESATUALIZADA ============================
 		// Ela nomeava TRES arquivos, e a afirmacao logo abaixo diz "nenhum arquivo de **producao**".
 		// Nao sao a mesma coisa: toda bancada que quer medir o efeito do `BPBoost` precisa escreve-lo
@@ -2462,11 +2814,12 @@ public static class FormasBench
 		// `*Teste.cs` e `*Bench.cs` sao a convencao do projeto inteiro pra "isto nao e producao".
 		// ================================================================================================================
 		string[] podemEscrever = ["Fighter.cs"];
+		const string escritorDeclarado = "GameServer.Ascensao.cs";
 		static bool EhBancada(string nome) =>
 			nome.EndsWith("Teste.cs", StringComparison.Ordinal)
 			|| nome.EndsWith("Bench.cs", StringComparison.Ordinal);
 		var escritores = new List<string>();
-		int leitores = 0;
+		int leitores = 0, peloDeclarado = 0;
 
 		foreach (string dir in new[] { "Core", "Server", "Client", "Tools" })
 		{
@@ -2505,7 +2858,8 @@ public static class FormasBench
 						// ==================================================================================================
 						bool zeraPraNeutro =
 							System.Text.RegularExpressions.Regex.IsMatch(l, @"\bBPBoost\s*=\s*1\s*[;,)]");
-						if (!zeraPraNeutro && !EhBancada(nome) && Array.IndexOf(podemEscrever, nome) < 0)
+						if (nome == escritorDeclarado) peloDeclarado++;
+						else if (!zeraPraNeutro && !EhBancada(nome) && Array.IndexOf(podemEscrever, nome) < 0)
 							escritores.Add($"{nome}:{i + 1}");
 					}
 					else leitores++;
@@ -2513,12 +2867,13 @@ public static class FormasBench
 			}
 		}
 
-		Checa("nenhum arquivo de producao ESCREVE `BPBoost` -- a Ascensao esta mesmo desligada",
+		Checa($"nenhum arquivo de producao ESCREVE `BPBoost` fora do escritor declarado da Ascensao (`{escritorDeclarado}`) -- e do zero neutro do bio",
 			  escritores.Count == 0, string.Join(", ", escritores));
+		Checa("...e o escritor declarado ESCREVE: uma linha (a Ascensao do dono esta ligada)",
+			  peloDeclarado == 1, $"{peloDeclarado} linha(s) em {escritorDeclarado}");
 		// E OS LEITORES EXISTEM, o que e a outra metade: `Fighter.Training` conta marcos de ascensao e
-		// o `GameServer.Tecnicas.G1` le `BPBoost > 1` como "esta ascendido". Sao consumidores parados
-		// esperando o escritor -- e uma divida com consumidor e barata; sem consumidor, e reescrita.
-		Checa($"...e ha consumidores esperando por ele ({leitores} leituras)", leitores >= 2, $"{leitores}");
+		// o `Fighter.Power` o multiplica no poder. Uma divida com consumidor e barata; sem consumidor, e reescrita.
+		Checa($"...e ha consumidores lendo o campo ({leitores} leituras)", leitores >= 2, $"{leitores}");
 
 		// --- 2. AS DUAS SKILLS QUE EXISTEM E ESTAO APAGADAS -----------------
 		// Golden Form (o 28x do Frost Demon) e o buff Majin do Demonio. As duas sao SKILL e nao degrau,

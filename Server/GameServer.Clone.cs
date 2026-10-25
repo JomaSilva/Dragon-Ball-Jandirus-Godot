@@ -780,6 +780,9 @@ public partial class GameServer
 		Percepcao p = LerPercepcao(npc, presa, destino, cerebro.Poderes.PedeLinha);
 		Plano antes = cerebro.Atual;
 		Comando c = cerebro.Pensar(p, dtDaMente, _rng);
+		// (2026-10-25) CHAMOU O ALVO DE COVARDE (a frase da arena): o alvo fica marcado, e se ele tambem for IA volta pra linha e luta no
+		// chao. Ver `MarcarComoCovarde` (`GameServer.Torneio.cs`).
+		if (c.ChamouDeCovarde && presa != null) MarcarComoCovarde(presa);
 		// (O bicho bravo fecha a distancia CORRENDO: ele nao tem a investida do golpe. Ver `PassoDeBicho`.)
 		if (EhAnimal(npc)) c = PassoDeBicho(c);
 		AplicarComando(npc, c, dt);

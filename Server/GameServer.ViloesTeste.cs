@@ -16,7 +16,9 @@ namespace Jandirus.Server;
 /// (devolvido no fim). Tudo passa pelas funcoes de producao: o relogio e o `TickDosViloes`, o nascimento e o
 /// `NascerNpc` do molde de verdade, e a derrota entra pelo funil unico (`AoPerderALuta`).
 ///
-/// Um defeito injetado: o premio pago de novo a cada queda (`VilaoPagaDeNovoDeTeste`).
+/// Os defeitos injetados: o premio pago de novo a cada queda (`VilaoPagaDeNovoDeTeste`) e o vilao sem zeni
+/// (`VilaoNaoPagaZeniDeTeste`); e (2026-10-23, familias 27) a forca pela media do SERVIDOR no lugar da do planeta
+/// (`VilaoPelaMediaDoServidorDeTeste`) e o vilao de mundo gerado sem raca (`VilaoAvulso.ForasteiroSemRacaDeTeste`).
 ///
 ///     Godot --headless --path . --host --rede 7999 --vilaoteste --raca Human --conta bancada_vilao --nome Heroi
 /// </summary>
@@ -35,10 +37,28 @@ public partial class GameServer
 		}
 
 		int karmaDeAntes = pl.Karma;
-		double zeniDeAntes = pl.Ficha.Zeni;
+		double zeniDeAntes = pl.Ficha.Zeni, bpDeAntes = pl.Ficha.BP;
 		ZoneKey terra = pl.Zone;
-		ServerPlayer? visitante = null;
 		bool ligadoDeAntes = VilaoAvulso.Ligado;
+
+		// OS OUTROS "JOGADORES": corpos forjados com o `Peer` do host emprestado (e o que faz deles jogador pro `EhJogador`) -- o
+		// Visitante de Vegeta, e (2026-10-23) o Defunto e o Explorador das familias 27. O `Peer` volta no fim, antes de o corpo sair.
+		List<ServerPlayer> forjados = [];
+		ServerPlayer Forjar(string nome, ZoneKey z, Vec2 onde, double bp, bool morto = false)
+		{
+			var f = new ServerPlayer
+			{
+				Id = _nextId++, Peer = pl.Peer, Name = nome, Race = "Human", Genero = "Male", Idade = 25,
+				Zone = z, Pos = onde, LastInputMs = NowMs(), Conta = "bancada_vilao_" + nome.ToLowerInvariant(), Slot = 0,
+				Ficha = new Jandirus.Core.Stats.Fighter { Name = nome, Race = "Human", BP = bp, Idade = 25, maxstamina = 100, stamina = 100 },
+				Livro = new Jandirus.Core.Skills.SkillBook(),
+			};
+			f.Ficha.Class = "Normal";
+			PorNoMundo(f);
+			f.Ficha.dead = morto;
+			forjados.Add(f);
+			return f;
+		}
 
 		// O HOST AINDA NAO ESTA NA LISTA DA ZONA: as bancadas de 1o login rodam dentro do `Entrar`, ANTES da
 		// linha que poe o corpo no mundo (`ZoneList(...).Add(pl)`). Pra "planeta com gente" e pra o aviso do
@@ -53,6 +73,13 @@ public partial class GameServer
 			[.. _viloes.Select(v => _players.GetValueOrDefault(v.Npc)).Where(n => n != null).Select(n => n!)];
 		void VencerORelogio(ZoneKey z) => _proximoVilao[z.Hash] = NowMs() - 1;
 
+		// (2026-10-23) TODO EVENTO DE PE ACABA (o prazo vence agora) e o tique os fecha: a medida seguinte parte do zero, longe do teto.
+		void EncerrarOsEventos()
+		{
+			foreach (EventoDeVilao e in _viloes) e.Ate = NowMs() - 1;
+			TickDosViloes();
+		}
+
 		try
 		{
 			_viloes.Clear();
@@ -60,11 +87,20 @@ public partial class GameServer
 			VilaoAvulso.Ligado = true;
 			SorteioDoVilaoDeTeste = 0.5;
 
+			// (2026-10-23) O HOST A 1 MILHAO na Terra, e o Visitante (secao 4) a 1.000 em Vegeta: a media do servidor (~500 mil) fica longe
+			// da de cada planeta, e "o vilao segue o planeta" nao passa por coincidencia (com os dois iguais, as duas medias dariam o mesmo).
+			pl.Ficha.BP = 1_000_000;
+
 			// ---------------------------------------------------------------- 1. o molde e as regras
 			GD.Print("[viloes] -- 1) o molde e os numeros --");
 			MoldeDeNpc? molde = _moldes?.Get(VilaoAvulso.Molde);
 			Checa("(montagem) o molde `vilao_avulso` existe no npcs.json, e e do tipo proprio (Vilao)", molde is { Tipo: TipoDeNpc.Vilao });
 			if (molde == null) return;
+
+			// (2026-10-23) A FAIXA DO SORTEIO DE BP (`SorteioDeNpc.SortearBp`): de 85% a 115% da media, com o piso do molde por baixo.
+			double piso = molde.BpPiso;
+			bool NaFaixa(double bp, double media) =>
+				bp >= Math.Max(media * 0.85, piso) - 0.5 && bp <= Math.Max(media * 1.15, piso) + 0.5;
 			Checa("...sem estagios: nao e chefe, e as sagas nao sabem que ele existe", !molde.EhChefe);
 			Checa("o vilao NASCE, e o recorte do dono sobre o inimigo COMUM continua de pe (os dois sao tipos diferentes)",
 				  Povoamento.PodeNascer(TipoDeNpc.Vilao) && !Povoamento.PodeNascer(TipoDeNpc.Inimigo));
@@ -111,6 +147,8 @@ public partial class GameServer
 			Checa("...a distancia jogavel de alguem: nem em cima, nem do outro lado do mapa",
 				  dist >= VilaoAvulso.DistanciaMinTiles - 2 && dist <= VilaoAvulso.DistanciaMaxTiles + 2, $"{dist:0.#} tiles do host");
 			Checa("...com a FORCA do molde: nunca abaixo do piso (`bpPiso`)", vilao.Ficha.BP >= molde.BpPiso, $"BP {vilao.Ficha.BP:N0}, piso {molde.BpPiso:N0}");
+			// (a Terra so tem o host: a media do planeta e a do servidor dao o mesmo aqui -- quem separa as duas e Vegeta, mais abaixo)
+			Checa("...e com a forca de quem esta na Terra: o host, a 1 milhao, no sorteio de 85-115%", NaFaixa(vilao.Ficha.BP, 1_000_000), $"BP {vilao.Ficha.BP:N0}");
 			Checa("**O PLANETA E AVISADO**: o nome dele, pra que lado esta, o karma e o prazo",
 				  Disse(falas, "VILÃO APARECEU") && Disse(falas, vilao.Name) && Disse(falas, "passos a") && Disse(falas, "karma"), Ultimos(falas));
 
@@ -120,20 +158,18 @@ public partial class GameServer
 
 			// um SEGUNDO planeta com gente: um corpo forjado em Vegeta, com o `Peer` do host emprestado
 			ZoneKey vegeta = ZoneKey.Premade("Vegeta");
-			visitante = new ServerPlayer
-			{
-				Id = _nextId++, Peer = pl.Peer, Name = "Visitante", Race = "Human", Genero = "Male", Idade = 25,
-				Zone = vegeta, Pos = PontoDeNascimento(vegeta), LastInputMs = NowMs(), Conta = "bancada_vilao_v", Slot = 0,
-				Ficha = new Jandirus.Core.Stats.Fighter { Name = "Visitante", Race = "Human", BP = 1000, Idade = 25, maxstamina = 100, stamina = 100 },
-				Livro = new Jandirus.Core.Skills.SkillBook(),
-			};
-			visitante.Ficha.Class = "Normal";
-			PorNoMundo(visitante);
+			Forjar("Visitante", vegeta, PontoDeNascimento(vegeta), 1_000);
 			TickDosViloes();        // o relogio de Vegeta comeca
 			VencerORelogio(vegeta);
 			TickDosViloes();
 			Checa("CADA PLANETA TEM O SEU RELOGIO: com gente em Vegeta, nasce um la tambem (dois no servidor)",
 				  ViloesDeTeste(vegeta) == (2, 1), $"{ViloesDeTeste(vegeta)}");
+			// (2026-10-23) A FORCA E A DO PLANETA: o Visitante esta sozinho em Vegeta, a 1.000, e o host na Terra a 1 milhao
+			ServerPlayer? deVegetaNaChegada = ViloesDePe().FirstOrDefault(v => v.Zone.Equals(vegeta));
+			Checa("**27a. O VILAO DE VEGETA TEM A FORCA DE QUEM ESTA EM VEGETA** (dono, 2026-10-23: *\"escalar com o poder do planeta atual e "
+				  + "nao do server\"*): a media do planeta -- o Visitante, 1.000 --, no sorteio de 85-115%, e nao a do servidor",
+				  deVegetaNaChegada != null && NaFaixa(deVegetaNaChegada.Ficha.BP, 1_000),
+				  $"BP {deVegetaNaChegada?.Ficha.BP:N0}; a do servidor daria {MediaDoServidor():N0}");
 
 			// ---------------------------------------------------------------- 5. derrotar
 			GD.Print("[viloes] -- 5) derrotar ou matar da karma, uma vez, a quem derrotou --");
@@ -142,14 +178,21 @@ public partial class GameServer
 			double bolsaDoVilao = vilao.Ficha.Zeni, meuZeni = pl.Ficha.Zeni;
 			Checa($"(montagem) o vilao nasce com a bolsa dele: entre {BolsaDeNpc.ZeniMinDoVilao:N0} e {BolsaDeNpc.ZeniMaxDoVilao:N0} zeni",
 				  bolsaDoVilao >= BolsaDeNpc.ZeniMinDoVilao && bolsaDoVilao <= BolsaDeNpc.ZeniMaxDoVilao, $"{bolsaDoVilao:N0}");
+			double repAntes = ReputacaoDe(terra.Name, pl.Conta);
 			falas = Ouvir(() => AoPerderALuta(vilao, pl, morreu: false));
 			Checa($"**NOCAUTEAR O VILAO DA KARMA** (+{VilaoAvulso.KarmaPorDerrotar}) a quem nocauteou", pl.Karma == VilaoAvulso.KarmaPorDerrotar, $"karma {pl.Karma}");
+			double repDepois = ReputacaoDe(terra.Name, pl.Conta);
+			Checa($"**...E REPUTACAO COM O PLANETA** (+{VilaoAvulso.ReputacaoPorDerrotar:0}, dono 2026-10-25): a Terra, onde o vilao apareceu, "
+				  + "fica devendo a quem o derrotou", Math.Abs(repDepois - repAntes - VilaoAvulso.ReputacaoPorDerrotar) < 1e-6,
+				  $"reputacao na Terra {repAntes:0} -> {repDepois:0}");
 			Checa("**...E O ZENI QUE ELE CARREGAVA**: a bolsa do vilao vai inteira pra carteira de quem o derrotou, e o jogador le quanto",
 				  Math.Abs(pl.Ficha.Zeni - meuZeni - bolsaDoVilao) < 1e-6 && vilao.Ficha.Zeni < 1 && Disse(falas, "zeni"), $"{meuZeni:N0} -> {pl.Ficha.Zeni:N0} (bolsa {bolsaDoVilao:N0}); {Ultimos(falas)}");
 			Checa("...e o planeta fica sabendo quem foi", Disse(falas, "derrotou o vilão"), Ultimos(falas));
 			AoPerderALuta(vilao, pl, morreu: true);
-			Checa("...UMA VEZ: matar o mesmo vilao que ja estava no chao nao paga de novo (nem o karma, nem o zeni)",
-				  pl.Karma == VilaoAvulso.KarmaPorDerrotar && Math.Abs(pl.Ficha.Zeni - meuZeni - bolsaDoVilao) < 1e-6, $"karma {pl.Karma}, zeni {pl.Ficha.Zeni:N0}");
+			Checa("...UMA VEZ: matar o mesmo vilao que ja estava no chao nao paga de novo (nem o karma, nem o zeni, nem a reputacao)",
+				  pl.Karma == VilaoAvulso.KarmaPorDerrotar && Math.Abs(pl.Ficha.Zeni - meuZeni - bolsaDoVilao) < 1e-6
+				  && Math.Abs(ReputacaoDe(terra.Name, pl.Conta) - repDepois) < 1e-6,
+				  $"karma {pl.Karma}, zeni {pl.Ficha.Zeni:N0}, reputacao {ReputacaoDe(terra.Name, pl.Conta):0}");
 
 			long antesDoFim = NowMs();
 			TickDosViloes();
@@ -165,9 +208,13 @@ public partial class GameServer
 			if (segundo == null) return;
 			pl.Karma = 0;
 			double bolsaDoSegundo = segundo.Ficha.Zeni, zeniAntesDoSegundo = pl.Ficha.Zeni;
+			double repAntesDoSegundo = ReputacaoDe(terra.Name, pl.Conta);
 			segundo.Combate.Morrer(ignorarSeguro: true);
 			falas = Ouvir(() => AoPerderALuta(segundo, pl, morreu: true));
 			Checa($"**MATAR O VILAO TAMBEM DA KARMA** (+{VilaoAvulso.KarmaPorDerrotar})", pl.Karma == VilaoAvulso.KarmaPorDerrotar && Disse(falas, "acabou com o vilão"), Ultimos(falas));
+			Checa($"...e a reputacao com o planeta (+{VilaoAvulso.ReputacaoPorDerrotar:0}) tambem vem pra quem MATA",
+				  Math.Abs(ReputacaoDe(terra.Name, pl.Conta) - repAntesDoSegundo - VilaoAvulso.ReputacaoPorDerrotar) < 1e-6,
+				  $"{repAntesDoSegundo:0} -> {ReputacaoDe(terra.Name, pl.Conta):0}");
 			Checa("**MATAR O VILAO DA ZENI** (dono, 2026-10-13): quem mata fica com a bolsa dele",
 				  bolsaDoSegundo >= 1 && Math.Abs(pl.Ficha.Zeni - zeniAntesDoSegundo - bolsaDoSegundo) < 1e-6, $"{zeniAntesDoSegundo:N0} -> {pl.Ficha.Zeni:N0} (bolsa {bolsaDoSegundo:N0})");
 			TickDosViloes();
@@ -186,6 +233,23 @@ public partial class GameServer
 				Checa("derrubado por um NPC, o vilao cai e NINGUEM ganha karma (nem zeni)", pl.Karma == 0 && Math.Abs(pl.Ficha.Zeni - zeniAntesDoNpc) < 1e-6 && Disse(falas, "caiu"), Ultimos(falas));
 				TickDosViloes();
 				RemoverNpc(outroNpc);
+			}
+
+			// CONTRA-EXEMPLO DA REPUTACAO (o jogo de antes): o mesmo nocaute, num vilao novo da Terra, nao muda a reputacao.
+			VencerORelogio(terra);
+			TickDosViloes();
+			ServerPlayer? terceiro = ViloesDePe().FirstOrDefault(v => v.Zone.Equals(terra));
+			Checa("(montagem) um terceiro vilao nasce na Terra", terceiro != null);
+			if (terceiro != null)
+			{
+				double repAntesDoTerceiro = ReputacaoDe(terra.Name, pl.Conta);
+				VilaoNaoDaReputacaoDeTeste = true;
+				try { Ouvir(() => AoPerderALuta(terceiro, pl, morreu: false)); }
+				finally { VilaoNaoDaReputacaoDeTeste = false; }
+				Checa("(defeito injetado: o vilao nao da reputacao, o jogo de antes) o nocaute nao mexe na reputacao com a Terra -- a regua de "
+					  + "cima REPROVA", Math.Abs(ReputacaoDe(terra.Name, pl.Conta) - repAntesDoTerceiro) < 1e-6,
+					  $"{repAntesDoTerceiro:0} -> {ReputacaoDe(terra.Name, pl.Conta):0}");
+				TickDosViloes();
 			}
 
 			// ---------------------------------------------------------------- 6. o prazo
@@ -235,6 +299,66 @@ public partial class GameServer
 				}
 				finally { VilaoPagaDeNovoDeTeste = false; }
 			}
+
+			// ---------------------------------------------------------------- 7. so os vivos do planeta (2026-10-23)
+			GD.Print("[viloes] -- 7) a forca e a dos VIVOS do planeta, e nao a do servidor (dono, 2026-10-23) --");
+			EncerrarOsEventos();
+			// UM MORTO DE 50 MILHOES CAIDO EM VEGETA (o corpo de quem acabou de cair, ou o visitante com o passe do Enma): o dono disse
+			// "os jogadores VIVOS". Ele entra na media do SERVIDOR (que conta os mortos) e nao pode entrar na do planeta.
+			Forjar("Defunto", vegeta, PontoDeNascimento(vegeta) + new Vec2(2 * ZoneCollision.TileSize, 0), 50_000_000, morto: true);
+			VencerORelogio(vegeta);
+			TickDosViloes();
+			ServerPlayer? comOMorto = ViloesDePe().FirstOrDefault(v => v.Zone.Equals(vegeta));
+			Checa("**27b. ...SO OS VIVOS CONTAM**: um morto de 50 milhoes caido em Vegeta nao muda a media do planeta -- o vilao continua na faixa do Visitante",
+				  comOMorto != null && NaFaixa(comOMorto.Ficha.BP, 1_000), $"BP {comOMorto?.Ficha.BP:N0}; a do servidor daria {MediaDoServidor():N0}");
+
+			// O CONTRA-EXEMPLO: a media do servidor inteiro (o host da Terra e o morto contam), o jogo de antes
+			EncerrarOsEventos();
+			VilaoPelaMediaDoServidorDeTeste = true;
+			try { VencerORelogio(vegeta); TickDosViloes(); }
+			finally { VilaoPelaMediaDoServidorDeTeste = false; }
+			ServerPlayer? peloServidor = ViloesDePe().FirstOrDefault(v => v.Zone.Equals(vegeta));
+			double doServidor = MediaDoServidor();
+			Checa("(defeito injetado: a media do servidor inteiro, o jogo de antes) o vilao de Vegeta nasce na faixa do SERVIDOR, longe da do Visitante -- as reguas 27a e 27b REPROVAM",
+				  peloServidor != null && NaFaixa(peloServidor.Ficha.BP, doServidor) && !NaFaixa(peloServidor.Ficha.BP, 1_000),
+				  $"BP {peloServidor?.Ficha.BP:N0}; media do servidor {doServidor:N0}");
+			EncerrarOsEventos();
+
+			// ---------------------------------------------------------------- 8. o mundo gerado (2026-10-23)
+			GD.Print("[viloes] -- 8) o mundo gerado: o vilao vem de fora (o sorteio estourava dentro do tique) --");
+			// UM MUNDO GERADO DE VERDADE, pelo caminho de producao (a encomenda e a colheita da thread -- os ajudantes da bancada da
+			// conquista), com um explorador de 5 mil nele. Antes de 2026-10-23 a pool de racas do vilao saia VAZIA la (ninguem tem berco em
+			// mundo gerado) e o `Sortear` estourava dentro do tique, a cada 12-30 min, em todo mundo gerado com gente.
+			PlanetaNoEspaco? mundo = AcharMundoGerado();
+			ZoneKey? gerado = mundo is { } mg ? ZonaGeradaPronta(mg) : null;
+			Checa("(montagem) um mundo GERADO, vivo no servidor, que recebe vilao e tem chao pra ele (vagas no habitat)",
+				  gerado is { } g0 && RecebeVilao(g0) && HabitatDaZona(g0) is { Vagas: > 0 },
+				  $"{mundo?.Nome ?? "nenhum mundo gerado perto"}; vagas {(gerado is { } g1 ? HabitatDaZona(g1)?.Vagas : null)}");
+			if (gerado is not { } zg) return;
+			Forjar("Explorador", zg, PontoDeNascimento(zg), 5_000);
+			TickDosViloes();        // o relogio do mundo gerado comeca
+			VencerORelogio(zg);
+			Exception? estouro = null;
+			try { TickDosViloes(); }
+			catch (Exception e) { estouro = e; }
+			ServerPlayer? forasteiro = ViloesDePe().FirstOrDefault(v => v.Zone.Equals(zg));
+			Checa("**27d. NUM MUNDO GERADO O VILAO NASCE**, e o tique nao estoura", estouro == null && forasteiro != null,
+				  estouro != null ? $"o tique estourou: {estouro.Message}" : forasteiro == null ? "nao nasceu" : $"{forasteiro.Name} em {zg.Name}");
+			Checa("27e. ...e ele vem DE FORA: um Alien (a raca sem lar do DM, a da tropa do Freeza) -- ninguem tem berco num mundo gerado",
+				  forasteiro?.Race == "Alien", forasteiro?.Race ?? "ninguem");
+			Checa("27f. ...com a forca de QUEM ESTA LA -- o Explorador, 5.000 --, e nao a do servidor",
+				  forasteiro != null && NaFaixa(forasteiro.Ficha.BP, 5_000), $"BP {forasteiro?.Ficha.BP:N0}; a do servidor daria {MediaDoServidor():N0}");
+
+			// O CONTRA-EXEMPLO: a pool vazia de antes
+			EncerrarOsEventos();
+			Exception? comODefeito = null;
+			VilaoAvulso.ForasteiroSemRacaDeTeste = true;
+			try { VencerORelogio(zg); TickDosViloes(); }
+			catch (Exception e) { comODefeito = e; }
+			finally { VilaoAvulso.ForasteiroSemRacaDeTeste = false; }
+			Checa("(defeito injetado: a pool vazia de antes) o sorteio ESTOURA dentro do tique (`nenhuma raca tem berco`) e nenhum vilao nasce no mundo gerado -- a regua 27d REPROVA",
+				  comODefeito is InvalidOperationException && comODefeito.Message.Contains("nenhuma raca tem berco") && !ViloesDePe().Exists(v => v.Zone.Equals(zg)),
+				  comODefeito?.Message ?? "nao estourou");
 		}
 		catch (Exception e)
 		{
@@ -244,17 +368,20 @@ public partial class GameServer
 		{
 			VilaoPagaDeNovoDeTeste = false;
 			VilaoNaoPagaZeniDeTeste = false;
+			VilaoPelaMediaDoServidorDeTeste = false;
+			VilaoAvulso.ForasteiroSemRacaDeTeste = false;
 			pl.Ficha.Zeni = zeniDeAntes;
+			pl.Ficha.BP = bpDeAntes;
 			VilaoAvulso.Ligado = ligadoDeAntes;
 			SorteioDoVilaoDeTeste = null;
 			foreach (ServerPlayer v in ViloesDePe()) RemoverNpc(v);
 			_viloes.Clear();
 			_proximoVilao.Clear();
-			if (visitante != null)
+			foreach (ServerPlayer f in forjados)
 			{
 				// O `Peer` EMPRESTADO VOLTA ANTES DE O CORPO SAIR: `RemoverNpc` recusa corpo com dono.
-				visitante.Peer = null;
-				RemoverNpc(visitante);
+				f.Peer = null;
+				RemoverNpc(f);
 			}
 			pl.Karma = karmaDeAntes;
 			if (entrouPelaBancada) daZona.Remove(pl);   // o `Entrar` o poe de volta, na linha dele

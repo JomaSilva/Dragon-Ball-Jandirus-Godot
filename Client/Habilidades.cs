@@ -210,6 +210,18 @@ public static class Habilidades
 				  + "esquerda, perna direita, cabeça e por fim o tronco -- e devolve 5% do seu tronco, do Ki e do fôlego. Uma por segundo.",
 			() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
 
+		// (2026-10-24) O BIO-ANDROIDE COM SANGUE MAJIN TEM AS DUAS -- o dono: *"Os dois, em botoes separados"*. O "Absorver" de cima e o
+		// dele (bebe e evolui); este sela como o Majin, pelas mesmas portas (`GameServer.BioMajin.cs`). Quem tem o botao: o bio que sabe Buu
+		// Absorb, que a arvore do Majin so vende pro sangue Majin -- a linha `hab:absorver_majin` da tabela.
+		Verbos.Registrar(new Verbo(
+			"Absorver como Majin",
+			Verbos.Skills,
+			"O sangue Majin te dá o selo do Majin: puxa pra dentro de você alguém NOCAUTEADO e vivo ao seu lado, em vez de bebê-lo.\n\n"
+			+ "Um JOGADOR não morre: vai VIVO pro interior do seu corpo e encara uma IMAGEM sua, com metade do seu poder. Enquanto ele "
+			+ "estiver lá dentro você usa 10% do poder dele, as técnicas dele e veste as roupas dele. Um NPC é absorvido por inteiro.\n\n"
+			+ "Selar NÃO faz você evoluir: os marcos da sua forma só andam pelo Absorver.",
+			() => GameClient.Instance?.SendHabilidade("absorver_majin")) { Chave = "hab:absorver_majin" });
+
 		Verbos.Registrar(new Verbo(
 			"Expelir todos",
 			Verbos.Skills,
@@ -285,6 +297,7 @@ public static class Habilidades
 		DoEstudoDaMente();
 		HabilidadesDoDeus.Registrar();
 		HabilidadesDoJuiz.Registrar();   // (2026-10-19) a travessia do King Yemma -- ver `HabilidadesDoJuiz.cs`
+		HabilidadesDoRitual.Registrar();   // (2026-10-23) o Ritual Mistico do Velho Kaiohshin -- ver `HabilidadesDoRitual.cs`
 		DasDisciplinas();
 		DasSkills();
 		DosEstilos();
@@ -454,7 +467,7 @@ public static class Habilidades
 		Jandirus.Core.Races.SkillRacial.GuerreiroVeterano =>
 			"Saiyajin: em combate, cada forma de maestria que você sustenta (10 s a primeira, 20 s a segunda, 30 s a terceira...) vale +10% de "
 			+ "BP, até +60%. Descer pra uma forma mais fraca zera a conta.",
-		Jandirus.Core.Races.SkillRacial.RacaGuerreira => "Saiyajin: com o tronco ou a cabeça abaixo de 20%, ataque físico +20% e defesa física +30%.",
+		Jandirus.Core.Races.SkillRacial.RacaGuerreira => "Saiyajin: com o tronco ou a cabeça abaixo de 50%, ataque físico +20% e defesa física +30%.",
 		Jandirus.Core.Races.SkillRacial.Resolucao =>
 			"Saiyajin: do 2º golpe seguido do MESMO tipo em diante (soco, lâmina ou ki), cada um dói 2% menos, até -20%, por 10 s.",
 		Jandirus.Core.Races.SkillRacial.Orgulho =>
@@ -725,6 +738,9 @@ public static class Habilidades
 	/// contrario do de cima: isto o cliente SABE, porque esta no catalogo -- e um "Ensinar: Give Permission" que
 	/// recusa pra todo Guardiao, sempre, e o botao poluido que o dono mandou limpar em 2026-10-10. O "Esquecer a
 	/// licao" da mesma skill fica: ele e de quem a aprendeu, e nao de quem a ensinaria.
+	///
+	/// O POTENTIAL UNLEASHED TAMBEM NAO (dono, 2026-10-23: so o ritual o da -- `EnsinoDeSkill.SoPeloRitual`), pelo mesmo motivo: o
+	/// cliente sabe pelo catalogo, e o botao recusaria pra todo mundo.
 	/// ===============================================================================================================
 	/// </summary>
 	public static void DoEnsinoDeSkill()
@@ -753,7 +769,8 @@ public static class Habilidades
 			if (s == null || s.Arvore || !s.Ensinavel || s.Nome.Length == 0) continue;
 			string idLocal = path;
 
-			if (!Jandirus.Core.Skills.EnsinoDeSkill.CargoTrancaOEnsino(s))
+			if (!Jandirus.Core.Skills.EnsinoDeSkill.CargoTrancaOEnsino(s)
+				&& !Jandirus.Core.Skills.EnsinoDeSkill.SoPeloRitual(s))
 				Verbos.Registrar(new Verbo(
 					$"Ensinar: {s.Nome}",
 					Verbos.Aprendizado,
@@ -1014,6 +1031,28 @@ public static class Habilidades
 	internal static bool BotaoCinzaDeTeste;
 
 	/// <summary>
+	/// DEFEITO INJETADO (o robo do Kai Kai, `RoboDoKaiKai` K0): a categoria "Outros" do catalogo volta a cair FORA de
+	/// toda aba -- o botao do Kai Kai, do Devil Bringer, da Telepatia... so na busca, e fora da tela de teclas. Lido pelo
+	/// <see cref="AbaDoBotao"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool OutrosForaDaAbaDeTeste;
+
+	/// <summary>
+	/// A ABA DO BOTAO DE UMA TECNICA.
+	///
+	/// (2026-10-24, dono: "Mover pra aba Other") O catalogo (`Tecnicas.Portadas`) escreve a categoria em portugues,
+	/// "Outros", e a aba do menu P se chama "Other" (<see cref="Verbos.Outros"/>, o nome do original). Os ~20 verbos dela
+	/// (Kai Kai, Devil Bringer, Telepatia, Rasgo Dimensional, Mafuba, Observar...) nao caiam em aba NENHUMA: so a busca os
+	/// achava, e a tela de teclas, que lista as abas, nao os oferecia pra ligar. Agora vao pra Other (o cartao "Diversos",
+	/// ate alguem os pendurar num tema da `MenuJogo.Outros`).
+	///
+	/// MENOS O DECOLAR (`Space_Flight`): ele SAIU da aba Other em 2026-09-03, pedido do dono (o comentario "O VERB
+	/// 'Decolar' SAIU DA ABA OTHER", no comeco deste arquivo) -- subir ao espaco e voar pra cima ate romper a atmosfera.
+	/// </summary>
+	internal static string AbaDoBotao(Tecnicas.Tecnica t) =>
+		t.Aba == "Outros" && t.Id != "Space_Flight" && !OutrosForaDaAbaDeTeste ? Verbos.Outros : t.Aba;
+
+	/// <summary>
 	/// OS BOTOES QUE VIERAM DAS SKILLS APRENDIDAS.
 	///
 	/// Nenhuma linha aqui conhece tecnica nenhuma: le o que foi aprendido, pergunta ao catalogo
@@ -1047,7 +1086,7 @@ public static class Habilidades
 			string idLocal = id;
 			Verbos.Registrar(new Verbo(
 				t.Modo == Modo.NaoPortada ? $"{t.Nome} (nao portada)" : t.Nome,
-				t.Aba,
+				AbaDoBotao(t),
 				t.Desc,
 				// (o `Power_Control` nao viaja sem numero: o botao dele ABRE a faixa da aba Ki, onde o numero se escolhe)
 				() => { if (!MenuJogo.AbrirOControleDe(idLocal)) GameClient.Instance?.SendHabilidade(idLocal); },

@@ -205,6 +205,18 @@ public partial class GameServer
 				npc.Forma.Atual, EstadoDe(npc, DisciplinaDoDivino(c)).Ligada, EhDeusDaDestruicao(npc));
 	}
 
+	/// <summary>
+	/// (2026-10-25) O BILLS FERIDO NO DESAFIO, abaixo da vida da virada (`BillsEWhis.VidaDaVirada`): no proximo tique do juiz ele se levanta
+	/// inteiro e entra na Fury (`VirarNaFury`) -- e o robo a ve chegar na tela.
+	/// </summary>
+	internal void FerirOBillsDeTeste(double fracao)
+	{
+		if (_bills.Corpo is not { } b) return;
+		foreach (Jandirus.Core.Combat.BodyPart parte in b.Combate.Corpo.Partes) parte.Vida = parte.VidaMax * fracao;
+		b.Combate.SincronizarVida();
+		b.Ficha.PowerLevel();
+	}
+
 	/// <summary>A historia volta a dormir e os dois saem do mundo: o robo deixa o palco como achou.</summary>
 	internal void RecolherOPalcoDoBillsDeTeste(int idDoHost = 0)
 	{

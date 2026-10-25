@@ -489,6 +489,71 @@ public sealed partial class GameServer
 		var noDeusComDefeito = NoDeus(defeito: true);
 		AfirmarV30("(defeito injetado: o Kaio-ken no Deus, o jogo de antes) ele acende no SSG e atravessa a entrada nele -- a regua de cima REPROVA",
 				   !noDeusComDefeito.Recusou && !noDeusComDefeito.ApagouAoEntrar, noDeusComDefeito.Detalhe);
+
+		// ---- (f) O CORPO TODO AO MESMO TEMPO (dono, 2026-10-24) ----
+		// *"o kaioken deveria dar dano no corpo todo ao mesmo tempo com pequenas variaçoes em algumas partes, pq atualmente parece q ele
+		// sempre começa pela virilha e dps vai pro resto"*. Dois minutos de x4 na maestria x4, FORA DE LUTA, pelos tiques de producao dos
+		// dois lados -- o do Kaio-ken (`TickTecnicasG2`) e o da cura (`RegenerarPassivo`), um segundo por volta. Mede-se o que cada membro
+		// de fora perdeu (os que o Kaio-ken fere: cabeca, torso, abdomen, virilha, bracos e pernas). O jogo de antes: a costura de cada
+		// membro (o torso 2, a virilha 0,5) seguia ligada, dava conta do dano no torso -- e a virilha ia na frente. E ela levava, alem do
+		// dela, o repique do abdomen (20% a mais: medido na r1 do `kaiokencorpo`, 28,9 contra 22,5 com a cura igual pra todos).
+		(Dictionary<string, double> Perdas, string Detalhe) CorpoTodo(bool costura, bool semVariacao, bool repique = false)
+		{
+			KaiokenCosturaCadaMembroDeTeste = costura;
+			KaiokenSemVariacaoDeTeste = semVariacao;
+			RepiqueNaVirilhaDeTeste = repique;
+			try
+			{
+				// o tanque de verdade: o da forja nasce no piso de folego, e o primeiro tique apagaria o Kaio-ken (ver `ForjarDaClasseKS`)
+				ServerPlayer k = ForjarComSkills("Kaio do corpo todo", c, 50_000, skills: [NpcsDeConversa.SkillDoKaioken], baseKi: 5_000);
+				k.Combate.EmCombate = 0;
+				UsarHabilidade(k, "Kaioken_4");
+				List<BodyPart> fora = k.Combate.Corpo.Partes.Where(p => !p.Decepado && !p.Aninhado).ToList();
+				Dictionary<BodyPart, double> antes = fora.ToDictionary(p => p, p => p.Vida);
+				bool podeCurar = Regeneracao.PodeCurar(k.Combate.Corpo.Regen, k.Ficha, emCombate: false);
+				int segundos = 0;
+				for (; segundos < 120 && TemBuff(k, BuffKaiokenG2); segundos++)
+				{
+					k.Ficha.Ki = k.Ficha.MaxKi;
+					TickTecnicasG2();
+					RegenerarPassivo(k, 1.0);
+				}
+				bool emLuta = k.Combate.EmCombate > 0;
+				if (TemBuff(k, BuffKaiokenG2)) UsarHabilidade(k, "Kaioken");
+				Dictionary<string, double> perdas = fora.ToDictionary(p => p.Nome, p => antes[p] - p.Vida);
+				return (perdas, $"{segundos} s aceso; em luta {emLuta}; a cura roda {podeCurar}; perdas: "
+								+ string.Join(", ", perdas.Select(x => $"{x.Key} {x.Value:0.00}")));
+			}
+			finally
+			{
+				KaiokenCosturaCadaMembroDeTeste = false;
+				KaiokenSemVariacaoDeTeste = false;
+				RepiqueNaVirilhaDeTeste = false;
+			}
+		}
+		// JUNTO: todo membro de fora perdeu vida, e a distancia entre o que mais perdeu e o que menos perdeu fica abaixo de 12% da perda
+		// media (o sorteio sozinho espalha ~5%; o repique da virilha, 28%; a costura de cada membro, mais que a propria perda)
+		static bool Junto(Dictionary<string, double> perdas) =>
+			perdas.Count > 0 && perdas.Values.Min() > 1 && perdas.Values.Max() - perdas.Values.Min() <= 0.12 * perdas.Values.Average();
+		static double Espalhamento(Dictionary<string, double> perdas) => perdas.Count == 0 ? 0 : perdas.Values.Max() - perdas.Values.Min();
+		var corpoTodo = CorpoTodo(costura: false, semVariacao: false);
+		AfirmarV30("**O KAIO-KEN FERE O CORPO TODO AO MESMO TEMPO** (*\"parece q ele sempre começa pela virilha\"*): dois minutos de x4 fora de luta, com a cura rodando -- todo membro de fora perde vida, e a diferenca entre o que mais perdeu e o que menos perdeu fica abaixo de 12% da perda media",
+				   Junto(corpoTodo.Perdas), corpoTodo.Detalhe);
+		AfirmarV30("**...COM PEQUENAS VARIACOES** (*\"com pequenas variaçoes em algumas partes\"*): os membros nao terminam iguais -- cada tique sorteia o dano de cada um",
+				   Espalhamento(corpoTodo.Perdas) > 0.01, corpoTodo.Detalhe);
+		var comCostura = CorpoTodo(costura: true, semVariacao: false);
+		bool virilhaNaFrente = comCostura.Perdas.TryGetValue("Reprodutor", out double virilha)
+							   && comCostura.Perdas.Where(x => x.Key is not "Reprodutor" and not "Rabo").All(x => x.Value < virilha);
+		AfirmarV30("(defeito injetado: a costura de cada membro ligada com o Kaio-ken aceso, o jogo de antes) a virilha vai na frente de todo membro -- a primeira regua REPROVA",
+				   !Junto(comCostura.Perdas) && virilhaNaFrente, comCostura.Detalhe);
+		var comRepique = CorpoTodo(costura: false, semVariacao: false, repique: true);
+		bool virilhaComRepique = comRepique.Perdas.TryGetValue("Reprodutor", out double vr)
+								 && comRepique.Perdas.Where(x => x.Key is not "Reprodutor" and not "Rabo").All(x => x.Value < vr);
+		AfirmarV30("(defeito injetado: o repique do abdomen na virilha, o jogo de antes) ela perde mais que todo membro -- a primeira regua REPROVA",
+				   !Junto(comRepique.Perdas) && virilhaComRepique, comRepique.Detalhe);
+		var semSorteio = CorpoTodo(costura: false, semVariacao: true);
+		AfirmarV30("(defeito injetado: o mesmo dano em todo membro, sem o sorteio) os membros terminam iguais -- a segunda regua REPROVA",
+				   semSorteio.Perdas.Count > 0 && Espalhamento(semSorteio.Perdas) <= 0.01, semSorteio.Detalhe);
 		LimparTudoDaBancada();
 	}
 
@@ -1145,6 +1210,9 @@ public sealed partial class GameServer
 			p.MorteJaViajou = true;
 			p.RelogioDaMorte = long.MaxValue;
 			p.Combate.Carencia = 0;
+			// (2026-10-23) ACLIMATADOS AO INFERNO, como as almas que nascem la: o morto de pe passou a sentir o chao (dono), e dominando 1x num
+			// chao de 10x o fantasma fica preso -- o agarrao nem sairia. O assunto aqui e a luta do morto, nao a gravidade (essa e da `--gravmetateste`).
+			p.Ficha.GravMastered = Math.Max(p.Ficha.GravMastered, Jandirus.Core.Stats.Esmagamento.Gravidade(p.Ficha));
 		}
 		void Colados()
 		{
@@ -1405,7 +1473,8 @@ public sealed partial class GameServer
 			List<string> pedido = Ouvir(() => TeletransporteG11(morto, vivo.Name));
 			if (!_transmissaoG11.TryGetValue(morto.Id, out TransmissaoG11? tr)) return (false, false, Ultimos(pedido));
 			tr.QuandoMs = 0;   // o relogio de parede nao anda na bancada: a concentracao vence agora
-			List<string> chegada = Ouvir(() => TickDaTransmissaoG11(morto, tr, NowMs()));
+			// (2026-10-24) e a viagem inteira: a saida piscando e o clarao da chegada vencem junto (eles tem a familia S da `--teleporteteste`)
+			List<string> chegada = Ouvir(() => { TickDaTransmissaoG11(morto, tr, NowMs()); TerminarATransmissaoDeTeste(morto.Id); });
 			bool chegou = morto.Zone.Equals(vivo.Zone) && (morto.Pos - vivo.Pos).Length <= 2 * T;
 			return (true, chegou, $"{Ultimos(pedido)} / {Ultimos(chegada)}");
 		}

@@ -106,6 +106,9 @@ public sealed partial class GameServer
 			return true;
 		}
 
+		// (2026-10-23) OS BRINCOS NAO SAEM DA MAO A CAMINHO DA FUSAO -- ver `BrincosPresosNaFusao`.
+		if (BrincosPresosNaFusao(pl, def, acao)) return true;
+
 		switch (acao)
 		{
 			// A SEMENTE SENZU cura o corpo inteiro alem de alimentar (`Food.dm:38-48`), e tem o gesto de
@@ -144,6 +147,12 @@ public sealed partial class GameServer
 			case "jogar":
 				if (def.Id == CatalogoDeItens.BrincosPotara) OferecerOsBrincos(pl);
 				else Avisar(pl, $"não dá pra jogar {def.Nome} em ninguém.");
+				break;
+
+			// (2026-10-23) E O PAR SE DA a quem esta marcado (dono: *"Kaioshin entrega o par"*). Ver `DarOsBrincos`.
+			case ParDePotara.AcaoDar:
+				if (def.Id == CatalogoDeItens.BrincosPotara) DarOsBrincos(pl);
+				else Avisar(pl, $"não dá pra dar {def.Nome} a ninguém.");
 				break;
 
 			// LARGAR POE NO CHAO (dono, 2026-10-13: *"poder dropar itens"*). Ate a v0.2.0 esta linha APAGAVA o item --
@@ -493,8 +502,13 @@ public sealed partial class GameServer
 		string noCorpo = pl.Ficha.weight_ratio > 1 ? "mais do que o seu corpo aguenta nesta gravidade"
 					   : pl.Ficha.weight > 1 ? "pesa de verdade no seu corpo"
 					   : "leve demais pro seu corpo -- o treino só rende mais com pesos mais pesados (melhore o peso máximo)";
-		Avisar(pl, $"você veste {pct:0}% do peso máximo ({pl.Ficha.Weighted:N0} de {TetoDePeso(pl.Ficha, pesos):N0} kg): {noCorpo}, "
-				   + $"e {pl.Ficha.weight:0.##}x de ganho no treino.");
+		// (2026-10-23) ACIMA DE 8x O LIMITE DO CORPO o "8x de ganho" seria mentira: assim nao se treina (dono, `Fighter.PesoDemaisPraTreinar`) --
+		// e e aqui, ao vestir, que o jogador fica sabendo, antes de apertar o T. A outra frase continua a mesma (e a linha do dicionario dela).
+		Avisar(pl, pl.Ficha.PesoDemaisPraTreinar()
+			? $"você veste {pct:0}% do peso máximo ({pl.Ficha.Weighted:N0} de {TetoDePeso(pl.Ficha, pesos):N0} kg): {noCorpo}, e NADA de ganho no "
+			  + $"treino -- passa de {Jandirus.Core.Stats.GainKnobs.RazaoQueImpedeOTreino:0.#}x o que o seu corpo aguenta, e assim não se treina."
+			: $"você veste {pct:0}% do peso máximo ({pl.Ficha.Weighted:N0} de {TetoDePeso(pl.Ficha, pesos):N0} kg): {noCorpo}, "
+			  + $"e {pl.Ficha.weight:0.##}x de ganho no treino.");
 
 		// E O AVISO DE QUE PASSOU DO PONTO. O peso esmaga pela MESMA regra da gravidade (a pior das
 		// duas razoes manda), entao vestir demais nao e "mais lento": e perder vida por segundo, e

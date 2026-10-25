@@ -405,7 +405,7 @@ public partial class GameServer
 	// =====================================================================
 	private void MfQuemNaoTemAForma(ServerPlayer pl, List<ServerPlayer> forjados)
 	{
-		GD.Print("[marcos] -- 6) quem nao tem a forma nao ganha nada --");
+		GD.Print("[marcos] -- 6) quem nao tem a forma nao ganha marco de forma (a raca sem escada tem o da Ascensao) --");
 
 		// O TSUJIN e a raca sem escada desde a v0.4.0 -- ate entao era o Humano, que ganhou a linha da Tensao (logo abaixo).
 		ServerPlayer semEscada = GkForjar("TsujinDaBancada", "Tsujin", pl.Zone, pl.Pos + new Vec2(96, 64), 1e13, forjados);
@@ -413,10 +413,15 @@ public partial class GameServer
 		semEscada.Peer = pl.Peer;   // um jogador de verdade, pra a recusa ser a da RACA e nao a de "corpo sem dono"
 		List<string> gesto = Ouvir(() => Transformar(semEscada, subir: true));
 		List<string> tique = Ouvir(() => { Treinar(semEscada); Treinar(semEscada); });
-		AfirmarMf("o TSUJIN com poder de sobra aperta C: a raca nao tem a escada, ele fica na base, e o ganho continua x1 sem etiqueta nenhuma",
-				  semEscada.Forma.NaBase && semEscada.Ficha.bp_milestone_mult == 1 && semEscada.Ficha.bp_milestones_done.Count == 0
-				  && Disse(gesto, "nao tem essa escada") && !Disse(tique, "MARCO DE PODER"),
-				  $"forma {semEscada.Forma.Atual} | {Ultimos(gesto)}");
+		// (2026-10-23) E A ASCENSAO E DELE: o Tsujin e uma das racas sem transformacao que o dono pos na Ascensao (`Races.Ascensao`), e com
+		// 1e13 de BP base ela esta no teto (16x) -- o `Treinar` a escreve e o marco de ganho dela vem junto, com o aviso (`asc20`, x4: o do
+		// Saiyajin no SSJ3). O que esta familia cobra continua de pe: ele nao tem forma, entao nenhuma etiqueta de FORMA -- a unica que ele
+		// ganha e a da Ascensao.
+		AfirmarMf("o TSUJIN com poder de sobra aperta C: a raca nao tem a escada, ele fica na base e nao ganha etiqueta de forma -- so a da Ascensao (`asc20`, x4)",
+				  semEscada.Forma.NaBase && semEscada.Ficha.bp_milestone_mult == 4
+				  && semEscada.Ficha.bp_milestones_done.SetEquals(new[] { "asc20" })
+				  && Disse(gesto, "nao tem essa escada") && Disse(tique, "MARCO DE PODER"),
+				  $"forma {semEscada.Forma.Atual} | marcos {string.Join(",", semEscada.Ficha.bp_milestones_done)} x{semEscada.Ficha.bp_milestone_mult:0.##} | {Ultimos(gesto)}");
 
 		// (v0.4.0) E O HUMANO, que ganhou a linha da Tensao (a lista do amigo do dono): ele SOBE -- e a forma nao tem marco, porque nao
 		// ha proc do DM pra citar (ver o bloco das entradas em `Formas.cs`). O ganho continua x1.

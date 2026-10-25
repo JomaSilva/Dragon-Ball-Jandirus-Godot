@@ -80,6 +80,9 @@ public partial class GameServer
 	/// </summary>
 	private double FatorDaLuta(ServerPlayer atacante, ServerPlayer alvo)
 	{
+		// (2026-10-24) O TREINO COM O WHIS E O BILLS RENDE MUITO (o dono: *"igual no anime"*) -- os dois lados de todo golpe, enquanto a aula
+		// durar. Ver `BillsEWhis.GanhoDoTreino`.
+		if (!Jandirus.Core.Npc.BillsEWhis.TreinoRendeOComumDeTeste && TreinoDivinoEntre(atacante, alvo)) return Jandirus.Core.Npc.BillsEWhis.GanhoDoTreino;
 		if (GainKnobs.PvpSemTrocaDeTeste || !EhJogador(atacante) || !EhJogador(alvo)) return 1;
 		return AtacouHaPouco(alvo, atacante) ? GainKnobs.GanhoDaTrocaPvp : 0;
 	}

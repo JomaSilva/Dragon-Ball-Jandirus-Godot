@@ -133,8 +133,10 @@ public partial class GameServer
 			// A POSE: o primeiro passo la dentro manda "parado", e o T manda "treinando".
 			DefinirAtividade(pl, Protocol.Activity.Parado);
 			bool depoisDoPasso = boneco.Pose(NowMs(), false) == Protocol.Pose.Meditando && !pl.Ficha.med;
+			pl.Ficha.stamina = pl.Ficha.maxstamina;   // (2026-10-24) o T exausto e recusado no pedido: descansado, o dono treina la dentro de verdade
 			DefinirAtividade(pl, Protocol.Activity.Treinando);
-			bool depoisDoTreino = boneco.Pose(NowMs(), false) == Protocol.Pose.Meditando;
+			bool depoisDoTreino = boneco.Pose(NowMs(), false) == Protocol.Pose.Meditando && pl.Ficha.train;
+			pl.Ficha.stamina = 1;   // ...e o cansaco de dentro volta, pra a saida provar que ele nao sai junto
 			DefinirAtividade(pl, Protocol.Activity.Parado);
 			pl.Combate.Nocautear(10);
 			bool depoisDoNocaute = boneco.Pose(NowMs(), false) == Protocol.Pose.Meditando;

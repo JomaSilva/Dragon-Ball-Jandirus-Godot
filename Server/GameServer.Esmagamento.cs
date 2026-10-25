@@ -31,6 +31,7 @@ namespace Jandirus.Server;
 ///     tem um dono so neste port e ele precisa valer nas duas pontas;
 ///   * PRISAO NO CHAO (razao >= 4) -- no `PodeMexerOCorpo`, que e o funil de VETOR (o mesmo do
 ///     nocaute, da tecla C e da paralisia de tecnica), pra a regra valer tambem pra IA.
+///     (2026-10-23) O JOGADOR preso -- e o desmaiado por este castigo -- se ARRASTA a 1/4 (dono): ver `GameServer.Rastejo.cs`.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -54,29 +55,55 @@ public sealed partial class GameServer
 	/// solta o corpo no mesmo tique -- sem ninguem precisar lembrar de apagar nada, que e o defeito
 	/// que o proprio DM tem que remendar a mao (`if(testgrav != 3) gravParalysis = 0`).
 	///
-	/// MORTO NAO E PRENSADO: o `if(r > 1 && (!dead || KeepsBody))` do DM. Um cadaver ja nao anda por
-	/// outra regra, e deixar a prisao valer sobre ele so faria a checagem mentir na ficha.
-	///
-	/// **A EXCECAO ENTROU** (`Gravity.dm:47`): quem tem <see cref="Jandirus.Core.Stats.Fighter.KeepsBody"/>
-	/// ficou com o corpo, e o corpo tem peso. Ate esta sessao o `|| KeepsBody` estava so no comentario,
-	/// porque o campo nao existia -- e o comentario do DM diz exatamente por que ele existe:
-	/// *"dead people can no longer abuse not dying for grav gains without an actual body"*. Sem esta
-	/// metade, o `Keep_Body` do cargo seria a melhor sala de treino do jogo: morra, fique, treine em
-	/// gravidade alta sem levar dano nenhum. Ver `GameServer.Tecnicas.G8.ManterOCorpoG8`.
+	/// QUEM O CHAO PRENDE E QUEM ELE ESMAGA: <see cref="SenteOPesoDoChao"/> -- desde 2026-10-23, o morto de pe tambem.
 	/// </summary>
 	private static bool PrensadoPelaGravidade(ServerPlayer pl) =>
-		(!pl.Ficha.dead || pl.Ficha.KeepsBody) && Esmagamento.Prende(pl.Ficha);
+		SenteOPesoDoChao(pl) && Esmagamento.Prende(pl.Ficha);
 
 	/// <summary>
 	/// ESTE CORPO ESTA SENDO ESMAGADO AGORA? -- a pergunta que o <see cref="TickDoEsmagamento"/> faz antes de ferir: acima do limite
-	/// (<see cref="Esmagamento.Esmaga"/>) e com corpo (`!dead || KeepsBody`, o mesmo `||` do <see cref="PrensadoPelaGravidade"/>).
+	/// (<see cref="Esmagamento.Esmaga"/>) e um corpo que o chao pega (<see cref="SenteOPesoDoChao"/>, a mesma do <see cref="PrensadoPelaGravidade"/>).
 	///
 	/// (2026-10-19) NUMA CASA SO porque ganhou um segundo leitor: o Sleep do Majin recusa o corpo esmagado, e acorda quem passa a ser esmagado
 	/// dormindo (`GameServer.SonoDoMajin.cs`) -- o corpo que o castigo fere e o corpo que nao dorme, e duas copias da conta divergiriam no dia
 	/// em que alguem mexesse numa.
 	/// </summary>
 	private static bool EsmagadoAgora(ServerPlayer pl) =>
-		(!pl.Ficha.dead || pl.Ficha.KeepsBody) && Esmagamento.Esmaga(pl.Ficha);
+		SenteOPesoDoChao(pl) && Esmagamento.Esmaga(pl.Ficha);
+
+	/// <summary>
+	/// QUEM O PESO E A GRAVIDADE PEGAM: o vivo, o MORTO DE PE e quem ficou com o corpo (`KeepsBody`) -- todo corpo, menos o cadaver dos 2 s.
+	///
+	/// ============================ O MORTO SENTE O CHAO COMO O VIVO (dono, 2026-10-23) ============================
+	/// *"faça com q morto sofra dano de peso e gravidade, isso virou meta do jogo"* -- e, perguntado, "Tudo, inclusive o 10x do Alem".
+	/// Ate aqui valia o `if(r > 1 &amp;&amp; (!dead || KeepsBody))` do DM (`Gravity.dm:47`): o morto nao era prensado nem ferido, e com o vigor
+	/// travado no cheio (`Nutricao.VigorSempreCheio`, 2026-10-15) ele treinava horas com o peso no teto onde o vivo para em segundos (os 20
+	/// bilhoes de 2026-10-20 eram de um morto). Agora o fantasma do Outro Mundo, o do passe do Enma, o de passagem e o da mente (o
+	/// `MortoDePe`) sentem o chao em todo lugar como o vivo: o aperto a partir da razao 4, o dano, e o corpo em farrapos que se desfaz --
+	/// e a "morte" dele e a de sempre do morto: curado, de volta a mesa do Enma, em coma curto (`MorrerDeNovoNoAlem`). O Inferno e as
+	/// ilhas do Outro Mundo puxam 10x: a alma que domina pouca gravidade fica presa e se machuca la ate dominar (a maestria sobe a cada
+	/// passe, `GravGain`) -- ou ate a pena acabar, ou ate ela morrer de novo e acordar na mesa. DIVERGENCIA DECLARADA DO DM. O vigor do morto
+	/// nao mudou: continua cheio (o dreno do esmagamento volta no mesmo tique, `Nutricao.ManterOsInfinitos`).
+	///
+	/// O CADAVER DOS 2 s FICA DE FORA, e nao e isencao: e o corpo no chao antes da viagem, que nao anda nem treina -- e o funil de dano ja o
+	/// recusa (`EspalharDanoG3`, `EhCadaver`). Quem ficou com o corpo (`KeepsBody`, `GameServer.Tecnicas.G8.ManterOCorpoG8`) continua como no
+	/// DM, o cadaver que fica entre os vivos: *"dead people can no longer abuse not dying for grav gains without an actual body"*.
+	/// ===========================================================================================================
+	/// </summary>
+	private static bool SenteOPesoDoChao(ServerPlayer pl) => OCorpoSeDesfazNoChao(pl) || pl.Ficha.KeepsBody;
+
+	/// <summary>
+	/// QUEM O CORPO EM FARRAPOS DESFAZ (a ultima saida do <see cref="TickDoEsmagamento"/>): quem tem uma morte a sofrer -- o vivo, que morre, e
+	/// o MORTO DE PE, que "morre de novo" (curado, de volta a mesa do Enma). O cadaver -- o dos 2 s e o que ficou com o corpo -- nao: nele o
+	/// `EstourarG2` so o deixaria desmaiado e morto ao mesmo tempo.
+	/// </summary>
+	private static bool OCorpoSeDesfazNoChao(ServerPlayer pl) => !pl.Ficha.dead || (pl.MortoDePe && !MortoSemPesoDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--gravmetateste`): o morto de pe volta a nao sentir o chao -- o `(!dead || KeepsBody)` do DM, o jogo de antes
+	/// de 2026-10-23. Lido pelo <see cref="OCorpoSeDesfazNoChao"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MortoSemPesoDeTeste;
 
 	/// <summary>
 	/// UMA VEZ POR SEGUNDO -- chamado do bloco de 1 Hz do <see cref="Tick"/>.
@@ -92,11 +119,10 @@ public sealed partial class GameServer
 		{
 			Fighter f = pl.Ficha;
 
-			// MORTO NAO E ESMAGADO (`!dead || KeepsBody`) -- e a segunda metade do `||` deixou de ser
-			// so um comentario nesta sessao: quem recebeu o `Keep_Body` de um cargo ficou com o corpo,
-			// e o corpo e esmagado. Ver `PrensadoPelaGravidade` logo acima, que faz a mesma pergunta
-			// pro andar. Nem quem esta com a razao dentro do limite -- que e a esmagadora maioria dos
-			// corpos do servidor, e por isso o teste barato vem primeiro. A conta mora no `EsmagadoAgora`.
+			// O CADAVER DOS 2 s NAO E ESMAGADO -- o morto de pe e (2026-10-23, dono) e quem ficou com o corpo tambem: ver
+			// `SenteOPesoDoChao`, a mesma pergunta que o `PrensadoPelaGravidade` faz pro andar. Nem quem esta com a razao dentro do
+			// limite -- que e a esmagadora maioria dos corpos do servidor, e por isso o teste barato vem primeiro. A conta mora no
+			// `EsmagadoAgora`.
 			if (!EsmagadoAgora(pl))
 			{
 				_avisoDeEsmagamento.Remove(pl.Id);
@@ -113,7 +139,11 @@ public sealed partial class GameServer
 			// AUTOR = VITIMA porque nao ha algoz. O funil trata esse caso (a Final Explosion o usa) e
 			// manda a derrota pro `ZenkaiPorDerrota` em vez de enfurecer contra ninguem.
 			double dano = Esmagamento.DanoPorSegundo(f);
+			// (2026-10-23) O DESMAIO QUE ESTE DANO FIZER E DA GRAVIDADE: quem cai AQUI se arrasta ate levantar (dono) -- e so quem estava
+			// de pe: o que ja estava no chao continua desmaiado pelo motivo de antes. Ver `GameServer.Rastejo.cs`.
+			bool dePe = !f.KO;
 			if (dano > 0) EspalharDanoG3(pl, pl, dano, letal: true);
+			if (dePe && f.KO) MarcarODesmaioDaGravidade(pl);
 
 			f.stamina = Math.Max(0, f.stamina - Esmagamento.DrenoDeVigorPorSegundo(f));
 
@@ -126,8 +156,11 @@ public sealed partial class GameServer
 			// REUSA O `EstourarG2`, que e o porte do `Body_Parts()` feito pro Kaio-ken. E o MESMO
 			// evento do original chamado por outra causa; um segundo "estourar" seria a mesma regra
 			// escrita duas vezes, e a segunda envelhece calada.
+			//
+			// (2026-10-23) O `!dead` DO DM VIROU "quem tem uma morte a sofrer": o morto de pe tambem se desfaz, e a morte dele e a volta
+			// a mesa do Enma (dono) -- ver `OCorpoSeDesfazNoChao`.
 			// ===================================================================================
-			if (r >= Esmagamento.RazaoQuePrende && f.HP <= 5 && !f.dead)
+			if (r >= Esmagamento.RazaoQuePrende && f.HP <= 5 && OCorpoSeDesfazNoChao(pl))
 			{
 				EstourarG2(pl, Esmagamento.PorPeso(f)
 					? "o peso vence o que restava do seu corpo."
@@ -160,12 +193,14 @@ public sealed partial class GameServer
 		Fighter f = pl.Ficha;
 		bool porPeso = Esmagamento.PorPeso(f);
 
+		// (2026-10-23) "MAL CONSEGUE SE ARRASTAR", e nao mais "nao consegue dar um passo": preso, o corpo se arrasta a 1/4 (dono) --
+		// ver `GameServer.Rastejo.cs`. A frase diz a saida, e agora a saida e andando.
 		if (razao >= Esmagamento.RazaoQuePrende)
 		{
 			Avisar(pl, porPeso
-				? "O PESO ESTÁ ESMAGANDO SEU CORPO! Você não consegue nem se levantar. "
+				? "O PESO ESTÁ ESMAGANDO SEU CORPO! Você mal consegue se arrastar. "
 				  + "Tire os pesos AGORA (menu P, aba Tech) ou ele não vai aguentar."
-				: "A GRAVIDADE ESTÁ ESMAGANDO SEU CORPO! Você não consegue dar um passo. "
+				: "A GRAVIDADE ESTÁ ESMAGANDO SEU CORPO! Você mal consegue se arrastar. "
 				  + "Saia daqui AGORA ou ele não vai aguentar.");
 			return;
 		}

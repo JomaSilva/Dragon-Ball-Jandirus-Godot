@@ -12,12 +12,13 @@ namespace Jandirus.Server;
 ///   1. O RELOGIO SO ANDA COM GENTE NO OUTRO MUNDO -- em qualquer das tres zonas (o Outro Mundo, o Ceu, o Inferno): o morto que anda
 ///      ate la pela passagem, ou o Demonio que nasceu la. Sem ninguem, ele para; o primeiro que chega o recomeca.
 ///   2. NASCE UM CHEFE DERROTADO DA CADEIA (sorteado entre os que caíram), no Inferno, longe de quem esta la -- pela MESMA receita do
-///      chefe convocado na mente (`ChamarChefe`): `NascerNpc` + o BP pinado + o degrau. O BP e o da media de AGORA
+///      chefe convocado na mente (`ChamarChefe`): `NascerNpc` + o BP pinado + o degrau. O BP e o da media de AGORA no Outro Mundo
 ///      (`ViloesDoInferno.Bps`), o degrau e o em que ele caiu. Caca o Inferno inteiro (`PapelDeNpc.DaSaga`), tem o Ki de chefe, e e um
 ///      MORTO DE PE de aureola (<see cref="FazerMortoDoAlem"/>), como todo mundo la.
 ///   3. O OUTRO MUNDO E AVISADO, com o premio e o prazo, e quem esta nas tres zonas ve a cena de chegada de chefe.
 ///   4. ACABA de tres jeitos: alguem o DERROTA (nocaute, ou a "segunda morte" do morto -- o premio vai pra esse alguem, uma vez), o PRAZO
-///      vence (ele afunda de volta, sem premio), ou o corpo some por outra porta.
+///      vence (ele afunda de volta, sem premio), ou o corpo some por outra porta. (2026-10-23) O vilao que e CORPO DE MAJIN (o Boo) so
+///      e derrotado pela segunda morte -- o golpe de ki letal; o soco que o desfaz e o nocaute nao contam (<see cref="SoAMorteDerrota"/>).
 /// ================================================================
 ///
 /// A "SEGUNDA MORTE" E A DERROTA. Ele ja esta morto: um golpe letal nele chama o `AoMorrerDeNovo`, que no jogador e a volta a mesa do
@@ -59,8 +60,34 @@ public sealed partial class GameServer
 	private bool GenteNoOutroMundo()
 	{
 		foreach (ServerPlayer p in _players.Values)
-			if (EhJogador(p) && Alem.EhOAlem(p.Zone) && !EhCadaver(p)) return true;
+			if (EstaNoOutroMundo(p)) return true;
 		return false;
+	}
+
+	/// <summary>
+	/// QUEM E "GENTE NO OUTRO MUNDO": jogador numa das tres zonas (o Outro Mundo, o Ceu, o Inferno) -- o morto de pe que andou ate la e o
+	/// vivo que nasceu la --, e nao o cadaver. Uma pergunta so pras duas perguntas do Inferno: SE o relogio anda
+	/// (<see cref="GenteNoOutroMundo"/>) e QUAO forte o vilao volta (<see cref="MediaDoOutroMundo"/>).
+	/// </summary>
+	private bool EstaNoOutroMundo(ServerPlayer p) => EhJogador(p) && Alem.EhOAlem(p.Zone) && !EhCadaver(p);
+
+	/// <summary>
+	/// ============================ A FORCA DO VILAO DO INFERNO E A DO OUTRO MUNDO (dono, 2026-10-23) ============================
+	/// O pedido foi dos viloes aleatorios (*"deveriam escalar com o poder do planeta atual e nao do server"*), e perguntado sobre o
+	/// Inferno o dono escolheu *"Pela media do Outro Mundo"*: a media do BP BASE de quem esta nas tres zonas do Alem -- sao eles que
+	/// vao la lutar --, e nao a do servidor inteiro. O 25x (`ViloesDoInferno.FatorDaMedia`) continua, por cima dessa media.
+	///
+	/// Ninguem la = zero, e o `ViloesDoInferno.Bps` segura com o piso de 1. O relogio nem anda assim (`GenteNoOutroMundo`); quem chega
+	/// aqui com o Outro Mundo vazio e so o verb do admin, que entao chama um vilao de BP minimo -- pra testar, estar la.
+	/// ===========================================================================================================
+	/// </summary>
+	private double MediaDoOutroMundo()
+	{
+		double soma = 0;
+		int n = 0;
+		foreach (ServerPlayer p in _players.Values)
+			if (EstaNoOutroMundo(p) && p.Ficha is { BP: > 0 }) { soma += p.Ficha.BP; n++; }
+		return n == 0 ? 0 : soma / n;
 	}
 
 	/// <summary>O tique, a 1 Hz: fecha o evento que acabou e abre o proximo quando e a hora.</summary>
@@ -138,11 +165,13 @@ public sealed partial class GameServer
 		if (npc?.Papel == null) return null;
 
 		// O BP DE AGORA E O DEGRAU EM QUE ELE CAIU, os dois antes de qualquer outra coisa tocar a ficha -- a ordem do nascimento de
-		// saga (`NascerChefeDaSaga`) e da lembranca na mente (`ChamarChefe`).
+		// saga (`NascerChefeDaSaga`) e da lembranca na mente (`ChamarChefe`). (2026-10-23) A media "de agora" e a de quem esta no
+		// Outro Mundo, e nao a do servidor -- ver `MediaDoOutroMundo`.
+		double media = InfernoPelaMediaDoServidorDeTeste ? MediaDoServidor() : MediaDoOutroMundo();
 		npc.Papel.BpsPinados = retomado is { Bps.Length: > 0 } ? retomado.Bps
 			: InfernoComOBpDaSagaDeTeste
-			? Sagas.Pinar(molde, MediaDoServidor())
-			: ViloesDoInferno.Bps(molde, MediaDoServidor());
+			? Sagas.Pinar(molde, media)
+			: ViloesDoInferno.Bps(molde, media);
 		npc.Papel.Estagio = Math.Clamp(ec.Degrau, 0, Math.Max(molde.Estagios.Length - 1, 0));
 		EntrarNoDegrau(npc, cura: 0, anunciar: false);
 
@@ -154,7 +183,7 @@ public sealed partial class GameServer
 		FazerMortoDoAlem(npc);
 		npc.Combate.AoMorrerDeNovo = _ =>
 		{
-			VilaoDoInfernoFoiDerrotado(npc, null);
+			VilaoDoInfernoFoiDerrotado(npc, null, segundaMorte: true);
 			npc.Combate.Nocautear(Alem.SegundosDeComaDoMortoDeNovo);   // caido ate o tique o tirar, e nao lutando mais um quadro
 		};
 
@@ -185,7 +214,7 @@ public sealed partial class GameServer
 		if (retomado == null) AnunciarChegadaDoChefe(npc, Alem.ZonaDoInferno, frase, p => Alem.EhOAlem(p.Zone));
 
 		GD.Print($"[inferno] {npc.Name} ('{ficha2.Molde}', da saga '{eloSorteado.Id}') voltou no Inferno em ({onde.X:0}, {onde.Y:0}) | "
-			   + $"degrau {npc.Papel.Estagio + 1}/{molde.Estagios.Length} | BP {npc.Ficha.BP:N0} (media {MediaDoServidor():N0}) | "
+			   + $"degrau {npc.Papel.Estagio + 1}/{molde.Estagios.Length} | BP {npc.Ficha.BP:N0} (media do Outro Mundo {media:N0}) | "
 			   + $"premio {npc.Ficha.Zeni:N0} zeni");
 		return npc;
 	}
@@ -246,11 +275,12 @@ public sealed partial class GameServer
 	/// QUEM TIRA O CORPO E O TIQUE, no segundo seguinte: esta funcao roda dentro da resolucao de um golpe, com alguem percorrendo a lista
 	/// da zona (o mesmo argumento do <see cref="VilaoFoiDerrotado"/>).
 	/// </summary>
-	private void VilaoDoInfernoFoiDerrotado(ServerPlayer vitima, ServerPlayer? algoz)
+	/// <param name="segundaMorte">(2026-10-23) quem chama e o gancho da SEGUNDA MORTE (o golpe letal num morto, `AoMorrerDeNovo`), e nao
+	/// o funil da derrota (o nocaute, ou o Majin que se desfez). Pro Majin so ela conta -- ver <see cref="SoAMorteDerrota"/>.</param>
+	private void VilaoDoInfernoFoiDerrotado(ServerPlayer vitima, ServerPlayer? algoz, bool segundaMorte = false)
 	{
 		if (_vilaoDoInferno is not { } v || v.Npc != vitima.Id) return;
 		if (v.Derrotado && !InfernoPagaDeNovoDeTeste) return;
-		v.Derrotado = true;
 
 		// QUEM DERROTOU. O algoz pode ser o clone ou a imagem de alguem: o merito e de quem manda nele.
 		ServerPlayer? quem = algoz ?? (_players.TryGetValue(vitima.UltimoAgressor, out ServerPlayer? ultimo) ? ultimo : null);
@@ -258,6 +288,16 @@ public sealed partial class GameServer
 			: EhJogador(quem) ? quem
 			: quem.DonoDoClone != 0 && _players.TryGetValue(quem.DonoDoClone, out ServerPlayer? dono) && EhJogador(dono) ? dono
 			: null;
+
+		// (2026-10-23) O MAJIN SO CAI PELA SEGUNDA MORTE -- ver `SoAMorteDerrota`. O soco que o desfaz e o nocaute de qualquer golpe so o
+		// derrubam por um tempo: ele levanta (ou se refaz em 30 s, `CombatState.Desfeito`) e volta a lutar, o evento continua e o premio
+		// fica na bolsa. Quem bateu le por que.
+		if (!segundaMorte && SoAMorteDerrota(vitima))
+		{
+			if (heroi != null) Avisar(heroi, $"{v.Nome} ainda não caiu de vez: um Majin só é derrotado por um golpe de ki letal.");
+			return;
+		}
+		v.Derrotado = true;
 
 		if (heroi == null)
 		{
@@ -282,6 +322,26 @@ public sealed partial class GameServer
 		GD.Print($"[inferno] {heroi.Name} derrotou {v.Nome} ('{v.Molde}') e levou {premio:N0} zeni + karma");
 	}
 
+	/// <summary>
+	/// ============================ O MAJIN DO INFERNO SO CAI PELA MORTE POR KI (dono, 2026-10-23) ============================
+	/// *"boss majin boo no inferno ta dando pra matar no soco"* -- e, perguntado: *"So a morte por ki"*. O corpo do Majin ja seguia a
+	/// regra dele de 2026-10-15 (*"majin "morto" por soco n morre de verdade ... morrer pra ki e oq mata definitivamente"*,
+	/// `GameServer.MajinDesfeito.cs`): o soco letal o DESFAZ em pedacos (e em 30 s ele se refaz inteiro) e o golpe nao-letal o derruba.
+	/// O que furava a regra era o EVENTO: o funil da derrota (`AoPerderALuta`) passa por aqui no nocaute e no desfazer, e qualquer um
+	/// dos dois pagava o premio e tirava o Boo do Inferno no segundo seguinte. Pro vilao que e CORPO DE MAJIN (`CorpoDeMajin`: a raca, o
+	/// filho de Majin, o bio com sangue Majin), so a SEGUNDA MORTE derrota: o golpe de KI letal, que o `CombatState.QuandoONucleoCede`
+	/// ja deixa matar (`porKi`) e que o `Morrer` de um morto transforma no `AoMorrerDeNovo` do nascimento. Os outros viloes (o Freeza,
+	/// o Cell, os androides) continuam caindo no nocaute, como sempre.
+	/// =================================================================================================================
+	/// </summary>
+	private bool SoAMorteDerrota(ServerPlayer vilao) => !MajinDoInfernoCaiNoSocoDeTeste && CorpoDeMajin(vilao);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--infernoteste`, familia 4): o Majin do Inferno volta a cair no nocaute e no desfazer -- o soco o
+	/// derrota e paga, o jogo de antes de 2026-10-23. Lido pelo <see cref="SoAMorteDerrota"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MajinDoInfernoCaiNoSocoDeTeste;
+
 	// =====================================================================
 	// O ADMIN E A BANCADA
 	// =====================================================================
@@ -305,6 +365,12 @@ public sealed partial class GameServer
 
 	/// <summary>DEFEITO INJETADO (bancada `--infernoteste`): o vilao volta com o BP da saga, e nao o da media de agora. Falso em jogo, sempre.</summary>
 	internal static bool InfernoComOBpDaSagaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--infernoteste`): o vilao volta pela media do SERVIDOR inteiro (quem esta vivo nos planetas conta) -- o
+	/// jogo de antes de 2026-10-23. Lido pela propria linha que escolhe a media, em <see cref="NascerVilaoDoInferno"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool InfernoPelaMediaDoServidorDeTeste;
 
 	/// <summary>DEFEITO INJETADO (bancada `--infernoteste`): o premio e pago a cada queda do MESMO vilao. Falso em jogo, sempre.</summary>
 	internal static bool InfernoPagaDeNovoDeTeste;

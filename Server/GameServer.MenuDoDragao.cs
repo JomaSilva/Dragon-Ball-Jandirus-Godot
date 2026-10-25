@@ -485,6 +485,15 @@ public sealed partial class GameServer
 				return e;
 			}
 
+			// (2026-10-23) QUEM JA SABE A DANCA DA FUSAO nao gasta nela o pedido unico das Black Star: a mesma recusa do pedido por
+			// verbo (`DesejoDaDancaDaFusao`), escrita antes do clique.
+			if (d.Id == Desejos.IdDaDancaDaFusao && SabeDancar(pl) && !DancaRepetidaDeTeste)
+			{
+				e.Pode = false;
+				e.Motivo = "Você já sabe a Dança da Fusão.";
+				return e;
+			}
+
 			if (d.Id == "reviver_todos" && MortosQueVoltam().Count == 0)
 			{
 				e.Pode = false;

@@ -261,8 +261,21 @@ public partial class GameServer
 	/// Quem tem ALGUMA escada de transformacao. Era `pl.Race is "Saiyan" or "Halfbreed"`, e passou a
 	/// ser derivado: quem tem linha aberta no catalogo tem escada, inclusive o nao-Saiyajin que
 	/// despertou o ki divino -- que antes ouvia "sua raca nao tem essa escada" com o SSG na mao.
+	///
+	/// (2026-10-23) ...OU UMA FORMA CONCEDIDA (`FormaDef.SoPorConcessao`): o Potential Unleashed do Ritual Mistico do Velho
+	/// Kaiohshin vale pra QUALQUER raca, e o `Avaliar` ja pula a pergunta da linha pra ele -- mas o C, o X e a tecla de forma
+	/// perguntavam AQUI antes, e o Kai, o androide ou o Tsufurujin que recebia o ritual ouvia "sua raca nao tem essa escada" com a
+	/// forma na mao. Ver `GameServer.RitualDoKaioshin.cs`.
 	/// </summary>
-	private static bool TemEscada(ServerPlayer pl) => Catalogo.LinhasAbertas(Perfil(pl)).Count > 0;
+	private static bool TemEscada(ServerPlayer pl) =>
+		Catalogo.LinhasAbertas(Perfil(pl)).Count > 0
+		|| (!ConcedidaSemEscadaDeTeste && Catalogo.Todas.Any(d => d.SoPorConcessao && pl.Forma.Despertou(d.Id)));
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ritualkaiteste`): a forma concedida nao conta como escada -- o Kai que recebeu o ritual ouve "sua
+	/// raca nao tem essa escada" no C, o jogo de antes de 2026-10-23. Lido pelo <see cref="TemEscada"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ConcedidaSemEscadaDeTeste;
 
 	/// <summary>
 	/// Sangue diluido puxa a base do SSJ1 de 2 pra 1,35 (`ssj1base` nerfado).
@@ -298,8 +311,9 @@ public partial class GameServer
 		|| pl.Ficha.canSSJ;
 
 	/// <summary>
-	/// CONCEDE O MISTICO. **E ESTE O GANCHO DO RITUAL DO KAIOSHIN** -- o ritual em si nao existe
-	/// ainda, e quando existir e daqui que ele fala.
+	/// CONCEDE O MISTICO -- que na tela se chama POTENTIAL UNLEASHED desde 2026-10-23 (o dono). **E ESTE O GANCHO DO RITUAL DO
+	/// KAIOSHIN**, e o ritual existe desde o mesmo dia: o Ritual Mistico do Velho Kaiohshin chama isto no fim
+	/// (`GameServer.RitualDoKaioshin.cs`), e o desejo do Namekuseijin tambem. O cargo nao chama mais.
 	///
 	/// ============================ O QUE O RITUAL VAI PRECISAR FAZER, INTEIRO ============================
 	/// Chamar isto. So isto. A forma e `SoPorConcessao` (ver `FormaDef`), entao ela e recusada com
@@ -324,8 +338,8 @@ public partial class GameServer
 		if (!alvo.Forma.Liberar(Catalogo.IdMistico)) return false;
 		ReapresentarOCorpo(alvo);   // (2026-10-13) quem TEM o Mistico o mostra na pele -- `Catalogo.PotencialMarcaAPele`
 
-		GD.Print($"[server] {alvo.Name} recebeu o MISTICO ({dequem})");
-		Avisar(alvo, "algo em voce se abre: o Mistico e seu -- todo o potencial, de uma vez.");
+		GD.Print($"[server] {alvo.Name} recebeu o POTENTIAL UNLEASHED (o mistico; {dequem})");
+		Avisar(alvo, "algo em você se abre: o Potential Unleashed é seu -- todo o potencial, de uma vez.");
 		return true;
 	}
 
@@ -947,6 +961,28 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-10-23) TROCA A FAMILIA DO C DUPLO -- as formas DIVINAS primeiro, ou as MORTAIS -- e diz em que pe ficou. E o verb `divinas_c`,
+	/// da aba Other, no molde do `graus` logo acima: o pedido do dono (*"um botao q troca entre o c duas vezes virar as formas mortais e o
+	/// c duas vezes virar forma divina"*), GRAVADO no personagem. A regra mora no Core (`EstadoDeForma.CPelasDivinas`, lida pelo `Proxima`).
+	///
+	/// Como o `graus`, ELE NAO TRANSFORMA NINGUEM: a preferencia diz por onde o C anda, e nao onde o corpo esta. E A ESCRITA VAI PRO DISCO
+	/// NA HORA (`Persistir`) pelo mesmo motivo de la: escolha que morre num desligamento do servidor vira "por que isso voltou sozinho?".
+	/// </summary>
+	private void VerboFamiliaDoC(ServerPlayer pl)
+	{
+		// O NULO (ninguem opinou) conta como o lado de fabrica -- o login de jogador ja o resolve, mas quem le esta linha nao deveria
+		// precisar saber disso pra ter certeza do que ela faz. Ver `EstadoDeForma.CPelasDivinasDeFabrica`.
+		bool divinas = pl.Forma.CPelasDivinas ?? EstadoDeForma.CPelasDivinasDeFabrica;
+		pl.Forma.CPelasDivinas = !divinas;
+		Persistir(pl);
+
+		Avisar(pl, divinas
+			? "o C duplo agora sobe pelas formas MORTAIS: as divinas só entram quando não houver uma mortal acima de você "
+			  + "(a tecla de uma forma divina continua indo direto pra ela)."
+			: "o C duplo agora sobe pelas formas DIVINAS: as mortais só entram quando não houver uma divina acima de você.");
+	}
+
+	/// <summary>
 	/// "QUERO ESTA FORMA" -- o gesto que a tecla de forma do jogador estreou.
 	///
 	/// ============================ POR QUE ELE PRECISOU EXISTIR ============================
@@ -962,11 +998,23 @@ public partial class GameServer
 	/// caisse nela seria o pior tipo de atalho: o que pula o portao.
 	/// ======================================================================================
 	///
-	/// ============================ E ELE E ESCOLHA, NAO SALTO ============================
-	/// O `Avaliar` cobra o degrau anterior (passo 5), e essa cobranca fica de pe aqui. "Tecla 3 =
-	/// SSJ3" NAO leva da base ao SSJ3: recusa por `ForaDeOrdem`, com a frase que diz isso em voz
-	/// alta (ver `FraseDaRecusa`). O que a tecla resolve e "quero Blue e nao SSJ2" -- que ate hoje
-	/// nao tinha como ser pedido.
+	/// ============================ ERA ESCOLHA, NAO SALTO -- E DESDE 2026-10-23 PODE SER SALTO ============================
+	/// O `Avaliar` cobra o degrau anterior (passo 5), e ate aqui essa cobranca ficava de pe na tecla: "Tecla 3 = SSJ3" nao levava da
+	/// base ao SSJ3. O dono mudou isso em duas frases, e as duas moram no Core (`EstadoDeForma.VaiDiretoPelaTecla`, lida pelo `Avaliar`
+	/// com `pelaTecla` -- e SO por este chamador):
+	///
+	///   * **a forma DIVINA ja usada vai direto** -- *"coloque q as transformacoes divinas podem ser colocadas em teclas assim indo direto
+	///     pra elas"*: o Blue da base, o SSG de dentro do Super Saiyajin;
+	///   * **a forma com 50% de maestria NELA pula os degraus de antes** -- *"um cara na base q tem 50% do ssj poderia ir da base direto
+	///     pro ssj3 se ele colocou uma tecla pra ela"*. Abaixo disso a recusa e a de sempre (`ForaDeOrdem`), com a frase dizendo quanto
+	///     falta (ver `FraseDaRecusa`).
+	///
+	/// As outras portas continuam (poder, Ki, a maestria que a forma cobra, o ki divino, a raiva de quem nunca despertou) -- o salto e
+	/// so do CAMINHO. E ELE E SECO, e nao a subida pela raiva (`DegrausAte` + `EntrarNaForma(..., semCena: true)` degrau por degrau): o
+	/// dono disse "direto", e o jogador ve a forma de DESTINO com a cena dela (nenhuma a partir de 50% de maestria, a curta abaixo); nas
+	/// divinas nem ha um caminho unico pra repetir (da base pro Blue seria pelo SSJ1 ou pelo SSG?). O X depois do salto e o de sempre:
+	/// recua pro degrau que o corpo ja viu (`EstagioAnterior`).
+	/// ====================================================================================================================
 	///
 	/// TUDO O QUE O `Transformar` CONFERE ANTES, ELE CONFERE TAMBEM: a escada da raca, o caido, e o
 	/// `AscendePorDecisao` (o chefe roteirizado que TEM a forma e nao a usa). Sao as guardas de
@@ -995,7 +1043,8 @@ public partial class GameServer
 		PerfilDeFormas perfil = Perfil(pl);
 		double kiFracao = pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : 1;
 
-		RecusaForma r = est.Avaliar(id, pl.Ficha.BP, kiFracao, caido: false, perfil);
+		// `pelaTecla`: a forma divina ja usada e a com 50% de maestria nela vao direto (2026-10-23) -- ver o cabecalho
+		RecusaForma r = est.Avaliar(id, pl.Ficha.BP, kiFracao, caido: false, perfil, pelaTecla: true);
 		if (r != RecusaForma.Pode) { Avisar(pl, FraseDaRecusa(est, d, r)); return; }
 
 		EntrarNaForma(pl, d);
@@ -1304,10 +1353,15 @@ public partial class GameServer
 			// Na pergunta FECHADA elas invertem de valor, porque o jogador NOMEOU a forma: quem ligou
 			// uma tecla ao Super Saiyajin 3 e apertou na base precisa ouvir que falta o degrau do meio,
 			// e nao "ainda nao". E essa e a frase mais importante desta tela inteira -- ela e o que
-			// impede a tecla de forma de ser lida como um SALTO. Ver `TransformarPara`.
+			// diz QUANDO a tecla de forma salta (2026-10-23) e quando ainda nao. Ver `TransformarPara`.
 			// ==================================================================================================
-			RecusaForma.ForaDeOrdem => $"{nome} vem depois de {anterior} -- a tecla escolhe a forma, "
-									 + "nao pula degrau.",
+			// (2026-10-23) E A TECLA PULA DEGRAU com 50% de maestria NA PROPRIA FORMA (a divina ja usada nem pede maestria, e nem chega
+			// aqui): a frase diz quanto falta. A forma que o corpo nunca assumiu ouve a outra metade da regra -- e a maestria dela nao e
+			// citada, porque a barra unica do Frost Demon a daria a uma forma em que ele nunca esteve. Ver `EstadoDeForma.VaiDiretoPelaTecla`.
+			RecusaForma.ForaDeOrdem => est.Despertou(candidato.Id)
+				? $"{nome} vem depois de {anterior} -- a tecla só pula degrau com {EstadoDeForma.MaestriaQuePulaDegrau:0}% de maestria "
+				  + $"em {nome} (você tem {est.Maestria.De(candidato.Id):0.#}%)."
+				: $"{nome} vem depois de {anterior} -- a tecla só pula degrau numa forma que você já assumiu.",
 			RecusaForma.JaEsta => $"voce ja esta em {nome}.",
 			RecusaForma.LinhaFechada => $"{nome} nao e uma forma sua.",
 			RecusaForma.NaoConcedida => $"{nome} nao se treina: alguem precisa te conceder.",
@@ -1399,6 +1453,9 @@ public partial class GameServer
 		// muda o estado. Um Deus da Destruicao que perde o trono transformado volta a 60x no tique
 		// seguinte, como la.
 		pl.Ficha.ssjBuff = MultiplicadorDaForma(pl);
+		// (2026-10-23) E A ASCENSAO, NA MESMA DECISAO: a forma absoluta toma o lugar dela, e o poder que o `RepercutirPoder` la embaixo
+		// calcula ja tem de sair sem ela -- ver `GameServer.Ascensao.cs`.
+		AfirmarAAscensao(pl);
 
 		// O TETO DE KI DA FORMA -- e este era o elo que faltava. O catalogo tinha a escada inteira
 		// e ninguem consumia: as 36 entradas valiam 1,0x de teto, entao virar Super Saiyajin nao
@@ -1634,7 +1691,8 @@ public partial class GameServer
 		if (EmCena(pl)) return;
 
 		// (v0.4.0) vezes o dreno racial (False Advantage 0,5; Unmatched Ferocity 0; Primal Evolution; o Demonic 1,1) -- `GameServer.Passivas`
-		double dreno = est.DrenoPorSegundo() * pl.Ficha.MaxKi * dt * pl.Racial.Efeito.Dreno;
+		// (2026-10-25) E PELA BARRA: abaixar o poder alivia o consumo conforme a maestria -- ver `Catalogo.DrenoPorSegundo` com a liberacao
+		double dreno = est.DrenoPorSegundo(LiberacaoDoPoder(pl)) * pl.Ficha.MaxKi * dt * pl.Racial.Efeito.Dreno;
 		pl.Ficha.Ki -= dreno;
 
 		// (2026-10-19) A ESCADA DO FROST DEMON TAMBEM NAO CAI POR FALTA DE KI -- ver `FrostNaoCaiPorKi`.
@@ -1666,8 +1724,9 @@ public partial class GameServer
 		// ================================================================================================
 		bool dominavaAntes = Dominou(pl, est.Atual);
 		// (2026-10-19) E A ESCADA DO FROST DEMON NAO TREINA COM O CORPO CAIDO -- ver `FrostNaoTreinaCaido`.
-		if (Catalogo.SustentarTreina(est.Def) && !FrostNaoTreinaCaido(pl)
-			&& SubirMaestriaDaZona(pl, est.Atual, TaxaDeMaestriaDaForma(pl), dt, out string marco))
+		bool treina = Catalogo.SustentarTreina(est.Def) && !FrostNaoTreinaCaido(pl);
+		// (2026-10-24) NO RITMO DA FORMA: os grades sobem 3x (`FormaDef.RitmoDaMaestria`) -- ver `RitmoDaMaestriaDe`.
+		if (treina && SubirMaestriaDaZona(pl, est.Atual, TaxaDeMaestriaDaForma(pl) * RitmoDaMaestriaDe(est.Def), dt, out string marco))
 		{
 			// O NOME SAI DO FUNIL, e aqui isso muda o texto de verdade: quem acaba de cruzar os 100%
 			// no SSJ1 le "Super Saiyajin Grade 4: forma DOMINADA" -- o nome novo chega junto com o
@@ -1690,6 +1749,15 @@ public partial class GameServer
 		if (!dominavaAntes && Dominou(pl, est.Atual))
 			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash)) MandarEstadoDeForma(pl, o);
 
+		// (2026-10-24) E A FORMA DE ONDE ELA SAI TREINA JUNTO, no ritmo da escada -- os grades treinam o SSJ1 (`FormaDef.TreinaTambem`,
+		// ver `TreinaTambemDe`). O marco dela (o Grade 3 liberado, o SSJ1 dominado) sai com o nome DELA.
+		if (treina && TreinaTambemDe(est.Def) is { Length: > 0 } outra
+			&& SubirMaestriaDaZona(pl, outra, Catalogo.MaestriaPorSegundo, dt, out string marcoDaOutra))
+		{
+			Avisar(pl, $"{Catalogo.NomeDe(Catalogo.Def(outra), Dominou(pl, outra))}: {marcoDaOutra}.");
+			GD.Print($"[server] {pl.Name}: {outra} -> {marcoDaOutra} (treinado no {est.Atual})");
+		}
+
 		// o multiplicador muda EM DEGRAUS conforme a maestria sobe, e o degrau pode cair no meio da
 		// luta -- por isso recalcula por tick em vez de so na transformacao
 		AplicarForma(pl);
@@ -1711,10 +1779,28 @@ public partial class GameServer
 	/// ==============================================================================================
 	///
 	/// **4x, e nao 280x** -- a razao esta escrita em <see cref="Jandirus.Core.World.SalaDoTempo.MaestriaMult"/>.
+	///
+	/// (2026-10-23) E A TRAVA DO SUPER MAJIN PASSA AQUI TAMBEM, pelo mesmo motivo: e o unico escritor da maestria por tempo, entao a
+	/// lentidao e o teto pelo BP base valem pra todo jeito de sustentar a forma. Ver `SubirPeloPoder` (`GameServer.SuperMajin.cs`).
 	/// </summary>
 	private static bool SubirMaestriaDaZona(ServerPlayer pl, string id, double porSegundo, double dt,
 											out string marco) =>
-		pl.Forma.Maestria.Subir(id, porSegundo * dt * Math.Max(pl.Ficha.zoneMasteryMult, 0) * FatorDeMaestriaDoCorpo(pl), out marco);
+		SubirPeloPoder(pl, id, porSegundo * dt * Math.Max(pl.Ficha.zoneMasteryMult, 0) * FatorDeMaestriaDoCorpo(pl), out marco);
+
+	/// <summary>
+	/// O RITMO PROPRIO DA FORMA (`FormaDef.RitmoDaMaestria`) -- os grades, 3x (dono, 2026-10-24: *"ainda teriam a maestria propria q
+	/// subiria mais rapido q a do ssj normal"*). 1 no defeito injetado.
+	/// </summary>
+	private static double RitmoDaMaestriaDe(FormaDef? d) => d == null || GradeNoRitmoDaEscadaDeTeste ? 1 : d.RitmoDaMaestria;
+
+	/// <summary>A forma que treina junto (`FormaDef.TreinaTambem`) -- os grades, o SSJ1. Vazio no defeito injetado.</summary>
+	private static string TreinaTambemDe(FormaDef? d) => d == null || GradeNaoTreinaOSsj1DeTeste ? "" : d.TreinaTambem;
+
+	/// <summary>DEFEITO INJETADO (`--formasteste`, secao 4 dos grades): a maestria do grade no ritmo da escada -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool GradeNoRitmoDaEscadaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--formasteste`, secao 4 dos grades): o tempo no grade nao treina o SSJ1 -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool GradeNaoTreinaOSsj1DeTeste;
 
 	/// <summary>
 	/// A FORMA SE DESFAZ (Ki zerado, nocaute). Vai direto ao PISO e nao um degrau -- ver
@@ -1766,6 +1852,17 @@ public partial class GameServer
 	private void AnunciarForma(ServerPlayer pl, string de, string para, bool estreia,
 							   bool semCena = false)
 	{
+		// (2026-10-25) SO SE RELAXA NUMA FORMA DOMINADA: quem estava relaxado e cai numa forma que nao domina fica pronto -- ver
+		// `AcordarSeAFormaNaoDeixaRelaxar` (`GameServer.PoderEmUso.cs`)
+		AcordarSeAFormaNaoDeixaRelaxar(pl);
+
+		// (2026-10-24) A FORMA SEM VISUAL (o Ultra Instinto Perfeito do Whis -- o dono: *"sem efeito visual nenhum"*): ela vale no servidor, e
+		// ninguem a ve -- nem cena (o corpo nao fica preso), nem anuncio, nem ceu. Ver `ServerPlayer.FormaSemVisual`.
+		if (pl.FormaSemVisual && !Jandirus.Core.Npc.BillsEWhis.InstintoComFormaDeTeste)
+		{
+			MarcarCena(pl, Catalogo.Def(para), DegrauDeCena.Nenhuma, false);
+			return;
+		}
 		// A MAESTRIA E DA FORMA ALVO, e lida AGORA -- o `Entrar()` ja rodou, mas ele nao mexe em
 		// maestria (so em `Atual`, `Liberadas` e `EstreiaVista`), entao o numero aqui e o mesmo que
 		// o jogador tinha um instante antes de apertar a tecla. Vale igual pras formas de disciplina:
@@ -1942,7 +2039,8 @@ public partial class GameServer
 	{
 		var saida = new List<NetDataWriter>(2);
 
-		if (!quem.Forma.NaBase)
+		// (2026-10-24) a forma sem visual (o Whis) nao vai pra ninguem -- ver `ServerPlayer.FormaSemVisual`
+		if (!quem.Forma.NaBase && !(quem.FormaSemVisual && !Jandirus.Core.Npc.BillsEWhis.InstintoComFormaDeTeste))
 			saida.Add(PacoteDeForma(quem.Id, quem.Forma.Atual, quem.Forma.Atual, DegrauDeCena.Nenhuma,
 									Dominou(quem, quem.Forma.Atual), MarcasDoFrost(quem, instavel: false)));
 
@@ -2007,6 +2105,11 @@ public partial class GameServer
 		// skill do Metamoriano. A bancada `--formasteste` relogo e conferiu (ver `OsGradesNoCaminhoDoC`).
 		// ========================================================================================================
 		pl.Forma.GradesLigados = c?.GradesLigados ?? true;
+
+		// (2026-10-23) A FAMILIA DO C DUPLO, pelo mesmo caminho e pelo mesmo motivo dos grades: aqui o corpo ganha opiniao, e o disco
+		// que nao diz nada (save de antes do botao, personagem novo) vira o lado de fabrica -- as divinas primeiro, o que o C ja fazia.
+		// Ver `EstadoDeForma.CPelasDivinas` e o verb `divinas_c` (`VerboFamiliaDoC`).
+		pl.Forma.CPelasDivinas = c?.CPelasDivinas ?? Jandirus.Core.Forms.EstadoDeForma.CPelasDivinasDeFabrica;
 
 		// ============================ O NUMERO DA FORMA PASSA PELA MIGRACAO ============================
 		// O disco guarda forma por `FormaDef.IdRede`, e um numero que saiu do catalogo nao casa com

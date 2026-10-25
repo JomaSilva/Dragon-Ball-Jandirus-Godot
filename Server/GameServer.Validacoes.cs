@@ -259,6 +259,9 @@ public sealed partial class GameServer
 	private string PorQueNaoSaiDaqui(ServerPlayer pl)
 	{
 		if (TeleporteFuraPrisaoDeTeste) return "";
+		// (2026-10-24) O BILLS E O WHIS NAO SAEM DO PLANETA (o dono) -- nem de carona, nem por teleporte. A rede e o `MoveToZone`.
+		if (!Jandirus.Core.Npc.BillsEWhis.DivinoSaiDoPlanetaDeTeste && DivinoDe(pl) is { } divino)
+			return divino.Quem == Jandirus.Core.Npc.QuemFala.Whis ? "o Whis não sai deste planeta." : "o Bills não sai deste planeta.";
 		if (pl.SalaPreso && NaSala(pl))
 			return "você está preso na Sala do Tempo: só o Guardião da Terra (ou um administrador) solta.";
 		if (PresoQueEsteCorpoCarrega(pl) is { } carga)

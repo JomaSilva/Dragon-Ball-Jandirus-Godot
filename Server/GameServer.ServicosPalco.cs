@@ -33,6 +33,10 @@ public partial class GameServer
 		};
 		const float t = ZoneCollision.TileSize;
 		MoveToZone(id, ZoneKey.Premade(zona), new Vec2(cx * t + t / 2f, (cy + 1) * t + t / 2f));
+		// (2026-10-23) ACLIMATADO AO LUGAR: o morto de pe passou a sentir o chao (dono), e no Inferno e no planeta do Sr. Kaioh (10x) o robo
+		// ficaria preso e se machucando. O assunto deste robo sao os servicos, nao a gravidade (essa e da `--gravmetateste`).
+		if (_players.TryGetValue(id, out ServerPlayer? pl))
+			pl.Ficha.GravMastered = Math.Max(pl.Ficha.GravMastered, Jandirus.Core.Stats.Esmagamento.Gravidade(pl.Ficha));
 	}
 
 	/// <summary>Da o servico ao robo pela porta do servidor (sem o menu) -- o robo mede o cartao chegando com a aba World ja aberta.</summary>

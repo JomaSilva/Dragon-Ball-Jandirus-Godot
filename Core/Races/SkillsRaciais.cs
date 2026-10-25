@@ -22,7 +22,7 @@ public enum SkillRacial : uint
 	// ---- Saiyajin ----
 	/// <summary>Seasoned Warrior: +10% de BP por forma veterana.</summary>
 	GuerreiroVeterano = 1u << 0,
-	/// <summary>Warrior Race: com o tronco ou a cabeca abaixo de 20%, ataque e defesa fisicos.</summary>
+	/// <summary>Warrior Race: com o tronco ou a cabeca abaixo de 50%, ataque e defesa fisicos.</summary>
 	RacaGuerreira = 1u << 1,
 	/// <summary>Saiyan's Resolve: o golpe do mesmo tipo em fila doi menos.</summary>
 	Resolucao = 1u << 2,

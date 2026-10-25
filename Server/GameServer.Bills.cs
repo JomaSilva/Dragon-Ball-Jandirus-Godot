@@ -142,6 +142,12 @@ public partial class GameServer
 
 	private double _semPresaNaTerra, _proximaFalaDeDerrubar;
 
+	/// <summary>(2026-10-25) A briga da Terra: o maior expresso que alguem dela mostrou, ha quanto tempo ela dura, e a fase dele. Ver `AcompanharNaTerra`.</summary>
+	private double _picoNaTerra, _brigaNaTerra;
+
+	/// <inheritdoc cref="_picoNaTerra"/>
+	private BillsEWhis.FaseNaTerra _faseNaTerra;
+
 	/// <summary>O que cada jogador ja recebeu no `S2C.CasaDeBills` (a semente da casa; 0 = "nao revelada").</summary>
 	private readonly Dictionary<int, (ServerPlayer Quem, ulong Casa)> _casaVistaPor = [];
 
@@ -245,6 +251,7 @@ public partial class GameServer
 		_desafiantesNaTerra.Clear();
 		_caidosNaTerra.Clear();
 		_semPresaNaTerra = 0;
+		ZerarABrigaNaTerra();
 		_whisAssiste = false;
 		_ladoDoBills = null;
 		_sacolaDePalpites.Clear();
@@ -564,12 +571,21 @@ public partial class GameServer
 		// esta e "caso os players derrotem ele" --, e um corpo morto nao se levanta pra dizer as coordenadas.
 		npc.Combate.NegarMorte = DerrubarEmVezDeMorrer;
 
-		// NA TERRA o Bills dorme e luta com os 15%; em casa (e o Whis, sempre) o poder de repouso e o inteiro --
-		// e ninguem o mede em luta: la o que vale e o que a luta cravar (o triplo de quem treina, ou o trilhao).
+		// NA TERRA o Bills dorme e luta com os 30% (dono, 2026-10-23: o dobro dos 15% de antes); em casa, e o Whis
+		// sempre, o poder e o de REPOUSO de cada um -- o trilhao do Bills, os cem trilhoes do Whis (dono, 2026-10-23) --, e
+		// ninguem o mede em luta: la o que vale e o que a luta cravar (o triplo de quem treina, ou o trilhao com a Fury dele).
+		// (2026-10-24) O KI DOS DOIS NAO ACABA (o dono: *"lembrando q bills e whis devem ter ki infinito"*) -- o cadeado de todo chefe
+		// (`Fighter.KiDeChefe`, lido pelo `Nutricao.KiSempreCheio`). ANTES da restauracao, e a ordem e a regra: o cadeado tambem SOBE o
+		// tanque (o piso do chefe, no `Fighter.Statify`), e quem o enche e a restauracao (`SorteioDeNpc.Normalizar`). Escrito depois dela, o
+		// corpo nascia com o Ki de antes num tanque de 50 mil (0,5%), e o cerebro largava a luta pra carregar ate o tique do corpo o encher.
+		npc.Ficha.KiDeChefe = !BillsEWhis.KiDivinoFinitoDeTeste;
 		bool billsNaTerra = c.Quem == QuemFala.Bills && zona.Equals(TerraDaVisita);
 		ParOuDespertar(c, billsNaTerra ? ModoDivino.Cochilando : ModoDivino.Parado);
-		CravarOPoder(npc, billsNaTerra ? BillsEWhis.PoderNaTerra : BillsEWhis.PoderTotal);
+		CravarOPoder(npc, billsNaTerra ? BillsEWhis.PoderNaTerra : BillsEWhis.PoderDeRepouso(c.Quem));
 		RestaurarODivino(npc);
+
+		// (2026-10-24) E O WHIS ESTA SEMPRE NO ULTRA INSTINTO PERFEITO, sem efeito visual nenhum. Ver `VestirAFormaDoWhis`.
+		if (c.Quem == QuemFala.Whis) VestirAFormaDoWhis(npc);
 
 		GD.Print($"[server] {npc.Name} esta em {zona} ({posto.X:0},{posto.Y:0}) | {c.Modo} | BP {npc.Ficha.BP:N0}");
 	}
@@ -581,7 +597,7 @@ public partial class GameServer
 		if (c.Sessao != null) EncerrarASessao(c, FimDaSessao.MestreSumiu);
 		c.Corpo = null;
 		c.Modo = ModoDivino.Parado;
-		if (c == _bills) { _desafiantesNaTerra.Clear(); _caidosNaTerra.Clear(); _semPresaNaTerra = 0; }
+		if (c == _bills) { _desafiantesNaTerra.Clear(); _caidosNaTerra.Clear(); _semPresaNaTerra = 0; ZerarABrigaNaTerra(); }
 		if (EhDeusDaDestruicao(npc)) DesconsagrarDaLuta(npc);
 		RemoverNpc(npc);
 		GD.Print($"[server] {npc.Name} saiu de {c.Zona}");
@@ -644,6 +660,51 @@ public partial class GameServer
 			if (npc.AgarrandoId != 0) Soltar(npc, MotivoDaSoltura.Tecla);
 		}
 		else if (npc.Cerebro == null && npc.Papel != null) npc.Cerebro = CerebroDeNascimento(npc.Papel);
+
+		// (2026-10-24) O WHIS LUTA NA DEFENSIVA (o dono: *"ele é uma IA defensiva, ataca raramente e nao usa ataques de ki ... quando ele
+		// bater ele bate forte"*): orbita e deixa o instinto desviar, abre a janela do golpe de tempos em tempos, e o golpe sai pesado. A
+		// CADA VEZ que ele entra na luta, e nao so quando o cerebro nasce: a mente que vale e a de agora.
+		if (luta && c.Quem == QuemFala.Whis && npc.Cerebro is { } mente) AjustarAMenteDoWhis(mente);
+	}
+
+	/// <summary>(2026-10-24) A mente do Whis na luta: a defensiva, sem tiro, com a pausa do golpe raro e o golpe pesado. Ver `ParOuDespertar`.</summary>
+	private static void AjustarAMenteDoWhis(Cerebro mente)
+	{
+		bool defensivo = !BillsEWhis.WhisAgressivoDeTeste;
+		mente.Defensivo = defensivo;
+		mente.SemTiro = defensivo;
+		if (!defensivo) return;
+		mente.PausaDoDefensivo = BillsEWhis.SegundosEntreGolpesDoWhis;
+		mente.ChanceDePesado = BillsEWhis.ChanceDePesadoDoWhis;
+	}
+
+	/// <summary>
+	/// (2026-10-24) O WHIS NO ULTRA INSTINTO PERFEITO -- o dono: *"o whis deveria sempre estar na forma ultra instinto perfeito mas sem efeito
+	/// visual nenhum"*. A forma vale no servidor (o multiplicador dela por cima do base), e ninguem a ve: o corpo leva a marca
+	/// `ServerPlayer.FormaSemVisual`, e o anuncio e a sincronia de forma o calam. Sem cena. Idempotente: quem o tirou da forma (um nocaute)
+	/// o ve voltar no proximo passo de quem o guia (`GuiarOWhis`, `ManterOMestre`, o fim da aula).
+	/// </summary>
+	private void VestirAFormaDoWhis(ServerPlayer w)
+	{
+		w.FormaSemVisual = true;
+		if (w.Forma.Atual == BillsEWhis.FormaDoWhis || Catalogo.Def(BillsEWhis.FormaDoWhis) == null) return;
+		string antes = w.Forma.Atual;
+		bool estreia = w.Forma.Entrar(BillsEWhis.FormaDoWhis);
+		AplicarForma(w);
+		AnunciarForma(w, antes, BillsEWhis.FormaDoWhis, estreia, semCena: true);
+	}
+
+	/// <summary>
+	/// (2026-10-24) O BILLS NO ULTRA EGO, no treino -- o dono: *"no modo treino com beels ele deve usar o ultra ego, e pode manter o visual nele
+	/// com a aura do ultra ego"*. Com o visual (o anuncio de sempre) e sem cena; quem o tira e o fim da aula (`EncerrarASessao`).
+	/// </summary>
+	private void VestirOUltraEgoDoBills(ServerPlayer b)
+	{
+		if (b.Forma.Atual == BillsEWhis.FormaDoBillsNoTreino || Catalogo.Def(BillsEWhis.FormaDoBillsNoTreino) == null) return;
+		string antes = b.Forma.Atual;
+		bool estreia = b.Forma.Entrar(BillsEWhis.FormaDoBillsNoTreino);
+		AplicarForma(b);
+		AnunciarForma(b, antes, BillsEWhis.FormaDoBillsNoTreino, estreia, semCena: true);
 	}
 
 	/// <summary>
@@ -795,6 +856,7 @@ public partial class GameServer
 			ParOuDespertar(_bills, ModoDivino.Lutando);
 			ArmarOKitNaTerra(b);
 			_semPresaNaTerra = 0;
+			ZerarABrigaNaTerra();   // (2026-10-25) a briga e nova: o pico, o relogio e a fase comecam do zero
 			if (dormia)
 			{
 				CalarORoteiro();   // acordado no meio da fala de chegada: o resto dela nao sai por cima da briga
@@ -808,6 +870,12 @@ public partial class GameServer
 			_semPresaNaTerra = 0;
 			if (b.Cerebro == null && b.Papel != null) b.Cerebro = CerebroDeNascimento(b.Papel);
 			b.Papel!.PresaDoRoteiro = presa.Id;
+
+			// (2026-10-25) O PODER ACOMPANHA QUEM O ENFRENTA, e QUATRO MINUTOS DE BRIGA o satisfazem -- ver `AcompanharNaTerra` e
+			// `BillsEWhis.SegundosPraSatisfazer`
+			AcompanharNaTerra(b);
+			_brigaNaTerra += dt;
+			if (_brigaNaTerra >= BillsEWhis.PrazoDaSatisfacao && !BillsEWhis.TerraSemSatisfacaoDeTeste) SatisfeitoNaTerra();
 			return;
 		}
 
@@ -824,13 +892,15 @@ public partial class GameServer
 		_caidosNaTerra.Clear();
 		_semPresaNaTerra = 0;
 		ParOuDespertar(_bills, ModoDivino.Voltando);
+		DesfazerABrigaNaTerra(b);
 		GD.Print("[server] BILLS desistiu da briga (ninguem de pe no territorio): volta andando pro cochilo");
 	}
 
 	/// <summary>
 	/// O KIT DA LUTA DA TERRA: o titulo no corpo (sem escrever no trono), com o Hakai ligado ou nao conforme a chave
 	/// do dono (<see cref="BillsEWhis.HakaiNaTerra"/>) -- e SEM a Fury ("menos o fury"): o poder continua cravado nos
-	/// 15%, e o que o kit soma por conta propria (o surto do God's Temper) e do kit.
+	/// 30% da Terra (<see cref="BillsEWhis.FracaoNaTerra"/>), e o que o kit soma por conta propria (o surto do God's
+	/// Temper) e do kit.
 	/// </summary>
 	private void ArmarOKitNaTerra(ServerPlayer bills)
 	{
@@ -852,6 +922,92 @@ public partial class GameServer
 		ParOuDespertar(_bills, ModoDivino.Cochilando);
 		DizerDivino(QuemFala.Bills, BillsEWhis.FalaDeVoltarACochilar);
 		GD.Print("[server] BILLS voltou a cochilar");
+	}
+
+	/// <summary>
+	/// (2026-10-25) O PODER DO BILLS NA TERRA ACOMPANHA QUEM O ENFRENTA -- ver `BillsEWhis.FolgaNaTerra` e `BillsEWhis.ExpressoNaTerra`. O pico e o
+	/// maior expresso que alguem DA BRIGA (quem bateu nele) mostrou desde que ele acordou, e nunca desce. Quem passa do teto da fase em que ele
+	/// esta o faz subir de fase: do corpo de sempre pro Ultra Ego, do Ultra Ego pra Fury -- e la, se ainda nao bastar, e o padrao: o maximo
+	/// dele, e quem o derrubar derrubou. O que se crava e o BASE: o expresso que ele quer, dividido pela forma em que ele esta.
+	///
+	/// O TETO DE CADA FASE E O TRILHAO VEZES A FORMA (o Ultra Ego dele vai a 66x, a Fury a 77x), sem o fator do titulo que o corpo consagrado
+	/// ganha no Ultra Ego (`FatorDoCargoNaForma`, x1,25): contado com ele o Ultra Ego passaria a Fury, e a escada do dono andaria pra tras.
+	/// </summary>
+	private void AcompanharNaTerra(ServerPlayer b)
+	{
+		if (BillsEWhis.TerraSemAcompanharDeTeste) return;
+		foreach (int id in _desafiantesNaTerra)
+			if (_players.TryGetValue(id, out ServerPlayer? p) && !p.Ficha.dead)
+				_picoNaTerra = Math.Max(_picoNaTerra, Finito(p.Ficha.expressedBP));
+
+		double TetoDaFase() => BillsEWhis.PoderTotal * MultiplicadorDaForma(b) / Math.Max(FatorDoCargoNaForma(b), 1e-9);
+		if (_picoNaTerra > TetoDaFase() && _faseNaTerra != BillsEWhis.FaseNaTerra.Fury)
+		{
+			if (_faseNaTerra == BillsEWhis.FaseNaTerra.Base)
+			{
+				_faseNaTerra = BillsEWhis.FaseNaTerra.UltraEgo;
+				VestirOUltraEgoDoBills(b);
+				DizerDivino(QuemFala.Bills, BillsEWhis.BillsVesteOEgoNaTerra);
+			}
+			else
+			{
+				// (a Fury nao entra com outra forma de pe: o Ultra Ego sai antes -- `EntrarNaFury`)
+				_faseNaTerra = BillsEWhis.FaseNaTerra.Fury;
+				if (b.Forma.Atual != Catalogo.IdDoPiso(Perfil(b))) Reverter(b, "");
+				if (!EntrarNaFury(b, semCena: true)) GD.PushError($"[server] o Bills nao entrou na Fury na Terra (forma de agora: '{b.Forma.Atual}')");
+				DizerDivino(QuemFala.Bills, BillsEWhis.BillsEntraNaFuryNaTerra);
+			}
+			GD.Print($"[server] BILLS NA TERRA subiu de fase: {_faseNaTerra} (o pico de quem o enfrenta: {_picoNaTerra:N0})");
+		}
+		CravarOPoder(b, BillsEWhis.ExpressoNaTerra(_picoNaTerra, TetoDaFase()) / Math.Max(MultiplicadorDaForma(b), 1e-9));
+	}
+
+	/// <summary>
+	/// (2026-10-25) QUEM AGUENTOU OS QUATRO MINUTOS: ele se da por satisfeito, diz onde mora e vai embora -- a mesma saida da derrota (a casa
+	/// aberta, a carta de todos marcando o lugar), com as falas e o aviso da satisfacao. Ver `BillsEWhis.SegundosPraSatisfazer`.
+	/// </summary>
+	private void SatisfeitoNaTerra()
+	{
+		if (_bills.Corpo is not { } b) return;
+
+		_visita.Fase = FaseDaVisita.EmCasa;
+		_visita.DiaDaChegada = -1;
+		_visita.DerrubadoPor = "";
+		SalvarBills();
+
+		CalarORoteiro();   // o que ele ainda ia dizer da lugar a despedida
+		_cenaDivina = true;
+		_desafiantesNaTerra.Clear();
+		_caidosNaTerra.Clear();
+		ParOuDespertar(_bills, ModoDivino.EmCena);
+		DesfazerABrigaNaTerra(b);
+		GD.Print("[server] BILLS SE DEU POR SATISFEITO NA TERRA (quatro minutos de briga) -- a casa dele esta aberta");
+
+		(string coordenadas, string mundo) = EnderecoDaCasa();
+		double em = 1;
+		foreach (Fala f in BillsEWhis.FalasDeSatisfeito)
+		{
+			Fala linha = f;
+			Agendar(em, () => DizerDivino(linha.Quem, BillsEWhis.Preencher(linha.Texto, coordenadas, mundo)));
+			em += BillsEWhis.SegundosEntreFalas;
+		}
+		Agendar(em, () => PartirDaTerra(BillsEWhis.Preencher(BillsEWhis.AvisoDeSatisfeito, coordenadas, mundo)));
+	}
+
+	/// <summary>(2026-10-25) A briga da Terra acabou (ele desistiu, caiu ou se deu por satisfeito): a forma volta a de sempre e o poder aos 300 bilhoes.</summary>
+	private void DesfazerABrigaNaTerra(ServerPlayer b)
+	{
+		if (_faseNaTerra != BillsEWhis.FaseNaTerra.Base && b.Forma.Atual != Catalogo.IdDoPiso(Perfil(b))) Reverter(b, "");
+		ZerarABrigaNaTerra();
+		CravarOPoder(b, BillsEWhis.PoderNaTerra);
+	}
+
+	/// <summary>(2026-10-25) O pico, o relogio e a fase da briga da Terra voltam ao zero (o corpo nao e tocado).</summary>
+	private void ZerarABrigaNaTerra()
+	{
+		_picoNaTerra = 0;
+		_brigaNaTerra = 0;
+		_faseNaTerra = BillsEWhis.FaseNaTerra.Base;
 	}
 
 	/// <summary>DEFEITO INJETADO (bancada `--billsteste`): qualquer corpo do mundo que o acerte entra na briga -- um bicho, um vilao. Falso em jogo, sempre.</summary>
@@ -1023,6 +1179,7 @@ public partial class GameServer
 		// (`TickDoEmpurrao`), e essa conta nao pergunta se da pra tocar. Fora da aula dele o Whis nao guarda ferida
 		// nenhuma -- nem fica no chao por causa de uma.
 		if (w.Ficha.KO || w.Ficha.HP < 99.999) RestaurarODivino(w);
+		VestirAFormaDoWhis(w);   // (2026-10-24) sempre no Instinto Perfeito, calado -- volta se um nocaute o tirou
 
 		ServerPlayer? b = _bills.Corpo is { } corpo && corpo.Zone.Hash == w.Zone.Hash ? corpo : null;
 		bool assiste = b != null && BillsEmLuta && !BillsEWhis.WhisColadoNaLutaDeTeste;
@@ -1215,6 +1372,7 @@ public partial class GameServer
 		_desafiantesNaTerra.Clear();
 		_caidosNaTerra.Clear();
 		ParOuDespertar(_bills, ModoDivino.EmCena);
+		DesfazerABrigaNaTerra(b);
 		GD.Print($"[server] BILLS FOI DERRUBADO NA TERRA" + (heroi.Length > 0 ? $" por {heroi}" : "") + " -- a casa dele esta aberta");
 
 		(string coordenadas, string mundo) = EnderecoDaCasa();

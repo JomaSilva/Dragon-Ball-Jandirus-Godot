@@ -265,7 +265,13 @@ public static class CabelosDeForma
 		// a regra desta funcao. E ele so roda se a arte universal de SSJ4 sumir do disco.)
 		// =============================================================================================
 		Jandirus.Core.Forms.Catalogo.SufixoDoSuperSaiyajinPleno => Procurar(nome, "SSj"),
-		"SSj3" => Procurar(nome, "SSj2") ?? Procurar(nome, "SSj"),
+		// ============================ O SSJ3 NAO DESCE: VESTE O DO GOKU ============================
+		// Caia no `SSj2` e depois no `SSj`, e o dono viu: *"tem cabelo q no ssj3 n muda nada, se o cabelo n tem versao ssj3 (pode ver
+		// no dm quais tinham) vc usa o do goku ssj3 mesmo"*. A pasta tem UMA folha de SSJ3 (`Hair_GokuSSj3`), entao quase todo
+		// penteado chegava ao SSJ3 com o cabelo do SSJ1 -- ou com o penteado base, so pintado. E a unica linha desta cadeia que nao
+		// desce: ela fica no MESMO degrau e troca de penteado, que e o que o DM faz. Ver `Ssj3DoDm`.
+		// ==========================================================================================
+		"SSj3" => Ssj3DoDm(nome),
 		// ============================ O SSJ2 TEM DEGRAU PROPRIO: O `USSj` ============================
 		// Isto caia direto no cabelo do SSJ1, e o dono viu: "o cabelo do goku no ssj2 ta errado, o
 		// ssj2 usa o cabelo Hair_GokuUSSj.png".
@@ -302,6 +308,28 @@ public static class CabelosDeForma
 
 		_ => null,
 	};
+
+	/// <summary>
+	/// A FOLHA DE SSJ3 DE QUEM NAO TEM A PROPRIA -- a tabela do DM, que aqui e quase uma linha so.
+	///
+	/// No DM cada penteado declara as suas folhas no `selecthair()` (`HairChoose.dm:291-416`, o quinto argumento do `SetHair` e o
+	/// SSJ3), e o SSJ3 de quase todos e o `Hair_GokuSSj3.dmi`. So tres penteados do port tinham outra coisa: o Alucard veste o Raditz
+	/// de Full Power (`:300`), o Afro o proprio SSJ (`:348`) e o Trump nao muda nunca (`:384`, a piada e essa). O Goku acha a dele
+	/// antes de chegar aqui, pelo `Procurar`. Nulo e "o penteado fica e leva a tinta", como em todo o resto deste arquivo.
+	/// </summary>
+	private static string? Ssj3DoDm(string nome)
+	{
+		string? arquivo = nome switch
+		{
+			"Hair Alucard" => "Hair_RaditzSSjFP",
+			"Hair Afro" => "Hair AfroSSJ",
+			"Hair_Trump" => null,
+			_ => "Hair_GokuSSj3",
+		};
+		if (arquivo == null) return null;
+		string caminho = $"{Pasta}{arquivo}.tres";
+		return ResourceLoader.Exists(caminho) ? caminho : null;
+	}
 
 	/// <summary>Quantos penteados tem variante pra este sufixo. Pra bancada -- ver `--diagforma`.</summary>
 	public static (int Com, int Sem) Cobertura(IEnumerable<string> basesDeCabelo, string sufixo)

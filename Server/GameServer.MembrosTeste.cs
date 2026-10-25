@@ -67,6 +67,7 @@ public sealed partial class GameServer
 			MbSemUmaPernaNaoCorre();
 			MbSemAsDuasPernasSoVoando();
 			MbFeridoAndaDevagar();
+			MbOPoderSoAbaixoDaMetade();
 			MbAFraseDaPerda();
 			MbOsTextosDizemOQueSeAplica();
 			MbQuemAIaDirigeNaoTrava();
@@ -453,14 +454,104 @@ public sealed partial class GameServer
 		RecalcularVelocidade(pl);
 		AfirmarMb("curado (a vida de volta em 100%), o passo e o de antes", MbPerto(pl.SpeedStat / inteiro, 1, 0.01), $"x{pl.SpeedStat / inteiro:0.###}");
 
-		// O TEXTO DO PODER (`hpratio`) E DE OUTRA CASA: a bancada cobra que os dois concordem.
-		Machucar(pl, 0.7);
+		// O TEXTO DO PODER (`hpratio`) E DE OUTRA CASA: a bancada cobra que os dois concordem. (2026-10-24) Os dois leem a VIDA QUE PESA
+		// (`Body.VidaQuePesaNoPoder`: cada membro so conta abaixo da metade), e nao a media -- todo membro em 40% pesa 0,2 cada.
+		Machucar(pl, 0.4);
 		pl.Ficha.Tick(agoraMs: NowMs());
-		AfirmarMb("o `hpratio` do `Fighter.PowerLevel` e o `DebuffsDeMembro.FatorDoPoder` (o que a aba Body escreve) sao o mesmo numero",
-			MbPerto(pl.Ficha.hpratio, DebuffsDeMembro.FatorDoPoder(pl.Ficha.HP), 1e-9), $"hpratio {pl.Ficha.hpratio:0.###}, texto {DebuffsDeMembro.FatorDoPoder(pl.Ficha.HP):0.###}");
+		double pesa = pl.Combate.Corpo.VidaQuePesaNoPoder();
+		AfirmarMb("o `hpratio` do `Fighter.PowerLevel` e o `DebuffsDeMembro.FatorDoPoder` (o que a aba Body escreve) sao o mesmo numero -- o da vida que PESA, e nao o da media",
+			MbPerto(pl.Ficha.hpratio, DebuffsDeMembro.FatorDoPoder(pesa), 1e-9) && MbPerto(pl.Ficha.hpratio, 0.8, 1e-9),
+			$"hpratio {pl.Ficha.hpratio:0.###}, texto {DebuffsDeMembro.FatorDoPoder(pesa):0.###} (vida {pl.Ficha.HP:0.#}, a que pesa {pesa:0.#})");
 		Machucar(pl, 0.3);
 		pl.Ficha.Tick(agoraMs: NowMs());
-		AfirmarMb("...inclusive no piso (vida em 30% -> 0,6)", MbPerto(pl.Ficha.hpratio, 0.6, 1e-9) && MbPerto(DebuffsDeMembro.FatorDoPoder(pl.Ficha.HP), 0.6, 1e-9));
+		pesa = pl.Combate.Corpo.VidaQuePesaNoPoder();
+		AfirmarMb("...inclusive no piso (todo membro em 30% -> a vida que pesa em 60 -> 0,6)",
+			MbPerto(pl.Ficha.hpratio, 0.6, 1e-9) && MbPerto(DebuffsDeMembro.FatorDoPoder(pesa), 0.6, 1e-9));
+	}
+
+	/// <summary>
+	/// 6b) (2026-10-24) O PODER SO CAI ABAIXO DA METADE -- o dono: *"faça tb q perder poder seria so se o ki estiver abaixo de 50% ai
+	/// começa a perder bp com o ki baixo e tb so começa a perder bp quando membros começam a ficar abaixo de 50% entao tipo se o torço ta
+	/// abaixo de 50% de hp vc começa a perder bp, mas se seu braço estiver full e tomar dano e continuar acima de 50% vc n perde bp"*.
+	/// Medido no `expressedBP` do tique de producao (`Fighter.Tick`, depois do `SincronizarVida`), contra o MESMO corpo inteiro e de tanque
+	/// cheio; o contra-exemplo e a conta de antes (`Fighter.PerdaDePoderComoAntesDeTeste`): o Ki tirando desde o cheio, a vida pela media.
+	/// </summary>
+	private void MbOPoderSoAbaixoDaMetade()
+	{
+		GD.Print("[membros] --- 6b) O PODER SO CAI ABAIXO DA METADE: o Ki abaixo de 50%, cada membro abaixo de 50% (dono, 2026-10-24) ---");
+		ServerPlayer pl = MbCorpo("mbMetade");
+		var f = pl.Ficha;
+		BodyPart Parte(string nome) => pl.Combate.Corpo.Partes.First(p => p.Nome == nome);
+		double Poder()
+		{
+			pl.Combate.SincronizarVida();
+			f.Tick(agoraMs: NowMs());
+			return f.expressedBP;
+		}
+		void Inteiro()
+		{
+			pl.Combate.Corpo.Curar(10_000);
+			f.Ki = f.MaxKi;
+		}
+		double ComAContaDeAntes(Func<double> medir)
+		{
+			Jandirus.Core.Stats.Fighter.PerdaDePoderComoAntesDeTeste = true;
+			try { return medir(); }
+			finally { Jandirus.Core.Stats.Fighter.PerdaDePoderComoAntesDeTeste = false; }
+		}
+
+		Inteiro();
+		double cheio = Poder();
+		AfirmarMb("(montagem) o corpo inteiro e de tanque cheio tem poder", cheio > 0, $"{cheio:0}");
+		if (cheio <= 0) return;
+
+		// ---- O KI ----
+		double KiEm(double r) { f.Ki = f.MaxKi * r; return Poder() / cheio; }
+		double ki60 = KiEm(0.6), ki40 = KiEm(0.4), ki5 = KiEm(0.05), ki150 = KiEm(1.5);
+		AfirmarMb("**O KI EM 60% NAO TIRA PODER** -- da metade do tanque pra cima gastar Ki nao custa nada (antes, 60% de Ki era 60% de poder)",
+			MbPerto(ki60, 1, 0.003), $"x{ki60:0.####}");
+		AfirmarMb("...o Ki em 40% tira: a razao desce da metade ate o piso de sempre (0,6 + 0,4 x 40%/50% = 0,92)",
+			MbPerto(ki40, 0.92, 0.003), $"x{ki40:0.####}");
+		AfirmarMb("...o tanque quase vazio (5%) fica perto do piso de 0,6 (0,64), e nunca abaixo dele",
+			MbPerto(ki5, 0.64, 0.003), $"x{ki5:0.####}");
+		AfirmarMb("...e ACIMA do cheio nada mudou: 150% de Ki e 1,5x (linear, como sempre)", MbPerto(ki150, 1.5, 0.003), $"x{ki150:0.####}");
+		double ki60Antes = ComAContaDeAntes(() => KiEm(0.6));
+		AfirmarMb("(defeito injetado: a conta de antes) com 60% de Ki o poder cai pra 60% -- a regua do Ki em 60% REPROVA",
+			!MbPerto(ki60Antes, 1, 0.003), $"x{ki60Antes:0.####}");
+
+		// ---- OS MEMBROS ----
+		Inteiro();
+		BodyPart braco = Parte("Braco direito");
+		braco.Vida = braco.VidaMax * 0.6;
+		double bracoEm60 = Poder() / cheio;
+		AfirmarMb("**O BRACO QUE TOMOU DANO E SEGUE ACIMA DE 50% NAO TIRA PODER** (o exemplo do dono): o braco direito em 60%, o poder inteiro",
+			MbPerto(bracoEm60, 1, 0.003) && f.HP < 99.9, $"x{bracoEm60:0.####}, vida {f.HP:0.#}");
+		double bracoEm60Antes = ComAContaDeAntes(() => Poder() / cheio);
+		AfirmarMb("(defeito injetado: a vida pela media, a conta de antes) o mesmo braco em 60% tira poder -- a regua do braco REPROVA",
+			!MbPerto(bracoEm60Antes, 1, 0.003), $"x{bracoEm60Antes:0.####}");
+
+		Inteiro();
+		BodyPart torso = Parte("Torso");
+		torso.Vida = torso.VidaMax * 0.4;
+		double torsoEm40 = Poder() / cheio;
+		double esperado = DebuffsDeMembro.FatorDoPoder(pl.Combate.Corpo.VidaQuePesaNoPoder());
+		AfirmarMb("**O TORSO ABAIXO DE 50% TIRA PODER** (o outro exemplo do dono): o torso em 40%, e o poder cai -- pelo peso dele, o que passou da metade",
+			torsoEm40 < 0.998 && MbPerto(torsoEm40, esperado, 0.003), $"x{torsoEm40:0.####} (a vida que pesa da x{esperado:0.####})");
+
+		Inteiro();
+		foreach (string nome in new[] { "Braco esquerdo", "Braco direito", "Perna esquerda", "Perna direita" })
+		{
+			BodyPart m = Parte(nome);
+			m.Vida = m.VidaMax * 0.2;
+		}
+		double quatro = Poder() / cheio;
+		double esperadoQuatro = DebuffsDeMembro.FatorDoPoder(pl.Combate.Corpo.VidaQuePesaNoPoder());
+		AfirmarMb("...e os quatro membros em 20% tiram mais, na medida (o `hpratio` e o fator da vida que pesa, com o piso de sempre)",
+			quatro < torsoEm40 && MbPerto(quatro, esperadoQuatro, 0.003) && MbPerto(f.hpratio, esperadoQuatro, 1e-9),
+			$"x{quatro:0.####} (esperado x{esperadoQuatro:0.####}, hpratio {f.hpratio:0.####})");
+
+		Inteiro();
+		Poder();
 	}
 
 	// =====================================================================
@@ -542,10 +633,15 @@ public sealed partial class GameServer
 		AfirmarMb("sem braco nem perna: \"Você não ergue a guarda\" (o `EscolherGuarda` nao acha membro)",
 			t.Any(l => l.Contains("não ergue a guarda")), string.Join(" | ", t));
 
-		t = DebuffsDeMembro.EmVigor(new DebuffsDeMembro.Perdas(0, 0, 0), 50, "Human");
-		AfirmarMb("vida em 50%: \"passo 50% mais lento\" (a familia 6 mediu a metade) e \"poder rende 40% a menos\" (o piso do hpratio)",
-			t.Any(l => l.Contains("passo") && l.Contains("50% mais lento")) && t.Any(l => l.Contains("poder") && l.Contains("40%")), string.Join(" | ", t));
-		t = DebuffsDeMembro.EmVigor(new DebuffsDeMembro.Perdas(0, 0, 0), 50, "Majin");
+		// (2026-10-24) A LINHA DO PODER le a vida que PESA (cada membro so conta abaixo da metade -- o dono): com todo membro na metade ela
+		// nao aparece, e com todo membro em 30% (a vida que pesa em 60) ela diz o piso.
+		t = DebuffsDeMembro.EmVigor(new DebuffsDeMembro.Perdas(0, 0, 0), 50, "Human", vidaQuePesa: 100);
+		AfirmarMb("vida em 50%: \"passo 50% mais lento\" (a familia 6 mediu a metade) -- e NENHUMA linha de poder (membro na metade ainda nao pesa)",
+			t.Any(l => l.Contains("passo") && l.Contains("50% mais lento")) && !t.Any(l => l.Contains("poder")), string.Join(" | ", t));
+		t = DebuffsDeMembro.EmVigor(new DebuffsDeMembro.Perdas(0, 0, 0), 30, "Human", vidaQuePesa: 60);
+		AfirmarMb("...todo membro em 30% (a vida que pesa em 60): \"poder rende 40% a menos\" (o piso do hpratio)",
+			t.Any(l => l.Contains("poder") && l.Contains("40%")), string.Join(" | ", t));
+		t = DebuffsDeMembro.EmVigor(new DebuffsDeMembro.Perdas(0, 0, 0), 30, "Majin", vidaQuePesa: 60);
 		AfirmarMb("...e pro Majin a linha do passo NAO aparece (ele nao manca), so a do poder",
 			!t.Any(l => l.Contains("passo")) && t.Any(l => l.Contains("poder")), string.Join(" | ", t));
 

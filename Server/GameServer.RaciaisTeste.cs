@@ -70,6 +70,11 @@ public partial class GameServer
 		// que ele sorteia ao nascer (`LimiaresPessoais.RolarHumano`). A classe vazia e a do Humano comum.
 		new(Catalogo.RacaHumano, "", LinhaDeForma.Tensao, ""),
 
+		// (2026-10-23) O MAJIN E O SUPER MAJIN (o pedido do dono): sem skill e sem raiva, a porta e o BP (a do SSJ1 -- o Majin nao sorteia
+		// limiar). A classe e a do spread comum dele (`races.json`: "Majin" 95%); o Corrupted nao tem a linha (a escada dele e a saga), e a
+		// trava da maestria pelo BP tem bancada propria (`--supermajinteste`).
+		new(Jandirus.Core.Forms.SuperMajin.Raca, "Majin", LinhaDeForma.SuperMajin, ""),
+
 		// O HERAN E A UNICA LINHA RACIAL QUE PEDE RAIVA (`heran.dm:20-52`). A classe importa aqui
 		// mais do que em qualquer outra: o multiplicador dele SAI dela (`FormaDef.BaseDaClasse`).
 		new(Catalogo.RacaHeran, "Omega", LinhaDeForma.Heran, ""),

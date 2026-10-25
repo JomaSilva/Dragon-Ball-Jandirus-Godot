@@ -565,8 +565,11 @@ public sealed partial class GameServer
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	private static bool EDonoDaObra(Obra o, ServerPlayer pl) =>
-		o.DonoConta.Length > 0 && string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase);
+	/// <summary>
+	/// O DONO DE VERDADE: a conta, ou (2026-10-25) o Neo Tuffle dentro do corpo dela (`EDaContaDona`). E a pergunta das travas que so ele poe
+	/// (a senha da clonagem, a cifra do supercomputador); o que a obra LIBERADA abre pra todos pergunta ao `MexeComoDono`.
+	/// </summary>
+	private bool EDonoDaObra(Obra o, ServerPlayer pl) => EDaContaDona(o.DonoConta, pl);
 
 	/// <summary>
 	/// TIRAR -- o `Loot()` do bau e o "Retrieve Item" da base. Chega pelo verbo `saquear` (o clique na tela e o mesmo
@@ -579,7 +582,8 @@ public sealed partial class GameServer
 		if (!_bauAberto.ContainsKey(pl.Id)) return false;
 		if (DepositoAberto(pl) is not { } o) { Avisar(pl, "você se afastou."); return true; }
 
-		if (Deposito.SoODonoTira(o.Tipo) && !EDonoDaObra(o, pl) && !Deposito.QualquerUmTiraDeTeste)
+		// (2026-10-25) o dono, ou quem chegar se ele o liberou -- ver `MexeComoDono`
+		if (Deposito.SoODonoTira(o.Tipo) && !MexeComoDono(o, pl, semDonoEDeTodos: false) && !Deposito.QualquerUmTiraDeTeste)
 		{ Avisar(pl, $"só o dono tira coisas de {NomeDaObra(o)}."); return true; }
 
 		EstadoDeTech estado = o.Tech ??= new EstadoDeTech();
@@ -650,7 +654,8 @@ public sealed partial class GameServer
 	{
 		Obra? o = ObraQueAceita(pl, Deposito.VerboDesmontar);
 		if (o == null) { Avisar(pl, "não há base por perto."); return; }
-		if (!EDonoDaObra(o, pl)) { Avisar(pl, $"só o dono desmonta {NomeDaObra(o)}."); return; }
+		// (2026-10-25) o dono, ou quem chegar se ele a liberou -- ver `MexeComoDono`
+		if (!MexeComoDono(o, pl, semDonoEDeTodos: false)) { Avisar(pl, $"só o dono desmonta {NomeDaObra(o)}."); return; }
 
 		OQueEstavaGuardadoCai(o);
 		_noChao.Remove(o);

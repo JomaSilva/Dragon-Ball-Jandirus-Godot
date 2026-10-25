@@ -7016,6 +7016,17 @@ public partial class World : Node2D
 			return;
 		}
 
+		// (2026-10-24) UM CLIQUE NUMA COPIA MINHA DO SPLIT FORM ABRE O MENU DE ORDENS DELA -- ver `CliqueNaCopia`. O primeiro clique de um
+		// duplo tambem chega aqui; o segundo (o `DoubleClick`) fecha esse menu antes da interface (`MenuDeInteracao._Input`) e segue o
+		// caminho de sempre, logo abaixo. O ponto e o do EVENTO, levado ao mundo como o `GetGlobalMousePosition` leva o do mouse.
+		if (e is InputEventMouseButton { Pressed: true, DoubleClick: false, ButtonIndex: MouseButton.Left } um
+			&& !Foco.Digitando && GameClient.Instance is { } dono
+			&& CliqueNaCopia(GetCanvasTransform().AffineInverse() * um.Position, dono))
+		{
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
 		if (e is not InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left }) return;
 		if (Foco.Digitando || GameClient.Instance is not { } cli) return;
 		DuploClique(GetGlobalMousePosition(), cli);
@@ -7079,6 +7090,33 @@ public partial class World : Node2D
 
 	/// <summary>Só bancada: o gesto do duplo clique num ponto do mundo, sem mouse (`--diagcorpos`).</summary>
 	public void DuploCliqueDeTeste(Vector2 alvoNoMundo) { if (GameClient.Instance is { } cli) DuploClique(alvoNoMundo, cli); }
+
+	/// <summary>
+	/// (2026-10-24) O CLIQUE NUMA COPIA MINHA DO SPLIT FORM ABRE O MENU DE ORDENS DELA -- o `Click()` do `/mob/npc/Splitform`
+	/// (`Split Forms.dm:28-68`). O dono: *"Eu clicava na copia como no DM e nao aparecia nada; nao achei onde dar as ordens"*.
+	///
+	/// PELA MESMA MIRA DO DUPLO CLIQUE: o corpo DESENHADO mais perto do clique, ate <see cref="RaioDoClique"/> -- e ele tem de ser uma
+	/// copia MINHA, que e o servidor quem diz (`GameClient.MinhasCopias`). Outro corpo mais perto ganha, e o clique nao abre nada. De
+	/// QUALQUER distancia, como no DM: o menu e o da tecla E (`MenuDeInteracao.AbrirNaCopia`), e a ordem sai com o id desta copia -- so
+	/// ela obedece. Devolve se abriu.
+	/// </summary>
+	private bool CliqueNaCopia(Vector2 alvo, GameClient cli)
+	{
+		if (cli.MinhasCopias.Count == 0 || MenuDeInteracao.Instancia is not { } menu) return false;
+		int escolhido = 0;
+		float melhor = RaioDoClique * RaioDoClique;
+		foreach ((int id, RemotePlayer r) in _remotos)
+		{
+			if (!IsInstanceValid(r)) continue;
+			float d = (r.PosicaoDesenhada - alvo).LengthSquared();
+			if (d >= melhor) continue;
+			melhor = d;
+			escolhido = id;
+		}
+		if (escolhido == 0 || !cli.MinhasCopias.Contains(escolhido)) return false;
+		menu.AbrirNaCopia(escolhido, NomeDe(escolhido));
+		return true;
+	}
 
 	// =====================================================================
 	// A TRAVA DE ALVO (dono, 2026-10-17)

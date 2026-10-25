@@ -11,8 +11,10 @@ namespace Jandirus.Server;
 /// <summary>
 /// UM ABSORVIDO -- o `datum/MajinAbsorbed` (`Magic/MajinSaga.dm:35-41`), campo a campo.
 ///
-/// NAO VAI PRO DISCO, e isso e do original: la a lista ate e salva, mas o `DoLogoutStuff` a esvazia antes do
-/// save (`Login/Login.dm:198-202`, *"a volatile pocket-dimension state that can't survive a relog"*).
+/// O REGISTRO E DE SESSAO, e isso e do original: la a lista ate e salva, mas o `DoLogoutStuff` a esvazia antes
+/// do save (`Login/Login.dm:198-202`, *"a volatile pocket-dimension state that can't survive a relog"*). O JOGADOR
+/// selado continua assim. O NPC DEVORADO nao (dono, 2026-10-23): ele vai pro disco pela lista espelho da ficha
+/// (`Fighter.majin_devorados`, ver <see cref="GameServer.GuardarOsDevoradosNaFicha"/>) e o login recria o registro dele.
 /// </summary>
 public sealed class AbsorvidoPeloMajin
 {
@@ -59,8 +61,10 @@ public sealed class AbsorvidoPeloMajin
 ///   3. O MAJIN CAIR (`CombatMechanics/KO.dm:13-14`): todos saem, e saem NOCAUTEADOS (`:272`);
 ///   4. O MAJIN EXPELIR (`Absorption.dm:176-191`): todos, ou um, de pe;
 ///   5. alguem DESLOGAR (`Login.dm:198-202`): o prisioneiro que sai e solto antes do save; o Majin que sai
-///      cospe todo mundo.
-/// Nas cinco o Majin perde o que ganhou DAQUELE absorvido (`majin_release`, `:252-278`).
+///      cospe os JOGADORES -- e os NPC devorados FICAM com ele, e voltam no login (dono, 2026-10-23; ver
+///      <see cref="DesfazerAAbsorcaoAoSair"/>).
+/// Nas cinco o Majin perde o que ganhou DAQUELE absorvido (`majin_release`, `:252-278`) -- menos o NPC devorado na
+/// quinta, que nao sai.
 ///
 /// ============================ NAO HA CAMPO DE "ESTOU ABSORVIDO" ============================
 /// O `absorbed_into` do DM (`:31`) e o lugar: quem esta num `InteriorDoMajin` esta absorvido, e o dono sai
@@ -151,9 +155,22 @@ public partial class GameServer
 		// dentro e a saga sobe; de pe, a recusa e dela e o verb para aqui. Ver `GameServer.SagaDoMajin.cs`.
 		if (TentarAbsorverAOutraMetade(pl)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaAbsorcao, PodeSerAbsorvidoPeloMajin);
+		// (2026-10-23) A COPIA DO SPLIT FORM NAO SE ABSORVE -- o dono: *"majin consegue absorver split forms"*. E a regra que as outras
+		// absorcoes ja tinham (`CorpoDerivado`, `GameServer.Validacoes.cs`): a copia e o proprio dono de novo, com metade do poder dele, e
+		// devora-la pagava 10% do BP dela (5% do expresso do dono), a cura inteira e o Ki cheio -- uma fabrica de poder sem vitima, de 2 em
+		// 2 s. O DM nao a exclui (`MajinSaga.dm:132-151`); o port ja diverge de proposito no `CorpoDerivado` (o doc dele diz por que). O
+		// reflexo da mente, o outro corpo derivado, ja parou la em cima: na mente nada se absorve.
+		// (2026-10-24) o Bills e o Whis tambem nao: ninguem os leva pra dentro de si (nem pra fora do planeta, o dono) -- ver `MoveToZone`
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaAbsorcao, o => PodeSerAbsorvidoPeloMajin(o) && !CorpoDerivado(o)
+															  && (Jandirus.Core.Npc.BillsEWhis.DivinoSaiDoPlanetaDeTeste || DivinoDe(o) == null));
 		if (alvo == null)
-		{ Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado."); return; }
+		{
+			// O AVISO CLARO: com so a copia caida ao lado, o "precisa estar NOCAUTEADO" mentiria -- ela esta. O que falta e alguem de verdade.
+			bool soUmaCopia = AlvoDeTecnica(pl, RaioDaAbsorcao, o => PodeSerAbsorvidoPeloMajin(o) && CorpoDerivado(o)) != null;
+			Avisar(pl, soUmaCopia ? "isso é só uma cópia do Split Form: não há ninguém de verdade nela pra absorver."
+								  : "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado.");
+			return;
+		}
 
 		// O PRESO DA SALA DO TEMPO NAO SAI DELA DENTRO DE UM MAJIN: selado, ele iria pro interior e seria cuspido ao
 		// lado do Majin, onde o Majin estivesse -- la fora. So o ALVO importa: o Majin preso que absorve continua
@@ -380,9 +397,13 @@ public partial class GameServer
 		pl.Ficha.overcharge = true;
 	}
 
-	/// <summary>O poder do Majin mudou (entrou ou saiu um bonus): a conta e a ficha saem agora, e nao em 200 ms.</summary>
+	/// <summary>
+	/// O poder do Majin mudou (entrou ou saiu um bonus): a conta e a ficha saem agora, e nao em 200 ms. E a lista dos devorados que
+	/// vai pro disco acompanha o registro aqui -- todo registro que entra ou sai passa por este funil.
+	/// </summary>
 	private void RecalcularOMajin(ServerPlayer pl)
 	{
+		GuardarOsDevoradosNaFicha(pl);
 		pl.Ficha.Statify();
 		RepercutirPoder(pl);
 		pl.SigAtributos = "";
@@ -769,9 +790,10 @@ public partial class GameServer
 	/// </summary>
 	private void MandarAbsorvidosDoMajin(ServerPlayer pl)
 	{
+		IReadOnlyList<AbsorvidoPeloMajin> lista = AbsorvidosPor(pl.Id);
+		EscutaDaListaDoMajin?.Add((pl.Id, lista.Count));
 		if (pl.Peer is not { } peer) return;
 
-		IReadOnlyList<AbsorvidoPeloMajin> lista = AbsorvidosPor(pl.Id);
 		var w = Protocol.Begin(Protocol.S2C.AbsorvidosDoMajin);
 		w.Put((byte)Math.Min(lista.Count, byte.MaxValue));
 		for (int i = 0; i < lista.Count && i < byte.MaxValue; i++)
@@ -784,12 +806,65 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// SAIR DO JOGO E VOLTAR -- `Login.dm:181-202` e `:356`
+	// SAIR DO JOGO E VOLTAR -- `Login.dm:181-202` e `:356`, e a regra do dono de 2026-10-23
 	// =====================================================================
 	/// <summary>
-	/// QUEM SAI DO JOGO DESFAZ A ABSORCAO ANTES DO SAVE -- o `DoLogoutStuff`: *"Tear it down BEFORE the save
+	/// DEFEITO INJETADO (bancadas `--majinteste` e `--sagamajinteste`): o Majin que sai do jogo cospe tambem os NPC devorados e zera o
+	/// poder emprestado -- a regra de antes de 2026-10-23. Lido pelo <see cref="DesfazerAAbsorcaoAoSair"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SairCospeOsDevoradosDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--majinteste` e `--sagamajinteste`): o login esquece a lista dos devorados e zera o poder emprestado
+	/// -- a regra de antes. Lido pelo <see cref="AcordarSemAbsorcao"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool LoginSemDevoradosDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--majinteste`): a lista da ficha deixa de acompanhar o registro -- o NPC devorado so existe na sessao,
+	/// e o que vai pro disco (o salvamento automatico, a saida) nao o leva. Lido pelo <see cref="GuardarOsDevoradosNaFicha"/>. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	internal static bool DevoradosSoNaSessaoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--majinteste`): o login nao manda a lista de quem esta dentro -- o Majin volta com o NPC e sem o botao
+	/// de expelir dele. Lido pelo <see cref="ListaDoMajinNoLogin"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ListaDoMajinCaladaNoLoginDeTeste;
+
+	/// <summary>Gancho de bancada: toda lista de quem esta dentro que saiu pro cliente (quem, quantos) -- mesmo sem `Peer`. Nulo fora de teste.</summary>
+	internal static List<(int Quem, int Quantos)>? EscutaDaListaDoMajin;
+
+	/// <summary>
+	/// A LISTA DOS DEVORADOS QUE VAI PRO DISCO (`Fighter.majin_devorados`) acompanha o registro deste Majin: os NPC (`Quem == 0`) que
+	/// estao dentro AGORA, na ordem em que entraram. Chamada pelo funil de toda mudanca do registro (<see cref="RecalcularOMajin"/>: o
+	/// devorar, o selar, e toda saida -- nocaute, morte, Expelir, a imagem vencida) -- e por isso a saida do jogo, o salvamento
+	/// automatico e o servidor que cai no meio da sessao gravam a lista certa, e o NPC que saiu nao volta no login. Vazia vira nula: a
+	/// ficha de quem nao segura ninguem fica como era.
+	/// </summary>
+	private void GuardarOsDevoradosNaFicha(ServerPlayer majin)
+	{
+		if (DevoradosSoNaSessaoDeTeste) return;
+		List<DevoradoPeloMajin>? lista = null;
+		foreach (AbsorvidoPeloMajin rec in AbsorvidosPor(majin.Id))
+			if (rec.Quem == 0) (lista ??= []).Add(new DevoradoPeloMajin { Nome = rec.Nome, BonusDeBp = rec.BonusDeBp });
+		majin.Ficha.majin_devorados = lista;
+	}
+
+	/// <summary>
+	/// QUEM SAI DO JOGO DESFAZ A ABSORCAO DOS JOGADORES ANTES DO SAVE -- o `DoLogoutStuff`: *"Tear it down BEFORE the save
 	/// so nobody is stranded inside a dead z and no stale rec persists"*. Na ordem de la: *"I'm the one
 	/// absorbed -> free me first"*, depois *"I'm the Majin -> spit everyone back out"*.
+	///
+	/// ============================ O NPC DEVORADO FICA (dono, 2026-10-23) ============================
+	/// *"bp de majin absorvido de npcs n saem ao sair do jogo mais, players tao reclamando mt disso, player ainda sai ao sair do
+	/// jogo"*. O Majin que sai cospe so os JOGADORES (o bolsao deles morre com a sessao, e ninguem fica trancado num lugar que nao
+	/// existe), e cada um leva o poder dele. Os NPC devorados nao saem: eles ja estao na lista da ficha (o espelho do
+	/// <see cref="GuardarOsDevoradosNaFicha"/>), o poder deles continua no `majin_absorb_bp`, os dois vao pro disco no `Persistir` que
+	/// vem depois, e o login os devolve (<see cref="AcordarSemAbsorcao"/>). O registro da SESSAO sai daqui de qualquer jeito: ele e por
+	/// id de sessao, e o id nao volta -- quem volta e a lista.
+	/// ===============================================================================================
 	/// </summary>
 	private void DesfazerAAbsorcaoAoSair(ServerPlayer pl)
 	{
@@ -807,22 +882,58 @@ public partial class GameServer
 			}
 		}
 
-		CuspirTodosDoMajin(pl.Id, "");
-		pl.Ficha.majin_absorb_bp = 0;
+		if (SairCospeOsDevoradosDeTeste)
+		{
+			CuspirTodosDoMajin(pl.Id, "");
+			pl.Ficha.majin_absorb_bp = 0;
+			return;
+		}
+		foreach (AbsorvidoPeloMajin rec in AbsorvidosPor(pl.Id).ToArray())
+			if (rec.Quem != 0) CuspirDoMajin(pl.Id, rec);
+		_dentroDoMajin.Remove(pl.Id);
 	}
 
 	/// <summary>
-	/// O LOGIN DE QUEM FICOU PRA TRAS (o servidor caiu com gente absorvida): o bolsao nao existe mais, e o
-	/// poder emprestado tambem nao. E a *"limbo recovery"* de `Login.dm:356` -- *"never leave a finished
-	/// character in ... a dead Majin pocket z"*.
+	/// O LOGIN, NA PARTE DA ABSORCAO, em duas metades:
+	///   * (dono, 2026-10-23) O MAJIN VOLTA COM OS NPC QUE DEVOROU: cada um da lista da ficha vira um registro de novo (com um numero
+	///     novo, o do botao de expelir), e o poder emprestado e a SOMA deles. O `majin_absorb_bp` gravado nao vale sozinho -- e
+	///     derivado, e o salvamento automatico pega tambem o bonus de um JOGADOR que estava dentro, que nao volta;
+	///   * QUEM FICOU PRA TRAS (o servidor caiu com gente absorvida) acorda em terra firme: o bolsao nao existe mais. E a
+	///     *"limbo recovery"* de `Login.dm:356` -- *"never leave a finished character in ... a dead Majin pocket z"*.
+	///
+	/// O `Entrar` chama isto ANTES do `PrepararOMajinPuroNoLogin`, e a ordem e a regra: com o NPC de volta, o Corrupted Majin ja tem
+	/// alguem dentro quando o repouso dele e decidido, e volta FORA da Forma Pura ate expelir -- o "Conta" do dono (2026-10-23).
 	/// </summary>
 	private void AcordarSemAbsorcao(ServerPlayer pl)
 	{
-		pl.Ficha.majin_absorb_bp = 0;
+		if (LoginSemDevoradosDeTeste) pl.Ficha.majin_devorados = null;
+		foreach (DevoradoPeloMajin d in pl.Ficha.majin_devorados ?? [])
+			RegistrosDoMajin(pl.Id).Add(new AbsorvidoPeloMajin
+			{
+				Numero = ++_proximoAbsorvido,
+				Nome = d.Nome,
+				Quem = 0,
+				BonusDeBp = Math.Max(d.BonusDeBp, 0),
+			});
+		pl.Ficha.majin_absorb_bp = DevoradoPeloMajin.Soma(pl.Ficha.majin_devorados);
+		if (pl.Ficha.majin_devorados is { Count: > 0 } devorados)
+			GD.Print($"[server] {pl.Name} (Majin) entrou com {devorados.Count} NPC devorado(s) dentro: +{pl.Ficha.majin_absorb_bp:0} de BP emprestado");
+
 		if (!DentroDeUmMajin(pl)) return;
 
 		GD.Print($"[server] {pl.Name} entrou dentro de um Majin que nao existe mais -- devolvido ao berco");
 		PousarNoBercoSemPacote(pl);
 		Avisar(pl, "o corpo que prendia voce nao existe mais. Voce acorda em terra firme.");
+	}
+
+	/// <summary>
+	/// A LISTA DE QUEM ESTA DENTRO, NO LOGIN: os NPC que voltaram com o Majin (<see cref="AcordarSemAbsorcao"/>) sao botoes de expelir,
+	/// e o cliente zera a lista dele no `JoinAccepted` (o personagem anterior da mesma conta nao deixa os botoes dele pra este). Por
+	/// isso o `Entrar` chama isto DEPOIS do `JoinAccepted` -- antes, o pacote chegaria e seria apagado. Sem ninguem dentro, nada a dizer.
+	/// </summary>
+	private void ListaDoMajinNoLogin(ServerPlayer pl)
+	{
+		if (ListaDoMajinCaladaNoLoginDeTeste || !_dentroDoMajin.ContainsKey(pl.Id)) return;
+		MandarAbsorvidosDoMajin(pl);
 	}
 }

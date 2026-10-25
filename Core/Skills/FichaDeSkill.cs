@@ -99,7 +99,10 @@ public static class FichaDeSkill
 			t.NaCompra.Add("escolha única entre:");
 			foreach (Escolha e in s.Escolhas) t.NaCompra.Add($"    {e.Rotulo}: {TextoDaCasa(e)}");
 		}
-		foreach (Escolha e in s.PorRaca) t.NaCompra.Add($"se for {e.Rotulo}: {TextoDaCasa(e)}");
+		// (2026-10-24) "SE A RACA FOR", e nao "se for": a frase curta nao tinha letra fixa pra ser molde forte no tradutor, e o "se for
+		// Yardrat" do Instant Transmission ficava em portugues pra quem joga em ingles (o print de um jogador que o dono trouxe). Ver a
+		// `lingua` (Tools/AssetPipeline), secao 4.
+		foreach (Escolha e in s.PorRaca) t.NaCompra.Add($"se a raça for {e.Rotulo}: {TextoDaCasa(e)}");
 		// o efeito que o catalogo nao carrega porque o servidor o escreveu a mao -- ver `EfeitosEscritosAMao`
 		if (EfeitosEscritosAMao.De(s.Path) is { } feitoAMao) t.NaCompra.Add(feitoAMao);
 

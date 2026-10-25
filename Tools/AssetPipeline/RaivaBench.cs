@@ -290,6 +290,7 @@ public static class RaivaBench
 			LinhaDeForma.Heran => Catalogo.RacaHeran,
 			LinhaDeForma.Alien => Catalogo.RacaAlien,
 			LinhaDeForma.Tensao => Catalogo.RacaHumano,
+			LinhaDeForma.SuperMajin => SuperMajin.Raca,   // (2026-10-23) o Majin que nao e Corrupted
 			_ => "Saiyan",
 		};
 

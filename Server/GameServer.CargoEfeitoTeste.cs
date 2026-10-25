@@ -147,7 +147,8 @@ public partial class GameServer
 		["Paralysis"] = "o tiro tranca as PERNAS do alvo (e nao os bracos: paralisia nao e stun)",
 		["Kaioken"] = "o `KaioPcnt` sobe de 1 no corpo, e apertar de novo apaga",
 		["Kaioken_Settings"] = "e um alias do proprio Kaio-ken -- o censo o aponta pra la, e e la que ele e medido",
-		["Mystic"] = "a FORMA do Mistico abre junto com a skill, e fecha quando o cargo se vai",
+		// (2026-10-23) O `Mystic` SAIU DAQUI: o kit do Kaioshin perdeu a skill (o dono -- no lugar dela, o Ritual Mistico do Velho
+		// Kaiohshin, que e do trono e nao de livro), e o verbo deixou de ser de cargo. A prova mora na `--ritualkaiteste`.
 		["Permission"] = "a Sala do Tempo passa a aceitar quem o dono do cargo autorizou",
 		["RankChat"] = "o canal fechado dos cargos aceita a fala de quem carrega um cargo",
 		["Appoint_Elder"] = "o convite de Anciao chega de verdade na conta do namekuseijin escolhido",
@@ -207,8 +208,7 @@ public partial class GameServer
 						   "...e com o cargo do Kaio do Norte ele ACENDE no corpo (KaioPcnt sobe de 1)"),
 			["Kaioken_Settings"] = ("Server/GameServer.CargoVivoTeste.cs",
 									"...e apertar de novo APAGA (o toggle dos cinco verbs do `kaioken.dm`)"),
-			["Mystic"] = ("Server/GameServer.CargoVivoTeste.cs",
-						  "o Kaioshin recebe a skill do Mistico -- E A FORMA ABRE JUNTO"),
+			// (2026-10-23) o `Mystic` saiu (o kit do Kaioshin perdeu a skill -- ver a tabela de cima)
 			["Permission"] = ("Server/GameServer.CargoVivoTeste.cs",
 							  "...e o Mestre Korin, que recebe a Permission do cargo, autoriza de verdade"),
 			["RankChat"] = ("Server/GameServer.CargoVivoTeste.cs",

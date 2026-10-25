@@ -95,7 +95,8 @@ public partial class GameServer
 			return;
 		if (!LetrasDoEmbate.EhLetra(c) || s.Letra == '\0') return;
 
-		bool acertou = char.ToUpperInvariant(c) == s.Letra && NowMs() <= s.Prazo;
+		// (2026-10-24) o prazo com a rede: o aperto que o jogador deu no prazo que ELE viu chega uma ida e volta depois (ver `PrazoComARede`)
+		bool acertou = char.ToUpperInvariant(c) == s.Letra && NowMs() <= TreinoFocado.PrazoComARede(s.Prazo, IdaEVoltaDe(pl));
 		Julgar(pl, s, acertou);
 		NovaLetra(pl, s, acertou ? (byte)1 : (byte)2);
 		MandarFoco(pl, s);
@@ -109,7 +110,9 @@ public partial class GameServer
 		long agora = NowMs();
 		if (agora < s.TravaAte) return;
 
-		bool acertou = TreinoFocado.NaFaixa(TreinoFocado.InstanteVisto(agora, IdaEVoltaDe(pl)), s.InicioResp, TreinoFocado.PeriodoDaRespiracaoMs);
+		long idaEVolta = IdaEVoltaDe(pl);
+		bool acertou = TreinoFocado.NaFaixa(TreinoFocado.InstanteVisto(agora, idaEVolta), s.InicioResp, TreinoFocado.PeriodoDaRespiracaoMs,
+											TreinoFocado.FolgaDaRede(idaEVolta));
 		s.TravaAte = agora + TreinoFocado.TravaAposJulgarMs;
 		s.UltimoAperto = agora;
 		Julgar(pl, s, acertou);
@@ -147,7 +150,8 @@ public partial class GameServer
 				continue;
 			}
 
-			if (!s.Meditando && s.Letra != '\0' && agora > s.Prazo)
+			// (2026-10-24) a letra so vence depois do prazo COM A REDE: antes disso o aperto pode estar a caminho
+			if (!s.Meditando && s.Letra != '\0' && agora > TreinoFocado.PrazoComARede(s.Prazo, IdaEVoltaDe(pl)))
 			{
 				Julgar(pl, s, acertou: false);
 				NovaLetra(pl, s, veredito: 2);

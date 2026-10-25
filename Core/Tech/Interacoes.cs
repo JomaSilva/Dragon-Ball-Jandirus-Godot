@@ -190,11 +190,31 @@ public static class Interacoes
 			$"enche o tanque com os seus recursos ({Combustivel.RecursosPorUnidade:0.#} recurso por unidade) -- vale em qualquer lugar, até no espaço");
 
 	/// <summary>
+	/// (2026-10-24) A COPIA DO SPLIT FORM, no clique de quem a dividiu -- o `Click()` do `/mob/npc/Splitform` (`Split Forms.dm:28-68`),
+	/// com a lista dele e na ordem dele (o "Cancel" e o Fechar do menu). O nome e a folha do typepath. Quem abre e o clique no mundo
+	/// (`World.CliqueNaCopia` -> `MenuDeInteracao.AbrirNaCopia`), e nao a tecla E: a copia que segue o dono fica a dois tiles dele, e o
+	/// E a acharia sempre, no lugar da maquina ao lado.
+	/// </summary>
+	public const string TipoDaCopia = "Splitform";
+
+	/// <summary>
 	/// AS ACOES DE UM TIPO DE OBRA. O `tipo` e o id do catalogo, que e a folha do typepath do DM
 	/// ("Bank", "Research_Station", "AppleTree").
 	/// </summary>
 	public static Acao[] De(string tipo) => tipo switch
 	{
+		// (2026-10-24) AS ORDENS DA COPIA DO SPLIT FORM, as do `Click()` dela. Cada uma vale SO pra copia clicada -- o id vai no argumento
+		// (`MenuDeInteracao.Escolher`) --, menos o Destroy Splitforms, que desfaz todas, como no DM. O Attack Target e o alvo MARCADO do dono
+		// (duplo clique): o DM abria uma segunda lista com os corpos a vista, e aqui a marca ja e esse gesto (o verbo da aba Other e igual).
+		TipoDaCopia =>
+		[
+			new Acao("Follow", "splitform_seguir", "", "esta cópia passa a seguir você (para a dois tiles)"),
+			new Acao("Stop", "splitform_parar", "", "esta cópia para onde está"),
+			new Acao("Attack Target", "splitform_alvo", "", "esta cópia ataca quem você marcou (duplo clique)"),
+			new Acao("Attack Nearest", "splitform_perto", "", "esta cópia ataca quem estiver mais perto dela (menos você)"),
+			new Acao("Destroy Splitforms", "splitform_destruir", "", "desfaz TODAS as suas cópias"),
+		],
+
 		"Bank" =>
 		[
 			new Acao("Ver saldo", "banco_ver", "", "quanto você tem no bolso e no cofre"),
@@ -234,7 +254,7 @@ public static class Interacoes
 		"Enma_Daioh" =>
 		[
 			new Acao("Ouvir o Enma", "enma_ouvir", "", "ele lê a sua ficha e diz o preço da volta"),
-			new Acao("Voltar à vida (1.000.000 de zeni)", "enma_reviver", "", "o corpo volta fraco: BP a 25% por uma hora"),
+			new Acao("Voltar à vida (200.000 zeni)", "enma_reviver", "", "você volta inteiro pro seu berço, com todo o seu poder"),
 			new Acao("Visitar os vivos (100.000 zeni, 7 dias)", "enma_passe", "",
 					 "escolha o planeta (pré-feito ou descoberto): você desce MORTO, de auréola, e volta pra cá no fim do prazo",
 					 Forma.Lista),

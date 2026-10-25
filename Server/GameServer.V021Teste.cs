@@ -1133,8 +1133,8 @@ public sealed partial class GameServer
 		AfirmarV21("**O TREINO GASTA VIGOR**: vinte segundos de treino tiram 10% do tanque (meio por cento por segundo), e o poder sobe",
 				   Math.Abs(vinte.Gastou - 0.10) < 0.006 && vinte.Subiu > 0 && vinte.F.train, $"gastou {vinte.Gastou:P2}; BP +{vinte.Subiu:0.####}; treinando {vinte.F.train}");
 		var pesado = Treino(20, peso: 2);
-		AfirmarV21("...e com o DOBRO do peso gasta o QUADRUPLO (`0.01*weight*weight`, `Train.dm:88`)",
-				   Math.Abs(pesado.Gastou - 0.40) < 0.02, $"gastou {pesado.Gastou:P2}");
+		AfirmarV21("...e com o DOBRO do peso gasta o DOBRO (proporcional ao peso, dono, 2026-10-24 -- no DM era o quadruplo, `0.01*weight*weight`, `Train.dm:88`)",
+				   Math.Abs(pesado.Gastou - 0.20) < 0.01, $"gastou {pesado.Gastou:P2}");
 
 		LimparTudoDaBancada();
 		{

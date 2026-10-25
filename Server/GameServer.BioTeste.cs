@@ -140,6 +140,7 @@ public partial class GameServer
 			MedirOSuperSaiyajinPeloDna(Checa, bio, semDna);
 			MedirOFolegoNoVacuoPeloDna(Checa, host, forjados, obras);
 			MedirOSangueEOLivroDosDoadores(Checa, host, forjados, obras);
+			MedirAsDuasAbsorcoesDoBioMajin(Checa, host, forjados);   // (2026-10-24) a 4c, em `GameServer.BioMajinTeste.cs`
 			MedirOsNumerosContraODm(Checa);
 			MedirAsInjecoesDeDefeito(Checa, host, bio, semDna, forjados, obras);
 

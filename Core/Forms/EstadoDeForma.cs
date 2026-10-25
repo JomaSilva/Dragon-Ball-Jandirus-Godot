@@ -202,6 +202,45 @@ public sealed class EstadoDeForma
 	/// </summary>
 	public bool? GradesLigados;
 
+	/// <summary>
+	/// (2026-10-23) O C DUPLO VAI PRIMEIRO PELAS FORMAS DIVINAS, OU PELAS MORTAIS? E preferencia do JOGADOR -- o verb `divinas_c`
+	/// (aba Other, ver `GameServer.Formas.cs`) e o pedido do dono: *"atualmente quem libera god ki nao consegue virar as formas
+	/// mortais, so as divinas [...] ou tendo um botao q troca entre o c duas vezes virar as formas mortais e o c duas vezes virar forma
+	/// divina"* (a decisao dele: "as duas" -- o botao gravado no personagem, e a forma divina na tecla indo direto).
+	///
+	/// ============================ POR QUE O GOD KI TRANCAVA AS MORTAIS ============================
+	/// Ninguem escreveu essa regra: ela saia do <see cref="Proxima"/>, que devolve o degrau MAIS FORTE alcancavel. Quem desperta o ki
+	/// divino tem o Super Saiyajin God (22x) a um toque da base, e ele ganha do SSJ1 (2x/6x), do SSJ2 (ate 10x) e do SSJ3 (16x): o C da
+	/// base caia SEMPRE no SSG, e do SSG so sobrava o Blue. O jogador perdia as formas mortais pelo C sem nada na tela dizer por que.
+	/// ===============================================================================================
+	///
+	/// ============================ E ORDEM, NAO FILTRO -- A OUTRA FAMILIA FICA DE RESERVA ============================
+	/// `true` = as DIVINAS primeiro (`DespertarDivino.EhFormaDivina`: as que pedem ki divino); `false` = as MORTAIS primeiro. Quando a
+	/// familia escolhida nao tem degrau acima de onde o corpo esta, o C sobe pela outra -- e isso nao e enfeite: um filtro duro ENCALHA
+	/// linhas que cruzam as duas familias. O Prodigial sobe pelo Mistico (mortal) pra chegar no Beast (divino); o Primal sai do Full Power
+	/// (mortal) pro Limit Breaker (divino). Com filtro, o C pararia no meio dessas escadas ate o jogador trocar o botao.
+	/// =============================================================================================================
+	///
+	/// `null` = **corpo sem dono** (o NPC sorteado, o cerebro da IA): a regra de sempre, o mais forte de todos numa passada so -- pelo
+	/// mesmo argumento do <see cref="GradesLigados"/>, que e o molde deste campo. Quem preenche pro jogador e o login
+	/// (`GameServer.RestaurarFormaEDisciplina`), com <see cref="CPelasDivinasDeFabrica"/> quando o disco nao diz nada.
+	/// </summary>
+	public bool? CPelasDivinas;
+
+	/// <summary>
+	/// (2026-10-23) O LADO DO BOTAO PRA QUEM NUNCA O APERTOU (save de antes dele, personagem novo): AS DIVINAS PRIMEIRO, que e o que o C ja
+	/// fazia pra quem tem ki divino (o mais forte e a divina) -- e o que o despertar promete ("as formas divinas da sua linhagem (tecla
+	/// C)", `GameServer.GodKi.cs`). DECISAO MINHA (o dono decidiu o botao, nao o padrao); quem quer as mortais aperta uma vez.
+	/// </summary>
+	public const bool CPelasDivinasDeFabrica = true;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--formasteclasteste`, `--diagformasteclas` e `pformas`): o C ignora a familia escolhida e volta ao "o mais
+	/// forte vence" de todos -- o jogo de antes, em que quem tinha ki divino caia sempre na forma divina. Lido pelo proprio
+	/// <see cref="Proxima"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CSurdoAFamiliaDeTeste;
+
 	public FormaDef? Def => Catalogo.Def(Atual);
 
 	public bool NaBase => Atual == Catalogo.IdBase;
@@ -240,6 +279,9 @@ public sealed class EstadoDeForma
 		NaBase ? 1 : Catalogo.Multiplicador(Atual, Maestria, perfil, CombateSegundos, LoucuraSegundos);
 
 	public double DrenoPorSegundo() => Catalogo.DrenoPorSegundo(Atual, Maestria);
+
+	/// <summary>(2026-10-25) O dreno com a barra de poder em <paramref name="liberacao"/> (0,01 a 1) -- ver `Catalogo.DrenoPorSegundo` com a liberacao.</summary>
+	public double DrenoPorSegundo(double liberacao) => Catalogo.DrenoPorSegundo(Atual, Maestria, liberacao);
 
 	/// <summary>
 	/// ESTE DEGRAU ESTA NO CAMINHO DA TECLA C DESTE PERSONAGEM? So diz NAO pro RAMO LATERAL de quem
@@ -291,12 +333,28 @@ public sealed class EstadoDeForma
 	/// atender isso mexendo em multiplicador (o Grade 2 nao PODE valer mais que um SSJ1 dominado, ou
 	/// dominar a forma passaria a ser castigo): o que muda e a ORDEM da escolha, e so pra quem pediu.
 	/// ========================================================================================================
+	///
+	/// (2026-10-23) **E A FAMILIA TAMBEM** -- ver <see cref="CPelasDivinas"/>: a escolhida primeiro, a outra de reserva. Cada passada e o
+	/// seletor inteiro de sempre (o ramo lateral dos grades e o mais forte), so que restrito a uma familia.
 	/// </summary>
 	public FormaDef? Proxima(double bpBase, PerfilDeFormas perfil)
 	{
+		// A FAMILIA DO JOGADOR, E A OUTRA DE RESERVA -- e o `is bool` e literal: `null` e corpo sem dono (NPC, IA) e cai na regra de
+		// sempre, numa passada so. Ver `CPelasDivinas`.
+		if (CPelasDivinas is bool divinas && !CSurdoAFamiliaDeTeste)
+			return ProximaDaFamilia(divinas, bpBase, perfil) ?? ProximaDaFamilia(!divinas, bpBase, perfil);
+		return ProximaDaFamilia(null, bpBase, perfil);
+	}
+
+	/// <summary>
+	/// O SELETOR DE SEMPRE (o ramo lateral dos grades, depois o mais forte acima de mim), restrito a UMA familia -- `true` so as divinas,
+	/// `false` so as mortais -- ou a todas (`null`). Ver <see cref="Proxima"/>.
+	/// </summary>
+	private FormaDef? ProximaDaFamilia(bool? divinas, double bpBase, PerfilDeFormas perfil)
+	{
 		// COM OS GRADES LIGADOS, O RAMO VEM ANTES DO TRONCO -- e o `== true` e literal: `null` e
 		// corpo sem dono (NPC, IA) e cai na regra de sempre. Ver `GradesLigados`.
-		if (GradesLigados == true && ProximoRamoLateral(bpBase, perfil) is { } ramo) return ramo;
+		if (GradesLigados == true && ProximoRamoLateral(divinas, bpBase, perfil) is { } ramo) return ramo;
 
 		FormaDef? melhor = null;
 		double melhorMult = Multiplicador(perfil);
@@ -304,6 +362,7 @@ public sealed class EstadoDeForma
 		foreach (FormaDef d in Catalogo.Todas)
 		{
 			if (d.Id == Atual || d.Id == Catalogo.IdBase) continue;
+			if (!DaFamilia(d, divinas)) continue;
 			if (!NoCaminhoDoC(d)) continue;
 			if (Avaliar(d.Id, bpBase, kiFracao: 1, caido: false, perfil) != RecusaForma.Pode) continue;
 			double m = Catalogo.Multiplicador(d.Id, Maestria, perfil, CombateSegundos);
@@ -333,7 +392,7 @@ public sealed class EstadoDeForma
 	/// tronco. Um grade sem a maestria exigida simplesmente nao existe pra esta funcao, e a escolha
 	/// escorrega pro caminho normal.
 	/// </summary>
-	private FormaDef? ProximoRamoLateral(double bpBase, PerfilDeFormas perfil)
+	private FormaDef? ProximoRamoLateral(bool? divinas, double bpBase, PerfilDeFormas perfil)
 	{
 		if (Def is not { } agora) return null;   // na base nao ha ramo nenhum pra oferecer
 
@@ -343,6 +402,7 @@ public sealed class EstadoDeForma
 		foreach (FormaDef d in Catalogo.Todas)
 		{
 			if (!d.ForaDoTronco || d.Linha != tronco.Linha) continue;
+			if (!DaFamilia(d, divinas)) continue;
 			if (Catalogo.Anterior(d)?.Id != tronco.Id) continue;   // ramo de outro degrau
 			if (d.Ordem <= agora.Ordem) continue;                  // ja passei por ele
 			if (Avaliar(d.Id, bpBase, kiFracao: 1, caido: false, perfil) != RecusaForma.Pode) continue;
@@ -350,6 +410,66 @@ public sealed class EstadoDeForma
 		}
 		return menor;
 	}
+
+	/// <summary>
+	/// (2026-10-23) ESTA FORMA E DA FAMILIA PEDIDA? `null` = qualquer uma. A divisao e a que o jogo ja tinha -- `DespertarDivino.EhFormaDivina`
+	/// (a forma que PEDE ki divino) -- e nao uma lista de ids: a forma divina que entrar no catalogo amanha ja nasce do lado certo do botao.
+	/// </summary>
+	private static bool DaFamilia(FormaDef d, bool? divinas) => divinas is not bool quer || DespertarDivino.EhFormaDivina(d) == quer;
+
+	// =====================================================================
+	// (2026-10-23) A TECLA DE FORMA QUE VAI DIRETO -- o adendo do dono
+	// =====================================================================
+	/// <summary>
+	/// A MAESTRIA, NA PROPRIA FORMA, QUE DEIXA A TECLA DELA PULAR OS DEGRAUS DE ANTES. O dono: *"formas com acima de 50% de maestria q estao
+	/// colocadas em teclas, podem sim pular etapas anteriores, entao um cara na base q tem 50% do ssj poderia ir da base direto pro ssj3 se
+	/// ele colocou uma tecla pra ela"* -- e a decisao dele: a maestria e a DA FORMA DA TECLA (o SSJ3 com 50% sai da base pela tecla dele),
+	/// e abaixo disso a tecla continua pedindo o degrau anterior. Ver <see cref="VaiDiretoPelaTecla"/>.
+	/// </summary>
+	public const double MaestriaQuePulaDegrau = 50;
+
+	/// <summary>
+	/// A TECLA DESTA FORMA VAI DIRETO, SEM O CAMINHO? So a pergunta FECHADA da tecla de forma (o `Avaliar` com `pelaTecla`, que so o
+	/// `GameServer.TransformarPara` passa) faz esta pergunta -- o C, o `PorQueNao`, o recuo, a raiva e os NPCs continuam na escada de sempre.
+	///
+	/// ============================ AS TRES LINHAS SAO AS TRES METADES DO PEDIDO ============================
+	///   * **JA USADA**: a tecla so lista forma que o corpo ja assumiu (`Client/FormasDespertas.cs`), e o servidor confere isso pela
+	///     mesma prova que guarda a cinematica -- `Liberadas`. Sem esta linha um pacote forjado (ou a tecla de outro personagem, a ligacao
+	///     e de MAQUINA) pularia o caminho de uma forma que o corpo nunca alcancou -- o caso real e a barra UNICA do Frost Demon, que da
+	///     50% a evolucao final antes de ele ter estado nela (`Catalogo.ChaveDaMaestria`);
+	///   * **A DIVINA VAI DIRETO, sem condicao de maestria** -- o dono: *"coloque q as transformacoes divinas podem ser colocadas em teclas
+	///     assim indo direto pra elas"* (o Blue da base, o SSG de dentro do Super Saiyajin);
+	///   * **A MORTAL, com 50% de maestria NELA** (<see cref="MaestriaQuePulaDegrau"/>).
+	/// =======================================================================================================
+	///
+	/// O QUE ELA PULA E SO O CAMINHO: o degrau anterior (passo 5), a casca de baixo (5b) e, nas divinas, a forma em que o corpo precisa
+	/// estar (passo 4). Todas as outras portas continuam -- a linha, a classe, o ki divino, o poder, o Ki minimo, a maestria que a propria
+	/// forma cobra (o SSJ3 ainda pede 50% do SSJ2) e a raiva de quem nunca a despertou (que aqui nem chega: ja usada = desperta).
+	/// </summary>
+	public bool VaiDiretoPelaTecla(FormaDef d)
+	{
+		if (!Despertou(d.Id) && !PulaFormaNuncaUsadaDeTeste) return false;
+		if (DespertarDivino.EhFormaDivina(d)) return !DivinaPedeOCaminhoDeTeste;
+		return Maestria.De(d.Id) >= MaestriaQuePulaDegrau && !MaestriaNaoPulaDeTeste;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--formasteclasteste`, `--diagformasteclas` e `pformas`): a forma DIVINA na tecla volta a pedir o caminho (o Blue so de
+	/// dentro do Super Saiyajin, o SSG so da base) -- o jogo de antes. Lido pela propria linha do <see cref="VaiDiretoPelaTecla"/>.
+	/// </summary>
+	public static bool DivinaPedeOCaminhoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--formasteclasteste`, `--diagformasteclas` e `pformas`): a forma com 50%+ de maestria na tecla volta a
+	/// pedir o degrau anterior -- o jogo de antes. Lido pela propria linha do <see cref="VaiDiretoPelaTecla"/>.
+	/// </summary>
+	public static bool MaestriaNaoPulaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--formasteclasteste` e `pformas`): a tecla pula o caminho tambem de uma forma que o corpo NUNCA assumiu.
+	/// Lido pela propria linha do <see cref="VaiDiretoPelaTecla"/>.
+	/// </summary>
+	public static bool PulaFormaNuncaUsadaDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancadas `raiva` e `--raivateste`): a raiva COMUM abre as formas pelo MESMO preco da
@@ -409,8 +529,14 @@ public sealed class EstadoDeForma
 	/// </summary>
 	public static bool ConcedidaCobraODegrauDeTeste;
 
+	/// <param name="pelaTecla">
+	/// (2026-10-23) A PERGUNTA E A DA TECLA DE FORMA (`GameServer.TransformarPara`, e so ele): a forma ja usada que e divina, ou que tem
+	/// 50% de maestria nela, vai direto -- ver <see cref="VaiDiretoPelaTecla"/>. OPT-IN DE PROPOSITO: este funil tambem responde o C, o
+	/// `PorQueNao`, o recuo, a IA, o sorteio dos NPCs e a subida pela raiva (que depende do `ForaDeOrdem` pra achar os degraus do meio,
+	/// `SubidaPelaRaiva.DegrausAte`) -- e nenhum deles pode pular degrau.
+	/// </param>
 	public RecusaForma Avaliar(string alvo, double bpBase, double kiFracao, bool caido,
-							   PerfilDeFormas perfil, double fatorDaPorta = 1)
+							   PerfilDeFormas perfil, double fatorDaPorta = 1, bool pelaTecla = false)
 	{
 		if (alvo == Atual) return RecusaForma.JaEsta;
 		if (alvo == Catalogo.IdBase) return RecusaForma.Pode;   // descer sempre pode
@@ -539,8 +665,12 @@ public sealed class EstadoDeForma
 		// seletor automatico so oferece o que e MAIS FORTE, entao o Blue Evolution nunca sairia.
 		// Subir a partir do Blue empurra as duas metades de uma vez, que e o que o DM faz: la `ssj`
 		// e `godki` sao vars separadas e ascender mexe so na primeira.
+		//
+		// (2026-10-23) A TECLA DE UMA FORMA DIVINA JA USADA NAO PEDE A CAMADA -- o dono: "o Blue da base, o SSG de dentro do Super
+		// Saiyajin". So este passo, o 5 e o 5b leem o `vaiDireto`: e o CAMINHO que a tecla pula, e mais nada. Ver `VaiDiretoPelaTecla`.
+		bool vaiDireto = pelaTecla && VaiDiretoPelaTecla(d);
 		if (d.PedeFormaAtual.Length > 0
-			&& !Bate(d.PedeFormaAtual, Atual) && Atual != Catalogo.IdAnterior(d))
+			&& !Bate(d.PedeFormaAtual, Atual) && Atual != Catalogo.IdAnterior(d) && !vaiDireto)
 			return RecusaForma.FormaErrada;
 
 		// ============================ 4b. A FORMA QUE A ATUAL **PROIBE** -- ver FormaDef.ProibidoComFormaAtual ============================
@@ -589,11 +719,14 @@ public sealed class EstadoDeForma
 		// ja respondeu por ela. O caso e o ORANGE, que mora na linha do Namekuseijin acima do Super Namekuseijin -- e o
 		// dragao o da tambem a quem nunca comprou a forma de baixo. (O Mistico nunca chegou a esta pergunta: ele e o
 		// primeiro da linha dele.)
+		//
+		// (2026-10-23) E A TECLA DA FORMA JA USADA QUE E DIVINA, OU QUE TEM 50% DE MAESTRIA NELA, PULA O DEGRAU -- o adendo do dono
+		// ("um cara na base q tem 50% do ssj poderia ir da base direto pro ssj3"). So a tecla: o C continua subindo um por vez.
 		FormaDef? ant = Catalogo.Anterior(d);
 		if (ant != null && ant.Id != Catalogo.IdBase && (!d.SoPorConcessao || ConcedidaCobraODegrauDeTeste))
 		{
 			bool ok = d.PedeFormaAtual.Length > 0 ? Despertou(ant.Id) : EstaEmOuAcimaDe(ant);
-			if (!ok) return RecusaForma.ForaDeOrdem;
+			if (!ok && !vaiDireto) return RecusaForma.ForaDeOrdem;
 		}
 
 		// ============================ 5b. (2026-10-19) A CASCA DE BAIXO E DEGRAU DE QUEM A TEM ============================
@@ -606,10 +739,14 @@ public sealed class EstadoDeForma
 		// A REGRA E DE CASCA, E NAO DE RACA: o degrau imediatamente abaixo do alvo (`Catalogo.DegrauAbaixo`) e uma casca
 		// (`EhCasca`) que ESTE corpo tem (a classe que ela pede e a dele)? Entao ela e cobrada como degrau. O
 		// normal nao tem casca nenhuma e nao muda; descer continua livre (quem recua ja esta acima da casca cobrada).
+		//
+		// (2026-10-23) A casca e o degrau anterior de quem a tem, e por isso a tecla que pula o passo 5 pula esta tambem -- o Mutante
+		// que ja assumiu a forma pedida e tem 50% na barra dela (a barra unica da raca) vai direto; o motor de instabilidade dele
+		// continua valendo do outro lado (`FormasDeFrost.DegrauEstavel`).
 		// ==================================================================================================================
 		if (!PulaACascaDeTeste && Catalogo.DegrauAbaixo(d) is { } casca && EhCasca(casca)
 			&& (casca.PedeClasseUmaDe.Length == 0 || Bate(casca.PedeClasseUmaDe, perfil.Classe))
-			&& !EstaEmOuAcimaDe(casca))
+			&& !EstaEmOuAcimaDe(casca) && !vaiDireto)
 			return RecusaForma.ForaDeOrdem;
 
 		// 6. MAESTRIA -- no degrau anterior, ou na forma que o campo apontar (ver PedeMaestriaDe).

@@ -106,28 +106,68 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// A ESTAMINA DA CONTA DE PODER (`staminadeBuff`, 0-100). Devolve a RAZAO que o `PowerLevel`
+	/// A ESTAMINA DA CONTA DE PODER (`staminadeBuff`, 0-100), PELO VIGOR DE VERDADE. Devolve a RAZAO que o `PowerLevel`
 	/// passou a usar -- ja com o piso de 0,3 aplicado --, que e o numero contra o qual a % efetivo
 	/// pode ser cobrada.
 	///
-	/// ============================ ESTA PERNA ESTA MORTA NO JOGO, E POR ISSO ELA E TESTADA ============================
-	/// `staminadeBuff` nasce em 100 e nada no jogo a abaixa hoje (so a Tecnica G3 a SOBE). Ou seja: o
-	/// dono listou a estamina como causa da % cair, a formula obedece, e o mundo nunca aciona.
-	///
-	/// Nao e desculpa pra nao cobrir -- e o motivo pra cobrir. No dia em que alguem acordar a perna, a
-	/// % efetivo tem que responder na medida, e esta e a unica checagem que vai dizer se ela responde.
-	/// A bancada relata a perna como MORTA no jogo junto do resultado, pra ninguem ler o verde como
-	/// "a fome cansa o corpo" -- ela so prova a CONTA.
-	/// ============================================================================================================
+	/// ============================ A PERNA ACORDOU (dono, 2026-10-24) ============================
+	/// Ate 2026-10-24 o `staminadeBuff` nascia em 100 e nada no jogo o abaixava (so a Tecnica G3 o SOBE), e esta janela o escrevia
+	/// direto -- provava so a CONTA. Agora o estomago do servidor o escreve a cada tique pela curva do DM (`Nutricao.FolegoNoPoder`,
+	/// `StaminaDrain.dm:40`), e um numero escrito a mao duraria um tique. Entao a janela poe o VIGOR do corpo no ponto em que a curva
+	/// da o valor pedido (achado pela propria funcao de producao, <see cref="VigorNaCurvaDeTeste"/>) e segura o estomago vazio enquanto
+	/// a bancada mede: a digestao devolveria 0,5% do tanque a cada 3 s, e no fundo da curva isso e o poder inteiro de volta. `valor` 100
+	/// devolve o tanque cheio e a comida que havia.
+	/// ============================================================================================
 	/// </summary>
 	internal double EstaminaDeTeste(int id, double valor)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return double.NaN;
 
-		pl.Ficha.staminadeBuff = Math.Clamp(valor, 0, 100);
-		pl.Ficha.Tick(agoraMs: NowMs());
+		var f = pl.Ficha;
+		if (valor >= 100)
+		{
+			f.stamina = f.maxstamina;
+			if (_comidaGuardadaDeTeste.Remove(pl.Id, out (double Comida, bool Fome) guardada))
+			{
+				f.CurrentNutrition = guardada.Comida;
+				f.Hungry = guardada.Fome;
+			}
+		}
+		else
+		{
+			_comidaGuardadaDeTeste.TryAdd(pl.Id, (f.CurrentNutrition, f.Hungry));
+			f.CurrentNutrition = 0;
+			f.stamina = VigorNaCurvaDeTeste(f, Math.Clamp(valor, 0, 100));
+		}
+		Jandirus.Core.Stats.Nutricao.FolegoNoPoder(f);
+		f.Tick(agoraMs: NowMs());
 		MandarFicha(pl);
-		return pl.Ficha.staminaratio;
+		return f.staminaratio;
+	}
+
+	/// <summary>A comida que a <see cref="EstaminaDeTeste"/> tirou pra segurar o vigor, por corpo, e devolve no 100.</summary>
+	private readonly Dictionary<int, (double Comida, bool Fome)> _comidaGuardadaDeTeste = [];
+
+	/// <summary>
+	/// O VIGOR em que a curva do DM -- a funcao de producao, `Nutricao.FolegoNoPoder` -- da este `staminadeBuff`, por bissecao (a curva
+	/// so sobe com o vigor). Nunca abaixo de 1 ponto: abaixo disso, de estomago vazio, a fome machuca (`Nutricao.DanoDaFome`). Nao mexe
+	/// no corpo: devolve o vigor e deixa a ficha como estava.
+	/// </summary>
+	internal static double VigorNaCurvaDeTeste(Jandirus.Core.Stats.Fighter f, double alvo)
+	{
+		double vigorDeAntes = f.stamina, deBuffDeAntes = f.staminadeBuff;
+		double baixo = Math.Min(1, f.maxstamina), alto = f.maxstamina;
+		for (int i = 0; i < 60; i++)
+		{
+			double meio = (baixo + alto) / 2;
+			f.stamina = meio;
+			Jandirus.Core.Stats.Nutricao.FolegoNoPoder(f);
+			if (f.staminadeBuff < alvo) baixo = meio;
+			else alto = meio;
+		}
+		f.stamina = vigorDeAntes;
+		f.staminadeBuff = deBuffDeAntes;
+		return alto;
 	}
 
 	/// <summary>

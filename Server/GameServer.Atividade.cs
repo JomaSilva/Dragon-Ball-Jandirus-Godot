@@ -77,7 +77,8 @@ public sealed partial class GameServer
 			nadando: pl.Nadando,
 			atirando: BlastingG12(pl.Id),
 			emBriga: pl.Combate is { LutandoDeVerdade: > 0, EmBrigaComAlguem: true },
-			saiuDoLugar: saiuDoLugar);
+			saiuDoLugar: saiuDoLugar,
+			pesoDemais: pl.Ficha.PesoDemaisPraTreinar());   // (2026-10-23) acima de 8x o limite do corpo nao se treina (dono)
 
 	/// <summary>
 	/// O PEDIDO DE TREINAR OU MEDITAR PASSA? Recusado, o dono le por que e o cliente larga a pose. Andar NAO e
@@ -96,6 +97,10 @@ public sealed partial class GameServer
 			MandarEfeito(pl, TreinoEMeditacao.EfeitoDeQueCaiu, 0);
 			return false;
 		}
+
+		// (2026-10-24) O T EXAUSTO E RECUSADO JA NO PEDIDO, dizendo quanto falta, e o estomago vazio avisado a cada tentativa (dono) --
+		// ver `GameServer.VigorDoTreino.cs`. Meditar nao custa vigor: so o treino pergunta.
+		if (!meditar && !PedidoDeTreinoAguenta(pl)) return false;
 
 		// A ANCORA NASCE COM A ATIVIDADE. Repetir o pedido do que ja esta ligado nao a renova: a carencia e de
 		// quem acabou de parar, e nao um prazo que se estica apertando a tecla.
