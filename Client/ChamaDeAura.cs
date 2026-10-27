@@ -84,6 +84,7 @@ public partial class ChamaDeAura : Node2D
 		FolhaDeAura.DeusQuente => 0,
 		FolhaDeAura.DeusFrio => 1,
 		FolhaDeAura.DeusRosa => 2,
+		FolhaDeAura.DeusDourado => 0,   // (2026-10-26) o fogo do Deus, na rampa de ouro da Golden Perfect
 		_ => null,
 	};
 
@@ -195,6 +196,9 @@ public partial class ChamaDeAura : Node2D
 	{
 		FolhaDeAura.DeusQuente => (new Color("fff6c8"), new Color("ffae2e"), new Color("e8331a"), new Color("e8331a")),
 		FolhaDeAura.DeusRosa => (new Color("e8aaff"), new Color("9e28ff"), new Color("6e0012"), new Color("dc1046")),
+		// (2026-10-26) A GOLDEN PERFECT DO BIO: o fogo do Deus *"so q dourada ao inves de laranja"* (o dono) -- a mesma rampa de quatro tons,
+		// do branco-ouro encostado no corpo ao ouro velho da borda, no lugar do amarelo-laranja-vermelho do SSG.
+		FolhaDeAura.DeusDourado => (new Color("fffbe6"), new Color("ffd84a"), new Color("c98a0a"), new Color("e8b11c")),
 		_ => (cor.Lerp(Colors.White, 0.85f), cor, Funda(cor), cor.Lerp(Colors.White, 0.60f)),
 	};
 

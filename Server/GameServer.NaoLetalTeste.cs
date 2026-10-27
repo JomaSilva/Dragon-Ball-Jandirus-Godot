@@ -30,9 +30,15 @@ namespace Jandirus.Server;
 ///      da cauda do bio e o dano em area (num corpo sem cabeca: ver la) -- e CAI, sem morrer. O mesmo golpe letal o mata (o controle).
 ///   6. O CASO DO DONO, DE PONTA A PONTA: o fraco derrubado no soco por um forte que luta sem matar, jogado pelo agarrao e socado de novo,
 ///      continua vivo.
+///   7. (2026-10-26) A ZONA SEGURA DO BERCO (o pedido 82): a dez tiles do ponto de chegada da Terra ninguem apanha e ninguem bate -- o soco e
+///      o agarrao recusados com a frase, a tecnica e o tiro de dentro sem encostar em ninguem --, e a quinze tiles a luta segue. E a porta do
+///      processo: a linha de comando do jogo de verdade tem a zona, a de bancada so quando a familia a pede (`ZonaSeguraNaBancadaDeTeste`).
+///   8. (2026-10-26) O REVIDE LETAL (o pedido 83): o cidadao que apanha de quem luta no letal revida no letal ate o rancor passar; no spar,
+///      nao; e o vilao e o animal ficam como nasceram.
 ///
 /// CONTRA-EXEMPLOS: <see cref="EspalharSemPisoDeTeste"/> (familias 1 a 4) e <see cref="NaoLetal.MataPeloEstadoDeTeste"/>
-/// (familia 5) -- e os dois juntos, o jogo de antes inteiro, na 6. Com eles as mesmas reguas reprovam.
+/// (familia 5) -- e os dois juntos, o jogo de antes inteiro, na 6; `ZonaSeguraDesligadaDeTeste` (7) e `RevideNaoLetalDeTeste` (8). Com eles
+/// as mesmas reguas reprovam.
 ///
 /// Os habitantes que estiverem na cena saem do mundo antes dela (`RemoverNpc`; o povoamento os repoe), e a bancada diz quem saiu. Roda no
 /// boot e o servidor continua de pe.
@@ -85,6 +91,8 @@ public partial class GameServer
 			NlAFome();
 			NlOMortoVivo();
 			NlOCasoDoDono();
+			NlAZonaSegura();
+			NlORevideLetal();
 		}
 		catch (Exception e)
 		{
@@ -96,6 +104,7 @@ public partial class GameServer
 			// OS BOTOES DE DEFEITO VOLTAM AO LUGAR, e o placar sai daqui haja o que houver.
 			EspalharSemPisoDeTeste = false;
 			NaoLetal.MataPeloEstadoDeTeste = false;
+			ZonaSeguraDesligadaDeTeste = ZonaSeguraNaBancadaDeTeste = RevideNaoLetalDeTeste = false;
 			try { LimparTudoDaBancada(); } catch (Exception e) { GD.PrintErr($"[naoletal]   (limpeza) {e.Message}"); }
 			GD.Print($"[naoletal] ================ {_nlOk} OK, {_nlFalhou} FALHA(S) ================");
 		}
@@ -494,5 +503,240 @@ public partial class GameServer
 	internal void TrocarOLetalNoServidorDeTeste(int id, bool letal)
 	{
 		if (_players.TryGetValue(id, out ServerPlayer? pl) && pl.Combate != null) pl.Combate.Letal = letal;
+	}
+
+	// =====================================================================
+	// 7) A ZONA SEGURA DO BERCO (o pedido 82 do dono, 2026-10-26)
+	// =====================================================================
+	/// <summary>A vida do corpo inteiro: "nao apanhou" e esta soma igual a de antes.</summary>
+	private static double VidaNl(ServerPlayer c) => c.Combate.Corpo.Partes.Sum(m => m.Vida);
+
+	private void NlAZonaSegura()
+	{
+		GD.Print("[naoletal] -- 7) a zona segura do berco: dez tiles em volta do ponto de chegada da Terra, e la ninguem luta --");
+		const float T = ZoneCollision.TileSize;
+		Vec2 berco = PontoDeNascimento(ZonaDaBancadaDeProjetil);
+		string conta = "";
+
+		// A PORTA DO PROCESSO: a linha de comando do jogo de verdade tem a zona; a de uma bancada ou de um robo, nao (as cenas antigas lutam
+		// no berco) -- e esta bancada e uma delas, e por isso a familia a pede.
+		AfirmarNl("**O JOGO DE VERDADE TEM A ZONA; A BANCADA SO QUANDO PEDE**: o servidor dedicado e o cliente nao passam bandeira de bancada; a bancada, o robo (a conta `bancada...`) e a bancada de nome proprio passam -- e este processo e de bancada",
+				  !EhLinhaDeBancada([]) && !EhLinhaDeBancada(["--headless", "--server", "--port", "7777"]) && !EhLinhaDeBancada(["--rede", "1.2.3.4", "--janela"])
+				  && EhLinhaDeBancada(["--headless", "--server", "--port", "8940", "--naoletalteste"])
+				  && EhLinhaDeBancada(["--janela", "--host", "--conta", "bancada_abas", "--nome", "Bancada"]) && EhLinhaDeBancada(["--server", "--cargoportas"])
+				  && EhLinhaDeBancada(Godot.OS.GetCmdlineArgs()));
+
+		// TRES CORPOS: um no berco, um a tres tiles dele (dentro tambem) e um a quinze (fora); e um quarto, a dezessete, pro controle.
+		(ServerPlayer Dentro, ServerPlayer Perto, ServerPlayer Fora, ServerPlayer Fora2) Cena()
+		{
+			TirarQuemNaoEDaCenaNl(berco, 22);
+			// os que atiram sao dez vezes o alvo: o raspao do `Acertar` (o dado da deflexao) fica em ~0,05% por impacto -- ver a familia 1 da
+			// `--projetilteste`.
+			return (ForjarNl("NoBerco", berco, 5000), ForjarNl("PertoDoBerco", berco + new Vec2(3 * T, 0), 1000),
+					ForjarNl("LongeDoBerco", berco + new Vec2(15 * T, 0), 500), ForjarNl("MaisLonge", berco + new Vec2(17 * T, 0), 5000));
+		}
+
+		ZonaSeguraNaBancadaDeTeste = true;
+		try
+		{
+			// a) NINGUEM APANHA LA DENTRO -- a oitava razao do `Intocavel`, a que os golpes, os tiros e as tecnicas de fora ja perguntam.
+			bool NaoApanha() => CenaNl(() =>
+			{
+				var (dentro, perto, fora, _) = Cena();
+				conta = $"intocavel: no berco {dentro.Combate.Intocavel}, a 3 tiles {perto.Combate.Intocavel}, a 15 tiles {fora.Combate.Intocavel}";
+				return dentro.Combate.Intocavel && perto.Combate.Intocavel && !fora.Combate.Intocavel;
+			});
+			Mutacao(AfirmarNl,
+					"**NA ZONA SEGURA NINGUEM APANHA**: no berco e a tres tiles dele o corpo e intocavel; a quinze, nao",
+					"sem zona segura, o jogo de antes",
+					NaoApanha, () => ZonaSeguraDesligadaDeTeste = true, () => ZonaSeguraDesligadaDeTeste = false);
+			GD.Print($"[naoletal]   (a zona) {conta}");
+
+			// b) NINGUEM BATE LA DE DENTRO: o soco e o agarrao sao recusados com a frase; o de fora soca sem ouvir dela.
+			bool NaoBate() => CenaNl(() =>
+			{
+				var (dentro, _, fora, _) = Cena();
+				bool podia = dentro.Combate.PodeAtacar();
+				List<string> soco = Ouvir(() => Atacar(dentro, Protocol.Golpe.Leve));
+				List<string> agarrao = Ouvir(() => AlternarAgarrao(dentro));
+				List<string> deFora = Ouvir(() => Atacar(fora, Protocol.Golpe.Leve));
+				conta = $"podia atacar {podia}; o soco: {Ultimos(soco)}; o agarrao: {Ultimos(agarrao)}; o de fora: {Ultimos(deFora)}";
+				return podia && Disse(soco, FraseDaZonaSegura) && Disse(agarrao, FraseDaZonaSegura) && !Disse(deFora, "zona segura");
+			});
+			Mutacao(AfirmarNl,
+					"**NA ZONA SEGURA NINGUEM BATE**: o soco e o agarrao de quem esta no berco sao recusados com a frase da zona; o de quem esta a quinze tiles sai",
+					"sem zona segura, o jogo de antes",
+					NaoBate, () => ZonaSeguraDesligadaDeTeste = true, () => ZonaSeguraDesligadaDeTeste = false);
+			GD.Print($"[naoletal]   (o soco) {conta}");
+
+			// c) A TECNICA DE QUEM ESTA DENTRO NAO ENCOSTA EM QUEM ESTA FORA -- pelos dois funis de dano de tecnica; e a de fora em fora, sim.
+			bool TecnicaNaoFere() => CenaNl(() =>
+			{
+				var (dentro, _, fora, fora2) = Cena();
+				double antes = VidaNl(fora);
+				EspalharDanoG3(fora, dentro, 30, letal: false);
+				FerirUmMembroG10(fora, dentro, 30, letal: false);
+				double depoisDeDentro = VidaNl(fora);
+				EspalharDanoG3(fora, fora2, 30, letal: false);
+				double depoisDeFora = VidaNl(fora);
+				conta = $"vida de quem esta fora: {antes:0.##} -> {depoisDeDentro:0.##} (a tecnica de dentro) -> {depoisDeFora:0.##} (a de fora)";
+				return Math.Abs(depoisDeDentro - antes) < 1e-9 && depoisDeFora < depoisDeDentro - 1e-6;
+			});
+			Mutacao(AfirmarNl,
+					"**A TECNICA DE QUEM ESTA NA ZONA NAO FERE NINGUEM**: o dano espalhado e o de um membro, de quem esta no berco, nao tiram vida de quem esta a quinze tiles; o de quem esta fora tira",
+					"sem zona segura, o jogo de antes",
+					TecnicaNaoFere, () => ZonaSeguraDesligadaDeTeste = true, () => ZonaSeguraDesligadaDeTeste = false);
+			GD.Print($"[naoletal]   (a tecnica) {conta}");
+
+			// d) O TIRO DE QUEM ESTA DENTRO ATRAVESSA OS CORPOS: nasce marcado, nao colide em cima de ninguem, nao acerta quem esta colado no
+			//    cano do lado de fora da borda, e a explosao dele nao fere; o tiro de quem esta fora nasce sem a marca e a explosao dele fere (o
+			//    controle).
+			bool TiroNaoFere() => CenaNl(() =>
+			{
+				var (dentro, _, fora, fora2) = Cena();
+				// na borda: um a 9,8 tiles do berco (dentro), e o colado a 10,6 (fora), na frente do cano dele
+				ServerPlayer naBorda = ForjarNl("NaBorda", berco + new Vec2(9.6f * T, 2 * T), 5000);
+				ServerPlayer colado = ForjarNl("Colado", berco + new Vec2(10.4f * T, 2 * T), 500);
+				ReceitaDeProjetil Bola() => new() { Tipo = TipoDeProjetil.Blast, BaseDano = 50, Velocidade = 1, AlcanceTiles = 30, Deflectivel = false };
+				Projetil deDentro = Disparar(dentro, Bola(), rumoDado: new Vec2(1, 0));
+				Projetil deFora = Disparar(fora2, Bola(), rumoDado: new Vec2(-1, 0));
+				double antes = VidaNl(fora);
+				deDentro.Pos = fora.Pos;
+				bool colidiu = Colidiu(deDentro, [fora]);
+				FerirComAExplosao(deDentro, dentro, fora, 1);
+				double depoisDeDentro = VidaNl(fora);
+				FerirComAExplosao(deFora, fora2, fora, 1);
+				double depoisDeFora = VidaNl(fora);
+				Projetil doCano = Disparar(naBorda, Bola(), rumoDado: new Vec2(1, 0));
+				bool marcou = doCano.AlvoNoCano == colado.Id;
+				double coladoAntes = VidaNl(colado);
+				bool acertouNoCano = AcertarQuemEstavaNoCano(doCano, [colado]);
+				conta = $"marcas: de dentro {deDentro.DaZonaSegura}, de fora {deFora.DaZonaSegura}, da borda {doCano.DaZonaSegura}; colidiu {colidiu}; vida {antes:0.##} -> {depoisDeDentro:0.##} -> {depoisDeFora:0.##}; "
+						+ $"o colado no cano: marcado {marcou}, acertado {acertouNoCano}, vida {coladoAntes:0.##} -> {VidaNl(colado):0.##}";
+				return deDentro.DaZonaSegura && !deFora.DaZonaSegura && !colidiu && Math.Abs(depoisDeDentro - antes) < 1e-9 && depoisDeFora < depoisDeDentro - 1e-6
+					   && doCano.DaZonaSegura && marcou && !acertouNoCano && Math.Abs(VidaNl(colado) - coladoAntes) < 1e-9;
+			});
+			Mutacao(AfirmarNl,
+					"**O TIRO DE QUEM ESTA NA ZONA ATRAVESSA OS CORPOS**: a bola de quem esta no berco, em cima de quem esta fora, nao colide e a explosao dela nao fere; a de quem esta na borda nao acerta o colado no cano do lado de fora; a de quem esta fora fere",
+					"sem zona segura, o jogo de antes",
+					TiroNaoFere, () => ZonaSeguraDesligadaDeTeste = true, () => ZonaSeguraDesligadaDeTeste = false);
+			GD.Print($"[naoletal]   (o tiro) {conta}");
+
+			// e) O RAIO DE QUEM ESTA DENTRO NAO E CORTADO POR QUEM ENCOSTA NO TRONCO -- o corte poe a cabeca nova na frente de quem encostou e
+			//    o `Acertar` roda nela (`Cortar`); o raio de quem esta fora e cortado ali (o controle).
+			bool RaioNaoCorta() => CenaNl(() =>
+			{
+				var (dentro, _, fora, fora2) = Cena();
+				List<Projetil> lista = ProjeteisDaZona(ZonaDaBancadaDeProjetil.Hash);
+				Projetil deDentro = RaioDaBancada(dentro, baseDano: 1);
+				deDentro.Rumo = new Vec2(1, 0);
+				deDentro.Cauda = dentro.Pos;
+				deDentro.Pos = dentro.Pos + new Vec2(20 * T, 0);
+				Vec2 cabecaDeDentro = deDentro.Pos;
+				CortarOndeEncostaram(deDentro, [fora], lista, ZonaDaBancadaDeProjetil.Hash);
+				Projetil deFora = RaioDaBancada(fora2, baseDano: 1);
+				deFora.Rumo = new Vec2(-1, 0);
+				deFora.Cauda = fora2.Pos;
+				deFora.Pos = fora2.Pos - new Vec2(9 * T, 0);
+				Vec2 cabecaDeFora = deFora.Pos;
+				CortarOndeEncostaram(deFora, [fora], lista, ZonaDaBancadaDeProjetil.Hash);
+				conta = $"o raio de dentro (marca {deDentro.DaZonaSegura}): cabeca {cabecaDeDentro} -> {deDentro.Pos}; o de fora: {cabecaDeFora} -> {deFora.Pos}";
+				return deDentro.DaZonaSegura && deDentro.Pos.Equals(cabecaDeDentro) && !deFora.Pos.Equals(cabecaDeFora);
+			});
+			Mutacao(AfirmarNl,
+					"**O RAIO DE QUEM ESTA NA ZONA NAO E CORTADO POR QUEM ENCOSTA NO TRONCO** (o corte o acertaria): o de quem esta no berco passa por cima de quem esta a quinze tiles; o de quem esta fora e cortado ali",
+					"sem zona segura, o jogo de antes",
+					RaioNaoCorta, () => ZonaSeguraDesligadaDeTeste = true, () => ZonaSeguraDesligadaDeTeste = false);
+			GD.Print($"[naoletal]   (o raio) {conta}");
+		}
+		finally { ZonaSeguraNaBancadaDeTeste = false; }
+
+		// f) E NUMA BANCADA QUE NAO PEDE, A ZONA NAO EXISTE -- as cenas antigas que lutam no berco continuam medindo o que mediam.
+		bool semPedido = CenaNl(() =>
+		{
+			var (dentro, _, _, _) = Cena();
+			return !dentro.Combate.Intocavel;
+		});
+		AfirmarNl("...E NUMA BANCADA QUE NAO A PEDE A ZONA NAO EXISTE: o corpo no berco apanha (as cenas antigas que lutam la medem o que mediam)", semPedido);
+	}
+
+	// =====================================================================
+	// 8) O REVIDE LETAL DO NPC QUE NAO E VILAO (o pedido 83 do dono, 2026-10-26)
+	// =====================================================================
+	private ulong _lugarNl = 7_208_300;
+
+	private void NlORevideLetal()
+	{
+		GD.Print("[naoletal] -- 8) o NPC que nao e vilao revida no letal quem o enfrenta fora do spar --");
+		const float T = ZoneCollision.TileSize;
+		long rancorMs = (long)(Jandirus.Core.Npc.Povoamento.SegundosDeRancor * 1000);
+		string conta = "";
+
+		// UM CIDADAO E QUEM O ENFRENTA, num chao firme longe do berco. O cidadao sai do mundo no fim (o povoamento repoe).
+		bool Cena(bool letal, bool vilao, Func<ServerPlayer, ServerPlayer, bool> medir, string molde = "cidadao") => CenaNl(() =>
+		{
+			Vec2 o = ChaoNl(6);
+			TirarQuemNaoEDaCenaNl(o, 12);
+			ServerPlayer quemBate = ForjarNl("QuemEnfrenta", o, 1000);
+			if (NascerNpc(molde, ZonaDaBancadaDeProjetil, o + new Vec2(2 * T, 0), ++_lugarNl) is not { } h)
+			{
+				conta = $"o {molde} nao nasceu";
+				return false;
+			}
+			try
+			{
+				if (vilao) h.Ficha.isVillain = true;
+				quemBate.Combate.Letal = letal;
+				return medir(h, quemBate);
+			}
+			finally { RemoverNpc(h); }
+		});
+
+		bool Revide() => Cena(letal: true, vilao: false, (h, quemBate) =>
+		{
+			bool antes = h.Combate.Letal;
+			MarcarAgressao(h, quemBate);
+			bool ligou = h.Combate.Letal && h.LetalDoRevideAte == h.RancorAte && h.LetalDoRevideAte > NowMs();
+			bool naIa = LerPercepcao(h, quemBate, quemBate.Pos, false).Letal;
+			bool desligou;
+			AdiantoDoRelogioDeTeste += rancorMs + 1000;
+			try
+			{
+				LerPercepcao(h, quemBate, quemBate.Pos, false);
+				desligou = !h.Combate.Letal && h.LetalDoRevideAte == 0;
+			}
+			finally { AdiantoDoRelogioDeTeste -= rancorMs + 1000; }
+			conta = $"letal antes {antes}; depois do golpe letal {ligou} (a IA le {naIa}); passado o rancor, desligou {desligou}";
+			return !antes && ligou && naIa && desligou;
+		});
+		Mutacao(AfirmarNl,
+				"**O CIDADAO REVIDA NO LETAL QUEM O ENFRENTA FORA DO SPAR**: o golpe dele, desligado, liga ao apanhar de quem luta no letal (e a IA le assim) -- e desliga sozinho quando o rancor passa",
+				"o revide no golpe de sempre, o jogo de antes",
+				Revide, () => RevideNaoLetalDeTeste = true, () => RevideNaoLetalDeTeste = false);
+		GD.Print($"[naoletal]   (o revide) {conta}");
+
+		bool noSpar = Cena(letal: false, vilao: false, (h, quemBate) =>
+		{
+			MarcarAgressao(h, quemBate);
+			conta = $"letal {h.Combate.Letal}, revide ate {h.LetalDoRevideAte}";
+			return !h.Combate.Letal && h.LetalDoRevideAte == 0;
+		});
+		AfirmarNl("...E QUEM O ENFRENTA NO SPAR apanha de um cidadao que derruba e nao mata (o golpe dele continua desligado)", noSpar, conta);
+
+		bool vilaoFica = Cena(letal: true, vilao: true, (h, quemBate) =>
+		{
+			MarcarAgressao(h, quemBate);
+			conta = $"letal {h.Combate.Letal}, revide ate {h.LetalDoRevideAte}";
+			return !h.Combate.Letal && h.LetalDoRevideAte == 0;
+		});
+		AfirmarNl("...E O VILAO FICA COMO NASCEU (o pedido e dos NPCs que NAO sao viloes)", vilaoFica, conta);
+
+		bool animalFica = Cena(letal: true, vilao: false, (h, quemBate) =>
+		{
+			MarcarAgressao(h, quemBate);
+			conta = $"{h.Name}: animal {EhAnimal(h)}, letal {h.Combate.Letal}, revide ate {h.LetalDoRevideAte}";
+			return EhAnimal(h) && !h.Combate.Letal && h.LetalDoRevideAte == 0;
+		}, molde: "animal_lobo");
+		AfirmarNl("...E O ANIMAL TAMBEM (o pedido fala dos NPCs: a caca no letal continua como era)", animalFica, conta);
 	}
 }

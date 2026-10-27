@@ -52,6 +52,7 @@ public partial class GameServer
 		GD.Print("[cargolivre] ================ OS CARGOS SEM ADMIN (dono, 2026-10-19) ================");
 
 		var tronosReais = new Dictionary<string, string>(_tronos, StringComparer.OrdinalIgnoreCase);
+		var personagensReais = new Dictionary<string, (string Conta, int Slot, string Nome)>(_personagensDosTronos, StringComparer.OrdinalIgnoreCase);
 		var ausenciasReais = _ausencias.ToDictionary(kv => kv.Key, kv => new Ausencia { Conta = kv.Value.Conta, Ms = kv.Value.Ms },
 													 StringComparer.OrdinalIgnoreCase);
 		long voltaReal = _voltaDoAbandono;
@@ -94,6 +95,7 @@ public partial class GameServer
 			VegetaCondenadoAbreOTrono(Forjar);
 			OsTextosEOFio(Forjar);
 			OTronoDeQuemSumiu(Forjar);
+			OCargoEDoPersonagem(Forjar);   // (2026-10-26) o cargo ligado ao personagem, e nao a conta
 		}
 		catch (Exception e) { AfirmarCl("a bancada rodou inteira", false, e.ToString()); }
 		finally
@@ -111,6 +113,8 @@ public partial class GameServer
 			_dominios.AddRange(dominiosReais);
 			_tronos.Clear();
 			foreach ((string k, string v) in tronosReais) _tronos[k] = v;
+			_personagensDosTronos.Clear();
+			foreach ((string k, (string Conta, int Slot, string Nome) v) in personagensReais) _personagensDosTronos[k] = v;
 			SalvarCargos();
 			_ausencias.Clear();
 			foreach ((string k, Ausencia v) in ausenciasReais) _ausencias[k] = v;
@@ -407,5 +411,88 @@ public partial class GameServer
 		_voltaDoAbandono = 0;
 		TickDosCargos();
 		AfirmarCl("A. o tique dos cargos (1 Hz) faz a volta do abandono", _voltaDoAbandono > 0, $"{_voltaDoAbandono}");
+	}
+
+	// =====================================================================
+	// B) O CARGO E DO PERSONAGEM, E NAO DA CONTA (2026-10-26)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"faca os ranks serem ligados ao personagem e nao a conta assim n tem como ter varios personagens da mesma conta caindo no
+	/// mesmo rank"*; e, perguntado, *"Sim, cada um o seu"* (personagens da mesma conta podem ter cargos DIFERENTES, nunca o mesmo) e *"O 1o
+	/// que entrar com ele"* (o cargo que estava na conta fica com o primeiro personagem dela que entrar). Dois personagens de UMA conta (os
+	/// slots 0 e 1), forjados como o resto da bancada, pelas portas de producao: o `Outorgar`, o `ReivindicarCargo`, o dono no jogo que o
+	/// abandono e as missoes perguntam (`OnlineDoTrono`), a ida e volta do `cargos.txt` e o `PurgarAssinatura` de quem apaga um personagem.
+	/// </summary>
+	private void OCargoEDoPersonagem(Func<int, string, string, double, int, double, ServerPlayer> forjar)
+	{
+		GD.Print("[cargolivre] -- B) o cargo e do personagem, e nao da conta --");
+		const string Conta = "bancada_livre_pessoal";
+		ServerPlayer DaConta(int i, string nome, int slot)
+		{
+			ServerPlayer p = forjar(i, nome, "Human", 1_000_000, 0, 0);
+			p.Conta = Conta;
+			p.Slot = slot;
+			return p;
+		}
+		_tronos.Clear();
+		_personagensDosTronos.Clear();
+		ServerPlayer a = DaConta(30, "bancada: o primeiro", 0), b = DaConta(31, "bancada: o irmao de conta", 1);
+		RankDef kaioshin = Cargos.Get("kaioshin")!, guardiao = Cargos.Get("guardian")!;
+
+		// 1. o cargo de um nao e do outro
+		Outorgar(kaioshin, a);
+		AfirmarCl("B. **O CARGO E DO PERSONAGEM** (*\"ligados ao personagem e nao a conta\"*): o Kaioshin dado a um personagem nao vale pro "
+				  + "outro da MESMA conta",
+				  CargoDe(a) == "kaioshin" && CargoDe(b) == "", $"o primeiro '{CargoDe(a)}', o irmao '{CargoDe(b)}'");
+
+		// 2. a mesma conta nao poe dois personagens no mesmo cargo -- nem com as vagas do Kaioshin sobrando
+		List<string> ouviu = Ouvir(() => ReivindicarCargo(b, "kaioshin"));
+		AfirmarCl("B. **E A MESMA CONTA NAO POE DOIS PERSONAGENS NO MESMO CARGO**: com quatro vagas de Kaioshin sobrando, o irmao de conta e "
+				  + "recusado, e pelo motivo",
+				  CargoDe(b) == "" && ouviu.Any(f => f.Contains("outro personagem da sua conta")), string.Join(" | ", ouviu));
+
+		// 3. cargos diferentes, cada um o seu
+		Outorgar(guardiao, b);
+		AfirmarCl("B. **CADA UM O SEU** (*\"Sim, cada um o seu\"*): o irmao de conta vira Guardiao, e o primeiro continua Kaioshin",
+				  CargoDe(a) == "kaioshin" && CargoDe(b) == "guardian", $"'{CargoDe(a)}' e '{CargoDe(b)}'");
+
+		// 4. o dono do trono no jogo e o PERSONAGEM: com o Kaioshin fora do mundo, o irmao de conta presente nao o representa
+		string vagaDoKaioshin = VagaDe(a);
+		ZoneList(a.Zone.Hash).Remove(a);
+		_players.Remove(a.Id);
+		ServerPlayer? noJogo = OnlineDoTrono(vagaDoKaioshin);
+		bool oIrmaoEODele = OnlineDoTrono(VagaDe(b)) == b;
+		PorNoMundo(a);
+		AfirmarCl("B. **O DONO NO JOGO E O PERSONAGEM**: com o Kaioshin fora do jogo e o irmao de conta dentro, o trono do Kaioshin fica sem o "
+				  + "dono no jogo (e o abandono conta o tempo dele) -- e o do Guardiao e do irmao",
+				  vagaDoKaioshin.Length > 0 && noJogo == null && oIrmaoEODele,
+				  $"vaga '{vagaDoKaioshin}', no jogo: {noJogo?.Name ?? "ninguem"}");
+
+		// 5. o trono de antes, so da conta, fica com o PRIMEIRO personagem que entrar
+		_tronos.Clear();
+		_personagensDosTronos.Clear();
+		_tronos["turtle"] = Conta;   // como o `cargos.txt` de antes guardava: so a conta
+		string doUm = CargoDe(b), doZero = CargoDe(a);   // o slot 1 pergunta PRIMEIRO
+		AfirmarCl("B. **O CARGO QUE ESTAVA NA CONTA FICA COM O PRIMEIRO QUE ENTRAR** (*\"O 1o que entrar com ele\"*): o slot 1 pergunta "
+				  + "primeiro e o leva; o slot 0 fica sem",
+				  doUm == "turtle" && doZero == "", $"slot 1 '{doUm}', slot 0 '{doZero}'");
+
+		// ...e isso vai pro disco: depois do boot o trono continua do slot 1 -- perguntado agora pelo slot 0 PRIMEIRO, que e quem o levaria se
+		// o arquivo tivesse perdido o personagem
+		SalvarCargos();
+		_tronos.Clear();
+		_personagensDosTronos.Clear();
+		CarregarCargos();
+		string depoisZero = CargoDe(a), depoisUm = CargoDe(b);
+		AfirmarCl("B. ...e o `cargos.txt` guarda o PERSONAGEM: depois do boot o Eremita continua do slot 1, mesmo com o slot 0 perguntando antes",
+				  depoisUm == "turtle" && depoisZero == "", $"slot 1 '{depoisUm}', slot 0 '{depoisZero}'");
+
+		// 6. o personagem apagado leva o cargo junto -- o slot que vagou nao passa o trono pro proximo personagem dele
+		PurgarAssinatura(ServerPlayer.AssinaturaDe(Conta, 1));
+		AfirmarCl("B. **O PERSONAGEM APAGADO DEIXA O TRONO VAGO**: o slot reciclado nao herda o cargo de quem saiu",
+				  !_tronos.ContainsKey("turtle"), string.Join(", ", _tronos.Keys));
+
+		_tronos.Clear();
+		_personagensDosTronos.Clear();
 	}
 }

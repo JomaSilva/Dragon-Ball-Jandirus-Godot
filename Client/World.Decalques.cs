@@ -85,11 +85,13 @@ public partial class World : Node2D
 		// longa vira ouvinte orfao no relog, e este projeto ja pagou 19 por ciclo.
 		cli.DecalqueCaiu += AoCairDecalque;
 		cli.PecasChegaram += AoChegarRetratoDePecas;
+		cli.MarcasChegaram += AoChegarRetratoDeMarcas;
 		cli.ZoneChanged += AoTrocarDeZonaDosDecalques;
 
 		// O RETRATO QUE CHEGOU ANTES DE O WORLD EXISTIR: no login o `S2C.Pecas` sai antes do
 		// `JoinAccepted`, e nessa hora ninguem estava ouvindo. Mesma razao do `CenarioCaido`.
 		_retratoDePecasPendente = cli.PecasDaZona.Zona != 0;
+		_retratoDeMarcasPendente = cli.MarcasDaZona.Zona != 0;   // (2026-10-26) o das crateras e trilhas, pelo mesmo motivo
 	}
 
 	private void SoltarDecalques()
@@ -97,6 +99,7 @@ public partial class World : Node2D
 		if (GameClient.Instance is not { } cli) return;
 		cli.DecalqueCaiu -= AoCairDecalque;
 		cli.PecasChegaram -= AoChegarRetratoDePecas;
+		cli.MarcasChegaram -= AoChegarRetratoDeMarcas;
 		cli.ZoneChanged -= AoTrocarDeZonaDosDecalques;
 	}
 
@@ -268,6 +271,8 @@ public partial class World : Node2D
 	{
 		LimparMarcasDoChao();
 		_retratoDePecasPendente = false;
+		_retratoDeMarcasPendente = false;
+		_marcasPorPlantar.Clear();   // (2026-10-26) as crateras do retrato da zona velha que ainda nao tinham nascido
 		_daZonaNova.Clear();   // (o que esperava um chao que nunca chegou a montar)
 	}
 
@@ -318,6 +323,46 @@ public partial class World : Node2D
 		foreach (GameClient.PecaNoChaoInfo p in pecas)
 			_decalques.Plantar(Protocol.Decal.Membro, new Vector2(p.Onde.X, p.Onde.Y), Facing.South,
 							   p.Peca, p.RestanteMs / 1000.0);
+	}
+
+	/// <summary>(2026-10-26) HA UM RETRATO DE MARCAS ESPERANDO O CHAO CERTO -- o irmao do <see cref="_retratoDePecasPendente"/>.</summary>
+	private bool _retratoDeMarcasPendente;
+
+	private void AoChegarRetratoDeMarcas() => _retratoDeMarcasPendente = true;
+
+	/// <summary>As marcas do retrato que ainda vao nascer -- ver <see cref="MarcasDoRetratoPorQuadro"/>.</summary>
+	private readonly Queue<GameClient.MarcaNoChaoInfo> _marcasPorPlantar = new();
+
+	/// <summary>
+	/// QUANTAS MARCAS DO RETRATO NASCEM POR QUADRO. O retrato pode trazer mil (`MarcasNoChao.TetoPorZona`): mil sprites num quadro so
+	/// seriam um engasgo na chegada ao planeta, que e justamente o quadro em que a tela de carregamento acabou de sair. Aos poucos, o
+	/// dia inteiro de uma zona cheia entra em menos de um segundo.
+	/// </summary>
+	private const int MarcasDoRetratoPorQuadro = 150;
+
+	/// <summary>
+	/// (2026-10-26) O RETRATO DAS MARCAS DE DESTRUICAO ENTRA COMO O DAS PECAS -- quando o chao dele esta montado, e com o que falta de cada
+	/// uma. Direto no `Decalques.Plantar`, e nao pelo `PlantarDoServidor`: o retrato e o que JA esta no chao, entao o sulco nao espera a
+	/// cabeca de raio nenhum e a cratera do pod nao estoura de novo (o estrondo e do pouso, nao da lembranca dele).
+	/// </summary>
+	private void PlantarORetratoDeMarcas()
+	{
+		if (_decalques == null || GameClient.Instance is not { } cli) return;
+		if (_retratoDeMarcasPendente && !string.IsNullOrEmpty(_zonaDoAtual.Name))
+		{
+			(ulong zona, List<GameClient.MarcaNoChaoInfo> marcas) = cli.MarcasDaZona;
+			if (zona == _zonaDoAtual.Hash)
+			{
+				_retratoDeMarcasPendente = false;
+				_marcasPorPlantar.Clear();
+				foreach (GameClient.MarcaNoChaoInfo m in marcas) _marcasPorPlantar.Enqueue(m);
+			}
+		}
+		for (int i = 0; i < MarcasDoRetratoPorQuadro && _marcasPorPlantar.Count > 0; i++)
+		{
+			GameClient.MarcaNoChaoInfo m = _marcasPorPlantar.Dequeue();
+			_decalques.Plantar(m.Tipo, new Vector2(m.Onde.X, m.Onde.Y), m.Dir, PecaDeCorpo.Nenhuma, m.RestanteMs / 1000.0);
+		}
 	}
 
 	/// <summary>
@@ -436,6 +481,7 @@ public partial class World : Node2D
 		PlantarOsDaZonaNova();      // o que chegou com a troca de zona: nasce quando o chao novo esta na tela
 		TickDosSulcosEsperando();   // os sulcos que chegaram: nascem agora, ou esperam a cabeca do raio que os riscou
 		PlantarORetratoDePecas();   // so faz algo quando ha retrato pendente E a zona dele e esta
+		PlantarORetratoDeMarcas();  // (2026-10-26) ...e o das crateras e trilhas de um dia, aos poucos
 
 		int t = ZoneCollision.TileSize;
 

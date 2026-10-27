@@ -403,7 +403,7 @@ public sealed partial class GameServer
 	{
 		pl.Idade++;
 		pl.Ficha.Idade = pl.Idade;
-		pl.Ficha.SomarPotencialOcultoDaIdade(1);   // o mesmo ano do AgeCheck soma o estoque (`Aging.dm:125-139`)
+		pl.Ficha.ContarOsAnos(1);   // o mesmo ano do AgeCheck (`Aging.dm:125-139`), que ate 2026-10-25 tambem somava o potencial oculto
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
 

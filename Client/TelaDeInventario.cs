@@ -98,6 +98,18 @@ public partial class TelaDeInventario : CanvasLayer
 	/// </summary>
 	private HBoxContainer _vestindo = null!;
 
+	/// <summary>
+	/// (2026-10-26) A FILEIRA "EQUIPADO": o que se usa no corpo e nao e roupa -- o peso vestido, o scouter ligado, a roupa espacial, o
+	/// respirador e os brincos Potara (o dono: *"coloca tb no inventario um wearing so pra coisas como peso, scouter etc, pra n confundir"*).
+	/// A unidade em uso sai da grade e vem pra ca (`Equipado.Separar`), e o clique abre as MESMAS acoes da grade. So na MINHA mochila: o que
+	/// esta em uso nao sai no saque (`Saque.EmUso`), e a mochila alheia nem o recebe.
+	/// </summary>
+	private HBoxContainer _equipado = null!;
+	private Label _rotuloDoEquipado = null!;
+
+	/// <summary>(2026-10-26) DEFEITO INJETADO (robo `--diagabas`): o que esta em uso fica na grade e a fileira EQUIPADO vem vazia -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool EquipadoNaGradeDeTeste;
+
 	/// <summary>O painel de acoes do item clicado. Nulo = nenhum item aberto.</summary>
 	private PanelContainer? _acoes;
 
@@ -176,6 +188,15 @@ public partial class TelaDeInventario : CanvasLayer
 		_vestindo = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
 		_vestindo.AddThemeConstantOverride("separation", 6);
 		caixa.AddChild(_vestindo);
+
+		// (2026-10-26) a fileira do que esta em uso -- ver `_equipado`
+		_rotuloDoEquipado = new Label { Text = "EQUIPADO", HorizontalAlignment = HorizontalAlignment.Center };
+		_rotuloDoEquipado.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		_rotuloDoEquipado.AddThemeFontSizeOverride("font_size", 12);
+		caixa.AddChild(_rotuloDoEquipado);
+		_equipado = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+		_equipado.AddThemeConstantOverride("separation", 6);
+		caixa.AddChild(_equipado);
 		caixa.AddChild(new HSeparator());
 
 		_grade = new GridContainer { Columns = Colunas };
@@ -297,7 +318,9 @@ public partial class TelaDeInventario : CanvasLayer
 		FecharAcoes();
 		foreach (Node n in _grade.GetChildren()) n.QueueFree();
 		foreach (Node n in _vestindo.GetChildren()) n.QueueFree();
+		foreach (Node n in _equipado.GetChildren()) n.QueueFree();
 		foreach (Node n in _carteira.GetChildren()) n.QueueFree();
+		_rotuloDoEquipado.Visible = _equipado.Visible = _saque == null;
 
 		if (_saque is { } alheia) { DesenharAMochilaAlheia(alheia); return; }
 
@@ -317,13 +340,21 @@ public partial class TelaDeInventario : CanvasLayer
 			else _vestindo.AddChild(SlotVazio());
 		}
 
+		// (2026-10-26) A FILEIRA DO QUE ESTA EM USO -- ver `_equipado`. A unidade em uso sai da grade; as cinco vagas, cheias ou nao.
+		Jandirus.Net.Protocol.AtributosState? atr = GameClient.Instance?.Atributos;
+		(List<Pilha> emUso, List<Pilha> naGrade) = EquipadoNaGradeDeTeste
+			? ([], [.. inv.Pilhas])
+			: Equipado.Separar(inv.Pilhas, atr?.Tem(Jandirus.Net.Protocol.Poder.Scouter) == true, atr?.PesoVestido ?? "");
+		for (int i = 0; i < Equipado.Vagas; i++)
+			_equipado.AddChild(i < emUso.Count ? SlotEquipado(emUso[i]) : SlotVazio());
+
 		// A GRADE TEM SEMPRE OS 30 SLOTS, cheios ou nao. Desenhar so o que existe faria a caixa
 		// mudar de tamanho a cada maca colhida, e a tela inteira dancaria embaixo do mouse.
 		// (2026-10-19) ...menos com a mochila cheia E esfera na mao: elas nao ocupam os 30, e abrem fileira embaixo.
-		int celulas = Math.Max(Inventario.Slots, (inv.Pilhas.Count + Colunas - 1) / Colunas * Colunas);
+		int celulas = Math.Max(Inventario.Slots, (naGrade.Count + Colunas - 1) / Colunas * Colunas);
 		for (int i = 0; i < celulas; i++)
 		{
-			if (i < inv.Pilhas.Count) _grade.AddChild(SlotCheio(inv.Pilhas[i]));
+			if (i < naGrade.Count) _grade.AddChild(SlotCheio(naGrade[i]));
 			else _grade.AddChild(SlotVazio());
 		}
 
@@ -530,6 +561,28 @@ public partial class TelaDeInventario : CanvasLayer
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		});
 		return true;
+	}
+
+	/// <summary>
+	/// (2026-10-26) UMA VAGA DA FILEIRA "EQUIPADO" COM COISA: o slot da grade com a borda de destaque de quem esta em uso (a da fileira
+	/// "vestindo"), e o clique abre as MESMAS acoes da grade -- desligar o scouter, tirar ou ajustar os pesos, dar os brincos, largar.
+	/// </summary>
+	private Control SlotEquipado(Pilha emUso)
+	{
+		ItemDef? def = CatalogoDeItens.Get(emUso.Id);
+		var botao = new Button
+		{
+			CustomMinimumSize = new Vector2(LadoDoSlot, LadoDoSlot),
+			TooltipText = $"{def?.Nome ?? emUso.Id}\nEm uso. Clique para ver o que dá pra fazer com ele.",
+			ExpandIcon = true,
+			IconAlignment = HorizontalAlignment.Center,
+		};
+		botao.AddThemeStyleboxOverride("normal", Tema.Caixa(Tema.PainelClaro, Tema.Destaque, 4));
+		PorIcone(botao, def, null);
+		// A IDENTIDADE VAI EM METADADO, como nas outras vagas: e por ela que a bancada confere o que a fileira traz.
+		botao.SetMeta("equipado", emUso.Id);
+		botao.Pressed += () => AbrirAcoes(emUso, botao);
+		return botao;
 	}
 
 	/// <summary>
@@ -872,6 +925,28 @@ public partial class TelaDeInventario : CanvasLayer
 		return false;
 	}
 
+	/// <summary>(2026-10-26) As vagas da fileira EQUIPADO como estao na arvore: o id de cada vaga cheia (meta `equipado`), e "" nas vazias.</summary>
+	public List<string> VagasDoEquipadoDeTeste() =>
+		[.. _equipado.GetChildren().Where(n => !n.IsQueuedForDeletion())
+			.Select(n => n is Button b && b.HasMeta("equipado") ? b.GetMeta("equipado").AsString() : "")];
+
+	/// <summary>(2026-10-26) A fileira EQUIPADO esta na tela, com o rotulo dela.</summary>
+	public bool EquipadoNaTelaDeTeste => _raiz.Visible && _rotuloDoEquipado.Visible && _equipado.Visible && _rotuloDoEquipado.Text == "EQUIPADO";
+
+	/// <summary>(2026-10-26) Os ids da grade como estao na arvore (o meta `item` de cada slot cheio), na ordem.</summary>
+	public List<string> GradeDeTeste() =>
+		[.. _grade.FindChildren("*", "Button", true, false).OfType<Button>()
+			.Where(b => !b.IsQueuedForDeletion() && b.HasMeta("item")).Select(b => b.GetMeta("item").AsString())];
+
+	/// <summary>(2026-10-26) Aperta a vaga da fileira EQUIPADO deste item, como o mouse, e devolve o titulo do painel de acoes que abriu (nulo sem painel).</summary>
+	public string? ApertarOEquipadoDeTeste(string id)
+	{
+		if (_equipado.GetChildren().OfType<Button>().FirstOrDefault(b => !b.IsQueuedForDeletion() && b.HasMeta("equipado") && b.GetMeta("equipado").AsString() == id) is not { } b)
+			return null;
+		b.EmitSignal(BaseButton.SignalName.Pressed);
+		return _acoes?.FindChildren("*", "Label", true, false).OfType<Label>().FirstOrDefault()?.Text;
+	}
+
 	/// <summary>Os botoes da fileira da carteira, na ordem: (texto, ligado). SO PRA BANCADA.</summary>
 	public List<(string Texto, bool Ligado)> CarteiraDeTeste()
 	{
@@ -949,8 +1024,9 @@ public partial class TelaDeInventario : CanvasLayer
 	public Texture2D? IconeDoSlotDeTeste(string itemId)
 	{
 		if (!IsInstanceValid(_grade)) return null;
-		foreach (Node n in _grade.FindChildren("*", "Button", true, false))
-			if (n is Button b && b.HasMeta("item") && b.GetMeta("item").AsString() == itemId)
+		// (2026-10-26) ...na grade ou, em uso, na fileira EQUIPADO: o icone e o mesmo nas duas.
+		foreach (Node n in _grade.FindChildren("*", "Button", true, false).Concat(_equipado.FindChildren("*", "Button", true, false)))
+			if (n is Button b && ((b.HasMeta("item") && b.GetMeta("item").AsString() == itemId) || (b.HasMeta("equipado") && b.GetMeta("equipado").AsString() == itemId)))
 				return b.Icon ?? b.GetChildren().OfType<TextureRect>().FirstOrDefault()?.Texture;
 		return null;
 	}

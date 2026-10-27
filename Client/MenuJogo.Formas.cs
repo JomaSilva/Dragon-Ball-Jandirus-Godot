@@ -85,7 +85,8 @@ public partial class MenuJogo
 		// NA BASE a legenda e o gesto: e a unica instrucao que esta aba precisa dar, e ela morava num
 		// paragrafo de tres linhas no meio da pagina.
 		// ==================================================================================
-		string nome = defAtual != null ? Jandirus.Core.Forms.Catalogo.NomeDe(defAtual, livro) : "normal";
+		// (2026-10-26) E COM A RACA: o SSJ2 e o SSJ3 do bio-androide se chamam "Super Perfeito" e "Super Perfeito 2" (`Catalogo.NomeNoBio`).
+		string nome = defAtual != null ? Jandirus.Core.Forms.Catalogo.NomeDe(defAtual, livro, GameClient.Instance?.Atributos.Raca) : "normal";
 		Faixa("Forma", nome,
 			  defAtual != null
 				  ? FichaDaForma(atual, livro)
@@ -144,6 +145,11 @@ public partial class MenuJogo
 		if (!KiDivinoForaDaAbaFormasDeTeste && GameClient.Instance is { KiDivino.Desperto: true } comKiDivino)
 			LinhasDaMaestriaDivina(comKiDivino.KiDivino, Cartao("Ki divino"));
 
+		// (2026-10-26) A MAESTRIA DA TECNICA -- o Ultra Instinto ou o Poder da Destruicao (o Ultra Ego) que este corpo trilha --, logo abaixo
+		// do ki divino e no mesmo estilo: o dono, *"e a maestria da técnica do UE e UI devem aparecer logo abaixo do god ki no mesmo estilo"*.
+		if (!DisciplinaForaDaAbaFormasDeTeste && DisciplinaDaFicha() is { } disciplina)
+			LinhasDaMaestriaDaDisciplina(disciplina, Cartao(disciplina.Nome));
+
 		// SO O QUE JA DESPERTOU. Maestria > 0 quer dizer que este corpo ja esteve nessa forma
 		// alguma vez -- e o unico registro honesto de "eu sei fazer isto".
 		//
@@ -190,7 +196,7 @@ public partial class MenuJogo
 	/// </summary>
 	private void CartaoDeForma(Jandirus.Core.Forms.FormaDef d, bool emUso, Jandirus.Core.Forms.Maestrias livro)
 	{
-		string nome = Jandirus.Core.Forms.Catalogo.NomeDe(d, livro);
+		string nome = Jandirus.Core.Forms.Catalogo.NomeDe(d, livro, GameClient.Instance?.Atributos.Raca);
 		VBoxContainer corpo = Cartao("");
 		MarcarCartaoDeItem(corpo, "forma", nome);
 
@@ -204,24 +210,27 @@ public partial class MenuJogo
 			LinhaComBarra("maestria", $"{m:0.#}%", m / 100, Tema.Destaque, corpo);
 		}
 
-		// O DRENO DESTA FORMA COM A MAESTRIA DE HOJE -- o mesmo `DrenoPorSegundo` que o servidor cobra.
+		// O DRENO DESTA FORMA COM A MAESTRIA DE HOJE -- o mesmo que o servidor cobra.
 		// "nenhum" e verde porque e o premio da maestria: dominar a forma e poder ANDAR nela.
-		double dreno = Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(d.Id, livro) * 100;
-		Linha("dreno de Ki", dreno > 0 ? $"{dreno:0.##}% do Ki por segundo" : "nenhum: dá pra viver nela",
-			  dreno > 0 ? Tema.Texto : Tema.Bom, corpo);
+		// (2026-10-26) EM PONTOS DE KI (o pedido 93): o custo e fixo, qualquer que seja o tanque -- ver `Catalogo.PontosDeDrenoPorSegundo`.
+		double pontos = Jandirus.Core.Forms.Catalogo.PontosDeDrenoPorSegundo(d.Id, livro);
+		Linha("dreno de Ki", pontos > 0 ? $"{pontos:N0} de Ki por segundo" : "nenhum: dá pra viver nela",
+			  pontos > 0 ? Tema.Texto : Tema.Bom, corpo);
 
 		// (2026-10-23) O SUPER MAJIN: o estagio de agora e a regra da trava pelo poder -- ver `MenuJogo.SuperMajin.cs`.
 		TravaDoSuperMajin(d, corpo);
 	}
 
-	/// <summary>A legenda da faixa quando se esta numa forma: "maestria 37,2%  ·  dreno 0,5% do Ki/s".</summary>
+	/// <summary>A legenda da faixa quando se esta numa forma: "maestria 37,2%  ·  dreno 105 Ki/s (0,5% do seu Ki)".</summary>
 	private string FichaDaForma(string id, Jandirus.Core.Forms.Maestrias livro)
 	{
 		string grau = ProficienciaDaForma(id) is { } p
 			? $"proficiência em {p.Nome} {p.Pct:0.#}%"
 			: $"maestria {Maestria(id):0.#}%";
-		double dreno = Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(id, livro) * 100;
-		return grau + (dreno > 0 ? $"  ·  dreno {dreno:0.##}% do Ki/s" : "  ·  sem dreno");
+		// (2026-10-26) EM PONTOS (o pedido 93), no tanque de quem esta na forma: o que o tique cobra, e a fatia que isso e do Ki dele.
+		double maxKi = GameClient.Instance?.Sheet.MaxKi ?? 0;
+		double pontos = Jandirus.Core.Forms.Catalogo.PontosDeDrenoPorSegundo(id, livro);
+		return grau + (pontos > 0 ? $"  ·  dreno {pontos:N0} Ki/s ({pontos / Math.Max(maxKi, 1) * 100:0.##}% do seu Ki)" : "  ·  sem dreno");
 	}
 
 	/// <summary>
@@ -414,4 +423,23 @@ public partial class MenuJogo
 
 	/// <summary>(2026-10-25) DEFEITO INJETADO (robo --diagabas): o cartao "Ki divino" some da aba Forms -- o jogo de antes, com a maestria divina so na aba World. Falso em jogo, sempre.</summary>
 	public static bool KiDivinoForaDaAbaFormasDeTeste;
+
+	/// <summary>(2026-10-26) A disciplina que este corpo trilha, pelo byte do fio (`AtributosState.Disciplina`, `Disciplinas.Rede`), ou nula.</summary>
+	private Jandirus.Core.Forms.DisciplinaDef? DisciplinaDaFicha() =>
+		_atributos.Disciplina == 0 ? null
+		: Array.Find(Jandirus.Core.Forms.Disciplinas.Todas, d => Jandirus.Core.Forms.Disciplinas.Rede(d.Tipo) == _atributos.Disciplina);
+
+	/// <summary>
+	/// (2026-10-26) A BARRA E A NOTA DA MAESTRIA DA TECNICA, no estilo do cartao "Ki divino" (`LinhasDaMaestriaDivina`): a proficiencia REAL
+	/// (`DiscReal`, a que a ficha lenta leva -- e que a assinatura basica ja cobre, a um decimo) e os degraus que ela abre, pelo catalogo.
+	/// </summary>
+	private void LinhasDaMaestriaDaDisciplina(Jandirus.Core.Forms.DisciplinaDef d, Control corpo)
+	{
+		LinhaComBarra("Maestria da técnica", $"{_atributos.DiscReal:0.0}%", _atributos.DiscReal / 100.0, OuroDivino, corpo);
+		Nota("A maestria da técnica cresce lutando com ela ligada -- três vezes mais rápido treinando com o mestre. "
+			 + $"Ela abre os degraus seguintes: {string.Join(", ", d.Degraus.Where(g => g.Pct > 0).Select(g => $"{g.Pct:0}%"))}.", corpo);
+	}
+
+	/// <summary>(2026-10-26) DEFEITO INJETADO (robo --diagabas): o cartao da tecnica (UI/UE) some da aba Forms -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool DisciplinaForaDaAbaFormasDeTeste;
 }

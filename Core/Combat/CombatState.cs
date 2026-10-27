@@ -328,7 +328,7 @@ public sealed class CombatState
 	/// seria o "as vezes" que ninguem consegue reproduzir.
 	/// </summary>
 	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || Possuido || EmCinematica?.Invoke() == true
-							 || AoLeme?.Invoke() == true;
+							 || AoLeme?.Invoke() == true || NaZonaSegura?.Invoke() == true;
 
 	/// <summary>
 	/// (2026-10-19) AO LEME DE UMA NAVE: o casco blinda quem pilota -- a setima razao do <see cref="Intocavel"/> (o dono: *"faça com q
@@ -343,6 +343,13 @@ public sealed class CombatState
 	/// poder apanhar, e a te acordar.
 	/// </summary>
 	public Func<bool>? AoLeme;
+
+	/// <summary>
+	/// (2026-10-26) NA ZONA SEGURA DO BERCO DE UM PLANETA -- a oitava razao do <see cref="Intocavel"/> (o pedido 82 do dono: dez tiles em volta do
+	/// ponto de chegada, e la ninguem luta). **GANCHO E NAO CAMPO**, como o <see cref="AoLeme"/>: quem sabe onde fica o berco e o servidor
+	/// (`GameServer.NaZonaSegura`), e o escudo cai no passo em que o corpo sai do raio, sem bit pra apagar.
+	/// </summary>
+	public Func<bool>? NaZonaSegura;
 
 	/// <summary>
 	/// (2026-10-17) A LARVA ENTERRADA (`GameServer.Larva.cs`): debaixo da terra ninguem a alcanca -- a quinta razao do <see cref="Intocavel"/>.

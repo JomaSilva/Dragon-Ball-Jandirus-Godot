@@ -284,7 +284,7 @@ public partial class GameServer
 			CurarPorInteiro(p);
 			PorBp(p, 500_000);
 			p.Ficha.Ki = p.Ficha.MaxKi;
-			p.Ficha.zenkaiReady = 0;
+			p.Ficha.zenkaiGuardado = 0;
 			p.AlvoId = 0;
 		}
 
@@ -1181,7 +1181,7 @@ public partial class GameServer
 			// B DECLAROU A AMIGO: sem a declaracao, `LutoPorQueda` recusa e a familia 6 mediria o nada.
 			DeclararDeTeste(b, a, Relacao.Bom);
 			b.RaivaComumAte = b.FuriaExtremaAte = 0;
-			a.Ficha.zenkaiReady = 0;
+			a.Ficha.zenkaiGuardado = 100_000;   // (2026-10-26) o banco do Zenkai que a derrota soltaria
 			double bpAntes = a.Ficha.BP;
 
 			AoPerderALuta(a, carrasco, morreu: true);
@@ -1253,7 +1253,7 @@ public partial class GameServer
 		{
 			MoveToZone(carrasco.Id, fora, a.Pos + new Vec2(48, 0));
 			b.RaivaComumAte = b.FuriaExtremaAte = 0;
-			a.Ficha.zenkaiReady = 0;
+			a.Ficha.zenkaiGuardado = 100_000;   // (2026-10-26) o banco do Zenkai que a derrota soltaria
 			double bpAntes = a.Ficha.BP;
 
 			AoPerderALuta(a, carrasco, morreu: true);

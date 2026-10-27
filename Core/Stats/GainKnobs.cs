@@ -98,12 +98,47 @@ public static class GainKnobs
 	/// </summary>
 	public static bool GravidadeNaoMultiplicaDeTeste;
 
+	// --- (2026-10-26) O BANCO DO POTENCIAL, COMO NO DU -------------------------
 	/// <summary>
-	/// DEFEITO INJETADO (bancada `--ganhoteste`, familia 7): o potencial oculto volta a levar o lugar -- a gravidade (e no treino o peso
-	/// e a zona) --, o jogo de 2026-10-16 a 2026-10-20, dos 20 bilhoes em algumas horas de treino a 500x com peso. Lido por
-	/// `Fighter.LugarDoPotencialOculto`. Falso em jogo, sempre.
+	/// O BANCO DO POTENCIAL (o pedido 95 do dono, 2026-10-25/26): *"o potencial crescia quando vc treinava e ele n pingava no seu bp ele
+	/// acumulava"* -- o `unusedPotential` do DU (`Train New 2021.dm:89`: `unusedPotential += gain * Math.Rand(0.2, 0.4)`). O banco e o
+	/// proprio `hiddenpotential` (o dono: *"o hidden potential meio q pode ser usado como essa pool, so pra manter a variavel"*). Cada ganho
+	/// de ATIVIDADE (treino, meditacao, luta, ki, voo, nado) guarda nele de 20 a 40% de si (`Fighter.GanhoDeAtividade`), e o banco NAO
+	/// pinga mais no BP: so os liberadores o soltam, cada um pelo multiplicador dele (`LiberaOGuru` e os outros).
+	///
+	/// O QUE SAIU, e era o que fazia a Agua e o Unlock darem bilhoes a quem ja tinha bilhoes: o pingo do potencial no treino, na
+	/// meditacao e no soco (`hiddenpotential*BPTick*(1/N)`, do DM), o ano que somava `BP*Potencial` no banco, a heranca do BP dos pais, e
+	/// as liberacoes que liam o proprio BP (`BP*0,25*Potencial` no Unlock, um quinto do teto pessoal na Agua).
 	/// </summary>
-	public static bool PotencialOcultoComOLugarDeTeste;
+	public const double PotencialDoGanhoMin = 0.2, PotencialDoGanhoMax = 0.4;
+
+	/// <summary>A classe Prodigial ENCHE o banco 1,5x mais depressa -- o dono, 2026-10-26: *"faz ele encher o banco 1,5x ao inves de 1,8x"*
+	/// (era o `awaken` 1,8 do Unlock do DM, que multiplicava a liberacao). Sem bonus de raca nenhum: o Potencial da raca nao mexe no banco.</summary>
+	public const double BancoDoProdigial = 1.5;
+
+	/// <summary>
+	/// QUANTO DO BANCO CADA LIBERADOR SOLTA (o dono, 2026-10-25): o Grande Patriarca 1,25x, a Agua Ultra Divina 1x, o ritual do Kaioshin 2x
+	/// (alem do Potential Unleashed), o desejo ao dragao 1,5x e o Unlock Potential de um jogador em outro 1x. O que sai vai pro BP base e
+	/// fica. (2026-10-26) E o Android Upgrade, a porta do androide de absorcao (o pedido 95c): 1x, a escolha do dono.
+	/// </summary>
+	public const double LiberaOGuru = 1.25, LiberaAAgua = 1, LiberaORitual = 2, LiberaODesejo = 1.5, LiberaOJogador = 1, LiberaOUpgrade = 1;
+
+	/// <summary>
+	/// A RECARGA ENTRE DUAS LIBERACOES DO MESMO CORPO: uma hora de relogio real -- o `nextUnlockUse` do DU (`Skills.dm:2280`); o dono:
+	/// *"repetiveis, 1h de recarga ... potential unlocked pode a cada 1 hora"*. Vale pro Guru, pra Agua e pro Unlock de jogador; o ritual do
+	/// Kaioshin e uma vez por personagem, e o desejo e o dragao (nenhum dos dois a pede nem a marca).
+	/// </summary>
+	public const long RecargaDaLiberacaoMs = 3_600_000;
+
+	/// <summary>O que a Agua POE no banco depois de solta-lo: 10% do BP base, minguando a cada gole -- `(base_bp * 0.1) / (sacredWaterUses + 1)`
+	/// (`Skills.dm:2772`).</summary>
+	public const double AguaPoeNoBanco = 0.1;
+
+	/// <summary>
+	/// O SORTEIO DOS 20 A 40%: um gerador SO DO BANCO, pra o guardar nao gastar numeros do gerador que a bancada semeia pro ganho (as
+	/// medidas de BP continuam as mesmas, com ou sem o banco). A bancada o troca por um semeado quando precisa.
+	/// </summary>
+	public static Random SorteioDoBanco = new();
 
 
 	/// <summary>Teto absoluto de maestria de gravidade.</summary>
@@ -253,16 +288,29 @@ public static class GainKnobs
 	public static double TopBP = 1;
 
 	// --- Zenkai ----------------------------------------------------------------
-	/// <summary>Fracao do BP do inimigo que vira Zenkai numa derrota comum.</summary>
-	public static double ZenkaiPct = 0.1;
-	/// <summary>A mesma, com o corpo em farrapos.</summary>
-	public static double ZenkaiPctInjured = 0.15;
 	/// <summary>
-	/// (2026-10-24) A RECARGA E PROPORCIONAL AO MULTIPLICADOR: 2,5 h de relogio real por "x" do BP base de depois sobre o de antes. O
-	/// dono: *"coloque o cooldown do zenkai maximo (2x bp) pra 5 horas, ta mt op 1 hora"*, e na pergunta de qual Zenkai: *"e
-	/// proporcional ao 2x, 3x seriam 7,5 horas de cooldown"*. O Zenkai que dobra deixa 5 h, o que triplica (o corpo em farrapos)
-	/// 7,5 h, e um de +20% deixa 3 h; era 1 h fixa pra qualquer tamanho. E a MESMA regra da fusao Namekuseijin (*"o mesmo pra fusao
-	/// namek"*, o passo 6 do `GameServer.AbsorverNamekuseijin`). Ver <see cref="RecargaProporcionalMs"/>.
+	/// (2026-10-26) O BANCO DO ZENKAI, como no DU (`Train New 2021.dm:92`, o `unusedZenkai`): cada ganho de atividade de quem tem sangue
+	/// Saiyajin guarda de 5 a 15% de si, sem bonus (o dono: *"ja q so saiyajin e quem tem sangue saiyajin tem zenkai, n precisa multiplicar
+	/// por 1,5x, apenas 1x ta bom"*). Ver `Fighter.GanhoDeAtividade`.
+	/// </summary>
+	public const double ZenkaiDoGanhoMin = 0.05, ZenkaiDoGanhoMax = 0.15;
+
+	/// <summary>
+	/// (2026-10-26) QUANTO DO BANCO DO ZENKAI UM NOCAUTE SOLTA: de 20 a 80% (o `rand(0.2,0.8)` do `Zenkai()` do DU, `Train New 2021.dm:211`),
+	/// em todo nocaute, sem recarga -- e o que sai fica PRA SEMPRE no BP base (o dono, que viu o `activeZenkai` do DU ser comido pelo treino
+	/// seguinte: *"oq sair do banco fica pra sempre"*). Ver `Fighter.SoltarOZenkai`.
+	/// </summary>
+	public const double ZenkaiSoltaMin = 0.2, ZenkaiSoltaMax = 0.8;
+
+	/// <summary>
+	/// (2026-10-26) A MORTE SOLTA EM DOBRO (o `Zenkai(2)` do DU, `death.dm:604`) -- e a maioria do corpo em estado critico tambem, sem
+	/// precisar morrer (o dono: *"se a maioria do corpo do saiyajin estiver em estado crtico, ele ganha o boost igual da morte (2x)"*).
+	/// </summary>
+	public const double ZenkaiDobrado = 2;
+	/// <summary>
+	/// (2026-10-24) A RECARGA DA FUSAO NAMEKUSEIJIN E PROPORCIONAL AO MULTIPLICADOR: 2,5 h de relogio real por "x" do BP base de depois
+	/// sobre o de antes (o passo 6 do `GameServer.AbsorverNamekuseijin`; o dono: *"o mesmo pra fusao namek"*). Nasceu pro Zenkai, que
+	/// desde 2026-10-26 e um banco sem recarga (o DU) -- ela ficou so com a fusao. Ver <see cref="RecargaProporcionalMs"/>.
 	/// </summary>
 	public static long RecargaMsPorMultiplicador = 9_000_000;
 
@@ -277,8 +325,8 @@ public static class GainKnobs
 	public const long RecargaFixaMs = 3_600_000;
 
 	/// <summary>
-	/// DEFEITO INJETADO (`--v030teste` e `--fusaoduplateste`): o Zenkai e a absorcao Namekuseijin voltam a deixar a hora fixa de
-	/// antes, de qualquer tamanho. Lido pelo `Fighter.GainZenkai` e pelo `GameServer.AbsorverNamekuseijin`. Falso em jogo, sempre.
+	/// DEFEITO INJETADO (`--fusaoduplateste`): a absorcao Namekuseijin volta a deixar a hora fixa de antes, de qualquer tamanho. Lido
+	/// pelo `GameServer.AbsorverNamekuseijin`. Falso em jogo, sempre.
 	/// </summary>
 	public static bool RecargaFixaDeTeste;
 	/// <summary>

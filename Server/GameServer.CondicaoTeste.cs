@@ -230,6 +230,40 @@ public sealed partial class GameServer
 	/// folego posto por fora do `SufocaAgora` seria um estado que o jogo nao tem.
 	/// ==================================================================================================
 	/// </summary>
+	/// <summary>
+	/// (2026-10-26) TUDO O QUE SE USA NO CORPO, pelos funis de producao: o scouter na mochila e LIGADO (`Equipar`), os pesos na mochila e
+	/// VESTIDOS a 10% (`AjustarPeso`), e a roupa espacial, o respirador e os brincos Potara na mochila (`Guardar`) -- o robo das abas confere
+	/// a fileira EQUIPADO da mochila. Devolve o que mudou, pro <see cref="DesfazerEquipadoDeTeste"/> desfazer; nulo sem o corpo.
+	/// </summary>
+	internal (List<string> Postos, bool ScouterAntes, double PctAntes)? EquiparTudoDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return null;
+		var postos = new List<string>();
+		foreach (string item in ItensDoEquipadoDeTeste)
+			if (pl.Mochila.Quantos(item) <= 0 && Guardar(pl, item)) postos.Add(item);
+		bool scouterAntes = (pl.PoderesConcedidos & Jandirus.Net.Protocol.Poder.Scouter) != 0;
+		double pctAntes = pl.Ficha.pesoPct;
+		if (!scouterAntes) Equipar(pl, CatalogoDeItens.Get(CatalogoDeItens.Scouter)!);
+		AjustarPeso(pl, CatalogoDeItens.Pesos, "10");
+		MandarMochila(pl, forcar: true);
+		return (postos, scouterAntes, pctAntes);
+	}
+
+	/// <summary>(2026-10-26) Os itens do <see cref="EquiparTudoDeTeste"/>.</summary>
+	private static readonly string[] ItensDoEquipadoDeTeste =
+		[CatalogoDeItens.Scouter, CatalogoDeItens.Pesos, CatalogoDeItens.Traje, CatalogoDeItens.Respirador, CatalogoDeItens.BrincosPotara];
+
+	/// <summary>(2026-10-26) Desfaz o <see cref="EquiparTudoDeTeste"/>: tira os pesos, desliga o scouter que ele ligou e leva o que ele pos.</summary>
+	internal void DesfazerEquipadoDeTeste(int id, (List<string> Postos, bool ScouterAntes, double PctAntes)? antes)
+	{
+		if (antes is not { } a || !_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		AjustarPeso(pl, CatalogoDeItens.Pesos, "0");
+		pl.Ficha.pesoPct = a.PctAntes;
+		if (!a.ScouterAntes && (pl.PoderesConcedidos & Jandirus.Net.Protocol.Poder.Scouter) != 0) Equipar(pl, CatalogoDeItens.Get(CatalogoDeItens.Scouter)!);
+		foreach (string item in a.Postos) pl.Mochila.Tirar(item, int.MaxValue);
+		MandarMochila(pl, forcar: true);
+	}
+
 	internal bool TrajeNaMochilaDeTeste(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;

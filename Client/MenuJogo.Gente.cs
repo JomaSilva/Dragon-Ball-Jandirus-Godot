@@ -62,7 +62,18 @@ public partial class MenuJogo
 		ComoFunciona();
 
 		Secao("Quem você conhece");
-		if (comCartao.Count == 0)
+		bool semCartao = comCartao.Count == 0;
+		if (cli.Conhecidos.Count > 0)
+		{
+			// (2026-10-26) A BUSCA DE CONHECIDOS -- o dono: *"alem de ter uma forma de pesquisar pessoas na aba people"*. Pelo nome, sem
+			// acento e sem caixa (a mesma regra da busca do Sense, `RastroDoSense.Normalizar`); filtra os cartoes e o "So de vista".
+			CaixaDeBuscaDeGente();
+			comCartao = [.. comCartao.Where(k => CasaComABuscaDeGente(k.Nome))];
+			deVista = [.. deVista.Where(k => CasaComABuscaDeGente(k.Nome))];
+			if (comCartao.Count + deVista.Count == 0)
+				Nota($"Ninguém chamado \"{_buscaDeGente.Trim()}\" entre os seus conhecidos.", Cartao("Busca"));
+		}
+		if (semCartao)
 			Aviso("Você ainda não conviveu com ninguém. Fique perto de outro jogador: a cada "
 				  + $"{Convivio.SegundosPertoPorPonto:0} segundos vocês ganham um ponto de convívio, e ele aparece aqui.");
 		foreach (GameClient.ConhecidoInfo c in comCartao) CartaoDePessoa(cli, c);
@@ -82,6 +93,36 @@ public partial class MenuJogo
 		List<string> nomes = World.Instancia?.NomesVisiveis() ?? [];
 		if (nomes.Count == 0) Nota("Ninguém no seu campo de visão.", perto);
 		else perto.AddChild(Pilulas([.. nomes.Select(n => (n, Tema.Texto))]));
+	}
+
+	/// <summary>(2026-10-26) O que foi digitado na busca de conhecidos. Mora aqui, e nao no campo: a pagina e refeita a cada pacote.</summary>
+	private string _buscaDeGente = "";
+
+	/// <summary>(2026-10-26) A dica da caixa -- unica no menu: e por ela que o `CampoQueAtravessa` devolve o foco ao campo remontado, e que o robo o acha.</summary>
+	internal const string DicaDaBuscaDeGente = "procurar conhecido pelo nome...";
+
+	/// <summary>(2026-10-26) DEFEITO INJETADO (robo `--diagabas`): a busca de conhecidos nao filtra nada. Falso em jogo, sempre.</summary>
+	internal static bool BuscaDeGenteCegaDeTeste;
+
+	/// <summary>(2026-10-26) A caixa da busca: cada letra refiltra (a busca entra na assinatura da aba -- `ExtraDaAssinaturaDeGente`).</summary>
+	private void CaixaDeBuscaDeGente()
+	{
+		var campo = new LineEdit
+		{
+			PlaceholderText = DicaDaBuscaDeGente,
+			Text = _buscaDeGente,
+			ClearButtonEnabled = true,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		campo.TextChanged += t => { _buscaDeGente = t; Redesenhar(); };
+		_conteudo.AddChild(campo);
+	}
+
+	/// <summary>(2026-10-26) O nome casa com a busca? Vazia, todo mundo casa; sem acento e sem caixa, por pedaco.</summary>
+	private bool CasaComABuscaDeGente(string nome)
+	{
+		string t = RastroDoSense.Normalizar(_buscaDeGente);
+		return t.Length == 0 || BuscaDeGenteCegaDeTeste || RastroDoSense.Normalizar(nome).Contains(t, StringComparison.Ordinal);
 	}
 
 	/// <summary>Esta pessoa ganha cartao proprio? Ver o comentario no <see cref="Gente"/>.</summary>
@@ -612,6 +653,8 @@ public partial class MenuJogo
 		sb.Append("||").Append(string.Join(',', World.Instancia?.NomesVisiveis() ?? []));
 		// O CARTAO ABERTO E O QUE O SERVIDOR JA CONTOU DELE: abrir, fechar e a resposta chegar mudam a pagina.
 		sb.Append("||").Append(_pessoaAberta).Append(',').Append(c.VersaoDosDetalhes);
+		// (2026-10-26) A BUSCA troca o que a pagina desenha sem que a lista mude -- ver `CaixaDeBuscaDeGente`.
+		sb.Append("||").Append(_buscaDeGente.Trim());
 		return sb.ToString();
 	}
 }

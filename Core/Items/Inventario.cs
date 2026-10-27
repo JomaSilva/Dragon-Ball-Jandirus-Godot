@@ -429,10 +429,6 @@ public static class CatalogoDeItens
 		// A TECH DE BOLSO (v0.2.1): o item fabricado que tem acao propria -- e, as vezes, estado no id. Ver `TechDeBolso`.
 		if (TechDeBolso.Ficha(id, Obras) is { } deBolso) return deBolso;
 
-		// O QUE O SINTETIZADOR DE VIRUS FABRICA (v0.2.1): os virus, os antivirus e as injecoes. Nao estao no catalogo de
-		// construcoes -- nao se fabricam na bancada --, e a ficha de cada um sai da lista do `Sintetizador`.
-		if (Tech.Sintetizador.Ficha(id) is { } sintetizado) return sintetizado;
-
 		// O QUE A BANCADA DE CRIACAO FAZ (v0.2.1): o pente e a tinta de olhos, que tambem nao estao no catalogo de construcoes.
 		if (Tech.BancadaDeCriacao.Ficha(id) is { } daBancada) return daBancada;
 

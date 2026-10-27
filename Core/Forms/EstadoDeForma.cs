@@ -284,6 +284,12 @@ public sealed class EstadoDeForma
 	public double DrenoPorSegundo(double liberacao) => Catalogo.DrenoPorSegundo(Atual, Maestria, liberacao);
 
 	/// <summary>
+	/// (2026-10-26) O dreno em PONTOS de Ki por segundo -- o que o tique cobra, qualquer que seja o tanque de quem esta na forma. Ver
+	/// `Catalogo.PontosDeDrenoPorSegundo`.
+	/// </summary>
+	public double PontosDeDrenoPorSegundo(double liberacao = 1) => Catalogo.PontosDeDrenoPorSegundo(Atual, Maestria, liberacao);
+
+	/// <summary>
 	/// ESTE DEGRAU ESTA NO CAMINHO DA TECLA C DESTE PERSONAGEM? So diz NAO pro RAMO LATERAL de quem
 	/// desligou os grades (ver <see cref="GradesLigados"/>).
 	///

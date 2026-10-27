@@ -129,13 +129,13 @@ public static class CorposDeForma
 		CorpoDeForma.OozaruDourado => OozaruDourado,
 		CorpoDeForma.FrostEscolhido => Frost(corposDoFrost, degrau),
 
-		// A SUPER PERFEITA NAO PERGUNTA NADA -- ha uma folha so, e ela nao depende de pele nem de
-		// escolha na criacao. Ver `Races.BioAndroids.CorpoSuperPerfeito`, onde tambem esta escrito
-		// por que ela e uma constante do Core e nao um campo da ficha (no DM ela E um campo, e o
-		// `dnl_bio_hatch` esquece de preenche-lo).
-		CorpoDeForma.BioSuperPerfeito => Jandirus.Core.Races.BioAndroids.CorpoSuperPerfeito,
+		// AS DIVINAS DO BIO NAO PERGUNTAM NADA (2026-10-26, no lugar da Super Perfeita) -- ha uma folha so pra cada, e ela nao depende
+		// de pele nem de escolha na criacao. Ver `Races.BioAndroids.CorpoGoldenPerfect`, onde tambem esta escrito por que ela e uma
+		// constante do Core e nao um campo da ficha (no DM a da forma do corpo E um campo, e o `dnl_bio_hatch` esquece de preenche-lo).
+		CorpoDeForma.BioGolden => Jandirus.Core.Races.BioAndroids.CorpoGoldenPerfect,
+		CorpoDeForma.BioMax => Jandirus.Core.Races.BioAndroids.CorpoMax,
 
-		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN, pelo mesmo argumento da Super Perfeita: uma folha so, constante do Core
+		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN, pelo mesmo argumento das divinas do bio: uma folha so, constante do Core
 		// (`MajinSaga.dm:536`, `icon = 'MajinForm5.dmi'`). A cor que o jogador escolheu tinge por cima -- quem pinta e o
 		// `CharacterVisual.PintarCorpoDaForma`, pela regra do Core (`Catalogo.CorpoDaFormaLevaAPele`).
 		CorpoDeForma.MajinPuro => Jandirus.Core.Races.SagaDoMajin.FolhaDaFormaPura,

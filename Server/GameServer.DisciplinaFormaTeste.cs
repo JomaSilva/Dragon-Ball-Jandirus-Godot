@@ -193,7 +193,7 @@ public partial class GameServer
 					double subiu = est.Real - realAntes;
 					Checa($"{g.Forma}: usar a forma sobe a proficiencia em {def.Nome} "
 						+ $"(+{subiu:0.###} em {segundos:0}s)", subiu > 0, $"{realAntes:0.##} -> {est.Real:0.##}");
-					Checa($"{g.Forma}: ...e sobe na taxa do DM ({def.RealPorSegundo:0.###}/s)",
+					Checa($"{g.Forma}: ...e sobe na taxa da disciplina ({def.RealPorSegundo:0.#####}/s)",
 						  Math.Abs(subiu - def.RealPorSegundo * segundos) < 1e-6,
 						  $"{subiu:0.####} contra {def.RealPorSegundo * segundos:0.####}");
 

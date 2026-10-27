@@ -537,6 +537,12 @@ public sealed class Projetil
 	/// </summary>
 	public bool Inerte;
 
+	/// <summary>
+	/// (2026-10-26) NASCEU NA ZONA SEGURA DO BERCO (`GameServer.NaZonaSegura` de quem atirou): o tiro voa e se apaga como qualquer outro, mas nao
+	/// encosta em corpo nenhum -- quem esta na zona segura nao fere ninguem (o pedido 82 do dono: la "ninguem luta").
+	/// </summary>
+	public bool DaZonaSegura;
+
 	/// <summary>Ja acertou alguem e esta EMPURRANDO contra ele -- a cabeca para e continua moendo.</summary>
 	public bool Encostado;
 

@@ -23,10 +23,13 @@ namespace Jandirus.Server;
 ///   6. (2026-10-16) O LUGAR MULTIPLICA O TIQUE: um minuto de `Treinar` de producao em 1x, 10x e 100x, com peso, meditando e
 ///      no espaco, e o soco de producao em 10x -- o BP medido segue o numero do painel (1x sem nada); a aclimatacao NAO mexe no
 ///      ganho (e PODER: o `gravFelt`, que o pacote da aba de Formas leva). Contra-exemplo: `GainKnobs.GravidadeNaoMultiplicaDeTeste`.
-///   7. (2026-10-20) O POTENCIAL OCULTO PINGA IGUAL EM QUALQUER LUGAR: no treino a 500x com o peso no teto, meditando e no soco, a
-///      parcela dele e a de 1x (o esforco e que leva o lugar); e o caso do relato -- uma hora de treino a 500x com peso, de 1B com o
-///      potencial de quem comprou a One Hundred com 1B -- sobe o pingo do DM, e nao 13B. Contra-exemplo:
-///      `GainKnobs.PotencialOcultoComOLugarDeTeste`.
+///   7. (2026-10-26) O BANCO DO POTENCIAL, COMO NO DU (o pedido 95): o potencial guardado nao pinga mais no BP -- no treino em 1x e a
+///      500x com o peso no teto, meditando e no soco, o mesmo minuto com dez vezes o BP de potencial rende o mesmo que sem --, e cada
+///      ganho guarda de 20 a 40% de si no banco (30 a 60% no Prodigial). O caso do relato de 2026-10-20 (uma hora a 500x, de 1B com
+///      14B de potencial) sobe so o esforco. Contra-exemplo: `Fighter.PotencialSemBancoDeTeste`. (Era "o potencial pinga igual em
+///      qualquer lugar", de 2026-10-20 a 2026-10-25.)
+///   7c. (2026-10-26) O ESTOQUE ANTIGO SAI DO SAVE, UMA VEZ: pelo `AccountStore.ParaJogador`, um save de antes do banco chega com o
+///      potencial oculto do sistema velho e sai com o banco zerado; um ja migrado guarda o banco. Contra-exemplo: o mutante do zerar.
 ///   8. (2026-10-20) O "VIEW SESSION" DIZ A MEDIA DE GANHO POR SEGUNDO, com o scouter em BP e sem ele em porcentagem. Contra-exemplo:
 ///      `SessaoSemMediaDeTeste`.
 ///
@@ -274,7 +277,7 @@ public partial class GameServer
 			// `pesoMaximoEmLimites`: o maximo do peso em vezes o limite do corpo NESTA gravidade (o "100" vira essa razao); zero = o dobro do
 			// limite, a escala do verbo. (2026-10-23) A familia 7 o usa: a 500x o "100" do peso de sempre e 1000x o limite, e acima de 8x o
 			// treino nao rende mais nada (`Fighter.PesoDemaisPraTreinar`) -- o "peso no teto" dela passou a ser o do teto do GANHO (8x).
-			(double Bp, double Painel) UmMinuto(double gravidade, double maestria, string peso = "0", bool meditando = false,
+			(double Bp, double Painel, double Banco) UmMinuto(double gravidade, double maestria, string peso = "0", bool meditando = false,
 												double potencial = 0, double bpDePartida = 0, int passadas = 300, double pesoMaximoEmLimites = 0)
 			{
 				Fighter f = a.Ficha;
@@ -315,7 +318,7 @@ public partial class GameServer
 				f.train = f.med = false;
 				AjustarPeso(a, pesos, "0");
 				a.Mochila.Tirar(pesos);
-				return (ganho, painel);
+				return (ganho, painel, f.hiddenpotential - potencial);   // (2026-10-26) o que o minuto guardou no banco
 			}
 			static double Vezes(double x, double y) => y > 0 ? x / y : 0;
 			static bool Bate(double real, double esperado) => esperado > 0 && Math.Abs(real / esperado - 1) < 0.02;
@@ -410,18 +413,17 @@ public partial class GameServer
 			}
 			finally { GainKnobs.GravidadeNaoMultiplicaDeTeste = false; }
 
-			// ---------------------------------------------------------------- 7. o potencial oculto nao segue o lugar
-			// O dono (2026-10-20): *"teve um jogador q de alguma forma treinou na gravidade de 500x com peso no maximo ... ganhou 20 BILHOES de
-			// bp"*, e a escolha dele, "como no DM": o lugar (gravidade, peso, zona) multiplica o ESFORCO, e o potencial oculto pinga cru em
-			// qualquer chao (`Fighter.LugarDoPotencialOculto`). A parcela do potencial se mede pela DIFERENCA -- o mesmo minuto, no mesmo lugar,
-			// com o potencial (dez vezes o BP: o de quem comprou a One Hundred mais alto) e sem ele --, porque a 500x o esforco a afogaria.
-			GD.Print("[ganho] -- 7) O POTENCIAL OCULTO PINGA IGUAL EM QUALQUER LUGAR, e o lugar multiplica so o esforco (dono, 2026-10-20) --");
+			// ---------------------------------------------------------------- 7. o banco do potencial (2026-10-26)
+			// O dono (o pedido 95, 2026-10-25): *"o potencial crescia quando vc treinava e ele n pingava no seu bp ele acumulava"* -- o DU. O
+			// potencial guardado NAO PINGA MAIS: o mesmo minuto com dez vezes o BP de potencial rende o MESMO que sem nenhum, no treino, na
+			// meditacao e no soco (de 2026-10-20 a 2026-10-25 ele pingava cru, sem o lugar; antes disso, com o lugar -- os 20 bilhoes). E
+			// cada ganho GUARDA de 20 a 40% de si no banco (`Fighter.GanhoDeAtividade`), 30 a 60% na classe Prodigial (1,5x, o dono).
+			GD.Print("[ganho] -- 7) O BANCO DO POTENCIAL: ele nao pinga mais, e todo ganho guarda de 20 a 40% de si (dono, 2026-10-25) --");
 			const double potencialAlto = 10 * bp;
 			// (2026-10-23) O PESO NO TETO E O DO GANHO, 8x: a 500x o "100" do peso de sempre e 1000x o limite do corpo, e acima de 8x o treino nao
 			// rende nada (dono: *"vc nem conseguiria treinar assim"*). Aqui o "100" e 6x o limite -- o `weight` no teto (8x), e abaixo do corte.
 			const double TetoDoGanho = 6;
-			// (2026-10-23) CEM PASSADAS, e nao trezentas: com o ganho x10 o pingo de antes (o defeito do lugar, 4000x) passava o potencial
-			// (1e7) no meio do minuto, e acima dele o pingo cai a metade (1/64) -- a razao media o cruzamento, e nao o lugar.
+			static bool Entre(double x, double de, double ate) => x >= de - 1e-9 && x <= ate + 1e-9;
 			double PingoNoTreino(double gravidade, string peso, double limites = 0) =>
 				UmMinuto(gravidade, gravidade, peso, potencial: potencialAlto, passadas: 100, pesoMaximoEmLimites: limites).Bp
 				- UmMinuto(gravidade, gravidade, peso, passadas: 100, pesoMaximoEmLimites: limites).Bp;
@@ -435,58 +437,80 @@ public partial class GameServer
 				Estacionar(n);
 				SocoMedido sem = SocoEm(a, n);
 				Estacionar(n);
-				return com.Acertou && sem.Acertou ? com.Ganho - sem.Ganho : -1;
+				return com.Acertou && sem.Acertou ? com.Ganho - sem.Ganho : double.NaN;
 			}
-			// O CASO DO RELATO, de ponta a ponta: 1B de BP com o potencial de quem comprou as tres skills com 1B (14x o BP, o de um Majin),
-			// UMA HORA de `Treinar` de producao (18.000 passadas) a 500x com o peso no teto e o folego sempre cheio (o do morto, que nao cansa).
-			// No DM esse corpo vai a 1,03B; com o potencial levando o lugar passava de 14B (medido fora do jogo, com a mesma DLL). Roda por
+			// O CASO DO RELATO (2026-10-20), de ponta a ponta: 1B de BP com o potencial de quem comprou as tres skills com 1B (14x o BP),
+			// UMA HORA de `Treinar` de producao (18.000 passadas) a 500x com o peso no teto e o folego sempre cheio (o do morto). Roda por
 			// ULTIMO: o recorde do corpo pro peso (`weight_cap_hw`) nunca desce, e o de 1B ficaria nas medidas seguintes.
 			double UmaHoraDoRelato() => UmMinuto(500, 500, "100", potencial: 14e9, bpDePartida: 1e9, passadas: 18_000, pesoMaximoEmLimites: TetoDoGanho).Bp;
 
 			double treino1 = PingoNoTreino(1, "0"), treino500 = PingoNoTreino(500, "100", TetoDoGanho);
-			AfirmarGn("**O POTENCIAL OCULTO PINGA NO TREINO A 500x COM O PESO NO TETO DO GANHO O MESMO QUE EM 1x SEM PESO** -- como no DM (*\"treinou na gravidade de 500x com peso no maximo\"*: era ai que ele pingava 4000x)",
-					  treino1 > 0 && Bate(Vezes(treino500, treino1), 1), $"1x: +{treino1:0.####} em 100 passadas | 500x com peso: +{treino500:0.####} ({Vezes(treino500, treino1):0.###}x)");
+			double med1 = PingoMeditando(1), med500 = PingoMeditando(500), soco1Oculto = PingoNoSoco(1), soco500Oculto = PingoNoSoco(500);
+			double semNada = UmMinuto(1, 1, passadas: 100).Bp;
+			bool Zero(double x) => !double.IsNaN(x) && Math.Abs(x) <= 1e-6 * Math.Max(semNada, 1);
+			AfirmarGn("**O POTENCIAL GUARDADO NAO PINGA MAIS NO BP** (o DU, o dono): no treino em 1x e a 500x com o peso no teto, meditando em 1x e a 500x, e no soco em 1x e a 500x, o mesmo minuto com dez vezes o BP de potencial rende O MESMO que sem nenhum",
+					  Zero(treino1) && Zero(treino500) && Zero(med1) && Zero(med500) && Zero(soco1Oculto) && Zero(soco500Oculto),
+					  $"treino {treino1:0.####}/{treino500:0.####}, meditando {med1:0.####}/{med500:0.####}, soco {soco1Oculto:0.####}/{soco500Oculto:0.####}");
 			var esforco500 = UmMinuto(500, 500, "100", pesoMaximoEmLimites: TetoDoGanho);
 			AfirmarGn("...e o ESFORCO, no mesmo lugar, continua pagando o que o painel diz: 500x de gravidade com o peso no teto (8x) = 4000x o de 1x",
 					  Bate(Vezes(esforco500.Bp, em1.Bp), 4000) && Bate(Vezes(esforco500.Painel, em1.Painel), 4000),
 					  $"{Vezes(esforco500.Bp, em1.Bp):0.#}x; painel {esforco500.Painel:0.##}x");
-			double med1 = PingoMeditando(1), med500 = PingoMeditando(500);
-			AfirmarGn("**...MEDITANDO TAMBEM**: a 500x o potencial pinga o mesmo que em 1x (a meditacao nao cansa nem pede peso: era a porta mais barata)",
-					  med1 > 0 && Bate(Vezes(med500, med1), 1), $"1x: +{med1:0.####} | 500x: +{med500:0.####} ({Vezes(med500, med1):0.###}x)");
-			double soco1Oculto = PingoNoSoco(1), soco500Oculto = PingoNoSoco(500);
-			AfirmarGn("**...E NA LUTA**: o mesmo soco de producao no mesmo NPC paga a 500x o mesmo pingo de potencial que em 1x",
-					  soco1Oculto > 0 && Bate(Vezes(soco500Oculto, soco1Oculto), 1),
-					  $"1x: +{soco1Oculto:0.####} | 500x: +{soco500Oculto:0.####} ({Vezes(soco500Oculto, soco1Oculto):0.###}x)");
 
-			GainKnobs.PotencialOcultoComOLugarDeTeste = true;
+			var guardaTreino = UmMinuto(1, 1);
+			var guardaMedita = UmMinuto(1, 1, meditando: true);
+			SocoMedido socoGuarda = SocoEm(a, n);
+			double bancoDoSoco = a.Ficha.hiddenpotential;
+			Estacionar(n);
+			AfirmarGn("**...E TODO GANHO GUARDA DE 20 A 40% DE SI NO BANCO** (`unusedPotential += gain * rand(0.2, 0.4)` do DU): um minuto de treino, um de meditacao e um soco",
+					  guardaTreino.Bp > 0 && Entre(guardaTreino.Banco / guardaTreino.Bp, 0.2, 0.4)
+					  && guardaMedita.Bp > 0 && Entre(guardaMedita.Banco / guardaMedita.Bp, 0.2, 0.4)
+					  && socoGuarda.Acertou && socoGuarda.Ganho > 0 && Entre(bancoDoSoco / socoGuarda.Ganho, 0.2, 0.4),
+					  $"treino {guardaTreino.Banco / Math.Max(guardaTreino.Bp, 1e-12):P1}, meditando {guardaMedita.Banco / Math.Max(guardaMedita.Bp, 1e-12):P1}, "
+					  + $"soco {bancoDoSoco / Math.Max(socoGuarda.Ganho, 1e-12):P1}");
+			string classeDeAntes = a.Ficha.Class;
+			a.Ficha.Class = "Prodigial";
+			(double Bp, double Painel, double Banco) doProdigial;
+			try { doProdigial = UmMinuto(1, 1); }
+			finally { a.Ficha.Class = classeDeAntes; }
+			// A MEDIA, E NAO A FAIXA DE CADA GANHO: o minuto sao 300 ganhos, e a fracao guardada de cada um (30 a 60%) se MEDIA em ~45%. A
+			// regua era "entre 30% e 60%", que a classe comum tambem passa -- a media dela e ~30%, na beirada (a contraprova de 2026-10-26
+			// passou batido assim). 40 a 50% e o meio da do Prodigial, com folga de dez desvios da media de 300 sorteios.
+			AfirmarGn("**...E O PRODIGIAL ENCHE 1,5x** (o dono, 2026-10-26: *\"faz ele encher o banco 1,5x\"*): cada ganho guarda de 30 a 60% de si, "
+					  + "e o minuto inteiro (300 ganhos) guarda em media 45% -- 1,5x os 30% da classe comum",
+					  doProdigial.Bp > 0 && Entre(doProdigial.Banco / doProdigial.Bp, 0.4, 0.5), $"{doProdigial.Banco / Math.Max(doProdigial.Bp, 1e-12):P1}");
+			Fighter.PotencialSemBancoDeTeste = true;
 			try
 			{
-				double treino500DeAntes = PingoNoTreino(500, "100", TetoDoGanho);
-				AfirmarGn("(defeito injetado: o potencial leva o lugar -- o jogo de 2026-10-16 a 2026-10-20) no treino a 500x com o peso no teto ele pinga 4000x o de 1x. A prova do treino sabe reprovar",
-						  Bate(Vezes(treino500DeAntes, treino1), 4000), $"{Vezes(treino500DeAntes, treino1):0.#}x");
-				double med500DeAntes = PingoMeditando(500);
-				AfirmarGn("(defeito injetado: o mesmo) meditando a 500x ele pinga 500x o de 1x. A prova da meditacao sabe reprovar",
-						  Bate(Vezes(med500DeAntes, med1), 500), $"{Vezes(med500DeAntes, med1):0.#}x");
-				double soco500DeAntes = PingoNoSoco(500);
-				AfirmarGn("(defeito injetado: o mesmo) o soco a 500x paga 500x o pingo de 1x. A prova da luta sabe reprovar",
-						  Bate(Vezes(soco500DeAntes, soco1Oculto), 500), $"{Vezes(soco500DeAntes, soco1Oculto):0.#}x");
+				var semBanco = UmMinuto(1, 1);
+				AfirmarGn("(defeito injetado: o ganho nao guarda) o minuto de treino nao poe nada no banco -- a regua de cima REPROVA",
+						  semBanco.Bp > 0 && semBanco.Banco == 0, $"banco {semBanco.Banco:0.####}");
 			}
-			finally { GainKnobs.PotencialOcultoComOLugarDeTeste = false; }
+			finally { Fighter.PotencialSemBancoDeTeste = false; }
 
 			double hora = UmaHoraDoRelato();
-			// (2026-10-23) O TETO DA HORA SUBIU COM O GANHO x10: menos de 500M (era 50M no ritmo de 2026-10-16; mede ~250M) -- ainda o pingo cru,
-			// longe dos bilhoes do lugar
-			AfirmarGn("**O CASO DO RELATO**: 1B com o potencial de quem comprou as tres skills com 1B, uma hora de treino a 500x com o peso no teto e o folego do morto -- sobe o pingo cru do potencial (menos de 500M no ritmo de 2026-10-23), e nao os 13B de antes",
+			AfirmarGn("**O CASO DO RELATO** (2026-10-20): 1B com 14B de potencial guardado, uma hora de treino a 500x com o peso no teto e o folego do morto -- sobe so o esforco (menos de 500M), e nao os 13B de 2026-10-20",
 					  hora > 0 && hora < 500e6, $"+{hora:N0} de BP na hora");
-			GainKnobs.PotencialOcultoComOLugarDeTeste = true;
-			try
-			{
-				double horaDeAntes = UmaHoraDoRelato();
-				AfirmarGn("(defeito injetado: o mesmo) a hora do relato passa de 10B -- os 20 bilhoes do dono. A prova do relato sabe reprovar",
-						  horaDeAntes > 10e9, $"+{horaDeAntes:N0} de BP na hora");
-			}
-			finally { GainKnobs.PotencialOcultoComOLugarDeTeste = false; }
 			AplicarGravidade(a);   // a gravidade do chao de volta
+
+			// ---------------------------------------------------------------- 7c. o estoque antigo sai do save (2026-10-26)
+			// O dono: *"n esqueça claro de remover todo codigo antigo do hidden potential antigo, so mantendo o atual"* -- e, perguntado,
+			// zerar o que os saves de antes traziam. Pelo funil do login (`AccountStore.ParaJogador`), com uma ficha propria (o save
+			// aponta pra ficha do corpo, e esta nao pode mexer nela): a de antes do banco (o campo novo falso) chega com 5B de estoque
+			// velho; a ja migrada, com 300 no banco.
+			{
+				ServerPlayer Logar(double estoque, bool jaMigrado)
+				{
+					CharacterSave s = AccountStore.DeJogador(a, NowMs());
+					s.Ficha = new Fighter { Name = a.Name, Race = a.Ficha.Race, BP = a.Ficha.BP, hiddenpotential = estoque, potencialAntigoZerado = jaMigrado };
+					var volta = new ServerPlayer { Id = a.Id, Peer = null, Conta = a.Conta, Slot = a.Slot };
+					AccountStore.ParaJogador(s, volta);
+					return volta;
+				}
+				ServerPlayer deAntes = Logar(5e9, false), migrado = Logar(300, true);
+				AfirmarGn("**O POTENCIAL OCULTO ANTIGO SAI DO SAVE, UMA VEZ** (o dono, 2026-10-26: zerar o estoque do sistema velho): o save de antes do banco chega com 5B e entra com o banco zerado (e marcado); o ja migrado entra com os 300 do banco",
+						  deAntes.Ficha.hiddenpotential == 0 && deAntes.Ficha.potencialAntigoZerado && migrado.Ficha.hiddenpotential == 300,
+						  $"de antes {deAntes.Ficha.hiddenpotential:0} (marcado {deAntes.Ficha.potencialAntigoZerado}); migrado {migrado.Ficha.hiddenpotential:0}");
+			}
 
 			// ---------------------------------------------------------------- 7b. sem o freio de 1 bi
 			// O dono (2026-10-24): *"tira o debuff de bp gains acima de 1b"*. O `CapCheck` multiplicava todo ganho acima de 1B por
@@ -561,7 +585,7 @@ public partial class GameServer
 		{
 			GainKnobs.SocoNoArRendeDeTeste = GainKnobs.KiRendeNoDisparoDeTeste = GainKnobs.PvpSemTrocaDeTeste = false;
 			GainKnobs.GravidadeNaoMultiplicaDeTeste = false;
-			GainKnobs.PotencialOcultoComOLugarDeTeste = false;
+			Fighter.PotencialSemBancoDeTeste = false;
 			SessaoSemMediaDeTeste = false;
 			LimparTudoDaBancada();
 			mesa.Fecha();

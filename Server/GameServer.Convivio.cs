@@ -487,6 +487,8 @@ public partial class GameServer
 		VilaoFoiDerrotado(vitima, algoz, morreu);
 		// (2026-10-16) E O VILAO DE SAGA QUE VOLTOU NO INFERNO -- o mesmo funil, a mesma primeira linha. Ver `GameServer.ViloesDoInferno.cs`.
 		VilaoDoInfernoFoiDerrotado(vitima, algoz);
+		// (2026-10-26) E O CAMPEAO DO MUNDO ANTERIOR -- o mesmo funil, a mesma primeira linha. Ver `GameServer.CampeaoDoWipe.cs`.
+		CampeaoDoWipeFoiDerrotado(vitima, algoz, morreu);
 		// (2026-10-19) O NOCAUTE QUE CONTA NUM SERVICO DO OUTRO MUNDO (as almas, os fujoes do Inferno). Ver `GameServer.ServicosDoAlem.cs`.
 		ServicoDoAlemAoDerrotar(vitima, algoz);
 
@@ -513,7 +515,7 @@ public partial class GameServer
 			return;
 		}
 
-		ZenkaiPorDerrota(vitima, algoz);
+		ZenkaiPorDerrota(vitima, algoz, morreu);
 		LutoNaVizinhanca(vitima, algoz, morreu);
 		// (2026-10-21) ...e o do ALIADO (o habitante recrutado): "como amigo jogador", decisao do dono -- o veto do `EhPessoa` acima continua
 		// valendo pra todo NPC que nao e aliado. Ver `LutoDoAliado` (`GameServer.Aliados.cs`).

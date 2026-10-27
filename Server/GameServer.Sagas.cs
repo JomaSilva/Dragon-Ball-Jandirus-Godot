@@ -598,6 +598,19 @@ public partial class GameServer
 				GD.PushWarning($"[server] sagas: '{elo.Id}' estava marcada como disparada sem ter comecado -- volta a esperar o marco, do comeco");
 			}
 
+			// (2026-10-26) O REGISTRO DE UM MARCO QUE SUBIU NAO VALE. O dono passou o Cell de 5M pra 20M (*"Faça com q a saga cell/androides
+			// comece quando o bp seja 20m e nao 5m"*), e um save de antes pode ter anotado quem bateu os 5M enquanto a cadeia esperava a vez
+			// dela: sem estas linhas a saga dispararia pelo REGISTRO, com um BP que ja nao e o marco. Apagado, quem estiver acima do marco de
+			// agora e procurado de novo no disco, logo abaixo.
+			if (!est.Disparou && est.MarcoBatidoPor.Length > 0 && est.MarcoBatidoComBp < elo.GatilhoBp && !RegistroVelhoValeDeTeste)
+			{
+				GD.Print($"[server] sagas: o registro do marco de '{elo.Id}' ({est.MarcoBatidoPor}, BP {est.MarcoBatidoComBp:N0}) e de antes "
+					   + $"de o marco subir pra {elo.GatilhoBp:N0} -- nao vale mais");
+				est.MarcoBatidoPor = "";
+				est.MarcoBatidoComBp = 0;
+				mudou = true;
+			}
+
 			if (est.Disparou || est.MarcoBatidoPor.Length > 0) continue;
 			doDisco ??= QuemEstaNoDisco();
 			foreach ((string nome, string raca, double bp) in doDisco)
@@ -635,6 +648,12 @@ public partial class GameServer
 
 	/// <summary>DEFEITO INJETADO (`--chefesteste`): o boot nao audita as sagas -- o jogo de antes. Lido pela <see cref="AuditarSagasNoBoot"/>. Falso em jogo, sempre.</summary>
 	internal static bool SemAuditoriaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--chefesteste`, 2026-10-26): o registro de um marco abaixo do marco de agora continua valendo -- o jogo de antes do
+	/// Cell subir pra 20M. Lido pela <see cref="AuditarSagasNoBoot"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool RegistroVelhoValeDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (`--chefesteste`): quem volta do alem fica com o `RessurgeEm` do relogio de antes do reinicio -- o jogo de antes. Lido

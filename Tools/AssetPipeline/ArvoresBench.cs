@@ -175,6 +175,20 @@ public static class ArvoresBench
 				 cat.Get("/datum/skill/Tree_Mastery") is { Arvore: false });
 		Conferir("...e ela continua pendurada na Weapons Expert",
 				 cat.Get("/datum/skill/tree/WeaponsExpert")?.Galhos.Contains("/datum/skill/Tree_Mastery") == true);
+		// (2026-10-26) O MEIO-SAIYAJIN TEM A RACIAL DO SAIYAJIN -- o pedido 107 do dono (*"meio saiyajins n tao vendo saiyan racial skill
+		// tree, faca eles terem acesso a ela"*). As duas portas: a arvore entra na lista dele, e o crivo da arvore o deixa abri-la.
+		const string RacialSaiyajin = "/datum/skill/tree/saiyan/SaiyanRacial";
+		Skill? racialSaiyajin = cat.Get(RacialSaiyajin);
+		string meio = Jandirus.Core.Forms.Catalogo.RacaMeioSaiyajin;
+		Conferir("o MEIO-SAIYAJIN (\"Halfbreed\" na ficha) recebe a arvore racial do Saiyajin (o pedido 107) -- e o Saiyajin continua com ela",
+				 cat.ArvoresDe(meio, "").Any(a => a.Path == RacialSaiyajin) && cat.ArvoresDe("Saiyan", "").Any(a => a.Path == RacialSaiyajin),
+				 string.Join(", ", cat.ArvoresDe(meio, "").Select(a => a.Nome)));
+		Conferir("...e PODE abri-la: a lista de racas dela diz \"Half-Saiyan\" (a grafia do DM), e o crivo a casa com a da ficha",
+				 racialSaiyajin != null && cat.Permitida(racialSaiyajin, meio, "", false),
+				 racialSaiyajin == null ? "sem a arvore" : string.Join(",", racialSaiyajin.Racas));
+		Conferir("...e o Humano continua SEM ela -- a porta nao abriu pra todo mundo",
+				 racialSaiyajin != null && !cat.ArvoresDe("Human", "").Any(a => a.Path == RacialSaiyajin)
+				 && !cat.Permitida(racialSaiyajin, "Human", "", false));
 		Conferir("`Body Change` NAO pende da arvore Alien (esta COMENTADA em alien.dm:12 -- o extrator lia o comentario)",
 				 cat.Get("/datum/skill/tree/alien")?.Galhos.Contains("/datum/skill/Body_Change") == false);
 

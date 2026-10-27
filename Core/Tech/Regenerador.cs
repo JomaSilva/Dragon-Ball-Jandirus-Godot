@@ -42,6 +42,12 @@ public static class Regenerador
 	/// </summary>
 	public static bool VizinhoContaDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o tanque de antes de 2026-10-26 -- so a vida o faz agir, o Ki sobe o numero solto do DM
+	/// (<see cref="KiPorPulso"/>) e o vigor nao volta. Lido pelo pulso e pelo `PrecisaDoTanque`, em `GameServer.Regenerador.cs`.
+	/// </summary>
+	public static bool SoAVidaDeTeste;
+
 	/// <summary>O tipo da obra no catalogo (`construcoes.json`).</summary>
 	public const string Tipo = "Regenerator";
 
@@ -69,6 +75,15 @@ public static class Regenerador
 	/// do `else`), e o teto apara. Ver "o Ki nao passa do teto" no cabecalho.
 	/// </summary>
 	public static double KiPorPulso(int eficiencia) => 2.0 * eficiencia;
+
+	/// <summary>
+	/// (2026-10-26) O KI E O VIGOR VOLTAM EM FRACAO DO MAXIMO, no ritmo da vida -- o dono: *"faz o regenerador recuperar ki e vigor tb"*.
+	/// O Ki do DM (<see cref="KiPorPulso"/>, dois por velocidade, um numero solto) nao enchia o tanque de ninguem com mais que umas
+	/// centenas, o vigor nao voltava, e o tanque so olhava a VIDA (com ela cheia ele nem trabalhava). Agora cada pulso devolve, do Ki
+	/// maximo e do vigor maximo, a fracao que o <see cref="CuraPorPulso"/> da a um membro de 100 de vida (velocidade 1 = 3%, velocidade
+	/// 10 = 15%) -- e o numero do DM fica de piso --, e Ki ou vigor faltando bastam pro tanque agir.
+	/// </summary>
+	public static double FracaoDeKiEVigorPorPulso(int eficiencia) => CuraPorPulso(eficiencia) / 100;
 
 	/// <summary>O que um paciente gasta de bateria por pulso -- `Energy -= 0.002*efficiency` (`:84`).</summary>
 	public static double BateriaPorPulso(int eficiencia) => 0.002 * eficiencia;

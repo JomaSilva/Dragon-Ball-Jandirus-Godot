@@ -2030,232 +2030,8 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
-	// X7) O SINTETIZADOR DE VIRUS -- o lote T5b
-	// =====================================================================
-	private void OSintetizadorV21()
-	{
-		GD.Print("[v021] -- X7) A TECH PORTADA, lote 5 (2a parte): o sintetizador de virus, os virus, os antivirus e as injecoes (item 13)");
-		LimparEmbatesDaBancada();
-		LimparTudoDaBancada();
-		const float T = ZoneCollision.TileSize;
-		Vec2 c = TerraFirmeG12(10);
-		long relogioDeAntes = AdiantoDoRelogioDeTeste;
-		var obras = new List<Obra>();
-		var corpos = new List<ServerPlayer>();
-		ServerPlayer Nasce(string nome, Vec2 onde, double bp, string raca = "Human")
-		{
-			ServerPlayer novo = ForjarV2(nome, onde, bp, raca);
-			novo.Conta = "bancada_v021_" + nome.ToLowerInvariant();
-			corpos.Add(novo);
-			return novo;
-		}
-		ServerPlayer p = Nasce("Quimico", c, 5_000);
-		p.Facing = Facing.East;
-		ServerPlayer cobaia = Nasce("Cobaia", c + new Vec2(T, 0), 500);
-		p.Ficha.Zeni = p.Ficha.Recursos = 1_000_000;
-		p.Ficha.relBPmax = 100_000;
-
-		List<string> Fazer(ServerPlayer quem, string acao, string arg) => Ouvir(() => ComandoDeItem(quem, "item_" + acao, arg));
-		List<string> Tomar(ServerPlayer quem, string id) { quem.Mochila.Guardar(id); return Fazer(quem, Sintetizador.AcaoTomar, id); }
-		List<string> Usar(ServerPlayer quem, string verbo, string arg = "") => Ouvir(() => ComandoDeInteracao(quem, verbo, arg));
-		bool Disse(List<string> falas, string trecho) => falas.Exists(f => f.Contains(trecho, StringComparison.OrdinalIgnoreCase));
-		void Passar(double segundos) { AdiantoDoRelogioDeTeste += (long)(segundos * 1000); TickDoSintetizador(1.0); }
-		bool Igual(double a, double b) => Math.Abs(a - b) < 1e-9;
-
-		try
-		{
-			// ---------------------------------------------------------------- a maquina
-			Obra maquina = ObraDeBancadaV21(Sintetizador.Tipo, c + new Vec2(0, -T), p, aparafusada: false);
-			obras.Add(maquina);
-			List<string> solta = Usar(p, Sintetizador.VerboFazer, Sintetizador.Alfa);
-			maquina.Aparafusada = true;
-			p.Ficha.techskill = 30;
-			List<string> semTecnologia = Usar(p, Sintetizador.VerboFazer, Sintetizador.Alfa);
-			Sintetizador.SemPedirTecnologiaDeTeste = true;
-			bool defeitoVende;
-			try { Usar(p, Sintetizador.VerboFazer, Sintetizador.Alfa); defeitoVende = p.Mochila.Quantos(Sintetizador.Alfa) == 1; }
-			finally { Sintetizador.SemPedirTecnologiaDeTeste = false; }
-			p.Mochila.Pilhas.Clear();
-			p.Ficha.Zeni = p.Ficha.Recursos = 1_000_000;
-			p.Ficha.techskill = 100;
-			Usar(p, Sintetizador.VerboFazer, Sintetizador.Alfa);
-			Usar(p, Sintetizador.VerboFazer, Jandirus.Core.Economia.Recurso.PedidoPago(Sintetizador.Bravo, Jandirus.Core.Economia.Moeda.Recursos));
-			AfirmarV21("**O SINTETIZADOR SINTETIZA**: solto ele recusa (`\"You need to bolt [name] before you can use it!\"`); aparafusado, pede a tecnologia de cada produto (o Virus Alfa, 65) e cobra o preco dele -- em zeni, ou o dobro em recursos --, e o produto cai na mochila; as tres prateleiras do menu saem da lista (7 virus, 4 antivirus, 8 injecoes); (defeito injetado: o sintetizador nao confere a tecnologia) e com o defeito quem tem 30 leva o virus de 65",
-					   Disse(solta, "aparafuse") && Disse(semTecnologia, "65 de tecnologia") && defeitoVende
-					   && p.Mochila.Quantos(Sintetizador.Alfa) == 1 && p.Mochila.Quantos(Sintetizador.Bravo) == 1
-					   && Math.Abs(1_000_000 - p.Ficha.Zeni - 50_000) < 0.5 && Math.Abs(1_000_000 - p.Ficha.Recursos - 50_000) < 0.5
-					   && Interacoes.De(Sintetizador.Tipo + "/virus").Length == 7 && Interacoes.De(Sintetizador.Tipo + "/antivirus").Length == 4
-					   && Interacoes.De(Sintetizador.Tipo + "/injecoes").Length == 8 && Interacoes.Aceita(Sintetizador.Tipo, Sintetizador.VerboFazer)
-					   && CatalogoDeItens.Get(Sintetizador.Alfa) is { Empilhavel: true },
-					   $"{string.Join(" | ", solta)} | {string.Join(" | ", semTecnologia)}; defeito vende {defeitoVende}; zeni {p.Ficha.Zeni:0}; recursos {p.Ficha.Recursos:0}; prateleiras {Interacoes.De(Sintetizador.Tipo + "/virus").Length}/{Interacoes.De(Sintetizador.Tipo + "/antivirus").Length}/{Interacoes.De(Sintetizador.Tipo + "/injecoes").Length}");
-
-			// ---------------------------------------------------------------- o risco, na conta
-			AfirmarV21("a conta do RISCO de um virus (`Viruses.dm:275-283`): 25% de uma mutacao (certa, com quatro); quem a ganha num virus benefico -- ou ja com tres -- ganha outra, e ai tem 25% de morrer (certo, com cinco)",
-					   Sintetizador.Risco(0, true, 50, 50) == (0, false) && Sintetizador.Risco(0, true, 10, 50) == (2, false)
-					   && Sintetizador.Risco(0, true, 10, 10) == (2, true) && Sintetizador.Risco(0, false, 10, 10) == (1, false)
-					   && Sintetizador.Risco(4, false, 99, 99) == (6, true));
-
-			// ---------------------------------------------------------------- o virus: permanente, e so uma vez
-			SorteioDoVirusDeTeste = (99, 99);
-			double inteligencia = p.Ficha.techmod;
-			Fazer(p, Sintetizador.AcaoTomar, Sintetizador.Alfa);
-			bool subiu = Igual(p.Ficha.techmod, inteligencia + 2) && p.Mochila.Quantos(Sintetizador.Alfa) == 0
-						 && p.Ficha.VirusesConsumed.Contains(Sintetizador.Alfa) && p.Ficha.Mutations == 0;
-			List<string> repetido = Tomar(p, Sintetizador.Alfa);
-			bool recusou = p.Mochila.Quantos(Sintetizador.Alfa) == 1 && Igual(p.Ficha.techmod, inteligencia + 2);
-			Sintetizador.VirusRepeteDeTeste = true;
-			bool defeitoRepete;
-			try { Fazer(p, Sintetizador.AcaoTomar, Sintetizador.Alfa); defeitoRepete = p.Ficha.techmod > inteligencia + 2.5; }
-			finally { Sintetizador.VirusRepeteDeTeste = false; }
-			string racaDaCobaia = cobaia.Race;
-			cobaia.Race = "Android";
-			List<string> androide = Tomar(cobaia, Sintetizador.Bravo);
-			cobaia.Race = racaDaCobaia;
-			AfirmarV21("**O VIRUS E PERMANENTE E SO SE TOMA UMA VEZ**: o Alfa da dois de inteligencia (`add_to_stat(\"Tech Modifier\",2)`) e se gasta; a segunda dose e recusada (`\"You've already consumed this virus.\"`) e fica na mochila; androide nao toma; (defeito injetado: o mesmo virus se repete) e com o defeito a inteligencia sobe de novo",
-					   subiu && recusou && Disse(repetido, "já tomou") && defeitoRepete && Disse(androide, "androide") && cobaia.Mochila.Quantos(Sintetizador.Bravo) == 1,
-					   $"subiu {subiu} (inteligencia {inteligencia:0.#} -> {p.Ficha.techmod:0.#}); recusou {recusou}; defeito repete {defeitoRepete} | {string.Join(" | ", repetido)} | {string.Join(" | ", androide)}");
-
-			// ---------------------------------------------------------------- os efeitos, e o antivirus que os desfaz
-			double defFisica = p.Ficha.physdefBuff, defDeKi = p.Ficha.kidefBuff, regenDeKi = p.Ficha.kiregenMod;
-			Fazer(p, Sintetizador.AcaoTomar, Sintetizador.Bravo);
-			Tomar(p, Sintetizador.Delta);
-			bool comOsDois = Igual(p.Ficha.physdefBuff, defFisica + 0.15) && Igual(p.Ficha.kidefBuff, defDeKi + 0.15 - 1.15) && Igual(p.Ficha.kiregenMod, regenDeKi + 1);
-			Tomar(p, Sintetizador.AntiDelta);
-			bool desfez = Igual(p.Ficha.kidefBuff, defDeKi + 0.15) && Igual(p.Ficha.kiregenMod, regenDeKi) && !p.Ficha.VirusesConsumed.Contains(Sintetizador.Delta);
-			List<string> semVirus = Tomar(p, Sintetizador.AntiEcho);
-			AfirmarV21("o Bravo soma 0,15 nas duas defesas; o Delta da um de regeneracao de Ki e tira 1,15 do ataque e da defesa de Ki -- e o ANTIVIRUS Delta devolve tudo e tira o virus da lista; o antivirus de um virus que a pessoa nao carrega nao tem o que desfazer, e fica na mochila",
-					   comOsDois && desfez && Disse(semVirus, "não carrega") && p.Mochila.Quantos(Sintetizador.AntiEcho) == 1,
-					   $"com os dois {comOsDois}; desfez {desfez}; kidefBuff {p.Ficha.kidefBuff:0.##}; kiregenMod {p.Ficha.kiregenMod:0.##} | {string.Join(" | ", semVirus)}");
-
-			// ---------------------------------------------------------------- a mutacao
-			SorteioDoVirusDeTeste = (10, 99);
-			Tomar(p, Sintetizador.Echo);
-			bool mutou = p.Ficha.Mutations == 1;
-			double vidaAntes = p.Combate.Corpo.Vida();
-			Sintetizador.MutacaoInofensivaDeTeste = true;
-			double vidaComDefeito;
-			try { Passar(1); vidaComDefeito = p.Combate.Corpo.Vida(); }
-			finally { Sintetizador.MutacaoInofensivaDeTeste = false; }
-			Passar(1);
-			double vidaDepois = p.Combate.Corpo.Vida();
-			ContagioSemPeerDeTeste = true;
-			SorteioDoVirusDeTeste = (0, 99);
-			cobaia.Pos = p.Pos + new Vec2(T, 0);
-			MarcarAgressao(cobaia, p);
-			bool contagiou = cobaia.Ficha.Mutations == 1;
-			cobaia.Pos = p.Pos + new Vec2(10 * T, 0);
-			MarcarAgressao(cobaia, p);
-			bool deLongeNao = cobaia.Ficha.Mutations == 1;
-			ContagioSemPeerDeTeste = false;
-			cobaia.Pos = p.Pos + new Vec2(T, 0);
-			cobaia.Ficha.Mutations = 0;
-			SorteioDoVirusDeTeste = (99, 99);
-			Tomar(p, Sintetizador.Kilo);
-			bool curou = p.Ficha.Mutations == 0 && p.Mochila.Quantos(Sintetizador.Kilo) == 0;
-			SorteioDoVirusDeTeste = (10, 99);
-			p.Ficha.Mutations = 2;
-			List<string> aCuraFalhou = Tomar(p, Sintetizador.Kilo);
-			bool falhou = Disse(aCuraFalhou, "falhou") && p.Mochila.Quantos(Sintetizador.Kilo) == 1 && p.Ficha.Mutations == 2;
-			p.Ficha.Mutations = 0;
-			AfirmarV21("a MUTACAO: o virus que nao e benefico deixa uma no sorteio dos 25%; ela tira um fio de vida por segundo (`SpreadDamage(0.005*Mutations)`), passa pra quem apanha DE PERTO de um mutante (`prob(10 * src.Mutations)`) e nao pra quem esta longe; o Antivirus Kilo a tira -- e falha uma vez em quatro, ficando na mochila; (defeito injetado: a mutacao nao faz nada) e com o defeito a vida nao cai",
-					   mutou && Igual(vidaComDefeito, vidaAntes) && vidaDepois < vidaAntes - 1e-6 && contagiou && deLongeNao && curou && falhou,
-					   $"mutou {mutou}; vida {vidaAntes:0.####} -> com defeito {vidaComDefeito:0.####} -> {vidaDepois:0.####}; contagiou {contagiou}; de longe nao {deLongeNao}; curou {curou}; falhou {falhou}");
-
-			ServerPlayer azarado = Nasce("Azarado", c + new Vec2(3 * T, T), 500);
-			SorteioDoVirusDeTeste = (10, 10);
-			Tomar(azarado, Sintetizador.Golf);
-			AfirmarV21("...e o virus MATA quem tira os dois sorteios (`\"[usr] begins to fucking die!!\"`): o corpo morre com as duas mutacoes, e o virus nao chega a fazer efeito nem se gasta",
-					   azarado.Ficha.dead && azarado.Mochila.Quantos(Sintetizador.Golf) == 1 && Igual(azarado.Ficha.physoffBuff, 0)
-					   && !azarado.Ficha.VirusesConsumed.Contains(Sintetizador.Golf),
-					   $"morto {azarado.Ficha.dead}; mutacoes {azarado.Ficha.Mutations}; na mochila {azarado.Mochila.Quantos(Sintetizador.Golf)}");
-
-			// ---------------------------------------------------------------- as injecoes
-			SorteioDoVirusDeTeste = (99, 99);
-			double bpAntes = p.Ficha.BP;
-			double ganhoDoEsteroide = p.Ficha.CapCheck(p.Ficha.relBPmax * Sintetizador.FracaoDoEsteroide);
-			Tomar(p, Sintetizador.Esteroide);
-			bool esteroide = ganhoDoEsteroide > 0 && Math.Abs(p.Ficha.BP - (bpAntes + ganhoDoEsteroide)) < 1e-6 * bpAntes;
-			Tomar(p, Sintetizador.Raiva);
-			// (a raiva e funcao do relogio: entre a injecao e esta linha ela ja gotejou uma fracao minima)
-			bool raiva = Math.Abs(p.Ficha.Anger - Sintetizador.RaivaDaInjecao(p.Ficha.MaxAnger, false)) < 1e-2
-						 && p.Ficha.Anger > 100.5 && NivelDaRaivaDe(p) == Jandirus.Core.Forms.NivelDeRaiva.Nenhuma;
-			p.RaivaDeInjecaoDesde = 0;
-			LsdNuncaMataDeTeste = true;
-			double regenTemporario = p.Ficha.Tkiregen;
-			Tomar(p, Sintetizador.Lsd);
-			bool comLsd = Igual(p.Ficha.Tkiregen, regenTemporario + 1) && p.Ficha.LsdAte != 0;
-			Passar(Sintetizador.SegundosDoLsd + 1);
-			bool passou = Igual(p.Ficha.Tkiregen, regenTemporario) && p.Ficha.LsdAte == 0;
-			LsdNuncaMataDeTeste = false;
-			int idadeAntes = p.Idade;
-			Tomar(p, Sintetizador.Juventude);
-			bool jovem = idadeAntes > 10 && p.Idade == 10;
-			p.Idade = idadeAntes;
-			p.Ficha.Idade = idadeAntes;
-			p.Ficha.Statify();
-			ServerPlayer semRabo = Nasce("SemRabo", c + new Vec2(6 * T, T), 500, "Saiyan");
-			BodyPart? oRabo = semRabo.Combate!.Corpo.Achar("Rabo");
-			if (oRabo != null) { oRabo.Decepado = true; oRabo.Perdido = false; }
-			Tomar(semRabo, Sintetizador.Rabo);
-			bool raboDeVolta = oRabo is { Decepado: false } && semRabo.Ficha.KO;
-			AfirmarV21("as INJECOES: o esteroide soma poder na hora (`BP += capcheck(relBPmax/100)`); a RAGE poe a raiva em `(MaxAnger-100)/2.4+100` SEM abrir degrau de raiva nenhum (`anger_ssj = 0`: ela nao da forma); o LSD da um de regeneracao de Ki e de magia por cinquenta segundos, e passa; a Youthenasia devolve os dez anos; e a injecao de rabo o faz crescer de novo e derruba quem a toma",
-					   esteroide && raiva && comLsd && passou && jovem && raboDeVolta,
-					   $"esteroide {esteroide} (+{ganhoDoEsteroide:0.##}); raiva {raiva} ({p.Ficha.Anger:0.##}); lsd {comLsd}/{passou}; jovem {jovem} ({idadeAntes} -> 10); rabo {raboDeVolta} (tem rabo: {oRabo != null})");
-
-			// ---------------------------------------------------------------- a Insta-Death
-			SorteioDoVirusDeTeste = (99, 10);
-			ServerPlayer suicida = Nasce("Suicida", c + new Vec2(4 * T, -T), 500);
-			Tomar(suicida, Sintetizador.MorteCerta);
-			bool emComa = suicida.Ficha.KO && !suicida.Ficha.dead && suicida.Ficha.MorteMarcadaEm != 0;
-			Passar(Sintetizador.SegundosDoComa + 1);
-			bool morreuDaAgulha = suicida.Ficha.dead && suicida.Ficha.MorteMarcadaEm == 0;
-			p.Pos = c;
-			cobaia.Pos = c + new Vec2(T, 0);
-			p.Mochila.Guardar(Sintetizador.MorteCerta);
-			Fazer(p, Sintetizador.AcaoInjetar, Sintetizador.MorteCerta);
-			p.Pos = c + new Vec2(0, T);
-			List<string> saiuDoLugar = Ouvir(() => Passar(1));
-			bool cancelou = !_esperasParadas.ContainsKey(p.Id) && p.Mochila.Quantos(Sintetizador.MorteCerta) == 1 && cobaia.Ficha.MorteMarcadaEm == 0;
-			p.Pos = c;
-			List<string> aviso = Fazer(p, Sintetizador.AcaoInjetar, Sintetizador.MorteCerta);
-			Passar(Sintetizador.SegundosParado + 0.5);
-			bool injetou = cobaia.Ficha.KO && cobaia.Ficha.MorteMarcadaEm != 0 && p.Mochila.Quantos(Sintetizador.MorteCerta) == 0;
-			Passar(Sintetizador.SegundosDoComa + 1);
-			AfirmarV21("**A INSTA-DEATH MATA**: quem a toma entra em coma e morre cinco segundos depois; em OUTRO ela pede dez segundos ao lado do alvo, que e avisado (`\"[usr] is injecting you with something!\"`) -- quem sai do lugar perde a vez e fica com a agulha --, e no fim o alvo entra em coma e morre",
-					   emComa && morreuDaAgulha && cancelou && Disse(saiuDoLugar, "não entrou") && Disse(aviso, "injetando") && injetou && cobaia.Ficha.dead,
-					   $"coma {emComa}; morreu {morreuDaAgulha}; cancelou {cancelou}; injetou {injetou}; alvo morto {cobaia.Ficha.dead} | {string.Join(" | ", saiuDoLugar)}");
-
-			// ---------------------------------------------------------------- o Antivirus Mike
-			SorteioDoVirusDeTeste = (99, 99);
-			_senzuNoCorpoG12.Remove(p.Id);
-			foreach (BodyPart parte in p.Combate.Corpo.Partes.ToList())
-				if (!parte.Decepado && !parte.Aninhado) p.Combate.Ferir(parte, 30, false);
-			p.Combate.SincronizarVida();
-			p.Ficha.Ki = 1;
-			double ferido = p.Combate.Corpo.Vida();
-			Tomar(p, Sintetizador.Mike);
-			bool esperando = _esperasParadas.ContainsKey(p.Id) && p.Mochila.Quantos(Sintetizador.Mike) == 1;
-			Passar(Sintetizador.SegundosParado + 0.5);
-			AfirmarV21("o ANTIVIRUS MIKE pede dez segundos parado e sem apanhar (`\"You must stand still and cannot take damage for 10 seconds!\"`), e no fim cura a vida e enche o Ki e o vigor -- deixando no corpo as doses de um remedio de cura (`usr.Senzu = 4`)",
-					   esperando && p.Combate.Corpo.Vida() > ferido + 1 && Math.Abs(p.Ficha.Ki - p.Ficha.MaxKi) < 1e-6
-					   && p.Mochila.Quantos(Sintetizador.Mike) == 0 && _senzuNoCorpoG12.GetValueOrDefault(p.Id) == 4,
-					   $"esperando {esperando}; vida {ferido:0.#} -> {p.Combate.Corpo.Vida():0.#}; Ki {p.Ficha.Ki:0}/{p.Ficha.MaxKi:0}; doses {_senzuNoCorpoG12.GetValueOrDefault(p.Id)}");
-		}
-		finally
-		{
-			Sintetizador.SemPedirTecnologiaDeTeste = Sintetizador.VirusRepeteDeTeste = Sintetizador.MutacaoInofensivaDeTeste = false;
-			SorteioDoVirusDeTeste = null;
-			LsdNuncaMataDeTeste = ContagioSemPeerDeTeste = false;
-			AdiantoDoRelogioDeTeste = relogioDeAntes;
-			foreach (Obra o in obras) _noChao.Remove(o);
-			foreach (ServerPlayer corpo in corpos) { _esperasParadas.Remove(corpo.Id); _senzuNoCorpoG12.Remove(corpo.Id); }
-			DesfazerV2([.. corpos]);
-			LimparTudoDaBancada();
-		}
-	}
-
-	// =====================================================================
-	// X8) OS KITS DO ANDROIDE DE ABSORCAO, E O TANQUE QUE NAO O CURA -- o lote T5c (regra do dono, 2026-10-13)
+	// X8) OS KITS DO ANDROIDE DE ABSORCAO, E O TANQUE QUE NAO O CURA -- o lote T5c (regra do dono, 2026-10-13); e (2026-10-26) o ANDROID
+	// UPGRADE, que solta o banco de potencial dele (o pedido 95c)
 	// =====================================================================
 	private void OsKitsDeAndroideV21()
 	{
@@ -2283,7 +2059,7 @@ public sealed partial class GameServer
 
 		List<string> Fazer(ServerPlayer quem, string acao, string arg) => Ouvir(() => ComandoDeItem(quem, "item_" + acao, arg));
 		bool Disse(List<string> falas, string trecho) => falas.Exists(f => f.Contains(trecho, StringComparison.OrdinalIgnoreCase));
-		void Passar(double segundos) { AdiantoDoRelogioDeTeste += (long)(segundos * 1000); TickDoSintetizador(1.0); }
+		void Passar(double segundos) { AdiantoDoRelogioDeTeste += (long)(segundos * 1000); TickDasEsperasParadas(); }
 		bool Igual(double a, double b) => Math.Abs(a - b) < 1e-9;
 		double Vida(ServerPlayer quem) => quem.Combate!.Corpo.Vida();
 		void Ferir(ServerPlayer quem, double dano)
@@ -2379,6 +2155,41 @@ public sealed partial class GameServer
 					   refez && refezODoOutro && Disse(noOutro, "Caido") && Disse(nadaPraRefazer, "não há membro perdido")
 					   && Disse(perdidoDeVez, "não há membro perdido") && absorvedor.Mochila.Quantos(KitsDeAndroide.Mecanico) == 1,
 					   $"refez o proprio {refez}; refez o do caido {refezODoOutro}; kits {absorvedor.Mochila.Quantos(KitsDeAndroide.Mecanico)} | {string.Join(" | ", noOutro)} | {string.Join(" | ", nadaPraRefazer)} | {string.Join(" | ", perdidoDeVez)}");
+
+			// ---------------------------------------------------------------- (2026-10-26) o upgrade -- o pedido 95c do dono
+			// O banco do androide de absorcao so se solta pelo Android Upgrade: dez segundos parado, 1x o banco, a hora de recarga dos
+			// liberadores. O humano nao o usa (o potencial dele se solta pelos caminhos de sempre), e a segunda vez dentro da hora e recusada
+			// sem gastar o item. Tres afirmacoes, uma por porta (o 95c-A, o B e o C), pra o mutante de duas trocas dizer qual caiu.
+			var fa = absorvedor.Ficha;
+			fa.hiddenpotential = 1_000;
+			fa.liberarPotencialEm = 0;
+			double bpAntesDoUpgrade = fa.BP;
+			absorvedor.Mochila.Guardar(KitsDeAndroide.Upgrade);
+			humano.Mochila.Guardar(KitsDeAndroide.Upgrade);
+			humano.Ficha.hiddenpotential = 1_000;
+			humano.Ficha.liberarPotencialEm = 0;
+			List<string> humanoNao = Fazer(humano, KitsDeAndroide.AcaoUpgrade, KitsDeAndroide.Upgrade);
+			Fazer(absorvedor, KitsDeAndroide.AcaoUpgrade, KitsDeAndroide.Upgrade);
+			bool esperandoUpgrade = _esperasParadas.ContainsKey(absorvedor.Id) && absorvedor.Mochila.Quantos(KitsDeAndroide.Upgrade) == 1;
+			Passar(KitsDeAndroide.SegundosParado + 0.5);
+			bool soltou = Igual(fa.BP, bpAntesDoUpgrade + 1_000 * Jandirus.Core.Stats.GainKnobs.LiberaOUpgrade) && fa.hiddenpotential == 0
+						  && absorvedor.Mochila.Quantos(KitsDeAndroide.Upgrade) == 0;
+			AfirmarV21("**95c-A O ANDROID UPGRADE SOLTA O BANCO DO ANDROIDE DE ABSORCAO** (o pedido do dono: *\"so libera com tech q da um 'upgrade' neles\"*): dez segundos parado e sem apanhar, o banco inteiro (1x) vai pro BP base, e o item se gasta",
+					   esperandoUpgrade && soltou,
+					   $"esperando {esperandoUpgrade}; BP {bpAntesDoUpgrade:0} -> {fa.BP:0}, banco {fa.hiddenpotential:0}, itens {absorvedor.Mochila.Quantos(KitsDeAndroide.Upgrade)}");
+
+			bool comRecarga = fa.liberarPotencialEm > NowMs();
+			fa.hiddenpotential = 500;
+			absorvedor.Mochila.Guardar(KitsDeAndroide.Upgrade);
+			List<string> naHora = Fazer(absorvedor, KitsDeAndroide.AcaoUpgrade, KitsDeAndroide.Upgrade);
+			bool recusouNaHora = !_esperasParadas.ContainsKey(absorvedor.Id) && absorvedor.Mochila.Quantos(KitsDeAndroide.Upgrade) == 1
+								 && fa.hiddenpotential == 500 && Disse(naHora, "assenta");
+			AfirmarV21("**95c-B ...com a HORA DE RECARGA dos liberadores**: a segunda vez dentro da hora e recusada, sem gastar o item nem o banco",
+					   comRecarga && recusouNaHora, $"recarga marcada {comRecarga}; recusou {recusouNaHora} | {string.Join(" | ", naHora)}");
+
+			AfirmarV21("**95c-C ...e SO O ANDROIDE DE ABSORCAO o usa**: o humano ouve que o potencial dele se solta pelos caminhos de sempre, e fica com o item e com o banco",
+					   Disse(humanoNao, "androide de absorção") && humano.Mochila.Quantos(KitsDeAndroide.Upgrade) == 1 && humano.Ficha.hiddenpotential == 1_000,
+					   $"{string.Join(" | ", humanoNao)}; item {humano.Mochila.Quantos(KitsDeAndroide.Upgrade)}, banco {humano.Ficha.hiddenpotential:0}");
 		}
 		finally
 		{

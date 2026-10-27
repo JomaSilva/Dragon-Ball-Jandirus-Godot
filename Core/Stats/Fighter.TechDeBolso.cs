@@ -17,16 +17,24 @@ public partial class Fighter
 	/// </summary>
 	public int drenoVestido;
 
-	// ---- (v0.2.1, lote T5) o que o sintetizador de virus escreve -- ver `Jandirus.Core.Tech.Sintetizador` ----
-	/// <summary>`mob/var/Mutations` (`Mutations.dm:1`): tira um fio de vida por segundo, passa pelo golpe, e zera na morte.</summary>
-	public int Mutations;
-
-	/// <summary>`usr.VirusesConsumed`: os virus que este corpo ja tomou (cada um so uma vez).</summary>
-	public List<string> VirusesConsumed = [];
-
-	/// <summary>Ate quando dura o reforco do LSD (ms do relogio do servidor; zero = nao ha). O `TempBuff(..., 500)` de la.</summary>
+	// ---- (2026-10-26) o sintetizador de virus saiu do jogo (o pedido 98) -- ver `Jandirus.Core.Tech.Sintetizador` ----
+	/// <summary>
+	/// Ate quando durava o reforco do LSD (ms; zero = nao ha). Ficou SO PRA DESFAZER O DE QUEM SALVOU SOB EFEITO: o relogio que o tirava
+	/// saiu com o sintetizador -- ver <see cref="TirarOLsdAntigo"/>.
+	/// </summary>
 	public long LsdAte;
 
-	/// <summary>A hora marcada pela agulha da Insta-Death (ms do relogio do servidor; zero = nao ha).</summary>
-	public long MorteMarcadaEm;
+	/// <summary>
+	/// (2026-10-26) O LSD QUE FICOU NO SANGUE de quem salvou sob efeito antes de o sintetizador sair do jogo: o login desfaz o reforco (o
+	/// `Tmagi` e o `Tkiregen`, mais 1 cada um) e zera a marca. Sem isto o reforco de cinquenta segundos ficava pra sempre. Devolve se havia
+	/// o que desfazer.
+	/// </summary>
+	public bool TirarOLsdAntigo()
+	{
+		if (LsdAte == 0) return false;
+		LsdAte = 0;
+		Tmagi -= 1;
+		Tkiregen -= 1;
+		return true;
+	}
 }

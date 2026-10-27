@@ -74,9 +74,17 @@ public partial class GameServer
 		vitima.UltimoAgressor = agressor.Id;
 		vitima.RancorAte = NowMs() + (long)(Jandirus.Core.Npc.Povoamento.SegundosDeRancor * 1000);
 
-		// (v0.2.1) QUEM APANHA DE PERTO DE UM MUTANTE PODE SE CONTAMINAR -- ver `ContagiarPeloGolpe`
-		// (`GameServer.Sintetizador.cs`). Sai na primeira linha pra quem nao tem mutacao: e o caso de quase todo golpe.
-		ContagiarPeloGolpe(vitima, agressor);
+		// (2026-10-26) O NPC QUE NAO E VILAO REVIDA NO LETAL quem o enfrenta FORA DO SPAR -- o pedido 83 do dono: *"npcs q nao sao viloes lutarem
+		// no letal caso vc lute com eles fora do modo spar"*. O NPC (o corpo com papel) que nao e vilao, de golpe desligado, apanhando de quem
+		// NAO e NPC (o jogador -- e o clone dele) de golpe letal, liga o dele pelo tempo do rancor -- e o desliga sozinho quando o rancor passa
+		// (`LerPercepcao`). Quem ja nasceu letal (o chefe de saga) nao muda; quem bate no spar (o golpe desligado) continua apanhando de um NPC
+		// que derruba e nao mata. O ANIMAL FICA DE FORA (o pedido fala dos NPCs; a caca no letal continua como era).
+		if (vitima.Papel != null && !EhAnimal(vitima) && !EhVilao(vitima) && agressor.Papel == null && agressor.Combate?.Letal == true && !RevideNaoLetalDeTeste
+			&& vitima.Combate is { } cv && (!cv.Letal || vitima.LetalDoRevideAte > 0))
+		{
+			cv.Letal = true;
+			vitima.LetalDoRevideAte = vitima.RancorAte;
+		}
 
 		// ============================ E BATERAM NUM CORPO LARGADO? ELE ACORDA ============================
 		// *"se elas TE BATEREM vc ACORDA da meditacao pro corpo real"* / *"caso alguem te bata vc volta
@@ -346,6 +354,9 @@ public partial class GameServer
 		// naves (`CascoIsola`), derivada como a de cima: largar o leme derruba o escudo sem linha pra lembrar. Ver `GameServer.Leme.cs`.
 		pl.Combate.AoLeme = () => !LemeApanhaDeTeste && CascoIsola(pl);
 
+		// (2026-10-26) E QUEM RESPONDE "ESTE CORPO ESTA NA ZONA SEGURA DO BERCO?" -- derivada como as de cima. Ver `NaZonaSegura`.
+		pl.Combate.NaZonaSegura = () => NaZonaSegura(pl);
+
 		// E QUEM RESPONDE "ESTE CORPO ESTA SENDO ARREMESSADO AGORA?" -- o `canfight -= 1` do efeito de
 		// knockback do DM (`Movement Effects.dm:40`), lido pelo `testAttack()` (`attack_bck.dm:175`).
 		//
@@ -514,6 +525,9 @@ public partial class GameServer
 		a.Ficha.Ki = Math.Max(0, a.Ficha.Ki - Cansaco.KiDoSoco(a.Ficha, pesoDoGolpe));
 	}
 
+	/// <summary>DEFEITO INJETADO (`--naoletalteste`): o habitante revida no golpe de sempre, desligado -- o jogo de antes de 2026-10-26. Falso em jogo, sempre.</summary>
+	internal static bool RevideNaoLetalDeTeste;
+
 	private void Atacar(ServerPlayer a, Protocol.Golpe golpe)
 	{
 		CombatState ca = a.Combate;
@@ -524,6 +538,8 @@ public partial class GameServer
 		// que cura prende os golpes por um segundo (`Regenerador.SegundosSemGolpear`). Quem quer brigar sai
 		// do tanque -- ou o desliga.
 		if (NowMs() < a.NoTanqueAte) { Avisar(a, "o regenerador está trabalhando em você: sem golpes até o pulso passar."); return; }
+		// (2026-10-26) NA ZONA SEGURA DO BERCO NINGUEM LUTA (o pedido 82) -- ver `NaZonaSegura`.
+		if (NaZonaSegura(a)) { Avisar(a, FraseDaZonaSegura); return; }
 
 		// ============================ COM ALGUEM NA MAO, O SOCO VIRA ESTRANGULAMENTO ============================
 		// `attack_bck.dm:43-57`: no original o `Attack()` com um `grabbee` de pe **nao soca** -- ele
@@ -1795,6 +1811,10 @@ public partial class GameServer
 	private static void MandarAtributos(ServerPlayer pl)
 	{
 		Fighter f = pl.Ficha;
+		// (2026-10-26) O MUNDO DO LUGAR, pra reputacao do povo dele (o pedido 106) -- nulo no espaco, num interior e no Outro Mundo. Pela
+		// instancia porque este funil e estatico (a ficha da v030 o chama de um estatico), e o livro-caixa da reputacao e do mundo.
+		GameServer? mundo = Instance;
+		var planetaDaReputacao = mundo?.CorpoDaZona(pl.Zone);
 		var a = new Protocol.AtributosState
 		{
 			PhysOff = (float)f.Rphysoff, PhysDef = (float)f.Rphysdef,
@@ -1861,6 +1881,11 @@ public partial class GameServer
 			Aclimatacao = (float)Math.Max(f.gravBuff, 1),
 			// (2026-10-23) A ASCENSAO, o `BPBoost` que o escritor dela poe (`GameServer.Ascensao.cs`) -- a linha "Ascensão" da aba de Formas.
 			Ascensao = (float)f.BPBoost,
+			// (2026-10-26) O KARMA E A REPUTACAO NO PLANETA DE AGORA -- o pedido 106 do dono: a linha "Karma" da aba Stats e o cartao "Reputação"
+			// da aba World. A reputacao e da CONTA com o povo deste mundo (o livro-caixa `ReputacaoDe`); zero pra quem nunca fez nada aqui.
+			Karma = (short)Math.Clamp(pl.Karma, short.MinValue, short.MaxValue),
+			TemReputacao = planetaDaReputacao.HasValue,
+			Reputacao = planetaDaReputacao is { } planeta && mundo != null ? (float)mundo.ReputacaoDe(planeta.Nome, pl.Conta) : 0f,
 			PesoMult = (float)Math.Max(f.weight, 1),
 			ZonaMult = (float)f.zoneGainMult,
 			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
@@ -1900,7 +1925,8 @@ public partial class GameServer
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
 				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com
 				   // resolucao fina este pacote lento sairia 30x por segundo pra quem estivesse atirando.
-				   + "|" + string.Join(',', a.Pericias.Select(p => p.ToString("0.#")));
+				   + "|" + string.Join(',', a.Pericias.Select(p => p.ToString("0.#")))
+				   + $"|{a.Karma}|{a.TemReputacao}|{a.Reputacao:0}";   // (2026-10-26) o karma e a reputacao: inteiros na tela, inteiros aqui
 		if (sig == pl.SigAtributos) return;
 		pl.SigAtributos = sig;
 

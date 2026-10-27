@@ -210,59 +210,6 @@ public static class Desejos
 	public static double XpDoDesejoDeTecnologia(double techskill) => 100 * techskill * techskill;
 
 	// =====================================================================
-	// "AUMENTAR O MEU POTENCIAL" -- regra do dono (2026-10-21), sem par no `WishTable.dm`
-	// =====================================================================
-	// Nao e o "Liberar o meu potencial" (que DESPERTA o potencial, uma vez por vida): este SOMA no estoque
-	// `hiddenpotential`, na mesma unidade da idade -- um ano de vida soma `BP * UPMod`
-	// (`Fighter.SomarPotencialOcultoDaIdade`, `Aging.dm:125-139`), e o desejo soma uma FRACAO de um ano, pelo BP
-	// de agora. O freio e a propria fracao: a conta da idade tambem nao tem teto, e o `CapHiddenPotential`
-	// (`TopBP * 5`) so roda com `train_med_to_hp` ligado, um bool que ninguem liga -- o desejo nao depende dele.
-	// As fracoes sao as de partida do dono, pra ajustar aqui se ele achar pouco ou muito.
-
-	/// <summary>A fracao de um ano do SUPER SHENRON -- a maior de todas.</summary>
-	public const double FracaoDoAnoNoSuper = 1.0 / 4;
-
-	/// <summary>
-	/// A fracao das BLACK STAR -- sempre a segunda, numero FIXO. Ela NAO leva os 5x dos outros desejos das Black Star
-	/// (`EsferasNegras.MultiplicadorDaBlackStar`): cinco quartos de ano de uma vez e o absurdo que o dono vetou.
-	/// </summary>
-	public const double FracaoDoAnoNaBlackStar = 1.0 / 6;
-
-	/// <summary>A fracao do set mais fraco (Shenron de jogador fraco). Ver <see cref="FracaoDoAnoDoSet"/>.</summary>
-	public const double FracaoDoAnoMinima = 1.0 / 25;
-
-	/// <summary>A fracao do set mais forte. Fica ABAIXO da Black Star de proposito.</summary>
-	public const double FracaoDoAnoMaxima = 1.0 / 8;
-
-	/// <summary>O poder do set (o `WishPower`) em que a fracao e a minima, e em que ela chega na maxima.</summary>
-	public const double PoderDaFracaoMinima = 1e4, PoderDaFracaoMaxima = 1e9;
-
-	/// <summary>
-	/// DEFEITO INJETADO (bancada `--desejoteste`): a forca do set nao conta -- todo Shenron e Porunga da a fracao
-	/// minima. Lido por <see cref="FracaoDoAnoDoSet"/>. Falso em jogo, sempre.
-	/// </summary>
-	public static bool FracaoSemForcaDoSetDeTeste;
-
-	/// <summary>
-	/// QUANTO DE UM ANO O SHENRON OU O PORUNGA SOMAM, pela forca do set: de <see cref="FracaoDoAnoMinima"/> ate
-	/// <see cref="FracaoDoAnoMaxima"/>, em ESCALA LOGARITMICA do poder entre <see cref="PoderDaFracaoMinima"/> e
-	/// <see cref="PoderDaFracaoMaxima"/>. O `PoderVerdadeiro` nao entra direto: ele e quadrado do log e um criador
-	/// forte o estouraria. O eterno de Namek (2 milhoes) da perto de 1/13.
-	/// </summary>
-	public static double FracaoDoAnoDoSet(double poderDoSet)
-	{
-		if (FracaoSemForcaDoSetDeTeste) return FracaoDoAnoMinima;
-		double lo = Math.Log10(PoderDaFracaoMinima), hi = Math.Log10(PoderDaFracaoMaxima);
-		double t = (Math.Log10(Math.Max(poderDoSet, 1)) - lo) / (hi - lo);
-		t = Math.Clamp(t, 0, 1);
-		return FracaoDoAnoMinima + (FracaoDoAnoMaxima - FracaoDoAnoMinima) * t;
-	}
-
-	/// <summary>O potencial que o desejo soma: a mesma conta de um ano da idade, vezes a fracao.</summary>
-	public static double PotencialDoDesejo(double bp, double upMod, double fracaoDoAno) =>
-		Math.Max(bp, 0) * Math.Max(upMod, 0) * Math.Max(fracaoDoAno, 0);
-
-	// =====================================================================
 	// A TABELA
 	// =====================================================================
 	/// <summary>
@@ -380,14 +327,9 @@ public static class Desejos
 		// ================================================================================================================
 		new() { Id = "potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-13 e 2026-10-15 -- sem par no WishTable.dm",
 				Nome = "Liberar o meu potencial", Patamar = 6,
-				Desc = "O dragão desperta o potencial que dorme em você (uma vez por vida). Um Namekuseijin com o poder do ki divino ganha também o Potential Unleashed e o Orange." },
-
-		// (2026-10-21, regra do dono) NAO E O DE CIMA: este soma potencial escondido, uma fracao de um ano de vida pela forca
-		// do set -- `FracaoDoAnoDoSet`, e nas Black Star a fracao fixa delas. No mesmo patamar do "Liberar". Pede-se quantas
-		// vezes houver pedido.
-		new() { Id = "aumentar_potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-21 -- sem par no WishTable.dm",
-				Nome = "Aumentar o meu potencial", Patamar = 6,
-				Desc = "O dragão soma ao seu potencial escondido uma parte de um ano de vida -- quanto mais forte o set, maior a parte." },
+				// (2026-10-26) o banco do potencial: o desejo o solta 1,5x (`GainKnobs.LiberaODesejo`); o "Aumentar o meu potencial", que
+				// somava uma parte de um ano de vida no estoque antigo, saiu do jogo com ele (o dono)
+				Desc = "O dragão solta o potencial que você guardou treinando e lutando: 1,5x do que está guardado. Um Namekuseijin com o poder do ki divino ganha também o Potential Unleashed e o Orange." },
 
 		// -------------------------------------------------- TrueWishPower >= 7 E Wishs <= 2
 		new() { Id = "reviver_todos", Dm = "Revive-All", Linha = "WishTable.dm:238-251",
@@ -489,11 +431,6 @@ public static class Desejos
 		new() { Id = "sdb_reviver", Dm = "Reviver um guerreiro caido", Linha = "ProceduralSpace.dm:1606-1618",
 				Nome = "Reviver um guerreiro caído", Alvo = AlvoDoDesejo.Morto,
 				Desc = "Traz um morto de volta. Nem o Super Shenlong reverte a morte de velhice." },
-
-		// (2026-10-21, regra do dono) a MAIOR fracao de um ano de potencial (`FracaoDoAnoNoSuper`), pro BENEFICIARIO, se houver.
-		new() { Id = "sdb_aumentar_potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-21 -- sem par no ProceduralSpace.dm",
-				Nome = "Aumentar o meu potencial",
-				Desc = "Um quarto de um ano de vida somado ao potencial escondido -- a maior parte que um dragão dá. Pro BENEFICIÁRIO, se houver um." },
 
 		new() { Id = "sdb_supremo", Dm = "Strongest in the Universe", Linha = "ProceduralSpace.dm:1631-1637",
 				Nome = "O Mais Forte do Universo (a VIDA por poder)",

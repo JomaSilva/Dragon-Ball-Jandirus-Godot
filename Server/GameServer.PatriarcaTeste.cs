@@ -579,18 +579,44 @@ public sealed partial class GameServer
 
 		ServerPlayer discipulo = ForjarPt("Dende", namek, g.Pos + new Vec2(t, 0), "bancada_pt_discipulo");
 		SomarReputacao(povo, discipulo, Jandirus.Core.Social.Reputacao.LimiarDeMalvisto + 1, "bancada do patriarca");
+		// (2026-10-26) O GURU SOLTA O BANCO DO POTENCIAL 1,25x (o dono, o pedido 95): mil guardados viram 1.250 de BP base
+		discipulo.Ficha.hiddenpotential = 1000;
 		double bp0 = discipulo.Ficha.BP;
 		List<string> desperta = Ouvir(() => ComandoDeInteracao(discipulo, Patriarca.VerboFalar, ""));
-		AfirmarPt("**O NEUTRO DESPERTA** (:232-234 e o `UnlockPotential.dm`): com a reputacao logo acima do piso, o potencial desperta e o BP sobe -- com as falas do DM: \"Guru poe a mao sobre a cabeca de...\", o ganho e \"Desperte... AGORA!\"",
-				  discipulo.Ficha.unlockPotential >= 1 && discipulo.Ficha.BP > bp0
-				  && Disse(desperta, $"{g.Name} põe a mão sobre a cabeça de {discipulo.Name}") && Disse(desperta, "seu potencial desperta")
+		AfirmarPt("**O NEUTRO DESPERTA** (:232-234): com a reputacao logo acima do piso, o BANCO DO POTENCIAL sai 1,25x (o dono, 2026-10-25) -- mil guardados, +1.250 de BP base, o banco zera e a hora de recarga comeca --, com as falas do DM: \"Guru poe a mao sobre a cabeca de...\" e \"Desperte... AGORA!\"",
+				  discipulo.Ficha.unlockPotential >= 1 && Math.Abs(discipulo.Ficha.BP - (bp0 + 1250)) < 1e-6 && discipulo.Ficha.hiddenpotential == 0
+				  && discipulo.Ficha.liberarPotencialEm > NowMs() + Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs - 60_000
+				  && Disse(desperta, $"{g.Name} põe a mão sobre a cabeça de {discipulo.Name}") && Disse(desperta, "o potencial que você guardou se liberta")
 				  && Disse(desperta, "Desperte... AGORA!"),
-				  $"reputacao {ReputacaoDe(povo, discipulo.Conta)}; BP {bp0:N0} -> {discipulo.Ficha.BP:N0} | {Ultimos(desperta)}");
+				  $"reputacao {ReputacaoDe(povo, discipulo.Conta)}; BP {bp0:N0} -> {discipulo.Ficha.BP:N0}, banco {discipulo.Ficha.hiddenpotential:0} | {Ultimos(desperta)}");
 		double bp1 = discipulo.Ficha.BP;
+		discipulo.Ficha.hiddenpotential = 400;
 		List<string> deNovo = Ouvir(() => ComandoDeInteracao(discipulo, Patriarca.VerboFalar, ""));
-		AfirmarPt("...e DE NOVO, nao -- uma vez na vida (:229-231): \"Seu potencial ja foi despertado, jovem guerreiro. O resto do caminho e seu.\", e o BP fica",
-				  Disse(deNovo, "Seu potencial já foi despertado, jovem guerreiro") && discipulo.Ficha.BP == bp1,
+		AfirmarPt("...e DE NOVO DENTRO DA HORA, nao (o dono: \"1h de recarga\"): o potencial \"ainda se assenta\", e o BP e o banco ficam",
+				  Disse(deNovo, "ainda se assenta") && discipulo.Ficha.BP == bp1 && discipulo.Ficha.hiddenpotential == 400,
 				  $"BP {bp1:N0} -> {discipulo.Ficha.BP:N0} | {Ultimos(deNovo)}");
+		AdiantoDoRelogioDeTeste += Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs;
+		List<string> depoisDaHora;
+		try { depoisDaHora = Ouvir(() => ComandoDeInteracao(discipulo, Patriarca.VerboFalar, "")); }
+		finally { AdiantoDoRelogioDeTeste -= Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs; }
+		AfirmarPt("**...E PASSADA A HORA, DE NOVO** (era uma vez na vida): o banco novo (400) sai 1,25x, +500",
+				  Math.Abs(discipulo.Ficha.BP - (bp1 + 500)) < 1e-6 && discipulo.Ficha.hiddenpotential == 0,
+				  $"BP {bp1:N0} -> {discipulo.Ficha.BP:N0} | {Ultimos(depoisDaHora)}");
+
+		// O ANDROIDE DE ABSORCAO GUARDA, MAS NAO SOLTA PELO GURU (o dono: "so libera com tech q da um upgrade ... nao pelos metodos tradicionais")
+		ServerPlayer maquina = ForjarPt("Dezenove", namek, g.Pos + new Vec2(0, t), "bancada_pt_androide");
+		SomarReputacao(povo, maquina, Jandirus.Core.Social.Reputacao.LimiarDeMalvisto + 1, "bancada do patriarca");
+		maquina.Ficha.AndroideAbsorcao = true;
+		maquina.Ficha.hiddenpotential = 1000;
+		double bpDaMaquina = maquina.Ficha.BP;
+		List<string> daMaquina = Ouvir(() => ComandoDeInteracao(maquina, Patriarca.VerboFalar, ""));
+		AfirmarPt("**O ANDROIDE DE ABSORCAO NAO SOLTA O BANCO PELO GURU**: ele ouve que so um upgrade de tecnologia o solta, e o BP e o banco ficam",
+				  Disse(daMaquina, "upgrade de tecnologia") && maquina.Ficha.BP == bpDaMaquina && maquina.Ficha.hiddenpotential == 1000, Ultimos(daMaquina));
+		AbsorcaoLiberaDeTeste = true;
+		try { Ouvir(() => ComandoDeInteracao(maquina, Patriarca.VerboFalar, "")); }
+		finally { AbsorcaoLiberaDeTeste = false; }
+		AfirmarPt("(defeito injetado: o androide de absorcao solta pelos caminhos de sempre) o banco dele sai -- a regua de cima REPROVA",
+				  maquina.Ficha.hiddenpotential == 0 && maquina.Ficha.BP > bpDaMaquina);
 
 		ServerPlayer aprendiz = ForjarPt("Cargo", namek, g.Pos + new Vec2(0, -t), "bancada_pt_aprendiz");
 		List<string> comEleCaido;

@@ -179,6 +179,40 @@ public static class FormasBench
 				  Math.Abs(Catalogo.DrenoPorSegundo("ssj2", ssj2a10, 0.10) - hoje) < 1e-12);
 		}
 		finally { Catalogo.DrenoSemLiberacaoDeTeste = false; }
+
+		// ============================ (2026-10-26) O DRENO EM PONTOS DE KI -- o pedido 93 do dono ============================
+		// A forma tira os PONTOS que tirava de quem tem o BP em que ela libera, e quem tem mais Ki paga uma fatia menor (abaixo da
+		// referencia, a de sempre). Ver `Catalogo.PontosDeDrenoPorSegundo`.
+		// ==================================================================================================================
+		foreach (double bp in new[] { 1.5e6, 1e9, 1.5e10, 1e12 })
+		{
+			var ficha = new Jandirus.Core.Stats.Fighter { BP = bp, KiUnlockPercent = 1 };
+			ficha.UpdateMaxKi();
+			Perto($"o Ki maximo de quem tem {bp:G3} de BP e o teto do Ki base da FICHA (`Fighter.UpdateMaxKi`, com o Ki desperto)",
+				  Catalogo.KiMaximoDoBp(bp), ficha.baseKiMax);
+		}
+		Perto("o BP de referencia do SSJ1 e a PORTA dele", Catalogo.BpDeReferencia(Catalogo.Def("ssj1")!), Catalogo.PortaSsj1);
+		Perto("...o do SSG, o do DESPERTAR do ki divino (1 bilhao)", Catalogo.BpDeReferencia(Catalogo.Def("ssg")!), DespertarDivino.BpBaseDeFabrica);
+		Perto("...o do Limit Breaker, a MAIOR das duas portas (a do SSJ4)", Catalogo.BpDeReferencia(Catalogo.Def("ssj4_limit_breaker")!), Catalogo.PortaSsj4);
+		Perto("...e o do Mistico (concedido pelo ritual), o do ki divino", Catalogo.BpDeReferencia(Catalogo.Def("mistico")!), DespertarDivino.BpBaseDeFabrica);
+		FormaDef ssj1Def = Catalogo.Def("ssj1")!;
+		double ref1 = Catalogo.KiDeReferencia(ssj1Def);
+		Perto("o Ki de referencia do SSJ1 e o de quem tem a porta dele, no tanque do Super Saiyajin (2x)", ref1, Catalogo.KiMaximoDoBp(Catalogo.PortaSsj1) * 2);
+		double pts1 = Catalogo.PontosDeDrenoPorSegundo("ssj1", zero);
+		Perto("o SSJ1 cru custa os PONTOS da fatia de hoje sobre o Ki de referencia (pontos puros, pra todos: o dono)", pts1, 0.025 * 0.32 * ref1, 1e-6);
+		Perto("...e a barra de poder e a maestria entram como antes (o SSJ2 a 10% com a barra em 10% cobra os pontos do DOMINADO)",
+			  Catalogo.PontosDeDrenoPorSegundo("ssj2", ssj2a10, 0.10), dominado * Catalogo.KiDeReferencia(Catalogo.Def("ssj2")!), 1e-6);
+		Perto("as divinas do bio custam os pontos das irmas -- a Golden o do SSG e a MAX o do Blue Evolution (o dono: \"Mesma coisa do god e "
+			  + "blue evolution atual, so q usando o novo sistema de ki drain\")",
+			  Catalogo.PontosDeDrenoPorSegundo("golden_perfect", zero) * 1e3 + Catalogo.PontosDeDrenoPorSegundo("bio_max", zero),
+			  Catalogo.PontosDeDrenoPorSegundo("ssg", zero) * 1e3 + Catalogo.PontosDeDrenoPorSegundo("blue_evolution", zero), 1e-6);
+		Console.WriteLine("  A TABELA DO DRENO EM PONTOS (o pedido 93): forma | BP em que libera | Ki de referencia | pontos/s por degrau de maestria");
+		foreach (FormaDef f in Catalogo.Todas.Where(f => f.Id != Catalogo.IdBase && f.Dreno.Any(x => x > 0)))
+		{
+			double kr = Catalogo.KiDeReferencia(f);
+			Console.WriteLine($"    {f.Id,-32} {Catalogo.BpDeReferencia(f),10:G3} {kr,10:N0}   "
+							+ string.Join(" / ", f.Dreno.Select(x => (x * 0.32 * kr).ToString("N1"))));
+		}
 		Console.WriteLine();
 	}
 

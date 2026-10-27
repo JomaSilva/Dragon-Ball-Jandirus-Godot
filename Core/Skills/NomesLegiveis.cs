@@ -53,7 +53,7 @@ public static class NomesLegiveis
 		["mana_cap"] = "reserva de mana",
 		["mana_cap_mod"] = "reserva de mana",
 		["BP"] = "BP",
-		["hiddenpotential"] = "potencial oculto",
+		["hiddenpotential"] = "potencial guardado",   // (2026-10-26) o banco do potencial -- o nome do DM ficou na ficha
 		["relBPmax"] = "ganho de BP",
 
 		// ---- os campos que a genetica resolve no nascimento (o destino dos genes) ----

@@ -35,11 +35,25 @@ public sealed partial class GameServer
 	/// UM TIQUE DE PRODUCAO DA FORMA (`TickDaForma`, o que sobe a maestria pelo funil), com o BP base e a maestria de partida da foto, e o
 	/// que o servidor disse ao jogador. A ficha lenta sai de novo (a aba le a maestria dela).
 	/// </summary>
+	/// <summary>
+	/// (2026-10-26) UM TANQUE QUE AGUENTA <paramref name="segundos"/> DA FORMA DE AGORA -- o dreno virou PONTOS de Ki (o pedido 93), e um tique
+	/// longo de bancada (um minuto de Super Majin) custa mais que o tanque de fabrica de uma ficha de teste: a forma cairia no meio dele.
+	/// O Ki base sobe ate o tanque da forma caber o dreno do tique dez vezes; so cresce, e so em ficha de bancada.
+	/// </summary>
+	private void AguentarOTiqueDeTeste(ServerPlayer pl, double segundos)
+	{
+		double custo = pl.Forma.PontosDeDrenoPorSegundo() * Math.Max(segundos, 0) * Math.Max(pl.Racial.Efeito.Dreno, 1);
+		if (custo <= 0 || pl.Ficha.MaxKi >= custo * 10) return;
+		pl.Ficha.baseKi *= custo * 10 / Math.Max(pl.Ficha.MaxKi, 1e-9);
+		pl.Ficha.Statify();
+	}
+
 	internal (double Maestria, double Mult, string Falas) PalcoSM_Tique(int id, double maestria, double bp, double segundos)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return (-1, 0, "corpo fora do mundo");
 		pl.Ficha.BP = bp;
 		pl.Forma.Maestria.Por(SuperMajin.Id, maestria);
+		AguentarOTiqueDeTeste(pl, segundos);   // (2026-10-26) o dreno em pontos nao derruba a forma no meio do tique -- ver la
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		pl.CenaSegundos = 0;
 		List<string> falas = Ouvir(() => TickDaForma(pl, segundos));

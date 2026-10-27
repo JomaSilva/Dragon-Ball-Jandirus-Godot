@@ -908,36 +908,34 @@ public sealed partial class GameServer
 	// =====================================================================
 	// 14. UNLOCK POTENTIAL -- `Magic/UnlockPotential.dm:10-52`
 	// =====================================================================
-	/// <summary>`UP_BASE_PCT` e `UP_HIDDEN_PCT` (`UnlockPotential.dm:2-3`).</summary>
-	private const double PotencialBasePctG11 = 0.25, PotencialOcultoPctG11 = 0.5;
-
 	/// <summary>Um minuto pra responder a oferta -- o mesmo prazo do `Restore_Youth` (G8).</summary>
 	private const long PrazoDaOfertaDePotencialMsG11 = 60_000;
 
 	/// <summary>
-	/// A OFERTA: o verb do DM abre `input("Who?") as mob in view(1)` (que INCLUI o proprio usuario)
-	/// e depois pergunta AO ALVO se ele quer (`:12-19`). Aqui o alvo e o marcado a um tile; sem
-	/// marcado, e voce mesmo -- e a resposta vem pelos verbs `potencial_aceitar`/`potencial_recusar`
-	/// da aba Other (o molde do `Restore_Youth`). Em si mesmo nao ha o que perguntar.
+	/// A OFERTA: o verb do DM abre `input("Who?") as mob in view(1)` e depois pergunta AO ALVO se ele quer (`:12-19`). Aqui o alvo e o
+	/// marcado a um tile, e a resposta vem pelos verbs `potencial_aceitar`/`potencial_recusar` da aba Other (o molde do `Restore_Youth`).
+	///
+	/// (2026-10-26) SO EM OUTRA PESSOA, como no DU (`if(!A || A == usr) return`, `Skills.dm:2281`) -- o dono: *"player pra player 1x, e o
+	/// jogador pode aceitar ou recusar o potencial recebido de outro player"*. O proprio banco se solta pelos outros liberadores; e o que
+	/// impediria a oferta (o androide de absorcao, a recarga, o banco vazio) e dito a quem oferece, antes de o alvo ser perguntado.
 	/// </summary>
 	private void OferecerPotencialG11(ServerPlayer pl)
 	{
 		if (RecusarCaido(pl)) return;
 
 		ServerPlayer? alvo = Marcado(pl);
-		if (alvo != null && Vec2.Distance(alvo.Pos, pl.Pos) > RaioDeUmTileG4)
+		if (alvo == null || alvo == pl)
+		{
+			Avisar(pl, "o Unlock Potential se usa em OUTRA pessoa: marque quem vai receber, a um tile de você.");
+			return;
+		}
+		if (Vec2.Distance(alvo.Pos, pl.Pos) > RaioDeUmTileG4)
 		{
 			Avisar(pl, $"{alvo.Name} precisa estar ao seu lado (um tile).");
 			return;
 		}
-		if (alvo == null || alvo == pl)
-		{
-			if (pl.Ficha.unlockPotential >= 1) { Avisar(pl, "o seu potencial ja foi despertado!"); return; }
-			DespertarPotencialG11(pl, pl);
-			return;
-		}
 		if (!EhPessoa(alvo)) { Avisar(pl, "so gente tem potencial adormecido pra despertar."); return; }
-		if (alvo.Ficha.unlockPotential >= 1) { Avisar(pl, $"o potencial de {alvo.Name} ja foi despertado!"); return; }
+		if (PorQueNaoLibera(alvo, comRecarga: true, proprio: false) is { } recusa) { Avisar(pl, recusa); return; }
 
 		_ofertasDePotencialG11[alvo.Conta] = (pl.Conta, NowMs() + PrazoDaOfertaDePotencialMsG11);
 		_ofertasDeRitual.Remove(alvo.Conta);   // (2026-10-23) um convite so por alvo: o do ritual usa este cartao (RitualDoKaioshin.cs)
@@ -966,74 +964,94 @@ public sealed partial class GameServer
 			if (ofertante != null) Avisar(ofertante, $"{pl.Name} recusou a sua oferta.");
 			return;
 		}
-		DespertarPotencialG11(pl, ofertante ?? pl);
+		LiberarOPotencial(pl, ofertante ?? pl, GainKnobs.LiberaOJogador, autor: ofertante?.Name ?? o.Quem);
 	}
 
 	/// <summary>
-	/// O DESPERTAR -- `mob/proc/UnlockPotential(rUPMod)` (`UnlockPotential.dm:21-52`), UMA VEZ POR VIDA
-	/// (`if(!unlockPotential)`; a flag persiste na ficha -- memoria "Unlock Potential 1x pra sempre").
-	///
-	///     gained_base   = capcheck(BP * 0.25 * max(UPMod, 1) * awaken)      awaken = 1,8 se Prodigial
-	///     BP           += gained_base
-	///     se hiddenpotential:
-	///        BPRank == 1 ? BPadd += capcheck(hp * 0.1 * awaken)
-	///                    : BPadd += capcheck(hp * (BPRank/5) * awaken)
-	///        gained_hidden = capcheck(hp * 0.5 * awaken); BP += gained_hidden
-	///     kiskill += 0.4
-	///     marco "potential" (1,5x nos ganhos)
-	///
-	/// `rUPMod = max(UPMod, rUPMod)` (`:23`) e calculado e NUNCA usado -- a conta le o `UPMod` do
-	/// proprio alvo. O Potencial de quem oferece nao muda nada; portado como esta.
-	///
-	/// `BPRank` e "quantos jogadores online tem mais BP que eu, mais um" (`Stat Balance.dm:181-190`),
-	/// recalculado aqui na hora sobre quem esta online. O que NAO veio: `Body = 25` e `InclineAge =
-	/// Age/1.1` (o port nao tem `Body` nem `InclineAge`), e o `up_life_bonus` de 15% na expectativa
-	/// de vida (a tabela de idade do port e por raca e nao tem esse bonus).
+	/// POR QUE O BANCO DESTE CORPO NAO SE SOLTA AGORA -- nulo = solta. <paramref name="proprio"/> diz se a frase vai pro dono do corpo
+	/// ("o seu") ou pra quem tenta nele ("o de Fulano"). Ver <see cref="LiberarOPotencial"/>.
 	/// </summary>
-	/// <param name="autor">
-	/// QUEM APARECE NA FRASE como o autor do despertar, quando nao e o <paramref name="quem"/> -- o dragao, no desejo
-	/// "Liberar o meu potencial" (`GameServer.Desejos.DesejoDePotencial`): la quem pede e quem recebe sao o mesmo
-	/// corpo, e a frase diria que ele despertou a si mesmo.
-	/// </param>
-	private void DespertarPotencialG11(ServerPlayer alvo, ServerPlayer quem, string? autor = null)
+	private string? PorQueNaoLibera(ServerPlayer alvo, bool comRecarga, bool proprio, bool exigeBanco = true, bool upgradeDeAndroide = false)
 	{
 		Fighter f = alvo.Ficha;
-		if (f.unlockPotential >= 1) { Avisar(quem, "esse potencial ja foi despertado!"); return; }
+		// O ANDROIDE DE ABSORCAO GUARDA, MAS NAO SOLTA POR ESTES CAMINHOS -- o dono: *"os androides de absorcao eles tem uma pool de hidden q
+		// so libera com tech q da um 'upgrade' neles liberando esse potencial, nao pelos metodos tradicionais"*. O de energia infinita solta.
+		// (2026-10-26) A PORTA DELE e o Android Upgrade (`upgradeDeAndroide`, o pedido 95c) -- ver `KitsDeAndroide.Upgrade`.
+		if (f.AndroideAbsorcao && !upgradeDeAndroide && !AbsorcaoLiberaDeTeste)
+			return proprio ? "o seu corpo de androide de absorção não libera potencial assim -- só um upgrade de tecnologia solta o que ele guarda."
+						   : $"o corpo de androide de absorção de {alvo.Name} não libera potencial assim -- só um upgrade de tecnologia solta o que ele guarda.";
+		long falta = f.liberarPotencialEm - NowMs();
+		if (comRecarga && falta > 0)
+			return proprio ? $"o seu potencial ainda se assenta da última liberação: espere {Jandirus.Core.Ranks.RitualDoKaioshin.HorasEMinutos(falta)}."
+						   : $"o potencial de {alvo.Name} ainda se assenta da última liberação: espere {Jandirus.Core.Ranks.RitualDoKaioshin.HorasEMinutos(falta)}.";
+		if (exigeBanco && !f.TemPotencialGuardado)
+			return proprio ? "não há potencial guardado em você pra soltar -- ele se acumula treinando, meditando e lutando."
+						   : $"não há potencial guardado em {alvo.Name} pra soltar -- ele se acumula treinando, meditando e lutando.";
+		return null;
+	}
 
-		f.unlockPotential = 1;
-		double marco = f.ReachMilestone("potential");
-		double awaken = string.Equals(f.Class, "Prodigial", StringComparison.OrdinalIgnoreCase) ? 1.8 : 1;
+	/// <summary>DEFEITO INJETADO (`--patriarcateste`): o androide de absorcao solta o banco pelos caminhos de sempre. Falso em jogo, sempre.</summary>
+	internal static bool AbsorcaoLiberaDeTeste;
 
-		double gainedBase = f.CapCheck(f.BP * PotencialBasePctG11 * Math.Max(f.UPMod, 1) * awaken);
-		f.BP += gainedBase;
-
-		double gainedHidden = 0;
-		if (f.hiddenpotential > 0)
+	/// <summary>
+	/// (2026-10-26) SOLTAR O BANCO DO POTENCIAL -- o `unlockedBP += unusedPotential; unusedPotential = 0` do DU (`Skills.dm:2283-2285`), por
+	/// QUALQUER liberador: o Unlock Potential de um jogador em outro (1x), o Grande Patriarca (1,25x), a Agua Ultra Divina (1x), o desejo ao
+	/// dragao (1,5x) e o ritual do Kaioshin (2x) -- ver `GainKnobs.LiberaOGuru` e os outros. O que sai (o banco vezes o multiplicador) vai
+	/// pro BP base e fica; o banco zera. Devolve se soltou.
+	///
+	/// AS RECUSAS (`PorQueNaoLibera`) sao ditas a <paramref name="quem"/> e nao gastam nada. <paramref name="comRecarga"/> pede e marca a
+	/// hora entre duas liberacoes (`GainKnobs.RecargaDaLiberacaoMs`; o ritual e o desejo nao a pedem). A PRIMEIRA liberacao da vida ainda da
+	/// o que o despertar do DM dava, uma vez (`UnlockPotential.dm:21-52`): o marco "potential" (todo ganho x1,5), +0,4 de Ki skill e a
+	/// pele do Namekuseijin (`Catalogo.PotencialMarcaAPele`).
+	///
+	/// O QUE SAIU DO DESPERTAR DE ANTES: `BP * 0,25 * max(Potencial da raca, 1)` (1,8x na classe Prodigial) e mais metade do potencial
+	/// oculto, cada um pelo `CapCheck` -- o ganho lia o PROPRIO BP, e a quem tinha bilhoes dava bilhoes (o relato do dono de 2026-10-25). O
+	/// Prodigial ficou com o banco que enche 1,5x (`GainKnobs.BancoDoProdigial`); a raca, sem bonus.
+	/// </summary>
+	private bool LiberarOPotencial(ServerPlayer alvo, ServerPlayer quem, double vezes, string? autor = null, bool comRecarga = true,
+								   bool exigeBanco = true, bool upgradeDeAndroide = false)
+	{
+		if (PorQueNaoLibera(alvo, comRecarga, proprio: alvo == quem, exigeBanco, upgradeDeAndroide) is { } recusa)
 		{
-			int bpRank = 1;
-			foreach (ServerPlayer o in _players.Values)
-				if (o != alvo && EhPessoa(o) && o.Ficha.BP + 1 > f.BP + 1) bpRank++;
-			f.BPadd += bpRank == 1
-				? f.CapCheck(f.hiddenpotential * (1.0 / 10) * awaken)
-				: f.CapCheck(f.hiddenpotential * (bpRank / 5.0) * awaken);
-			gainedHidden = f.CapCheck(f.hiddenpotential * PotencialOcultoPctG11 * awaken);
-			f.BP += gainedHidden;
+			Avisar(quem, recusa);
+			if (quem != alvo && PorQueNaoLibera(alvo, comRecarga, proprio: true, exigeBanco, upgradeDeAndroide) is { } naVozDele) Avisar(alvo, naVozDele);
+			return false;
 		}
-		f.kiskill += 0.4;
+		Fighter f = alvo.Ficha;
+		double antes = f.BP;
+		double banco = Math.Max(f.hiddenpotential, 0);
+		f.BP += banco * vezes;
+		f.hiddenpotential = 0;
+		if (comRecarga) f.liberarPotencialEm = NowMs() + GainKnobs.RecargaDaLiberacaoMs;
+
+		bool primeira = f.unlockPotential < 1;
+		double marco = 0;
+		if (primeira)
+		{
+			f.unlockPotential = 1;
+			marco = f.ReachMilestone("potential");
+			f.kiskill += 0.4;
+		}
 		f.Statify();
 		alvo.SigAtributos = "";
 		MandarFicha(alvo);
 		if (EhJogador(alvo)) Persistir(alvo);
 
 		// (2026-10-13) O POTENCIAL DESPERTO APARECE NA PELE DO NAMEKUSEIJIN -- ver `Catalogo.PotencialMarcaAPele`.
-		ReapresentarOCorpo(alvo);
+		if (primeira) ReapresentarOCorpo(alvo);
 
 		AvisarPertoG3(alvo, RaioDaVista, $"{autor ?? quem.Name} desperta o potencial de {alvo.Name}!");
-		string msg = $"seu potencial desperta! +{gainedBase:N0} de BP base";
-		if (gainedHidden > 0) msg += $" e +{gainedHidden:N0} do potencial acumulado (treino/idade)";
-		Avisar(alvo, msg + ".");
+		if (banco >= 1)
+		{
+			Avisar(alvo, $"o potencial que você guardou se liberta: {vezes:0.##}x o que estava guardado.");
+			// O GANHO SE SENTE, NAO SE LE (a frase da Agua, 2026-10-16): o numero so com scouter; sem ele, quanto o corpo cresceu.
+			Avisar(alvo, Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(alvo, alvo, antes, f.BP))
+				? $"!!* O seu PODER DE LUTA aumentou: {antes:N0} -> {f.BP:N0} *!!"
+				: $"!!* Você se sente {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, f.BP)} *!!");
+		}
 		if (marco > 0) Avisar(alvo, $"MARCO DE PODER! todo ganho agora e x{marco:0.##}.");
-		GD.Print($"[G11] potencial de {alvo.Name} despertado por {quem.Name}: +{gainedBase:0} base, +{gainedHidden:0} oculto");
+		GD.Print($"[potencial] {alvo.Name}: banco de {banco:0} solto {vezes:0.##}x por {autor ?? quem.Name}: +{banco * vezes:0}");
+		return true;
 	}
 
 	// =====================================================================
@@ -1430,12 +1448,12 @@ public sealed partial class GameServer
 		if (!f.med || f.BP >= f.relBPmax) return;
 
 		if (pl.Livro.Sabe(SkillMeditatePowerG11) && pl.Niveis.Nivel(SkillMeditatePowerG11) >= 3 && DmMath.Prob(_rng, 10))
-			f.BP += f.CapCheck(f.BpGainBase() * GainKnobs.BPTick * (1.0 / 35));
+			f.BP += f.GanhoDeAtividade(f.CapCheck(f.BpGainBase() * GainKnobs.BPTick * (1.0 / 35)));   // (2026-10-26) guarda no banco
 
 		if (pl.Livro.Sabe(SkillBrainPowerG11) && DmMath.Prob(_rng, 15))
 		{
 			double log4 = f.techskill > 0 ? Math.Log(f.techskill * 10) / Math.Log(4) : 0;
-			f.BP += f.CapCheck(f.BpGainBase() * GainKnobs.BPTick * Math.Max(log4, 1) * (1.0 / 75));
+			f.BP += f.GanhoDeAtividade(f.CapCheck(f.BpGainBase() * GainKnobs.BPTick * Math.Max(log4, 1) * (1.0 / 75)));
 		}
 	}
 

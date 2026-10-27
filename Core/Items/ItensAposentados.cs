@@ -50,7 +50,7 @@ public static class ItensAposentados
 	/// A VERSAO DESTA LISTA: o maior <see cref="Aposentado.SaiuNaVersao"/> dela. E o que o servidor grava em todo
 	/// save (`AccountStore.DeJogador`); save de antes disto existir chega com zero.
 	/// </summary>
-	public const int VersaoAtual = 1;
+	public const int VersaoAtual = 2;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--aposentadosteste`): a limpeza nao roda. O item some CALADO no `Sanear`, sem
@@ -60,6 +60,9 @@ public static class ItensAposentados
 	public static bool SomeCaladoDeTeste;
 
 	private const string ArmaDesativada = "era uma arma que o jogo original deixou desativada, e aqui não fazia nada";
+
+	/// <summary>(2026-10-26) O porque da maquina e dos produtos do sintetizador de virus -- o pedido 98 do dono.</summary>
+	private const string SaiuOSintetizador = "o sintetizador de vírus saiu do jogo, e com ele as injeções, os vírus e o LSD";
 
 	public static readonly Aposentado[] Todos =
 	[
@@ -72,6 +75,11 @@ public static class ItensAposentados
 		// O ID CONTINUA NO CATALOGO (o cajado magico) -- ver o cabecalho. So a mochila de antes da versao 1 perde o dela.
 		new("Staff",  "Staff",  1,
 			"o Staff de luta era uma arma que o jogo original deixou desativada; o Staff que a aba Tech vende agora é o cajado mágico, outro item"),
+
+		// (2026-10-26, VERSAO 2) O SINTETIZADOR DE VIRUS E O QUE ELE FABRICAVA -- o pedido 98 do dono (*"melhor tirar do game essas coisas de
+		// injeçao, virus, lsd etc"*): a maquina recolhida na mochila e os dezenove produtos. Ver `Tech.Sintetizador`.
+		new(Tech.Sintetizador.Tipo, "Virus Synth", 2, SaiuOSintetizador),
+		.. Tech.Sintetizador.Produtos.Select(p => new Aposentado(p.Id, p.Nome, 2, SaiuOSintetizador)),
 	];
 
 	/// <summary>

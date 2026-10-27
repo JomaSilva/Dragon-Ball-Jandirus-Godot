@@ -16,8 +16,8 @@ public static class HabilidadesDoRitual
 			RitualDoKaioshin.Nome,
 			Verbos.Skills,
 			"O ritual do Velho Kaiohshin: com alguém na sua frente (marque-o e encoste nele), você oferece o ritual -- e, se ele aceitar "
-			+ $"no cartão, os dois ficam {RitualDoKaioshin.DuracaoMs / 60_000} minutos parados, frente a frente. No fim o potencial oculto "
-			+ "dele desperta e ele ganha a forma Potential Unleashed.\n\nUm ritual por dia (tempo real); interrompido antes do fim, o dia não "
+			+ $"no cartão, os dois ficam {RitualDoKaioshin.DuracaoMs / 60_000} minutos parados, frente a frente. No fim o potencial que ele "
+			+ "guardou se liberta em dobro e ele ganha a forma Potential Unleashed -- uma vez por personagem.\n\nUm ritual por dia (tempo real); interrompido antes do fim, o dia não "
 			+ "é gasto. No meio do ritual, este botão o interrompe -- e quem recebe o ritual também o vê.",
 			() => GameClient.Instance?.SendHabilidade(RitualDoKaioshin.Verbo))
 			{ Chave = RequisitosDosVerbos.PrefixoDeHabilidade + RitualDoKaioshin.Verbo });

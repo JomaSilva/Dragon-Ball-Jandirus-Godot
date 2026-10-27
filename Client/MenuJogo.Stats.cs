@@ -347,6 +347,10 @@ public partial class MenuJogo
 		// PELO NOME DO JOGO, e nao pela chave do `races.json` -- ver `NomeDaRaca`: "Icer" e "Frost Demon".
 		Linha("Raça", Jandirus.Core.Races.NomeDaRaca.Bonito(_atributos.Raca ?? ""), null, c);
 		Linha("Idade", $"{_atributos.Idade}", null, c);
+		// (2026-10-26) O KARMA -- o pedido 106 do dono (*"na stats mostrar o karma tb"*): o numero (-100 a 100) e a faixa (`Core.Social.Karma`),
+		// que e o que o Enma julga na morte. Verde do decente pra cima, vermelho do cruel pra baixo.
+		Linha("Karma", TextoDoKarma(_atributos.Karma),
+			  _atributos.Karma > Jandirus.Core.Social.Karma.Neutro ? Tema.Bom : _atributos.Karma <= -25 ? Tema.Perigo : null, c);
 
 		// CONDICAO E GOLPE SAO PILULAS: "NOCAUTEADO" e "LETAL" se leem sem ler -- e sao os dois
 		// estados que mudam o que as teclas fazem.
@@ -432,12 +436,16 @@ public partial class MenuJogo
 	/// O QUE E VIVO NAO ENTRA (2026-10-19): o BP da faixa, os cinco vitais (com o trilho do Ki), a cadencia, o zeni
 	/// e os recursos se reescrevem no lugar (`Viva`) -- assinados, eles remontavam a aba a cada ficha em luta.
 	/// </summary>
+	/// <summary>(2026-10-26) "-37 (cruel)": o numero e a faixa do karma. O robo das abas le a linha pelo mesmo texto.</summary>
+	public static string TextoDoKarma(int karma) => $"{karma} ({Jandirus.Core.Social.Karma.Faixa(karma)})";
+
 	private string ExtraDaAssinaturaDeStats(SheetState f)
 	{
 		GameClient? c = GameClient.Instance;
 		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{double.IsNaN(f.ExpressedBP)}|{f.VigorMax:0}|{f.NutricaoMax:0}"
 			 + $"|{_atributos.KiDef:0.##}|{_atributos.Technique:0.##}|{_atributos.KiSkill:0.##}|{_atributos.Esoteric:0.##}"
 			 + $"|{_atributos.Willpower:0.##}|{_atributos.ZonaMult:0.##}|{_atributos.SalaFase}|{_atributos.SalaMinutos:0.#}"
-			 + $"|{_atributos.Raca}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.NomeDoLugar}|{AssinaturaDoPoderEmUso()}";
+			 + $"|{_atributos.Raca}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.NomeDoLugar}|{AssinaturaDoPoderEmUso()}"
+			 + $"|{_atributos.Karma}";
 	}
 }

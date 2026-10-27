@@ -225,6 +225,60 @@ public partial class RoboDasAbas
 		await Segundos(1.5);
 		Checa("QUIETUDE: em 1,5 s parado a pagina de Equip nao e remontada a cada pacote de ficha (no maximo 1 remontagem)",
 			  menu.RemontagensDeTeste - r0 <= 1, $"remontagens {r0} -> {menu.RemontagensDeTeste}");
+
+		await F3b_AFileiraEquipado(cli);
+	}
+
+	/// <summary>
+	/// (2026-10-26) F3b -- A FILEIRA "EQUIPADO" DA MOCHILA. O dono: *"coloca tb no inventario um wearing so pra coisas como peso, scouter
+	/// etc, pra n confundir"*. O servidor deste processo poe na mochila e liga, pelos funis de producao, o scouter, os pesos (vestidos), a
+	/// roupa espacial, o respirador e os brincos (`EquiparTudoDeTeste`); a mochila aberta traz os cinco na fileira, na ordem, e nenhum na
+	/// grade; e a vaga do scouter abre o painel de acoes dele. Contra-exemplo: `TelaDeInventario.EquipadoNaGradeDeTeste`.
+	/// </summary>
+	private async System.Threading.Tasks.Task F3b_AFileiraEquipado(GameClient cli)
+	{
+		Nota("--- F3b: a mochila: a fileira EQUIPADO (o peso vestido, o scouter ligado, a roupa espacial, o respirador e os brincos) ---");
+		bool hospedando = Array.IndexOf(OS.GetCmdlineArgs(), "--host") >= 0;
+		if (!hospedando || Jandirus.Server.GameServer.Instance is not { } srv || TelaDeInventario.Instancia is not { } tela)
+		{
+			_pulados++;
+			_naoMedidos.Add("a fileira EQUIPADO da mochila (o servidor mora noutro processo -- rode a --diagabas com --host pra esta parte)");
+			Nota("  PULADA  a fileira EQUIPADO   [servidor dedicado: nao ha como por os itens na mochila daqui; com --host esta parte roda]");
+			return;
+		}
+
+		string[] esperados = [CatalogoDeItens.Pesos, CatalogoDeItens.Scouter, CatalogoDeItens.Traje, CatalogoDeItens.Respirador, CatalogoDeItens.BrincosPotara];
+		var antes = srv.EquiparTudoDeTeste(cli.LocalId);
+		try
+		{
+			bool chegou = await Ate(() => cli.Atributos.Tem(Protocol.Poder.Scouter) && cli.Atributos.PesoVestido == CatalogoDeItens.Pesos
+										  && esperados.All(i => cli.Mochila.Quantos(i) > 0), 8);
+			tela.Abrir();
+			await Quadros(3);
+			List<string> vagas = tela.VagasDoEquipadoDeTeste();
+			List<string> grade = tela.GradeDeTeste();
+			Checa("**A FILEIRA EQUIPADO** (o dono, 2026-10-26): com o scouter ligado, os pesos vestidos e a roupa espacial, o respirador e os brincos na mochila, as cinco vagas trazem os cinco, NA ORDEM, e nenhum deles fica na grade",
+				  antes != null && chegou && tela.EquipadoNaTelaDeTeste && vagas.SequenceEqual(esperados) && !grade.Any(esperados.Contains),
+				  $"chegou {chegou}; vagas [{string.Join(",", vagas)}]; grade [{string.Join(",", grade)}]");
+			Image? foto = await Foto();
+			await Guardar("pedido96-mochila", foto);
+			string? painel = tela.ApertarOEquipadoDeTeste(CatalogoDeItens.Scouter);
+			Checa("...e a vaga do scouter abre o MESMO painel de acoes da grade, com o nome dele",
+				  painel == CatalogoDeItens.Get(CatalogoDeItens.Scouter)?.Nome, painel ?? "(nenhum painel)");
+
+			TelaDeInventario.EquipadoNaGradeDeTeste = true;
+			tela.Abrir();
+			await Quadros(2);
+			Injeta("(defeito injetado: o que esta em uso fica na grade) a fileira EQUIPADO vem vazia e os cinco voltam pra grade -- a regua de cima REPROVA",
+				   !tela.VagasDoEquipadoDeTeste().SequenceEqual(esperados) && tela.GradeDeTeste().Any(esperados.Contains));
+		}
+		finally
+		{
+			TelaDeInventario.EquipadoNaGradeDeTeste = false;
+			tela.Fechar();
+			srv.DesfazerEquipadoDeTeste(cli.LocalId, antes);
+		}
+		await Ate(() => !cli.Atributos.Tem(Protocol.Poder.Scouter) && string.IsNullOrEmpty(cli.Atributos.PesoVestido), 8);
 	}
 
 	/// <summary>A linha de um aparelho na aba, pelo metadado `aparelho` (o id do item). Nula se nao esta visivel.</summary>

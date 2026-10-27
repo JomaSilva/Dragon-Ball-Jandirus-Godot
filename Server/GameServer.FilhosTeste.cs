@@ -319,8 +319,8 @@ public sealed partial class GameServer
 				gohan != null && gohan.Zone.Hash == chichi.Zone.Hash && Vec2.Distance(gohan.Pos, chichi.Pos) <= 2 * T,
 				gohan != null ? $"{Vec2.Distance(gohan.Pos, chichi.Pos) / T:0.#} tiles" : "");
 			double minimo = (bebe.BpDoPai + bebe.BpDaMae) / 24;
-			AfirmarFl("...COM O PODER DOS PAIS: o BP passa de 1/24 de cada um, e o potencial escondido ganha os dois inteiros (34.000)",
-				gohan != null && gohan.Ficha.BP >= minimo - 2 && gohan.Ficha.hiddenpotential >= bebe.BpDoPai + bebe.BpDaMae,
+			AfirmarFl("...COM O PODER DOS PAIS: o BP passa de 1/24 de cada um -- e o potencial escondido NAO herda mais os dois (2026-10-26, o dono: \"os filhos q antes herdavam o bp dos dois pais como hidden n vao ter mais isso\")",
+				gohan != null && gohan.Ficha.BP >= minimo - 2 && gohan.Ficha.hiddenpotential < bebe.BpDoPai + bebe.BpDaMae,
 				$"BP {gohan?.Ficha.BP:N0} (minimo {minimo:N0}), potencial {gohan?.Ficha.hiddenpotential:N0}");
 			AfirmarFl("...e o bebe saiu da fila", BebeDe(chichi) == null && OfertaDaCriacao == null);
 
@@ -388,9 +388,9 @@ public sealed partial class GameServer
 				finally { FilhoSemHerancaDeTeste = false; }
 				semHeranca = mesa.CorpoDe(ContasDaBancadaDosFilhos[8]);
 			}
-			AfirmarFl("CONTRA-EXEMPLO (defeito injetado: o filho sem heranca): nasce sem o potencial dos pais (18.000) -- a regua do parto REPROVA",
-				logou4 && semHeranca != null && segundo != null && semHeranca.Ficha.hiddenpotential < segundo.BpDoPai + segundo.BpDaMae,
-				$"potencial {semHeranca?.Ficha.hiddenpotential:N0}");
+			AfirmarFl("CONTRA-EXEMPLO (defeito injetado: o filho sem heranca): nasce sem o BP dos pais (abaixo de 1/24 dos 18.000) -- a regua do parto REPROVA",
+				logou4 && semHeranca != null && segundo != null && semHeranca.Ficha.BP < (segundo.BpDoPai + segundo.BpDaMae) / 24 - 2,
+				$"BP {semHeranca?.Ficha.BP:N0}");
 			EscolherModoDeRacas(modoAntes, "bancada dos filhos (volta)");
 
 			// ============================================================ G) A RESPOSTA DO DONO: O OVO, O MEIO-SAIYAJIN E O ANDROIDE
@@ -479,8 +479,8 @@ public sealed partial class GameServer
 			piccolo.Pos -= new Vec2(12 * T, 0);
 			AfirmarFl("O CALENDARIO CONTA A IDADE DO FILHO A PARTIR DO PARTO (2026-10-17): o mes do calendario vai no corpo dele, e os meses sao zero",
 				dende is { MesesDaIdade: 0 } && dende.MesDaIdade == MesDoCalendario, $"mes {dende?.MesDaIdade}, calendario {MesDoCalendario}");
-			AfirmarFl("...com o poder do ovo: o BP passa de 1/24 do quarto (100.000) e o potencial escondido ganha o quarto inteiro -- e o ovo sai da fila",
-				dende != null && dende.Ficha.BP >= 100_000 / 24 - 2 && dende.Ficha.hiddenpotential >= 100_000 && BebeDe(piccolo) == null,
+			AfirmarFl("...com o poder do ovo: o BP passa de 1/24 do quarto (100.000) -- o potencial escondido nao o herda mais (2026-10-26) -- e o ovo sai da fila",
+				dende != null && dende.Ficha.BP >= 100_000 / 24 - 2 && dende.Ficha.hiddenpotential < 100_000 && BebeDe(piccolo) == null,
 				$"BP {dende?.Ficha.BP:N0}, potencial {dende?.Ficha.hiddenpotential:N0}");
 
 			// ---- O OVO QUEBRA: um soco no ovo, e o filho que ia nascer dele se perde ----

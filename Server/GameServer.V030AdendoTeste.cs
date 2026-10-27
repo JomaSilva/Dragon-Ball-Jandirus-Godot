@@ -764,7 +764,7 @@ public sealed partial class GameServer
 		LimparTudoDaBancada();
 		double meia = Jandirus.Core.Forms.Catalogo.GodkiRoyalePct;
 		string[] transformacoes = ["mistico", "beast", "ui_sign", "destroyer", "god_fury", "frost6", "snamek", "heran1", "alien1",
-								   "super_perfect", "majin_pura", "alta_tensao"];
+								   "golden_perfect", "majin_pura", "alta_tensao"];
 		string[] repouso = ["frost5", "frost1"];
 		const string Porque = "transformação nenhuma";
 

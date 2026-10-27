@@ -19,8 +19,8 @@ namespace Jandirus.Server;
 ///   3. O QUE QUEBRA O RITUAL antes dos 10 minutos -- e NAO gasta o dia (o dono): o botao do ritual apertado por qualquer um dos dois (o
 ///      alvo o ve enquanto o ritual dura, `Fatos.RitualDoKaioshin`); um dos dois sair do lugar (arremesso, teleporte, agarrao), entrar
 ///      numa luta (um golpe dado ou levado), cair, sair do mundo ou ir pra outra zona; e o Kaioshin perder o trono.
-///   4. O FIM: o potencial oculto do alvo desperta (`DespertarPotencialG11`, uma vez na vida -- quem ja despertou ganha so a forma), a
-///      forma abre (`ConcederMistico` -- o Potential Unleashed) e o dia do Kaioshin se gasta (`Fighter.RitualDoKaioshinEm`).
+///   4. O FIM: o banco do potencial do alvo se solta 2x (`LiberarOPotencial`; 2026-10-26, o dono), a forma abre (`ConcederMistico` -- o
+///      Potential Unleashed) e o dia do Kaioshin se gasta (`Fighter.RitualDoKaioshinEm`). O ritual e uma vez por PERSONAGEM.
 ///
 /// AS DECISOES QUE O DONO NAO DITOU, e por que:
 ///   * o alvo e GENTE (`EhPessoa`, como o do Unlock) e nunca o proprio Kaioshin -- "na frente do outro";
@@ -88,9 +88,8 @@ public sealed partial class GameServer
 	private bool EhKaioshinNoTrono(ServerPlayer pl) =>
 		pl.Conta.Length > 0 && string.Equals(CargoDe(pl.Conta), RitualDoKaioshin.Cargo, StringComparison.OrdinalIgnoreCase);
 
-	/// <summary>O que o ritual ainda da a este corpo (ver <see cref="RitualDoKaioshin.OQueDa"/>).</summary>
-	private static (bool Potencial, bool Forma) OQueORitualDa(ServerPlayer alvo) =>
-		RitualDoKaioshin.OQueDa(alvo.Ficha.unlockPotential, alvo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico));
+	/// <summary>Este corpo ainda pode receber o ritual? Uma vez por personagem (ver <see cref="RitualDoKaioshin.PodeReceber"/>).</summary>
+	private static bool PodeReceberORitual(ServerPlayer alvo) => RitualDoKaioshin.PodeReceber(alvo.Ficha.ritualDoKaioshinRecebido);
 
 	/// <summary>O canal de habilidade do ritual. Devolve se o id era o dele.</summary>
 	private bool UsarVerboDoRitual(ServerPlayer pl, string id)
@@ -136,10 +135,9 @@ public sealed partial class GameServer
 			Avisar(pl, $"{alvo.Name} já está no meio de um ritual.");
 			return;
 		}
-		(bool potencial, bool forma) = OQueORitualDa(alvo);
-		if (!potencial && !forma)
+		if (!PodeReceberORitual(alvo))
 		{
-			Avisar(pl, $"{alvo.Name} já tem o potencial desperto e o Potential Unleashed: o ritual não tem o que dar.");
+			Avisar(pl, $"{alvo.Name} já recebeu o {RitualDoKaioshin.Nome}: ele se faz uma vez só por personagem.");
 			return;
 		}
 
@@ -205,7 +203,7 @@ public sealed partial class GameServer
 			: !kaioshin.Zone.Equals(alvo.Zone)
 			  || Vec2.Distance(kaioshin.Pos, alvo.Pos) > RitualDoKaioshin.TilesDoAceite * Jandirus.Core.World.ZoneCollision.TileSize
 				? $"{alvo.Name} precisa estar ao lado de {kaioshin.Name}"
-			: OQueORitualDa(alvo) is (false, false) ? $"{alvo.Name} já tem tudo o que o ritual dá"
+			: !PodeReceberORitual(alvo) ? $"{alvo.Name} já recebeu o ritual (uma vez só por personagem)"
 			: null;
 		if (porque != null)
 		{
@@ -319,9 +317,10 @@ public sealed partial class GameServer
 		AvisarPertoG3(kaioshin, RaioDaVista, $"{kaioshin.Name} termina o {RitualDoKaioshin.Nome} em {alvo.Name}.");
 		if (!RitualSemDomDeTeste)
 		{
-			// O POTENCIAL OCULTO DESPERTA -- pela mesma porta do Unlock, do desejo e do Guru: uma vez na vida, e quem ja despertou ganha
-			// so a forma (o dono).
-			if (alvo.Ficha.unlockPotential < 1) DespertarPotencialG11(alvo, kaioshin);
+			// (2026-10-26) O BANCO DO POTENCIAL SE SOLTA 2x -- pela mesma porta do Unlock, da Agua, do desejo e do Guru (`LiberarOPotencial`),
+			// sem a recarga deles: o ritual e uma vez por PERSONAGEM (o dono), e e aqui que ele se gasta.
+			alvo.Ficha.ritualDoKaioshinRecebido = true;
+			LiberarOPotencial(alvo, kaioshin, Jandirus.Core.Stats.GainKnobs.LiberaORitual, autor: kaioshin.Name, comRecarga: false, exigeBanco: false);
 			// ...E A FORMA ABRE: e um direito gravado (`Forma.Liberadas`), que ninguem tira por tique (`ReconciliarODomDoMistico`).
 			ConcederMistico(alvo, $"o Ritual Mistico de {kaioshin.Name}");
 		}

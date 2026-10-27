@@ -180,6 +180,7 @@ public sealed partial class GameServer
 			de.Combate.Corpo.Restaurar();
 			de.Combate.SincronizarVida();
 			de.Ficha.Ki = de.Ficha.MaxKi;
+			de.Ficha.stamina = de.Ficha.maxstamina;   // (2026-10-26) o tanque tambem enche o vigor: inteiro e com ele cheio
 		}
 		void Ferir(ServerPlayer de, string nome, double vida)
 		{
@@ -225,7 +226,8 @@ public sealed partial class GameServer
 		Ferir(p, "Braco esquerdo", 50);
 		Ferir(p, "Perna direita", 90);
 		Ferir(p, "Cerebro", 90);   // vital, acima dos 70%, e nao se mira: fica de fora do segundo ramo
-		p.Ficha.Ki = p.Ficha.MaxKi - 10;
+		p.Ficha.Ki = p.Ficha.MaxKi * 0.5;
+		p.Ficha.stamina = p.Ficha.maxstamina * 0.5;
 		p.Facing = Facing.North;
 		r.Energia = 1;
 		long antesDoPulso = NowMs();
@@ -235,8 +237,11 @@ public sealed partial class GameServer
 				  $"braco {Parte(p, "Braco esquerdo").Vida:0.##}, perna {Parte(p, "Perna direita").Vida:0.##}");
 		AfirmarMq("...e NAO ao cerebro acima de 70% (o `targetable = 0` do `SpreadHeal`)",
 				  Perto(Parte(p, "Cerebro").Vida, 90), $"cerebro {Parte(p, "Cerebro").Vida:0.##}");
-		AfirmarMq("...+2 de Ki (as duas somas de `1*efficiency`)", Perto(p.Ficha.Ki, p.Ficha.MaxKi - 8),
-				  $"faltavam 10, faltam {p.Ficha.MaxKi - p.Ficha.Ki:0.##}");
+		// (2026-10-26) o dono: "faz o regenerador recuperar ki e vigor tb" -- em fracao do maximo, no ritmo da vida (`FracaoDeKiEVigorPorPulso`)
+		AfirmarMq("**O KI E O VIGOR VOLTAM NO TANQUE** (o dono, 2026-10-26): da metade, um pulso de velocidade 1 da +3% do Ki maximo e +3% do vigor maximo -- o ritmo da vida (+3 num membro de 100)",
+				  Perto(p.Ficha.Ki, p.Ficha.MaxKi * (0.5 + Math.Max(0.03, Regenerador.KiPorPulso(1) / p.Ficha.MaxKi)))
+				  && Perto(p.Ficha.stamina, p.Ficha.maxstamina * 0.53),
+				  $"Ki {p.Ficha.Ki / p.Ficha.MaxKi:P2} de {p.Ficha.MaxKi:0}, vigor {p.Ficha.stamina / p.Ficha.maxstamina:P2}");
 		AfirmarMq("...gasta 0,002 de bateria por paciente", Perto(r.Energia, 0.998), $"{r.Energia:0.####}");
 		AfirmarMq("...vira o paciente de frente (`M.dir = SOUTH`)", p.Facing == Facing.South, $"{p.Facing}");
 		AfirmarMq("...e o segura por um segundo sem golpear (o `inregen`)",
@@ -258,6 +263,24 @@ public sealed partial class GameServer
 		AfirmarMq("com um VITAL abaixo de 70% a cura vai so pra ele: a cabeca sobe, o braco espera (`FocusVitals`)",
 				  Perto(Parte(p, "Cabeca").Vida, 53) && Perto(Parte(p, "Braco esquerdo").Vida, 50),
 				  $"cabeca {Parte(p, "Cabeca").Vida:0.##}, braco {Parte(p, "Braco esquerdo").Vida:0.##}");
+
+		// ------------------------------------------------------------ (2026-10-26) COM A VIDA INTEIRA, O KI E O VIGOR BASTAM
+		Inteiro(p);
+		p.Ficha.Ki = p.Ficha.MaxKi * 0.2;
+		p.Ficha.stamina = p.Ficha.maxstamina * 0.2;
+		r.Energia = 1;
+		PulsoDosTanques();
+		AfirmarMq("com a vida INTEIRA e o Ki e o vigor no fundo, o tanque TRABALHA (antes so a vida o fazia agir): os dois sobem e a bateria paga",
+				  p.Ficha.Ki > p.Ficha.MaxKi * 0.2 + 1e-9 && p.Ficha.stamina > p.Ficha.maxstamina * 0.2 + 1e-9 && Perto(r.Energia, 0.998),
+				  $"Ki {p.Ficha.Ki / p.Ficha.MaxKi:P2}, vigor {p.Ficha.stamina / p.Ficha.maxstamina:P2}, bateria {r.Energia:0.####}");
+		double kiAntes = p.Ficha.Ki = p.Ficha.MaxKi * 0.2, vigorAntes = p.Ficha.stamina = p.Ficha.maxstamina * 0.2;
+		r.Energia = 1;
+		Regenerador.SoAVidaDeTeste = true;
+		try { PulsoDosTanques(); }
+		finally { Regenerador.SoAVidaDeTeste = false; }
+		AfirmarMq("(defeito injetado: o tanque de antes, que so olhava a vida) com a vida inteira ele NAO trabalha -- e a regua de cima reprova",
+				  Perto(p.Ficha.Ki, kiAntes) && Perto(p.Ficha.stamina, vigorAntes) && Perto(r.Energia, 1),
+				  $"Ki {p.Ficha.Ki / p.Ficha.MaxKi:P2}, vigor {p.Ficha.stamina / p.Ficha.maxstamina:P2}");
 
 		// ------------------------------------------------------------ O KI NAO PASSA DO TETO
 		Inteiro(p);

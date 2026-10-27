@@ -128,7 +128,6 @@ public static class InstalarBench
 		("Spacepod",                   true ),   // oview
 		("Super_Computer",             true ),   // oview
 		("Telepad",                    true ),   // Bolt
-		("Virus_Synth",                true ),   // Bolt
 		("Wall_Repair",                true ),   // Bolt
 		("Wall_Upgrader",              true ),   // Bolt
 		("Ammo",                       false),   // palpite: /obj/items
@@ -158,6 +157,7 @@ public static class InstalarBench
 		("Intercepter_Core",           false),   // usr
 		("Key",                        false),   // palpite: /obj/items
 		("Mechanical_Kit",             false),   // palpite: /obj/items
+		("Android_Upgrade",            false),   // so do port (2026-10-26, o pedido 95c): um item da mochila, que o androide usa em si
 		("Nav_System",                 false),   // tabela a mao (usr)
 		("Nuke",                       false),   // palpite: /obj/items
 		("Nutrient_Pill",              false),   // usr
@@ -331,6 +331,11 @@ public static class InstalarBench
 				"\t\tcost=5000000",
 				"\t\tneededtech=100",
 				"\t\tcreate_type = /obj/Coisa_No_Teto",
+				// (2026-10-26) o sintetizador de virus, como o DM o declara -- e que saiu do jogo (o pedido 98): a A0.7b
+				"\tVirus_Synth",
+				"\t\tcost=75000",
+				"\t\tneededtech=22",
+				"\t\tcreate_type = /obj/items/Virus_Synth",
 				"",
 			}));
 
@@ -339,6 +344,8 @@ public static class InstalarBench
 			List<string> hoje = Extraidas();
 			Checa("A0.7 o extrator NAO emite o `Coisa_Placed` de tech 999, e emite a `Coisa` e a que esta NO teto (tech 100)",
 				  hoje.SequenceEqual(["Coisa", "Coisa_No_Teto"]), string.Join(", ", hoje));
+			Checa("A0.7b ...e NAO emite o `Virus_Synth`: o sintetizador de virus saiu do jogo (o pedido 98 do dono, 2026-10-26), e uma "
+				  + "regeneracao do `construcoes.json` nao o traz de volta", !hoje.Contains(Jandirus.Core.Tech.Sintetizador.Tipo), string.Join(", ", hoje));
 
 			DmTechScanner.AcimaDoTetoEntraDeTeste = true;
 			try
@@ -884,9 +891,13 @@ public static class InstalarBench
 			return certa ? null : $"{a.Id} (versao {a.SaiuNaVersao}, porque '{a.Porque}', no catalogo: {(noCatalogo == null ? "nao" : $"sim, tipo '{noCatalogo.Tipo}'")})";
 		}
 		List<string> desencontros = [.. ItensAposentados.Todos.Select(Desencontro).OfType<string>()];
-		Checa("A0c.13 a lista do Core (`ItensAposentados`) sao as SEIS, cada uma com o porque (que nao fala em zeni): cinco fora do catalogo, e o `Staff` la como OUTRO item",
-			  ItensAposentados.Todos.Length == 6 && desencontros.Count == 0
-			  && cinco.Append("Staff").All(id => ItensAposentados.Todos.Any(a => a.Id == id)),
+		// (2026-10-26) A VERSAO 2 da lista e o sintetizador de virus (a maquina e os dezenove produtos, o pedido 98 do dono): as seis
+		// continuam sendo a versao 1, e os novos passam pelo mesmo `Desencontro` (fora do catalogo, com o porque, sem zeni).
+		Checa("A0c.13 a lista do Core (`ItensAposentados`): as SEIS da versao 1, cada uma com o porque (que nao fala em zeni) -- cinco fora "
+			  + "do catalogo, e o `Staff` la como OUTRO item; e a versao 2, o sintetizador de virus, tambem fora do catalogo",
+			  ItensAposentados.Todos.Count(a => a.SaiuNaVersao == 1) == 6 && desencontros.Count == 0
+			  && cinco.Append("Staff").All(id => ItensAposentados.Todos.Any(a => a.Id == id && a.SaiuNaVersao == 1))
+			  && ItensAposentados.Todos.Any(a => a.Id == Jandirus.Core.Tech.Sintetizador.Tipo && a.SaiuNaVersao == 2),
 			  string.Join(" | ", desencontros));
 		Checa("A0c.13 (contra-exemplos da linha) um porque que promete zeni, um id que continua a venda e uma versao do futuro sao ACUSADOS",
 			  Desencontro(new("Axe", "Axe", 1, "os 1.000 zeni que ele custava voltaram")) != null

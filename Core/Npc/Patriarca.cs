@@ -13,10 +13,10 @@ namespace Jandirus.Core.Npc;
 ///   * QUE NAO SAI VAGANDO (`idle_wandering = 0`, `:219`) -- o `"vagueia": false` do molde (`MoldeDeNpc.Vagueia`);
 ///   * QUE NASCE PERTO DO BERCO DE NAMEK (o `planet_spawn_turf("Namek")`, `:279-294`: ate 10 tiles do ponto de nascer) -- o
 ///     `"pertoDoBerco": 10` da linha do povoamento (`LinhaDePovoamento.PertoDoBerco`);
-///   * E QUE DESPERTA O POTENCIAL OCULTO de quem fala com ele, UMA VEZ NA VIDA, se o povo de Namek nao o ve mal (o `Click()` a ate
-///     2 tiles, `:220-234`). Aqui o clique e o menu E -- ele e um CORPO, como o Bills e o Whis, e o servidor o aponta pelo mesmo
-///     `S2C.DivinoPerto` --, e o despertar e o mesmo do verbo `Unlock_Potential` e do desejo ao dragao
-///     (`GameServer.DespertarPotencialG11`, o `UnlockPotential.dm`).
+///   * E QUE DESPERTA O POTENCIAL OCULTO de quem fala com ele, se o povo de Namek nao o ve mal (o `Click()` a ate 2 tiles,
+///     `:220-234`). Aqui o clique e o menu E -- ele e um CORPO, como o Bills e o Whis, e o servidor o aponta pelo mesmo
+///     `S2C.DivinoPerto` --, e o despertar e o liberador unico do banco do potencial (`GameServer.LiberarOPotencial`): o Guru o solta
+///     1,25x, de hora em hora (2026-10-26, o dono -- era uma vez na vida).
 /// ==========================================================================================================
 /// </summary>
 public static class Patriarca

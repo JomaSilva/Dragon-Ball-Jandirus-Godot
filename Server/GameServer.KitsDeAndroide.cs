@@ -20,6 +20,7 @@ public sealed partial class GameServer
 		{
 			case KitsDeAndroide.AcaoReparar: RepararComOKit(pl); return true;
 			case KitsDeAndroide.AcaoRefazer: RefazerComOKit(pl); return true;
+			case KitsDeAndroide.AcaoUpgrade: UsarOUpgrade(pl); return true;   // (2026-10-26) o pedido 95c
 			// (lote T7) o pente e a tinta de olhos da bancada de criacao -- `GameServer.BancadaDeCriacao.cs`.
 			default: return AcaoDaBancadaDeCriacao(pl, acao, arg2);
 		}
@@ -54,6 +55,28 @@ public sealed partial class GameServer
 			MandarMochila(quem);
 			Falar(quem, Protocol.Fala.Emote, "conserta o próprio corpo.");   // `"[usr] repairs themselves!"`
 			Avisar(quem, "o kit conserta o que estava ferido em você.");
+		});
+	}
+
+	/// <summary>
+	/// (2026-10-26) O ANDROID UPGRADE -- o pedido 95c do dono (a regra em `KitsDeAndroide.Upgrade`): dez segundos parado e sem apanhar, e o
+	/// banco de potencial do androide de absorcao se solta 1x pelo MESMO funil dos outros liberadores (`LiberarOPotencial`, com a hora de
+	/// recarga deles) -- so que pela porta que so ele tem. As recusas vem antes da espera, e nao gastam o item.
+	/// </summary>
+	private void UsarOUpgrade(ServerPlayer pl)
+	{
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não consegue."); return; }
+		if (!pl.Ficha.AndroideAbsorcao) { Avisar(pl, "o upgrade é do corpo de um androide de absorção -- o seu potencial se solta pelos caminhos de sempre."); return; }
+		if (PorQueNaoLibera(pl, comRecarga: true, proprio: true, upgradeDeAndroide: true) is { } recusa) { Avisar(pl, recusa); return; }
+
+		Avisar(pl, "isto leva um instante: não se mexa nem apanhe!");
+		EsperarParado(pl, KitsDeAndroide.SegundosParado, "você se mexeu (ou apanhou): o upgrade não entrou.", quem =>
+		{
+			if (quem.Mochila.Quantos(KitsDeAndroide.Upgrade) <= 0) return;
+			if (!LiberarOPotencial(quem, quem, Jandirus.Core.Stats.GainKnobs.LiberaOUpgrade, autor: "o upgrade", upgradeDeAndroide: true)) return;
+			quem.Mochila.Tirar(KitsDeAndroide.Upgrade);
+			MandarMochila(quem);
+			Falar(quem, Protocol.Fala.Emote, "instala um upgrade no próprio corpo.");
 		});
 	}
 
@@ -119,6 +142,55 @@ public sealed partial class GameServer
 		Avisar(pl, "o regenerador não cura um androide de absorção: o seu corpo se conserta com o kit de reparo (e o membro perdido, com o kit mecânico).");
 	}
 
-	/// <summary>Quem saiu do mundo leva o aviso dele.</summary>
-	private void EsquecerKits(int id) => _avisoDoTanqueEm.Remove(id);
+	// =====================================================================
+	// A ESPERA PARADA -- o `var/prevHP = usr.HP; var/prevloc = usr.loc; sleep(100); if(usr.HP>=prevHP&&usr.loc==prevloc&&!usr.KO)`
+	// (2026-10-26) Nasceu no sintetizador de virus (o Antivirus Mike, a agulha em outro); quando ele saiu do jogo, ficou com os kits.
+	// =====================================================================
+	private sealed class EsperaParada
+	{
+		public int Quem;
+		public long Em;
+		public Vec2 Onde;
+		public double Vida;
+		public string Quebrou = "";
+		public Action<ServerPlayer> AoFim = _ => { };
+	}
+
+	/// <summary>Quem esta esperando parado, e o que acontece se chegar ao fim. Uma espera por corpo: a nova troca a velha.</summary>
+	private readonly Dictionary<int, EsperaParada> _esperasParadas = [];
+
+	private void EsperarParado(ServerPlayer pl, double segundos, string quebrou, Action<ServerPlayer> aoFim) =>
+		_esperasParadas[pl.Id] = new EsperaParada
+		{
+			Quem = pl.Id, Em = NowMs() + (long)(segundos * 1000), Onde = pl.Pos,
+			Vida = pl.Combate?.Corpo.Vida() ?? 0, Quebrou = quebrou, AoFim = aoFim,
+		};
+
+	private void TickDasEsperasParadas()
+	{
+		if (_esperasParadas.Count == 0) return;
+		long agora = NowMs();
+		foreach (EsperaParada e in _esperasParadas.Values.ToList())
+		{
+			if (!_players.TryGetValue(e.Quem, out ServerPlayer? pl)) { _esperasParadas.Remove(e.Quem); continue; }
+			bool quebrou = pl.Ficha.KO || pl.Ficha.dead || (pl.Pos - e.Onde).LengthSquared > 16f
+						   || (pl.Combate?.Corpo.Vida() ?? 0) < e.Vida - 1e-6;
+			if (quebrou)
+			{
+				_esperasParadas.Remove(e.Quem);
+				Avisar(pl, e.Quebrou);
+				continue;
+			}
+			if (agora < e.Em) continue;
+			_esperasParadas.Remove(e.Quem);
+			e.AoFim(pl);
+		}
+	}
+
+	/// <summary>Quem saiu do mundo leva o aviso dele, e a espera parada.</summary>
+	private void EsquecerKits(int id)
+	{
+		_avisoDoTanqueEm.Remove(id);
+		_esperasParadas.Remove(id);
+	}
 }

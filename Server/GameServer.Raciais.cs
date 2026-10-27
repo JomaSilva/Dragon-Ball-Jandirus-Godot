@@ -15,18 +15,6 @@ namespace Jandirus.Server;
 public partial class GameServer
 {
 	/// <summary>
-	/// SURTO POR DERROTA. "Derrotado" e nocauteado OU morto -- as duas coisas, e no original
-	/// isso e explicito.
-	///
-	/// Ficar so na morte tinha uma consequencia esquisita: numa luta nao-letal (o `murderToggle`
-	/// desligado, que e o padrao entre jogadores) NINGUEM morre, entao o Zenkai simplesmente
-	/// nunca aconteceria em treino amistoso -- justamente onde a mecanica mais faz sentido.
-	///
-	/// A recarga e que impede o dobro: levar um nocaute e depois o golpe fatal na mesma sequencia
-	/// concede UMA vez. (Desde 2026-10-24 ela e proporcional ao multiplicador -- 2,5 h por "x" --, e o
-	/// teto mingua ate o requisito pessoal do SSJ3: ver `Fighter.GainZenkai`.)
-	/// </summary>
-	/// <summary>
 	/// (2026-10-24) O BP BASE QUE O SSJ3 PEDE A ESTE CORPO -- a porta do limiar pessoal (`LimiaresPessoais.Porta`, a mesma que o
 	/// portao da forma cobra), ou a de fabrica (`Catalogo.PortaSsj3`) pro corpo sem limiar sorteado, o de NPC.
 	/// </summary>
@@ -34,40 +22,25 @@ public partial class GameServer
 		Jandirus.Core.Forms.Catalogo.Def("ssj3") is { } ssj3 && pl.Forma?.Limiares is { } lim
 			? lim.Porta(ssj3) : Jandirus.Core.Forms.Catalogo.PortaSsj3;
 
-	private void ZenkaiPorDerrota(ServerPlayer vitima, ServerPlayer vencedor)
+	/// <summary>
+	/// O ZENKAI DA DERROTA -- todo nocaute e toda morte (`AoPerderALuta`). "Derrotado" e nocauteado OU morto: numa luta nao-letal
+	/// ninguem morre, e o Zenkai nao pode depender da morte. (2026-10-26) E O BANCO DO DU: a derrota solta de 20 a 80% do banco do Zenkai,
+	/// em dobro na morte e com a maioria do corpo em estado critico -- ver `Fighter.SoltarOZenkai`. Sem recarga (o dono: *"todo nocaute
+	/// sem recarga"*), e sem precisar de um vencedor mais forte.
+	/// </summary>
+	private void ZenkaiPorDerrota(ServerPlayer vitima, ServerPlayer vencedor, bool morreu)
 	{
 		if (vitima == vencedor || vitima.Combate == null) return;
-
-		// (2026-10-24) O REQUISITO PESSOAL DO SSJ3 vai junto: e ate ele que o teto do Zenkai mingua (`Fighter.FatorDoTetoDoZenkai`).
-		Fighter.ZenkaiResult z = vitima.Ficha.GainZenkai(
-			Math.Max(vencedor.Ficha.expressedBP, vencedor.Ficha.BP), NowMs(),
-			vitima.Combate.Corpo.MuitoFerido(), RequisitoDoSsj3De(vitima));
-
-		if (z != Fighter.ZenkaiResult.Concedido)
-		{
-			// SO AVISA QUEM TEM O DOM. Dizer "ainda em recarga" pra um humano seria contar de um
-			// sistema que nunca vai ser dele.
-			if (z == Fighter.ZenkaiResult.EmRecarga && vitima.Ficha.HasZenkai())
-				Avisar(vitima, "seu corpo ainda se refaz do ultimo surto.", Jandirus.Net.Protocol.Fala.AvisoDeZenkai);
-			return;
-		}
-
-		GD.Print($"[server] Zenkai de {vitima.Name}: +{vitima.Ficha.UltimoZenkai:0} de BP"
-				 + (vitima.Ficha.UltimoZenkaiNoTeto ? " (no teto)" : ""));
-		Avisar(vitima, Narrar(vitima.Ficha.UltimoZenkai / Math.Max(vitima.Ficha.BP - vitima.Ficha.UltimoZenkai, 1),
-							  vitima.Ficha.UltimoZenkaiNoTeto), Jandirus.Net.Protocol.Fala.AvisoDeZenkai);
+		double ganho = vitima.Ficha.SoltarOZenkai(morreu, vitima.Combate.Corpo.MaioriaEmEstadoCritico(), RequisitoDoSsj3De(vitima));
+		if (ganho <= 0) return;
+		GD.Print($"[server] Zenkai de {vitima.Name}: +{ganho:0} de BP base{(morreu ? " (na morte)" : "")}");
+		// UMA FRASE SO, sem numero (o dono: *"pode ser apenas uma mensagem algo como 'seu corpo se torna mais forte apos sofrer'"*) -- e o
+		// BP continua sendo segredo de quem nao tem scouter.
+		Avisar(vitima, FraseDoZenkai, Jandirus.Net.Protocol.Fala.AvisoDeZenkai);
 	}
 
-	/// <summary>
-	/// O TEXTO NAO TRAZ NUMERO, e isso e do original. O que o jogador recebe e a sensacao do
-	/// proprio corpo, nao um relatorio -- e o tamanho da frase escala com o quanto o BP subiu.
-	/// </summary>
-	private static string Narrar(double proporcao, bool noTeto) => noTeto
-		? "seu corpo se refaz ate o limite do que poderia suportar. Nao havia mais o que absorver."
-		: proporcao >= 1 ? "uma onda COLOSSAL percorre voce. O corpo se refaz muito mais forte."
-		: proporcao >= 0.5 ? "uma onda forte percorre voce: o corpo se refaz mais forte."
-		: proporcao >= 0.2 ? "voce se levanta visivelmente mais forte do que caiu."
-		: "um formigamento fraco: seu corpo aprendeu alguma coisa com a surra.";
+	/// <summary>(2026-10-26) A frase do Zenkai -- a unica.</summary>
+	internal const string FraseDoZenkai = "seu corpo se torna mais forte após sofrer.";
 
 	// =====================================================================
 	// REGENERACAO -- a habilidade ATIVA do Namekuseijin

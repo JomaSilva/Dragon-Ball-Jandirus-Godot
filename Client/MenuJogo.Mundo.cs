@@ -47,6 +47,9 @@ public partial class MenuJogo
 		// O MAPA DO LUGAR E AS COORDENADAS, logo abaixo do nome: e a resposta de "onde eu estou". Ver `MenuJogo.Mapa.cs`.
 		if (cli != null) BlocoDoMapa(cli);
 
+		// (2026-10-26) E O QUE O POVO DAQUI PENSA DE VOCE -- o pedido 106 do dono. Ver `CartaoDaReputacao`.
+		CartaoDaReputacao();
+
 		// CEU E CLIMA LADO A LADO: sao listas curtas de rotulo/valor, que e o caso das duas colunas.
 		GridContainer duas = Colunas();
 		CartaoDoCeu(duas, r, ceu);
@@ -130,6 +133,25 @@ public partial class MenuJogo
 	/// </summary>
 	internal static string CheiaNaAssinatura(double faltam) =>
 		CheiaEmSegundosNaAssinaturaDeTeste ? $"{faltam:0}" : TextoDaLuaCheia(faltam);
+
+	/// <summary>
+	/// (2026-10-26) A SUA REPUTACAO COM O POVO DESTE PLANETA -- o pedido do dono: *"bota pra aba world mostrar sua reputacao no planeta
+	/// atual"*. O numero e a faixa do livro-caixa do servidor (`Core.Social.Reputacao`, -200 a 200: Heroi, Amigavel, Neutro, Malvisto,
+	/// Inimigo, Cacado), pela ficha lenta (`AtributosState.Reputacao`). Fora de um mundo com povo -- o espaco, um interior, o Outro Mundo --
+	/// o cartao nao existe.
+	/// </summary>
+	private void CartaoDaReputacao()
+	{
+		if (!_atributos.TemReputacao) return;
+		VBoxContainer corpo = Cartao("Reputação");
+		double rep = _atributos.Reputacao;
+		Linha("com o povo deste planeta", TextoDaReputacao(rep),
+			  rep >= Jandirus.Core.Social.Reputacao.LimiarDeAmigavel ? Tema.Bom
+			  : rep <= Jandirus.Core.Social.Reputacao.LimiarDeMalvisto ? Tema.Perigo : null, corpo);
+	}
+
+	/// <summary>(2026-10-26) "35 (Amigável)": o numero inteiro e a faixa. O robo das abas le a linha pelo mesmo texto.</summary>
+	public static string TextoDaReputacao(double rep) => $"{rep:0} ({Jandirus.Core.Social.Reputacao.Faixa(rep)})";
 
 	private void CartaoDoCeu(Control pai, Jandirus.Core.World.RelogioDoPlaneta r, Jandirus.Core.World.EstadoDoCeu? ceu)
 	{
@@ -663,6 +685,7 @@ public partial class MenuJogo
 	private string ExtraDaAssinaturaDeMundo(SheetState f) =>
 		GameClient.Instance is { } c
 			? $"{c.RefugioPrecisa}|{c.RefugioNatal}|{c.NomeDoLugar}|{c.DireitoDeBatismo}|{c.DescobridorDaqui}"
+			+ $"|{_atributos.TemReputacao}|{_atributos.Reputacao:0}"   // (2026-10-26) o cartao da reputacao -- o pedido 106
 			+ $"|{(Jandirus.Core.World.ChaveDePlaneta.Da(c.Zone) is { } chave ? c.NomesDosPlanetas.De(chave.Texto)?.PorQuem : "")}"
 			+ $"|{PosseDoCliente.Assinatura()}"
 			+ $"|{AssinaturaDoKiDivino(c)}"

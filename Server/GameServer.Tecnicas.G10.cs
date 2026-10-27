@@ -235,6 +235,7 @@ public sealed partial class GameServer
 	{
 		CombatState? c = vitima.Combate;
 		if (c == null || dano <= 0 || EhCadaver(vitima) || c.Intocavel) return;
+		if (autor != vitima && NaZonaSegura(autor)) return;   // (2026-10-26) quem esta na zona segura nao fere ninguem -- ver `NaZonaSegura`
 
 		BodyPart? membro = c.Corpo.Sortear(zona ?? autor.Combate?.ZonaMirada, _rng);
 		if (membro == null) return;

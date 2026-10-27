@@ -110,30 +110,23 @@ public enum LinhaDeForma
 	Namekuseijin,
 
 	/// <summary>
-	/// ============================ O BIO-ANDROIDE -- `CellFormBuff.dm` ============================
-	/// UMA entrada, e ela e a linha inteira: a **SUPER PERFEITA**, 8x.
+	/// ============================ O BIO-ANDROIDE -- as duas formas do ki divino (o pedido do dono) ============================
+	/// DUAS entradas, e as duas sao divinas: a **GOLDEN PERFECT** (o SSG do bio) e a **MAX** (o Blue Evolution dele). Ver o bloco delas
+	/// no catalogo.
 	///
-	/// ============================ POR QUE OS OUTROS QUATRO DEGRAUS NAO ESTAO AQUI ============================
+	/// ============================ POR QUE OS QUATRO DEGRAUS NAO ESTAO AQUI ============================
 	/// Larva, Imperfeito, Semi-Perfeito e Perfeito **nao sao formas** -- sao ESTADO PERMANENTE do
 	/// corpo (`Stats.Fighter.bio_stage`, onde a decisao esta escrita por extenso). No DM eles fazem
 	/// `BP *= 2` e `BP *= 4` no BP BASE e trocam o `oicon`; nao ha buff, nao ha dreno e nao ha volta.
 	/// Poe-los aqui teria mentido no teto de treino, no teto do Zenkai e no `CapCheck`, que leem o BP
-	/// base e nao o expresso.
+	/// base e nao o expresso. E e por o degrau morar no BP base que as duas divinas sao ABSOLUTAS SOBRE O
+	/// IMPERFEITO (`FormaDef.SobreOImperfeito`): elas valem o que falta ate o numero delas.
 	///
-	/// A SUPER PERFEITA E O CONTRARIO DISSO em todos os pontos, e por isso ela E forma: `ssjBuff =
-	/// cell4mult` (familia 1), dreno de 1% ao segundo, e ela **cai sozinha quando o Ki acaba** (o
-	/// unico estado temporario que o bio-androide tem, `CellFormBuff.dm:13-19`).
-	///
-	/// ============================ E ELA **NAO** PEDE DNA SAIYAJIN ============================
-	/// Vale dizer em voz alta porque a expectativa comum e a oposta: `Cell4()` (`CellFormBuff.dm:74`)
-	/// nao olha raca, DNA, `canSSJ` nem `bio_saiyan_dna` -- uma unica vez. O que ela pede e o que
-	/// esta nos campos abaixo: forma PERFEITA permanente, BP base suficiente, e **nao estar em
-	/// nenhum degrau Super Saiyajin** (`!ssj`).
-	///
-	/// O SSJ2 do bio e OUTRA coisa, por outro caminho (a MORTE, `DNALabs.dm:649`), na linha Saiyajin
-	/// -- e as duas se excluem, exatamente como no original: la as duas escrevem na mesma `mob/var/
-	/// ssj`. Aqui a exclusao e o campo `ProibidoComFormaAtual` da entrada, que e a mesma frase dita
-	/// por dado em vez de por colisao de variavel.
+	/// ============================ (2026-10-26) A SUPER PERFEITA SAIU ============================
+	/// A forma do corpo do DM (`Cell4()`, `CellFormBuff.dm:73` -- aqui 20x, com a forma perfeita e 750 milhoes de BP) SAIU DO JOGO pela
+	/// escolha do dono: "Super Perfeito" e hoje o nome do SSJ2 do bio de sangue Saiyajin, e "Super Perfeito 2" o do SSJ3
+	/// (`Catalogo.NomeNoBio`) -- e o SSJ2 dele continua vindo pela MORTE (`DNALabs.dm:649`), na linha Saiyajin. As duas escadas nao se
+	/// bloqueiam mais: o bloqueio era da Super Perfeita (o `!ssj` do `Cell4()`), e as divinas do bio entram pela base como o SSG.
 	/// =========================================================================================================
 	/// </summary>
 	BioAndroide,
@@ -296,24 +289,28 @@ public enum CorpoDeForma
 	FrostEscolhido,
 
 	/// <summary>
-	/// O CORPO DA SUPER PERFEITA -- `Bio Android 4.dmi` (`body_custom.dm:249`).
+	/// (2026-10-26) O CORPO DA GOLDEN PERFECT -- `Character Icons/Bioandroids/Bio Android 6.png`, a arte que o dono apontou (*"muda o
+	/// sprite dele pra esse [...] Bio Android 6.png"*).
 	///
-	/// Valor FIXO e nao "escolhido", ao contrario dos dois vizinhos de cima: ha uma folha so, ela nao
-	/// depende da pele nem de escolha na criacao. Entra no enum mesmo assim porque o que o catalogo
-	/// diz e "esta forma troca o corpo", e a traducao pro `res://` e do cliente
-	/// (<see cref="Jandirus.Client.CorposDeForma"/>) -- o Core nao conhece o Godot.
+	/// Valor FIXO e nao "escolhido", como era o da Super Perfeita que ele substituiu (`Bio Android 4`, que saiu do jogo com ela): ha uma
+	/// folha so, ela nao depende da pele nem de escolha na criacao. Entra no enum porque o que o catalogo diz e "esta forma troca o
+	/// corpo", e a traducao pro `res://` e do cliente (<see cref="Jandirus.Client.CorposDeForma"/>) -- o Core nao conhece o Godot.
 	///
-	/// **E ELE E O BURACO DO ORIGINAL FECHADO POR CONSTRUCAO.** No DM, `dnl_bio_hatch` escreve
-	/// `form2icon` e `form3icon` e **esquece o `form4icon`** (`DNALabs.dm:492-493`): um bio de
-	/// laboratorio que alcance a Super Perfeita faz `icon = null` e so nao vira quadrado quebrado
-	/// porque `Stats.dm:210` tem um fallback. Aqui a folha e do CATALOGO e nao da ficha, entao nao ha
-	/// campo pra alguem esquecer de preencher.
+	/// E A FOLHA E DO CATALOGO E NAO DA FICHA -- o buraco do original fechado por construcao: no DM o `dnl_bio_hatch` esquecia o
+	/// `form4icon` da forma do corpo (`DNALabs.dm:492-493`), e aqui nao ha campo pra alguem esquecer de preencher.
 	/// </summary>
-	BioSuperPerfeito,
+	BioGolden,
+
+	/// <summary>
+	/// (2026-10-26) O CORPO DA MAX -- `Character Icons/Bioandroids/Bio Android - Form 5.png` (*"ele libera a forma MAX q o sprite dele muda
+	/// pra esse"*). Folha fixa, pelo mesmo argumento da <see cref="BioGolden"/>. A arte e de outra familia (os estados `default_`, `flight_`
+	/// e `it_` do DU, e nao os `walk_` do DM), e o `CharacterVisual` ja le as duas.
+	/// </summary>
+	BioMax,
 
 	/// <summary>
 	/// (2026-10-16) O CORPO DA FORMA PURA DO CORRUPTED MAJIN -- `MajinForm5.dmi`, *"o corpo do BOSS Majin Boo (Kid Boo) -- era
-	/// MajinForm11; a cor do proprio Majin tinge por cima"* (`MajinSaga.dm:536`). Folha fixa, como a do Super Perfeito; e o UNICO
+	/// MajinForm11; a cor do proprio Majin tinge por cima"* (`MajinSaga.dm:536`). Folha fixa, como a da Golden Perfect; e o UNICO
 	/// corpo de forma que leva a TINTA DA FICHA (a cor que o jogador escolheu pro Majin na criacao, `icon += majin_color`) --
 	/// ver <see cref="Catalogo.CorpoDaFormaLevaAPele"/>.
 	/// </summary>
@@ -413,10 +410,12 @@ public sealed class FormaDef
 	public CurvaDeGodKi? EscalaComGodKi;
 
 	/// <summary>
-	/// (2026-10-17) A CURVA DA SUPER PERFEITA DO BIO: o multiplicador e ABSOLUTO sobre o imperfeito e sobe com o ki divino -- e como o degrau
-	/// do bio ja mora no BP base, a forma vale o que falta ate ele. Ver <see cref="Catalogo.MultDoBio"/>. Nulo = nao e dela.
+	/// (2026-10-26) O MULTIPLICADOR E ABSOLUTO SOBRE O **IMPERFEITO** -- as duas divinas do bio-androide (a Golden Perfect e a MAX). O
+	/// degrau do bio (o semi-perfeito e o perfeito, com os marcos) ja mora no BP BASE, entao a forma vale o que falta ate o numero dela: o
+	/// `Mult` (ou a curva do <see cref="EscalaComGodKi"/>) dividido pelo <see cref="Races.BioAndroids.MultAbsoluto"/> do corpo -- a mesma
+	/// conta da curva da Super Perfeita, que saiu. Ver <see cref="Catalogo.Multiplicador"/>. Falso = sobre o BP base, como toda forma.
 	/// </summary>
-	public CurvaDoBio? DoBio;
+	public bool SobreOImperfeito;
 
 	/// <summary>
 	/// RAMO LATERAL: esta forma sai do tronco e nao volta pra ele.
@@ -646,12 +645,12 @@ public sealed class FormaDef
 	public double PedeGodKi = -1;
 
 	/// <summary>
-	/// DEGRAU MINIMO DE BIO-ANDROIDE (`bio_stage`). 0 = nao pede, que e o caso de 41 das 42 entradas.
+	/// DEGRAU MINIMO DE BIO-ANDROIDE (`bio_stage`). 0 = nao pede, que e o caso de todas menos as duas divinas do bio.
 	///
-	/// Preenchido so pela Super Perfeita, e ele e a metade `cell3 == 1 &amp;&amp; form3cantrevert` do
-	/// gate do `Cell4()` (`CellFormBuff.dm:74`). Um campo e nao um `if` por id no `Avaliar` pelo
-	/// motivo de sempre neste arquivo: quem decide gate e o DADO, e o dia em que o Cell Jr. ou uma
-	/// segunda forma bio pedir outro degrau, e um numero e nao um ramo novo.
+	/// Era a metade `cell3 == 1 &amp;&amp; form3cantrevert` do gate da Super Perfeita (`Cell4()`, `CellFormBuff.dm:74`), e desde
+	/// 2026-10-26 e a porta das duas divinas do bio-androide: a Golden Perfect e a MAX so no estagio PERFEITO (o dono, perguntado:
+	/// "So o Perfeito"). Um campo e nao um `if` por id no `Avaliar` pelo motivo de sempre neste arquivo: quem decide gate e o DADO, e o
+	/// dia em que uma forma bio pedir outro degrau, e um numero e nao um ramo novo.
 	/// </summary>
 	public int PedeEstagioBio;
 
@@ -914,8 +913,8 @@ public sealed class FormaDef
 	///
 	/// QUEM NAO TEM, E POR QUE: o Super Saiyajin God (ki divino SEM SSJ -- o marco dele e o `godki` do
 	/// despertar), os dois Limit Breaker (`SSj4FPLB()`, `supersaiyanbuff.dm:827-849`: nenhuma chamada), o
-	/// Mistico e o Beast, as disciplinas divinas, o Oozaru, o Super Namekuseijin, o Heran, o Alien e a
-	/// Super Perfeita -- nenhuma das procs deles chama `bp_milestone_reach`.
+	/// Mistico e o Beast, as disciplinas divinas, o Oozaru, o Super Namekuseijin, o Heran, o Alien e as
+	/// divinas do bio-androide (forma nova, sem proc no DM) -- nenhuma das procs deles chama `bp_milestone_reach`.
 	/// ==================================================================================================
 	/// </summary>
 	public string Marco = "";
@@ -1003,17 +1002,10 @@ public sealed record ModsDeForma(double Physoff = 1, double Physdef = 1,
 /// 100% de ki divino caem todos em 32x. Era a parte da regra mais facil de perder num `switch` de
 /// degraus, e por isso ela e a propria forma da conta.
 /// </summary>
-/// <param name="Origens">Linhagens **ou** classes que sobem esta curva. Vazio = ninguem sobe.</param>
+/// <param name="Origens">Linhagens, classes **ou** racas que sobem esta curva (a raca desde 2026-10-26: a Golden Perfect do
+/// bio-androide). Vazio = ninguem sobe.</param>
 public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDespertar,
 								  double NoTopo, double TopoEm);
-
-/// <summary>
-/// (2026-10-17) OS QUATRO NUMEROS DA SUPER PERFEITA DO BIO -- o adendo do dono: *"se o bio tiver a super perfect form e liberar o god ki, a
-/// super perfect form ganha novos multiplicadores com base na maestria [...] ao atingir o nivel do blue o multiplicador sobe pra 32x e ao
-/// atingir o nivel do blue evolved vc fica com 56x"*. DEGRAUS e nao rampa (a tabela dele: God Form 1, 2 e 3), nas portas do Blue e do
-/// Blue Evolution (<see cref="Catalogo.GodkiBluePct"/>, <see cref="Catalogo.GodkiRoyalePct"/>). Todos ABSOLUTOS sobre o imperfeito.
-/// </summary>
-public sealed record CurvaDoBio(double Sem, double AoDespertar, double NoBlue, double NaEvolution);
 
 /// <summary>
 /// ============================ DE QUE RAIVA UMA FORMA NASCE ============================
@@ -1171,7 +1163,7 @@ public enum NivelDeRaiva
 /// </param>
 /// <param name="EstagioBio">
 /// O `bio_stage` deste corpo -- 0 pra quem nao e bio-androide de laboratorio. Le-se contra
-/// <see cref="FormaDef.PedeEstagioBio"/>, e e a metade "forma perfeita" do gate da Super Perfeita.
+/// <see cref="FormaDef.PedeEstagioBio"/>, e e a porta "forma perfeita" das duas divinas do bio-androide.
 ///
 /// **ZERO E O LADO SEGURO**, como a raiva e como o God Ki negativo: quem esquecer de preencher
 /// recusa a forma em vez de conceder. E ele e o `default` da linguagem, entao nenhuma bancada,
@@ -1311,6 +1303,14 @@ public enum FolhaDeAura
 	DeusQuente,
 
 	/// <summary>
+	/// (2026-10-26) O FOGO DO DEUS, **DOURADO** -- a aura da Golden Perfect do bio-androide. O dono: *"ele fica com uma aura igual a do ssj
+	/// god so q dourada ao inves de laranja"*. O MESMO desenho da <see cref="DeusQuente"/> (o fogo, o estilo 0 da `ChamaDeAura`), com uma
+	/// rampa propria em ouro -- e, como a dela, a rampa e FIXA e nao sai da cor da forma. Simbolo proprio e nao a `DeusQuente` com outra
+	/// cor porque a do SSG nao se tinge: a cor dela e da folha, e uma Golden Perfect que caisse ali sairia laranja.
+	/// </summary>
+	DeusDourado,
+
+	/// <summary>
 	/// `FieryGodBlue.dmi` -- a CHAMA fria (azul) do ki divino COM Super Saiyajin por baixo.
 	///
 	/// Mesmo mecanismo, o outro ramo: `AuraObject.dm:167-169`, `if(container.godki?.usage) icon =
@@ -1413,8 +1413,14 @@ public enum FolhaDeAura
 ///
 /// SAO HEXA SEM `#`, como a <see cref="Catalogo.CorDoContorno"/> e a <see cref="Catalogo.CorDosRaios"/>
 /// -- o Core nao conhece o Godot e nao tem tipo de cor. Quem traduz e o cliente.
+///
+/// (2026-10-26) <paramref name="SemPontos"/> APAGA A MICROPARTICULA, e quem o trouxe foi o terceiro dono da nuvem: o dono
+/// pediu o SSJ4 Limit Breaker com *"uma aura igual o UI so q vermelha e sem o efeitos de pontinhos subindo"*. Ele mora na
+/// PALETA, e nao num segundo metodo do cliente, pelo motivo do `NebulosaDaForma.Definir`: os dois chamadores
+/// (`Transformacao.Vestir` e `World.AcenderFormaNoCorpo`) ja entregam a paleta, entao a nuvem sem pontos chega sem que
+/// nenhum deles mude. O padrao `false` e o "como sempre foi" das duas nuvens antigas.
 /// </summary>
-public readonly record struct PaletaDeNebulosa(string Borda, string Meio, string Perto, string Pontos);
+public readonly record struct PaletaDeNebulosa(string Borda, string Meio, string Perto, string Pontos, bool SemPontos = false);
 
 /// <summary>
 /// ============================ O OVERLAY COLADO NO CORPO -- E ELE NAO E UMA AURA ============================
@@ -1622,6 +1628,12 @@ public static class Catalogo
 	/// </remarks>
 	public static FolhaDeAura Folha(FormaDef? d) => d?.Linha switch
 	{
+		// (2026-10-26) OS DOIS LIMIT BREAKER VESTEM A NUVEM, e o ramo vem PRIMEIRO porque eles moram em duas linhas que ja tem
+		// folha (a escada Saiyajin e a Legendary Primal). O dono: *"faca o ssj 4 lb ter uma aura igual o UI so q vermelha"*
+		// -- e, perguntado se era so o da escada Saiyajin, *"Os dois"*. Quem diz quem e Limit Breaker e a
+		// `NebulosaDoLimitBreaker`, la embaixo, junto da `TemNebulosa`.
+		_ when NebulosaDoLimitBreaker(d) => FolhaDeAura.Nebulosa,
+
 		LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal => FolhaDeAura.Lssj,
 		// A BASE FICA DE FORA: `base` nao e transformacao, e o Saiyajin parado nao tem aura de SSJ.
 		LinhaDeForma.Saiyajin or LinhaDeForma.Futuro when d.Id != IdBase => FolhaDeAura.Ssj,
@@ -1630,6 +1642,11 @@ public static class Catalogo
 									? FolhaDeAura.DeusFrio : FolhaDeAura.DeusQuente,
 		LinhaDeForma.GodKiRose => d.Ordem >= OrdemDoKiSobreOSuperSaiyajin
 									? FolhaDeAura.DeusRosa : FolhaDeAura.DeusQuente,
+
+		// (2026-10-26) AS DUAS DIVINAS DO BIO-ANDROIDE: a Golden Perfect com o fogo do SSG DOURADO (*"igual a do ssj god so q dourada"*) e a
+		// MAX com a chama do Blue VERMELHA (*"Aura do blue/blue evolution so q vermelha"* -- a `DeusFrio` tira o tom da cor da forma, e a da
+		// MAX e vermelha). O corte e o ki divino que a forma pede: a dos 50% (o nivel do Blue Evolution) veste a chama do Blue.
+		LinhaDeForma.BioAndroide => d.PedeGodKi >= GodkiRoyalePct ? FolhaDeAura.DeusFrio : FolhaDeAura.DeusDourado,
 
 		// A LINHA DO MISTICO NAO TEM RAMO AQUI, e a AUSENCIA e a regra -- ver o bloco do `<remarks>`.
 		// Havia um `LinhaDeForma.Mistico => FolhaDeAura.DeusQuente` nesta linha (o ramo do DM), e o
@@ -2828,6 +2845,17 @@ public static class Catalogo
 	/// </summary>
 	public static bool TemNebulosa(FormaDef? d) => Folha(d) == FolhaDeAura.Nebulosa;
 
+	/// <summary>
+	/// (2026-10-26) OS DOIS LIMIT BREAKER -- o `ssj4_limit_breaker` e o `primal_legendary4_limit_breaker` --, que o dono mandou
+	/// vestir a nuvem do Ultra Instinto em vermelho e sem os pontinhos (*"Os dois"*, perguntado se era so o da escada Saiyajin).
+	///
+	/// DERIVADO, e nao um `if` por id, pela regra deste arquivo (ver a <see cref="CorDosRaios"/>): Limit Breaker e a PELAGEM
+	/// de SSJ4 que exige ki divino (<see cref="FormaDef.PedeGodKi"/> `>= 0`, o mesmo teste do <see cref="EstadoDeForma"/>).
+	/// Os outros quatro corpos de SSJ4 (`ssj4`, `ssj4_full_power` e os dois de baixo da lssj4) nao pedem ki divino e ficam
+	/// na chama. Um degrau divino novo de pelagem de SSJ4 ja nasce com a nuvem.
+	/// </summary>
+	public static bool NebulosaDoLimitBreaker(FormaDef? d) => d is { Corpo: CorpoDeForma.Ssj4, PedeGodKi: >= 0 };
+
 	// ================================================================================================
 	// AS DUAS PALETAS DA NUVEM. Os oito hexa abaixo eram os `= vec4(...)` de tres uniforms e um
 	// `vec3(1.0)` cravado no meio do `fragment` do `NebulosaDaForma.gdshader`. Mudaram-se pra ca
@@ -2899,13 +2927,47 @@ public static class Catalogo
 	private const string LilasDosPontosDoEgo = "f6e4ff";
 
 	/// <summary>
+	/// ============================ A MESMA NUVEM, EM VERMELHO, E SEM OS PONTINHOS ============================
+	/// (2026-10-26) A ponta ESCURA da nuvem dos dois Limit Breaker: sangue quase preto. O mesmo metodo da do Ultra Ego -- a
+	/// rampa do Ultra Instinto GIRADA pro vermelho da forma, com as duas pontas medidas em luminancia:
+	///
+	///     ponta escura   `241a3d` H 257,1  ->  `541011` H 359,1   (L 30,7 -> 30,5)
+	///     meio           `6f5fae` H 252,2  ->  `e14648` H 359,2   (L 104,1 -> 103,1)
+	///     ponta clara    `d8e8ff` H 215,4  ->  `ffc4c4` H   0,0   (L 230,3 -> 208,5)
+	///     particula      `ffffff`          ->  `ffe4e4` H   0,0   (L 255,0 -> 233,7)
+	///
+	/// A MATIZ DE CHEGADA E A DO PROPRIO LIMIT BREAKER: o `ff2d2f` da aura dele (o <see cref="VermelhoDoLimitBreaker"/>, que
+	/// ja pinta o contorno e o raio) mede H 359,4. Nao ha um vermelho novo no jogo.
+	///
+	/// AS PONTAS seguem a regra que o Ultra Ego escreveu: a ESCURA na mesma luminancia (ela decide o quanto a nuvem suja o
+	/// cenario), a CLARA caindo pra ~90% -- em vermelho com V=1 a luminancia e refem do verde, e manter 230 exigiria um rosa
+	/// lavado, ou seja "branco" de novo. A ESCURA E MAIS SATURADA que a do Ego (S 0,81 contra 0,56) de proposito: na
+	/// saturacao da outra o vermelho escuro le marrom, e o pedido e vermelho.
+	///
+	/// A PARTICULA EXISTE SO PRA PALETA FICAR INTEIRA: o Limit Breaker nao acende ponto nenhum
+	/// (<see cref="PaletaDeNebulosa.SemPontos"/>). Ela tem valor, e na rampa, pelo motivo do `_` da
+	/// <see cref="PaletaDaNebulosa"/>: o dia em que alguem religar os pontos tem que ser o dia em que eles saem da cor certa.
+	/// ==============================================================================================
+	/// </summary>
+	private const string SangueDaNebulosaDoLimitBreaker = "541011";
+
+	/// <inheritdoc cref="SangueDaNebulosaDoLimitBreaker"/>
+	private const string VermelhoDaNebulosaDoLimitBreaker = "e14648";
+
+	/// <inheritdoc cref="SangueDaNebulosaDoLimitBreaker"/>
+	private const string RosaDaNebulosaDoLimitBreaker = "ffc4c4";
+
+	/// <inheritdoc cref="SangueDaNebulosaDoLimitBreaker"/>
+	private const string RosaDosPontosDoLimitBreaker = "ffe4e4";
+
+	/// <summary>
 	/// ============================ DE QUE COR E A NUVEM DESTA FORMA ============================
 	/// A irma da <see cref="TemNebulosa"/>: aquela diz SE ha nuvem, esta diz DE QUE COR. Nulo quer
 	/// dizer "esta forma nao tem nuvem", e a resposta sai da PROPRIA <see cref="TemNebulosa"/> -- nao
 	/// ha um segundo predicado aqui, e nao pode haver (ver o bloco de la).
 	///
 	/// ============================ E O `_` NAO DEVOLVE A PALETA DO ULTRA INSTINTO ============================
-	/// O ramo do Ultra Ego e nomeado e o `_` cai na paleta do Ultra Instinto -- o que parece um default
+	/// Os ramos do Limit Breaker (2026-10-26) e do Ultra Ego sao nomeados e o `_` cai na paleta do Ultra Instinto -- o que parece um default
 	/// preguicoso e nao e: quem chega no `_` ja passou pela `TemNebulosa`, entao ou e Ultra Instinto ou
 	/// e uma LINHA NOVA que alguem acabou de por na <see cref="FolhaDeAura.Nebulosa"/>. Nesse dia a
 	/// nuvem nova nasce indigo em vez de nascer sem cor nenhuma (o quad preto), e o defeito aparece na
@@ -2914,6 +2976,10 @@ public static class Catalogo
 	/// </summary>
 	public static PaletaDeNebulosa? PaletaDaNebulosa(FormaDef? d) =>
 		!TemNebulosa(d) ? null
+		// (2026-10-26) o Limit Breaker pela MESMA pergunta que o pos na nuvem -- ver a `NebulosaDoLimitBreaker`
+		: NebulosaDoLimitBreaker(d)
+			? new PaletaDeNebulosa(SangueDaNebulosaDoLimitBreaker, VermelhoDaNebulosaDoLimitBreaker,
+								   RosaDaNebulosaDoLimitBreaker, RosaDosPontosDoLimitBreaker, SemPontos: true)
 		: d!.Linha == LinhaDeForma.UltraEgo
 			? new PaletaDeNebulosa(AmeixaDaNebulosaDoEgo, VioletaDaNebulosaDoEgo,
 								   LilasDaNebulosaDoEgo, LilasDosPontosDoEgo)
@@ -2978,10 +3044,10 @@ public static class Catalogo
 			LinhaDeForma.Alien => f.ssjenergymod,
 			LinhaDeForma.Heran => d.Ordem < 20 ? f.ssjenergymod : f.ssj2energymod,
 
-			// A SUPER PERFEITA TAMBEM DIVIDE O TANQUE DO SAIYAJIN -- `trueKiMod = ssjenergymod`
-			// (`CellFormBuff.dm:7`), pelo mesmo motivo literal do Heran e do Alien: o DM reusa o
-			// campo. E ele PRECISA ser lido do `Fighter` e nao cravado, porque uma forma que drena
-			// 1% do Ki por segundo com o tanque errado dura o tempo errado.
+			// AS DIVINAS DO BIO DIVIDEM O TANQUE DO SAIYAJIN -- era o `trueKiMod = ssjenergymod` da Super Perfeita (`CellFormBuff.dm:7`),
+			// pelo mesmo motivo literal do Heran e do Alien, e ficou com as duas que a substituiram (2026-10-26): e o mesmo dobro das divinas
+			// do Super Saiyajin (`KiDasDivinasDoSaiyajin`). Lido do `Fighter` e nao cravado, porque uma forma que drena com o tanque errado
+			// dura o tempo errado.
 			LinhaDeForma.BioAndroide => f.ssjenergymod,
 
 			// (2026-10-25) AS DIVINAS DO SUPER SAIYAJIN DOBRAM O TANQUE -- o dono; ver o cabecalho
@@ -3584,8 +3650,25 @@ public static class Catalogo
 	/// (onde maestria nao entra), nao o estado de ninguem.
 	/// ==========================================================================================
 	/// </summary>
-	public static string NomeDe(FormaDef? d, bool dominada) =>
-		d == null ? "" : DominouOSuperSaiyajin(d, dominada) ? NomeDoGrade4 : d.Nome;
+	/// <param name="raca">(2026-10-26) A raca do corpo, quando quem nomeia a tem: o SSJ2 e o SSJ3 do bio-androide tem nome proprio
+	/// (<see cref="NomeNoBio"/>). Nula = o nome de todo mundo.</param>
+	public static string NomeDe(FormaDef? d, bool dominada, string? raca = null) =>
+		d == null ? "" : NomeNoBio(d, raca) ?? (DominouOSuperSaiyajin(d, dominada) ? NomeDoGrade4 : d.Nome);
+
+	/// <summary>
+	/// (2026-10-26) O SSJ2 E O SSJ3 DO BIO-ANDROIDE TEM NOME PROPRIO -- o dono: *"bio androide quando vira ssj2 n deveria aparecer super
+	/// saiyan 2 ou super saiyan 3 ao se transformar, deveria mudar o nome pra "super perfeito" pro ssj2 e super perfeito 2 pro ssj3"*.
+	/// Pela RACA de quem esta na forma, e so o nome: a forma, o id e a rede sao os do Super Saiyajin (o bio de sangue Saiyajin sobe a
+	/// escada dele). Nulo = o nome do catalogo.
+	/// </summary>
+	public static string? NomeNoBio(FormaDef d, string? raca) =>
+		!Races.BioAndroids.EhBio(raca) ? null
+		: d.Id == "ssj2" ? NomeDoSsj2DoBio
+		: d.Id == "ssj3" ? NomeDoSsj3DoBio
+		: null;
+
+	/// <summary>Os dois nomes do bio-androide. Ver <see cref="NomeNoBio"/>.</summary>
+	public const string NomeDoSsj2DoBio = "Super Perfeito", NomeDoSsj3DoBio = "Super Perfeito 2";
 
 	/// <summary>
 	/// O MESMO NOME, PRA QUEM TEM O LIVRO EM VEZ DO BIT.
@@ -3603,8 +3686,8 @@ public static class Catalogo
 	/// disso; "dominada" e literalmente "a barra encostou no fim".
 	/// =========================================================================================
 	/// </summary>
-	public static string NomeDe(FormaDef? d, Maestrias? livro) =>
-		NomeDe(d, d != null && livro != null && livro.De(d.Id) >= 100);
+	public static string NomeDe(FormaDef? d, Maestrias? livro, string? raca = null) =>
+		NomeDe(d, d != null && livro != null && livro.De(d.Id) >= 100, raca);
 
 	/// <summary>
 	/// O nome do SSJ1 dominado. "Grade 4" e a palavra do dono; o "Super Saiyajin" na frente e a
@@ -3746,28 +3829,26 @@ public static class Catalogo
 	public const double AlienDreno1 = 0.010, AlienDreno2 = 0.015;
 
 	// =====================================================================
-	// A SUPER PERFEITA -- `CellFormBuff.dm`
+	// AS DIVINAS DO BIO-ANDROIDE -- o pedido do dono (2026-10-25)
 	// =====================================================================
 	/// <summary>
-	/// (2026-10-17) OS NUMEROS DA SUPER PERFEITA, do adendo do dono -- ABSOLUTOS sobre o BP do imperfeito: 20x; com o ki divino desperto 22x,
-	/// no nivel do Blue (33% de maestria divina) 32x, no do Blue Evolution (50%) 56x. No DM ela era `cell4mult` = 8x por cima do perfeito
-	/// (`CellFormBuff.dm:56`). Ver <see cref="CurvaDoBio"/>.
+	/// (2026-10-26) A CURVA DA GOLDEN PERFECT: o multiplicador do SSG ao despertar o ki divino, subindo ate o do Blue aos 33% de maestria
+	/// divina -- *"a golden tem a mesma forca do ssjg mas vai subindo o multiplicador ate chegar no mesmo multiplicador do ssj blue quando
+	/// atinger 33% de ki divino"*. A rampa e a do Mistico (<see cref="MultPorGodKi"/>), com a RACA do bio como origem; o teto e
+	/// estrutural (o `Clamp`), entao 50% ou 100% de ki divino continuam em 32x -- o degrau de cima e a MAX. ABSOLUTO sobre o imperfeito
+	/// (<see cref="FormaDef.SobreOImperfeito"/>), como a curva da Super Perfeita que ela substituiu.
 	/// </summary>
-	public static readonly CurvaDoBio SuperPerfeitoDoBio = new(Sem: 20, AoDespertar: 22, NoBlue: 32, NaEvolution: 56);
+	public static readonly CurvaDeGodKi GoldenPerfectDoBio =
+		new(Origens: [Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm], SemGodKi: 22, AoDespertar: 22, NoTopo: 32, TopoEm: GodkiBluePct);
 
-	/// <summary>`cell4drain` -- 1,0% do Ki maximo por segundo. `CellFormBuff.dm:57`.</summary>
-	public const double SuperPerfeitoDreno = 0.010;
+	/// <summary>(2026-10-26) A MAX: *"a max tem o mesmo bp do blue evolved"* -- os 56x do Blue Evolution, ABSOLUTOS sobre o imperfeito.</summary>
+	public const double MultDaMaxDoBio = 56;
 
 	/// <summary>
-	/// A PORTA DA SUPER PERFEITA -- **750 milhoes**, e ela e uma CONTA como a da 2a forma Alien.
-	///
-	/// `Cell4()` cobra `BP >= cell4at / cell3mult` (`CellFormBuff.dm:74`): `cell4at` e 3 bilhoes e
-	/// `cell3mult` e 4 (o proprio multiplicador da forma perfeita). Escrever 750 milhoes direto
-	/// perderia a razao de ser do numero -- no original a porta anda junto se o degrau perfeito
-	/// mudar de peso, e e ESSE o desenho: a forma perfeita ja quadruplicou o BP base, entao cobrar o
-	/// `cell4at` cheio pediria o quadruplo de novo.
+	/// (2026-10-26) AS CORES DAS DUAS: o OURO da Golden Perfect (a luz, o contorno, o banho da cena -- a chama tem rampa propria,
+	/// <see cref="FolhaDeAura.DeusDourado"/>) e o VERMELHO da MAX, de que a chama do Blue tira o tom (<see cref="FolhaDeAura.DeusFrio"/>).
 	/// </summary>
-	public const double PortaSuperPerfeito = 3e9 / Races.BioAndroids.MultDoPerfeito;
+	public const string DouradoDaGoldenPerfect = "ffd23a", VermelhoDaMax = "ff2a35";
 
 	/// <summary>
 	/// A CURVA DE MAESTRIA DO HERAN -- os fatores relativos de `heran_form_mult()`
@@ -5260,46 +5341,40 @@ public static class Catalogo
 				Desc = "4x. O segundo e ultimo degrau da especie -- dez milhoes de poder base." },
 
 		// ==================================================================================
-		// O BIO-ANDROIDE -- `CellFormBuff.dm`
+		// O BIO-ANDROIDE -- as duas formas do ki divino, o pedido do dono (2026-10-25)
 		// ==================================================================================
-		// UMA ENTRADA, E ELA E A LINHA INTEIRA -- ver o cabecalho de `LinhaDeForma.BioAndroide` pro
-		// porque de larva/imperfeito/semi/perfeito NAO estarem aqui (sao `bio_stage`, estado
-		// permanente que mexe no BP BASE, e nao buff).
+		// (2026-10-26) A SUPER PERFEITA (a `Cell4()` do DM: 20x, com a forma perfeita e 750 milhoes de BP) SAIU DO JOGO, pela escolha do
+		// dono: o "Super Perfeito" passou a ser o nome do SSJ2 do bio de sangue Saiyajin, e o "Super Perfeito 2" o do SSJ3 (`NomeNoBio`). A
+		// linha do corpo dele ficou com as duas formas do ki divino que o dono pediu -- *"o bio androide pode ter god ki ao qual ele libera a
+		// forma Golden Perfect [...] e ao chegar em 50% de god ki, ele libera a forma MAX"*:
 		//
-		// AS TRES PORTAS SAO AS TRES METADES DO `if` do DM, uma por campo:
-		//   `cell3 == 1 && form3cantrevert`  -> `PedeEstagioBio = Perfeito` (o degrau 4 ja e as duas)
-		//   `BP >= cell4at / cell3mult`      -> `PortaSuperPerfeito`
-		//   `!ssj`                           -> `ProibidoComFormaAtual`, a escada Saiyajin inteira
+		//   * GOLDEN PERFECT -- o SSG do bio: pela BASE, com o ki divino desperto; 22x subindo ate 32x aos 33% de maestria divina (a rampa do
+		//     Mistico, `EscalaComGodKi`, com a raca do bio como origem); corpo `Bio Android 6`, e a aura e o fogo do SSG, DOURADO;
+		//   * MAX -- o Blue Evolution do bio: 56x aos 50% de maestria divina, entrando da base ou da Golden; corpo `Bio Android - Form 5`, e
+		//     a aura e a chama do Blue, VERMELHA.
 		//
-		// A LISTA DE PROIBIDAS E ESCRITA E NAO DERIVADA DA LINHA, e vale saber por que: o `Avaliar`
-		// le este campo nos DOIS sentidos (ver o passo 4b), e derivar "toda a linha Saiyajin"
-		// incluiria a base -- ou seja, um bio na Super Perfeita nao poderia DESCER. A base tem saida
-		// propria e explicita no topo do `Avaliar` (`alvo == IdBase` sempre pode), mas contar com
-		// isso pra sempre seria contar com a ordem de duas guardas em arquivos diferentes.
-		//
-		// O DRENO E DE UM DEGRAU SO porque o bio nao tem maestria nesta forma: nada no original
-		// escreve maestria de `cell4`, entao nao ha o que aliviar -- ela custa 1% do Ki por segundo
-		// do primeiro ao ultimo dia. E o unico estado do bio que ACABA sozinho.
-		//
-		// A AURA E VERDE-BRANCA e ela e medida, nao escolhida: o buff nao troca folha de aura
-		// nenhuma; o que ele veste sao cabelo dourado e ELETRICIDADE (`CellFormBuff.dm:31-40`). O
-		// tom sai da carapaca do proprio corpo -- os quatro sprites do bio sao verdes --, e os raios
-		// caem no azul do `CorDosRaios` por nao serem de nenhuma linha nomeada la.
-		new() { Id = "super_perfect", IdRede = 850, Linha = LinhaDeForma.BioAndroide, Ordem = 10,
-				Nome = "Super Perfeito", NumeroDm = 1, Intensidade = 5, Raios = 2,
-				// (2026-10-17) 20x ABSOLUTO, e 22/32/56 com o ki divino -- a curva do adendo do dono (o `Mult` e o numero de quem nao despertou).
-				Mult = [SuperPerfeitoDoBio.Sem], DoBio = SuperPerfeitoDoBio,
-				Dreno = [SuperPerfeitoDreno],
-				PortaBp = PortaSuperPerfeito,
-				PedeEstagioBio = Races.BioAndroids.Perfeito,
-				ProibidoComFormaAtual =
-					["ssj1", "grade2", "grade3", "ssj2", "ssj3", "ssj4",
-					 "ssj4_full_power", "ssj4_limit_breaker"],
-				Corpo = CorpoDeForma.BioSuperPerfeito,
-				Aura = "9fe8a8",
-				Desc = "20x o imperfeito, e o corpo se enche de eletricidade. Exige a FORMA PERFEITA e 750 milhoes de poder base -- e nao "
-					 + "entra por cima de nenhum Super Saiyajin. Com o ki divino desperto vai a 22x, a 32x no nivel do Blue e a 56x no do Blue "
-					 + "Evolution -- e e nela que o bio amadurece o ki divino. Drena 1% do Ki por segundo e cai sozinha quando o folego acaba." },
+		// AS DUAS SO NO ESTAGIO PERFEITO ("So o Perfeito"), AS DUAS ABSOLUTAS SOBRE O IMPERFEITO como a curva velha da Super Perfeita
+		// (`SobreOImperfeito`: o degrau do bio ja mora no BP base), e as duas drenam como as divinas do Saiyajin de que sao irmas -- *"Mesma
+		// coisa do god e blue evolution atual"*: a Golden o dreno do SSG, a MAX o do Blue Evolution. O bio sem sangue Saiyajin fica com
+		// estas duas; o de sangue Saiyajin tem tambem a escada do Super Saiyajin (`CanSsj`), sem bloqueio entre as duas.
+		new() { Id = "golden_perfect", IdRede = 851, Linha = LinhaDeForma.BioAndroide, Ordem = 10,
+				Nome = "Golden Perfect", NumeroDm = -1, Intensidade = 4,
+				Mult = [GoldenPerfectDoBio.AoDespertar], Absoluta = true, SobreOImperfeito = true, EscalaComGodKi = GoldenPerfectDoBio,
+				Dreno = [0.03, 0.02, 0.01],   // o do SSG
+				PedeGodKi = 0, PedeEstagioBio = Races.BioAndroids.Perfeito, PedeFormaAtual = [IdBase],
+				Corpo = CorpoDeForma.BioGolden,
+				Aura = DouradoDaGoldenPerfect,
+				Desc = "22x o imperfeito ao despertar o ki divino, subindo ate 32x aos 33% de maestria divina. Exige a FORMA PERFEITA e entra "
+					 + "pela base -- a carapaca fica dourada, e e nela que o bio amadurece o ki divino." },
+
+		new() { Id = "bio_max", IdRede = 852, Linha = LinhaDeForma.BioAndroide, Ordem = 20,
+				Nome = "MAX", NumeroDm = -1, Intensidade = 5,
+				Mult = [MultDaMaxDoBio], Absoluta = true, SobreOImperfeito = true,
+				Dreno = [0.06],   // o do Blue Evolution
+				PedeGodKi = GodkiRoyalePct, PedeEstagioBio = Races.BioAndroids.Perfeito, PedeFormaAtual = [IdBase, "golden_perfect"],
+				Corpo = CorpoDeForma.BioMax,
+				Aura = VermelhoDaMax,
+				Desc = "56x o imperfeito. Exige a FORMA PERFEITA e 50% de maestria divina, e entra pela base ou pela Golden Perfect." },
 
 		// ==================================================================================
 		// A FORMA PURA DO CORRUPTED MAJIN -- `Magic/MajinSaga.dm:510-577` e o sistema do amigo do dono (2026-10-16)
@@ -5804,10 +5879,9 @@ public static class Catalogo
 		// Corrupted segue sem escada nenhuma aqui -- a dele e a saga -- e cai pelos `else` de baixo, que nao o pegam. Ver `SuperMajin`.
 		else if (SuperMajin.AbreALinha(p.Raca, p.Classe)) abertas.Add(LinhaDeForma.SuperMajin);
 
-		// O BIO-ANDROIDE entra na MESMA cascata, e nao por simetria: a Super Perfeita e a escada
-		// Saiyajin brigam pela mesma vaga no original (as duas escrevem `mob/var/ssj`). Aqui elas
-		// nao brigam -- quem tem DNA Saiyajin ganha a Saiyajin ABAIXO, por `CanSsj`, e o bloqueio
-		// mutuo entre as duas formas e dito por dado (`ProibidoComFormaAtual`).
+		// O BIO-ANDROIDE entra na MESMA cascata: a linha dele e a do corpo (as duas divinas, a Golden Perfect e a MAX, desde 2026-10-26).
+		// Quem tem DNA Saiyajin ganha a Saiyajin ABAIXO, por `CanSsj`, e as duas escadas convivem -- o bloqueio mutuo era da Super Perfeita
+		// do DM (as duas escreviam `mob/var/ssj`), que saiu do jogo.
 		//
 		// `Races.BioAndroids.EhBio` E NAO `EhDaRaca` com um literal: a raca tem duas grafias vivas no
 		// projeto (`"BioAndroid"` no `races.json`, `"Bio-Android"` nos dados extraidos do DM), e foi
@@ -5848,7 +5922,7 @@ public static class Catalogo
 		// `Transformation Controls.dm:2` -- `if(usr.canSSJ)` roda a escada Super Saiyajin inteira pra
 		// quem quer que tenha a var ligada, sem olhar raca. Hoje quem a recebe e o bio-androide de
 		// laboratorio nascido com DNA Saiyajin (`DNALabs.dm:478`), e e por isso que ele SOMA a linha
-		// Saiyajin em vez de troca-la: ele tem a Super Perfeita (do corpo dele) **e** o Super
+		// Saiyajin em vez de troca-la: ele tem as divinas do corpo dele **e** o Super
 		// Saiyajin (do DNA que o gerou), e as duas ao mesmo tempo e o desenho da criatura.
 		//
 		// FORA DA CASCATA, e nao dentro: um `else if` aqui apagaria a linha do proprio bio, que e
@@ -5983,23 +6057,15 @@ public static class Catalogo
 	/// sangue (`ssj1base` 2 -> 1,35), e o Mistico nao e sangue: e um dom concedido, igual pra toda
 	/// raca. Nerfar o meio-Saiyajin aqui seria punir a raca por uma coisa que a raca nao deu.
 	/// </summary>
-	public static double MultDoBio(CurvaDoBio c, PerfilDeFormas p)
-	{
-		double absoluto = p.GodKi < 0 ? c.Sem
-			: p.GodKi >= GodkiRoyalePct ? c.NaEvolution
-			: p.GodKi >= GodkiBluePct ? c.NoBlue
-			: c.AoDespertar;
-		// O DEGRAU DO BIO JA MORA NO BP BASE (o perfeito do marco 3 e 10x ali): a forma vale o que falta ate o absoluto.
-		return absoluto / Math.Max(Races.BioAndroids.MultAbsoluto(p.EstagioBio, p.MarcoBio), 1);
-	}
-
 	public static double MultPorGodKi(FormaDef d, CurvaDeGodKi c, PerfilDeFormas p)
 	{
 		// A ORIGEM CASA COM LINHAGEM **OU** CLASSE, pelo mesmo motivo do `PedeOrigemUmaDe`: o
 		// Prodigial e CLASSE de meio-Saiyajin (`stathalfbreed.dm:71`), e a pergunta "de onde voce
 		// vem" mora em campos diferentes conforme a raca.
+		// (2026-10-26) ...OU RACA: a Golden Perfect sobe pela raca do bio-androide, que nao tem classe nem linhagem que a diga.
 		bool daOrigem = c.Origens.Any(o => string.Equals(o, p.Classe, StringComparison.OrdinalIgnoreCase)
-										|| string.Equals(o, p.Linhagem, StringComparison.OrdinalIgnoreCase));
+										|| string.Equals(o, p.Linhagem, StringComparison.OrdinalIgnoreCase)
+										|| string.Equals(o, p.Raca, StringComparison.OrdinalIgnoreCase));
 
 		if (!daOrigem) return d.Mult.Length > 0 ? d.Mult[0] : 1;   // o valor de todo mundo
 		if (p.GodKi < 0) return c.SemGodKi;                        // a origem certa, sem ki divino
@@ -6053,9 +6119,12 @@ public static class Catalogo
 			? d.Mult[0] + (d.Mult[^1] - d.Mult[0]) * Races.SagaDoMajin.SubidaDaLoucura(loucuraSegundos, m.De(d.Id))
 			: d.EscalaComGodKi is { } curva
 				? MultPorGodKi(d, curva, perfil)
-				: d.DoBio is { } doBio
-					? MultDoBio(doBio, perfil)
-					: MultBruto(d, m.De(d.Id), perfil.Diluido);
+				: MultBruto(d, m.De(d.Id), perfil.Diluido);
+
+		// (2026-10-26) AS DIVINAS DO BIO-ANDROIDE VALEM O QUE FALTA ATE O NUMERO DELAS -- ver `FormaDef.SobreOImperfeito`: o degrau do bio
+		// (o perfeito do marco 3 e 10x) ja mora no BP base. E a conta da curva da Super Perfeita, que saiu, agora num campo de qualquer forma.
+		if (d.SobreOImperfeito)
+			v /= Math.Max(Races.BioAndroids.MultAbsoluto(perfil.EstagioBio, perfil.MarcoBio), 1);
 
 		// ============================ A ESCALA DA CLASSE -- ver FormaDef.BaseDaClasse ============================
 		// Depois da curva de maestria e ANTES de tudo o mais, porque e assim no DM: o
@@ -6129,6 +6198,9 @@ public static class Catalogo
 	/// um Ki cheio em ~25 s.
 	///
 	/// O SSJ1 zera o dreno aos 100% de maestria -- dominar a forma e poder ANDAR nela.
+	///
+	/// (2026-10-26) E A FRACAO **DE REFERENCIA**: o tique nao cobra mais esta fatia do tanque de quem esta na forma, e sim os PONTOS que ela
+	/// tirava de quem tem o BP em que a forma libera -- ver <see cref="PontosDeDrenoPorSegundo"/> (o pedido 93 do dono).
 	/// </summary>
 	public static double DrenoPorSegundo(string id, Maestrias m)
 	{
@@ -6177,6 +6249,66 @@ public static class Catalogo
 	/// UI_TICKSECS`, `UltraInstinct.dm:223`; `UltraEgo.dm:341`).
 	/// </summary>
 	public static double DrenoQueDa(double fracaoPorSegundo) => fracaoPorSegundo / (DrenoPorCiclo * CiclosPorSegundo);
+
+	// =====================================================================
+	// (2026-10-26) O DRENO EM PONTOS DE KI -- o pedido 93 do dono
+	// =====================================================================
+	/// <summary>
+	/// ============================ O CUSTO DA FORMA E UM NUMERO DE PONTOS, E NAO UMA FATIA DO TANQUE ============================
+	/// O dono: *"mude o custo das transformaçoes deixarem de ser % e descontarem em pontos de ki, entao pegue o bp medio q a transformaçao e
+	/// liberada, dps veja o ki maximo q alguem desse bp teria (sem contar hidden) e veja quantos % de ki essa forma tira atualmente do seu ki,
+	/// com isso vc sabe quantos pontos de ki ela tira por segundo [...] assim quanto mais forte vc fica ou seja mais ki vc tem, menos essa
+	/// forma gasta em % do seu ki total"*.
+	///
+	/// A CONTA, forma por forma: o BP em que ela libera (<see cref="BpDeReferencia"/>) -> o Ki maximo de quem tem esse BP, no tanque dela
+	/// (<see cref="KiDeReferencia"/>) -> a fracao que ela tira hoje (<see cref="DrenoPorSegundo(string, Maestrias, double)"/>: um valor por
+	/// degrau de maestria, e pela barra de poder) -> os PONTOS por segundo. Quem tem mais Ki que a referencia paga os mesmos pontos, uma
+	/// fatia menor do tanque.
+	///
+	/// ============================ PONTOS PUROS, PRA TODOS (o dono, perguntado) ============================
+	/// Quem tem MENOS Ki que a referencia paga os MESMOS pontos -- uma fatia MAIOR do tanque do que pagava: quem acabou de liberar a forma
+	/// sem ter enchido o Ki, a raca de Ki baixo, o NPC de ficha pequena (o chefe de saga tem o piso de tanque, `Fighter.PisoDoTanqueDeChefe`).
+	/// Perguntado se o custo nao devia ficar no de hoje pra eles, o dono escolheu *"Pontos puros pra todos"*.
+	/// ========================================================================================================
+	/// </summary>
+	public static double PontosDeDrenoPorSegundo(string id, Maestrias m, double liberacao = 1) =>
+		Def(id) is not { } d || d.Id == IdBase ? 0 : DrenoPorSegundo(id, m, liberacao) * KiDeReferencia(d);
+
+	/// <summary>
+	/// O KI MAXIMO DE REFERENCIA DA FORMA: o de quem tem o BP em que ela libera, com o Ki desperto, o tanque cheio de treino e sem potencial
+	/// nenhum (<see cref="KiMaximoDoBp"/>), no TANQUE dela (<see cref="TetoDeKi"/> de uma ficha de fabrica) -- porque e desse tanque que o
+	/// dreno de hoje tira a fatia.
+	/// </summary>
+	public static double KiDeReferencia(FormaDef d) => KiMaximoDoBp(BpDeReferencia(d)) * TetoDeKi(d, FichaDeFabrica);
+
+	private static Jandirus.Core.Stats.Fighter? _fichaDeFabrica;
+
+	/// <summary>Uma ficha recem-criada: os tetos de Ki de fabrica das escadas (`ssjenergymod` 2, `ssj2energymod` 3...).</summary>
+	private static Jandirus.Core.Stats.Fighter FichaDeFabrica => _fichaDeFabrica ??= new Jandirus.Core.Stats.Fighter();
+
+	/// <summary>
+	/// O BP EM QUE A FORMA LIBERA: a porta de BP dela (<see cref="FormaDef.PortaBp"/>, o limiar de fabrica -- o centro do sorteio
+	/// pessoal); a que pede o ki divino desperto, e a CONCEDIDA (o Mistico do ritual, o Orange do dragao, que pede "o poder minimo de god
+	/// ki"), o BP do despertar divino (<see cref="DespertarDivino.BpBaseDeFabrica"/>); com as duas, a MAIOR (os Limit Breaker). Sem nenhuma,
+	/// o da forma anterior da linha, e no fim o do SSJ1.
+	/// </summary>
+	public static double BpDeReferencia(FormaDef d)
+	{
+		for (FormaDef? f = d; f != null; f = Anterior(f))
+		{
+			double bp = Math.Max(f.PortaBp, f.PedeGodKi >= 0 || f.SoPorConcessao ? DespertarDivino.BpBaseDeFabrica : 0);
+			if (bp > 0) return bp;
+		}
+		return PortaSsj1;
+	}
+
+	/// <summary>
+	/// O KI MAXIMO DE QUEM TEM ESTE BP BASE -- o teto do Ki base da ficha (`Fighter.UpdateMaxKi`: 100 x log10(BP)^2,3) com o Ki DESPERTO (o
+	/// `Ki_Unlocked`, a primeira skill da arvore da mente, custo 1) e cheio de treino. A MESMA conta da ficha: a bancada `pformas` confere
+	/// as duas.
+	/// </summary>
+	public static double KiMaximoDoBp(double bp) =>
+		Jandirus.Core.Stats.DmMath.Round(100 * Math.Max(Jandirus.Core.Stats.DmMath.Pow(Jandirus.Core.Stats.DmMath.Log(10, Math.Max(bp, 1)), 2.3), 1), 1);
 }
 
 /// <summary>

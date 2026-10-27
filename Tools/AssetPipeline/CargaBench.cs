@@ -119,15 +119,20 @@ public static class CargaBench
 		// funcao porque cada forma e medida DUAS vezes -- do tanque cheio (o pico) e do tanque VAZIO
 		// (o tempo) --, e um corpo reaproveitado entre as duas levaria folego e `powerMod` gastos da
 		// primeira pra segunda, que e justamente o que faria o tempo medido depender da ordem.
+		// (2026-10-26) COM O BP EM QUE A FORMA LIBERA, e o Ki base no teto dele: o dreno agora e em PONTOS (o pedido 93), e um corpo de 3
+		// milhoes com o Ki de fabrica nao seguraria nem o SSJ2 -- a medida deixaria de ser da carga pra ser da falta de Ki.
 		Fighter Corpo(string id)
 		{
-			var novo = new Fighter { Race = "Saiyan", BP = 3_000_000 };
+			var defDaForma = Jandirus.Core.Forms.Catalogo.Def(id);
+			var novo = new Fighter { Race = "Saiyan", BP = defDaForma == null || id == Jandirus.Core.Forms.Catalogo.IdBase
+				? 3_000_000 : Math.Max(3_000_000, Jandirus.Core.Forms.Catalogo.BpDeReferencia(defDaForma)) };
 			novo.Statify();
 			Jandirus.Core.Skills.EfeitosDeSkill.Aplicar(novo, sc, ["/datum/skill/mind/Ki_Unlocked"]);
 			var nv = new Jandirus.Core.Skills.NiveisDeSkill();
 			nv.Por("/datum/skill/mind/Basic_Ki_Control", 5);
 			nv.Aplicar(novo);
 			novo.Statify();
+			novo.baseKi = novo.baseKiMax;
 			novo.trueKiMod = Jandirus.Core.Forms.Catalogo.TetoDeKi(Jandirus.Core.Forms.Catalogo.Def(id), novo);
 			novo.Statify();
 			return novo;
@@ -152,8 +157,8 @@ public static class CargaBench
 			double pico = f.Ki / f.MaxKi;
 			for (int t = 0; t < (int)(Segundos / dt); t++)
 			{
-				// 1) O DRENO DA FORMA, primeiro -- e a ordem do Tick() do servidor.
-				double dreno = drenoFrac * f.MaxKi * dt;
+				// 1) O DRENO DA FORMA, primeiro -- e a ordem do Tick() do servidor. (2026-10-26) Em PONTOS, como o tique cobra agora (o pedido 93).
+				double dreno = Jandirus.Core.Forms.Catalogo.PontosDeDrenoPorSegundo(id, maestria) * dt;
 				f.Ki -= dreno;
 
 				// 2) regeneracao (maestria zero com dreno = forma nao dominada: sem a passiva), 3) a tecla C, 4) o preco
@@ -195,7 +200,7 @@ public static class CargaBench
 			double cruzou = -1, encheu = -1;
 			for (int t = 0; t < (int)(TetoDaMedida / dt) && cruzou < 0; t++)
 			{
-				g.Ki -= drenoFrac * g.MaxKi * dt;
+				g.Ki -= Jandirus.Core.Forms.Catalogo.PontosDeDrenoPorSegundo(id, maestria) * dt;   // (2026-10-26) em pontos, como o tique
 				Jandirus.Core.Stats.RegenDeKi.Passo(g, dt, drenoFrac, semPassiva: drenoFrac > 0);
 				CargaDeKi.Passo(g, dt, mexendo: false);
 				CargaDeKi.PrecoDoExcesso(g, dt);

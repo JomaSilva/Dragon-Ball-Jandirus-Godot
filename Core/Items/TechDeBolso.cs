@@ -307,6 +307,10 @@ public static class TechDeBolso
 			case KitsDeAndroide.Mecanico when id == b:
 				return Feita(c.Nome, "Refaz um membro perdido de um androide de absorção -- o seu, ou o de um caído à sua frente: "
 						   + "dez segundos parado e sem apanhar.", [KitsDeAndroide.AcaoRefazer]);
+			// (2026-10-26) o upgrade do androide de absorcao -- o pedido 95c. A regra esta em `KitsDeAndroide.Upgrade`.
+			case KitsDeAndroide.Upgrade when id == b:
+				return Feita(c.Nome, "Solta o potencial que o corpo de um androide de absorção guarda -- "
+						   + "os caminhos de sempre não o soltam: dez segundos parado e sem apanhar, e o banco inteiro vai pro poder. Uma vez por hora.", [KitsDeAndroide.AcaoUpgrade]);
 
 			// =============================== (lote T5) os companheiros ===============================
 			// As quatro capsulas (`obj/items/companion_obj`, `NPCs/companion_list.dm`). A regra esta em `Companheiros`; o id
@@ -481,10 +485,7 @@ public static class TechDeBolso
 		// ---- (lote T5) os kits do androide de absorcao ----
 		KitsDeAndroide.AcaoReparar => new Botao("Consertar o meu corpo (dez segundos)"),
 		KitsDeAndroide.AcaoRefazer => new Botao("Refazer um membro perdido (dez segundos)"),
-
-		// ---- (lote T5) o que o sintetizador de virus fabrica ----
-		Sintetizador.AcaoTomar => new Botao("Tomar"),
-		Sintetizador.AcaoInjetar => new Botao("Injetar em quem está à frente (dez segundos)"),
+		KitsDeAndroide.AcaoUpgrade => new Botao("Instalar o upgrade (dez segundos)"),
 
 		// ---- (lote T5) os companheiros ----
 		Companheiros.AcaoSoltar => new Botao("Soltar / recolher"),

@@ -231,6 +231,7 @@ public partial class GameServer
 		_rochasVistas.Clear();
 		_pecasNoChao.Clear();
 		_pecasContadas.Clear();
+		_marcasNoChao.Clear();   // (2026-10-26) e as crateras e trilhas de um dia, que sao estrago desta sessao
 
 		// A COMIDA DA SALA DO TEMPO e da sessao (porcao e obra `DoMapa`, fora do disco): a mesa sai com quem comia.
 		if (_comidaPosta) RecolherComidaDaSala();

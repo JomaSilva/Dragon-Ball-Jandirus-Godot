@@ -171,7 +171,7 @@ public sealed partial class GameServer
 				 : "  desligado: ligue pelo menu da tecla E.");
 		Avisar(pl, $"  bateria: {r.Energia * 100:0.#} de {r.EnergiaMax * 100:0}");
 		Avisar(pl, $"  a cada {Regenerador.SegundosDoPulso:0} s: +{Regenerador.CuraPorPulso(r.Eficiencia):0} de vida em cada membro ferido "
-				   + $"e +{Regenerador.KiPorPulso(r.Eficiencia):0} de Ki (velocidade {r.Eficiencia})");
+				   + $"e +{Regenerador.FracaoDeKiEVigorPorPulso(r.Eficiencia) * 100:0}% do Ki e do vigor (velocidade {r.Eficiencia})");
 		Avisar(pl, r.CuraFerimentos
 			? $"  ferimentos: trata -- {Regenerador.ChanceDeFerimento(r.Eficiencia):0}% por pulso de refazer um membro perdido"
 			: "  ferimentos: não trata (membro perdido não volta neste tanque)");
@@ -264,7 +264,7 @@ public sealed partial class GameServer
 				custo = Regenerador.CustoDeVelocidade(r.Eficiencia);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a velocidade de cura")) return;
 				r.Eficiencia += 1;
-				feito = $"cada pulso dá +{Regenerador.CuraPorPulso(r.Eficiencia):0} de vida e +{Regenerador.KiPorPulso(r.Eficiencia):0} de Ki";
+				feito = $"cada pulso dá +{Regenerador.CuraPorPulso(r.Eficiencia):0} de vida e +{Regenerador.FracaoDeKiEVigorPorPulso(r.Eficiencia) * 100:0}% do Ki e do vigor";
 				break;
 
 			case "ferimentos":
@@ -355,7 +355,7 @@ public sealed partial class GameServer
 
 				// `M.Player` (`:75`): gente. O cadaver e um corpo neste port, e cadaver nao se cura.
 				if (!EhPessoa(pl) || EhCadaver(pl) || pl.Combate is not { } c) continue;
-				if (!PrecisaDoTanque(r, c)) continue;
+				if (!PrecisaDoTanque(r, c, pl.Ficha)) continue;
 
 				// O ANDROIDE DE ABSORCAO NAO SE CURA NO TANQUE (dono, 2026-10-13): *"androides q absorvem energia nao curam
 				// na maquina de regeneração, androides de energia infinita q custa 2 milhoes regeneram normalmente"*. O
@@ -372,8 +372,13 @@ public sealed partial class GameServer
 				pl.NoTanqueAte = agora + (long)(Regenerador.SegundosSemGolpear * 1000);
 
 				c.Corpo.CurarComFocoNosVitais(Regenerador.CuraPorPulso(r.Eficiencia));
-				if (pl.Ficha.Ki <= pl.Ficha.MaxKi)
-					pl.Ficha.Ki = Math.Min(pl.Ficha.Ki + Regenerador.KiPorPulso(r.Eficiencia), pl.Ficha.MaxKi);
+				// (2026-10-26) O KI E O VIGOR, em fracao do maximo e no ritmo da vida (o dono) -- ver `Regenerador.FracaoDeKiEVigorPorPulso`. O
+				// numero solto do DM fica de piso; o Ki comprimido ACIMA do teto nao e mexido.
+				double fracao = Regenerador.SoAVidaDeTeste ? 0 : Regenerador.FracaoDeKiEVigorPorPulso(r.Eficiencia);
+				if (pl.Ficha.Ki < pl.Ficha.MaxKi)
+					pl.Ficha.Ki = Math.Min(pl.Ficha.Ki + Math.Max(Regenerador.KiPorPulso(r.Eficiencia), pl.Ficha.MaxKi * fracao), pl.Ficha.MaxKi);
+				if (pl.Ficha.stamina < pl.Ficha.maxstamina)
+					pl.Ficha.stamina = Math.Min(pl.Ficha.stamina + pl.Ficha.maxstamina * fracao, pl.Ficha.maxstamina);
 				r.Energia = Math.Max(r.Energia - Regenerador.BateriaPorPulso(r.Eficiencia), 0);
 
 				if (r.CuraFerimentos && _rng.NextDouble() * 100 < Regenerador.ChanceDeFerimento(r.Eficiencia))
@@ -414,8 +419,10 @@ public sealed partial class GameServer
 	/// braco. Aqui o decepado sai da media (`Body.Vida`), e a pergunta e feita por extenso: o tanque so
 	/// trabalha por um membro perdido se souber refaze-lo.
 	/// </summary>
-	private static bool PrecisaDoTanque(RegeneradorDaObra r, CombatState c)
+	private static bool PrecisaDoTanque(RegeneradorDaObra r, CombatState c, Jandirus.Core.Stats.Fighter f)
 	{
+		// (2026-10-26) Ki ou vigor faltando tambem fazem o tanque agir -- ver `Regenerador.FracaoDeKiEVigorPorPulso`
+		if (!Regenerador.SoAVidaDeTeste && (f.Ki < f.MaxKi || f.stamina < f.maxstamina)) return true;
 		bool falta = false;
 		foreach (BodyPart p in c.Corpo.Partes)
 		{

@@ -118,6 +118,9 @@ public partial class GameServer
 	/// <summary>UM TIQUE DA FORMA de <paramref name="segundos"/> -- o de producao -- e o que o servidor disse. O tanque enche antes (o dreno tem bancada propria).</summary>
 	private List<string> TiqueSm(ServerPlayer pl, double segundos)
 	{
+		// (2026-10-26) E O TANQUE AGUENTA O TIQUE INTEIRO: o dreno agora e em PONTOS (o pedido 93), e um minuto do Super Majin custa mais que
+		// o tanque de fabrica de uma ficha de bancada -- a forma cairia no meio do tique, e o assunto daqui nao e o dreno.
+		AguentarOTiqueDeTeste(pl, segundos);
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		pl.CenaSegundos = 0;
 		return Ouvir(() => TickDaForma(pl, segundos));

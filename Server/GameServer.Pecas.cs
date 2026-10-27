@@ -122,6 +122,9 @@ public sealed partial class GameServer
 		long agora = NowMs();
 		foreach (List<PecaNoChao> lista in _pecasNoChao.Values)
 			lista.RemoveAll(p => PecasNoChao.Venceu(p, agora));
+		// (2026-10-26) ...E AS MARCAS DE DESTRUICAO, no mesmo tique: o prazo delas e um dia do jogo, e 200 ms de atraso sao invisiveis.
+		foreach (List<MarcaNoChao> lista in _marcasNoChao.Values)
+			lista.RemoveAll(m => MarcasNoChao.Venceu(m, agora));
 	}
 
 	/// <summary>
@@ -152,6 +155,10 @@ public sealed partial class GameServer
 		EscutaDeRetratosDePecas?.Add((pl.Id, w.CopyData()));
 
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		// (2026-10-26) ...E O RETRATO DAS MARCAS DE DESTRUICAO SAI JUNTO, pelos mesmos dois pontos (o login e a troca de zona) e pelo mesmo
+		// argumento: cenario que so quem estava presente viu nao e cenario. Ver `MandarMarcas`.
+		MandarMarcas(pl);
 	}
 
 	private NetDataWriter PacoteDePecas(ZoneKey zona, long agora)
@@ -165,6 +172,65 @@ public sealed partial class GameServer
 			w.Put((byte)p.Peca);
 			w.PutVec(p.Onde);
 			w.Put((int)PecasNoChao.RestanteMs(p, agora));
+		}
+		return w;
+	}
+
+	// ============================ (2026-10-26) AS MARCAS DE DESTRUICAO NO CHAO -- crateras e trilhas ============================
+	// O dono: *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia
+	// ingame"*. A cratera e a trilha eram so `S2C.Decalque` -- o instante, pra quem estava na zona, com 18 a 90 s de vida na tela dele.
+	// Um dia do jogo nao cabe nisso: quem sai do planeta e volta, quem reloga e quem chega depois nunca as veria. Entao o servidor as
+	// GUARDA pelo dia (`GuardarMarca`, chamada pelo `MandarDecalque`), expira no tique das pecas e as reapresenta a quem entra
+	// (`MandarMarcas`) -- o caminho que as pecas de corpo ja provaram.
+	// ===========================================================================================================================
+
+	/// <summary>AS MARCAS NO CHAO, POR ZONA (a chave e o `ZoneKey.Hash`), ordenadas por queda: a mais velha e a primeira.</summary>
+	private readonly Dictionary<ulong, List<MarcaNoChao>> _marcasNoChao = [];
+
+	private List<MarcaNoChao> MarcasDaZona(ulong zona)
+	{
+		if (!_marcasNoChao.TryGetValue(zona, out List<MarcaNoChao>? lista))
+			_marcasNoChao[zona] = lista = [];
+		return lista;
+	}
+
+	/// <summary>
+	/// GUARDA UMA CRATERA OU UM PEDACO DE TRILHA que acabou de sair pelo `MandarDecalque` -- e la a unica porta, entao toda marca do
+	/// servidor passa por aqui. O teto da zona (<see cref="MarcasNoChao.TetoPorZona"/>) empurra a mais VELHA.
+	/// </summary>
+	private void GuardarMarca(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir)
+	{
+		List<MarcaNoChao> lista = MarcasDaZona(zona.Hash);
+		while (lista.Count >= MarcasNoChao.TetoPorZona) lista.RemoveAt(0);
+		lista.Add(new MarcaNoChao { Tipo = (byte)tipo, Onde = onde, Dir = (byte)dir, CaiuEm = NowMs() });
+	}
+
+	/// <summary>
+	/// O RETRATO DAS MARCAS PRA QUEM CHEGA NA ZONA (`S2C.Marcas`) -- sai do <see cref="MandarPecas"/>, junto do das pecas. Leva QUANTO
+	/// FALTA de cada uma pelo motivo escrito la: a cratera aberta ha vinte minutos some pra quem chegou agora no mesmo instante em que
+	/// some pra quem a viu abrir. Vazio tambem sai.
+	/// </summary>
+	private void MandarMarcas(ServerPlayer pl)
+	{
+		NetDataWriter w = PacoteDeMarcas(pl.Zone, NowMs());
+		EscutaDeRetratosDeMarcas?.Add((pl.Id, w.CopyData()));
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	private NetDataWriter PacoteDeMarcas(ZoneKey zona, long agora)
+	{
+		List<MarcaNoChao> lista = MarcasDaZona(zona.Hash);
+		var w = Protocol.Begin(Protocol.S2C.Marcas);
+		w.Put(zona.Hash);
+		int n = Math.Min(lista.Count, MarcasNoChao.TetoPorZona);
+		w.Put((ushort)n);
+		for (int i = lista.Count - n; i < lista.Count; i++)
+		{
+			MarcaNoChao m = lista[i];
+			w.Put(m.Tipo);
+			w.PutVec(m.Onde);
+			w.Put(m.Dir);
+			w.Put((int)MarcasNoChao.RestanteMs(m, agora));
 		}
 		return w;
 	}

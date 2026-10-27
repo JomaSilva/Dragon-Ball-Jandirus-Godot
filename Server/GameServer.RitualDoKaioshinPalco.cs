@@ -93,6 +93,9 @@ public partial class GameServer
 			AplicarForma(p);
 		}
 		p.Forma.Liberadas.Remove(Catalogo.Rede(Catalogo.IdMistico));
+		// (2026-10-26) E O RITUAL VOLTA A PODER: desde o banco do potencial ele e uma vez por personagem (`Fighter.ritualDoKaioshinRecebido`),
+		// e o robo o faz duas vezes no mesmo corpo -- a passada em portugues e a em ingles.
+		p.Ficha.ritualDoKaioshinRecebido = false;
 		ReapresentarOCorpo(p);
 		MandarFicha(p);
 	}

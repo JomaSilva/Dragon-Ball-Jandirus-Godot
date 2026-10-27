@@ -142,33 +142,6 @@ public static class Interacoes
 				 "a mesma melhoria, pelo dobro em recursos"),
 	];
 
-	/// <summary>
-	/// AS PAGINAS DO SINTETIZADOR DE VIRUS: a prateleira (uma linha por produto, com o preco e a tecnologia que ele
-	/// pede) e, de cada produto, as duas formas de pagar. Saem da lista do <see cref="Sintetizador"/>: produto novo la
-	/// aparece aqui sozinho.
-	/// </summary>
-	private static Acao[]? PaginaDoSintetizador(string chave)
-	{
-		const string prefixo = Sintetizador.Tipo + "/";
-		if (!chave.StartsWith(prefixo, StringComparison.Ordinal)) return null;
-		string[] p = chave[prefixo.Length..].Split('/');
-		Sintetizador.Classe? classe = p[0] switch
-		{
-			"virus" => Sintetizador.Classe.Virus,
-			"antivirus" => Sintetizador.Classe.AntiVirus,
-			"injecoes" => Sintetizador.Classe.Injecao,
-			_ => null,
-		};
-		if (classe == null) return null;
-		if (p.Length == 1)
-			return [.. Sintetizador.Produtos.Where(x => x.Classe == classe).Select(x => EscolherComoPagar(
-				x.Nome, "sint_como", $"{p[0]}/{x.Id}",
-				$"{Economia.Recurso.PrecoEscrito(x.Preco, Economia.Moeda.Zeni)} e {x.Tecnologia:0} de tecnologia: {x.Descricao}"))];
-		return p.Length == 2 && Sintetizador.De(p[1]) is { } produto && produto.Classe == classe
-			? DuasFormasDePagar(produto.Nome, Sintetizador.VerboFazer, produto.Id)
-			: null;
-	}
-
 	private static readonly Acao MelhorarVelocidade =
 		new("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual, em zeni");
 	private static readonly Acao MelhorarVelocidadeComRecursos =
@@ -846,18 +819,6 @@ public static class Interacoes
 		[
 			new Acao("Ler a lápide", "lapide_ler", "", "o que ficou escrito de quem está enterrado aqui"),
 		],
-
-		// ============================ (v0.2.1, lote T5) O SINTETIZADOR DE VIRUS ============================
-		// (`Viruses.dm`.) A regra e a lista de produtos estao em `Sintetizador`; as prateleiras saem dela.
-		Sintetizador.Tipo =>
-		[
-			new Acao("Injeções...", "sint_injecoes", "injecoes", "pedem de 25 de tecnologia pra cima", Forma.Submenu),
-			new Acao("Vírus...", "sint_virus", "virus", "pedem de 65 de tecnologia pra cima", Forma.Submenu),
-			new Acao("Antivírus...", "sint_antivirus", "antivirus", "pedem de 75 de tecnologia pra cima", Forma.Submenu),
-			new Acao("Aparafusar / soltar", "aparafusar", "", "só aparafusado ele funciona"),
-			new Acao("Pegar", "pegar", "", "recolhe o sintetizador pra mochila (só o seu)"),
-		],
-		_ when PaginaDoSintetizador(tipo) is { } doSintetizador => doSintetizador,
 
 		// ============================ (v0.2.1, lote T6) O SUPER COMPUTADOR ============================
 		// (`Tier3.dm:134-226`.) A regra esta em `SuperComputador`. O `Use()` de la pede a senha e abre uma lista; aqui a

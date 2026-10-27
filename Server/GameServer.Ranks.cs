@@ -18,11 +18,24 @@ namespace Jandirus.Server;
 /// A CHAVE E A CONTA, e isso e uma licao do original: la o sistema comparava ora por `key`, ora
 /// por `name`, ora por `signature`, e o resultado era rank que nao transferia e trono que nunca
 /// vagava. Aqui e SEMPRE a conta -- o unico identificador que nao muda e nao se repete.
+///
+/// (2026-10-26) E O PERSONAGEM TAMBEM. O dono: *"faca os ranks serem ligados ao personagem e nao a conta assim n tem como ter varios personagens da mesma conta caindo no mesmo rank"* -- e,
+/// perguntado, *"Sim, cada um o seu"* (personagens da mesma conta podem ter cargos DIFERENTES, nunca o mesmo) e *"O 1o que entrar com
+/// ele"*. A conta continua a chave de `_tronos` (e por ela que as portas, os arquivos e as bancadas falam do dono), e ao lado dela mora o
+/// PERSONAGEM -- o slot (`_personagensDosTronos`). O trono sem personagem (o de antes desta data, que era da conta inteira) vale pra
+/// qualquer personagem da conta ate o primeiro deles ser visto no jogo, e ai se prende a ele (<see cref="VagaDe(ServerPlayer)"/>).
 /// </summary>
 public partial class GameServer
 {
 	/// <summary>chave do cargo -> conta do dono. Vazio = trono vago.</summary>
 	private readonly Dictionary<string, string> _tronos = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// (2026-10-26) vaga -> o PERSONAGEM que a carrega: a conta (de quando ele sentou), o slot e o nome. So vale enquanto a conta for a
+	/// mesma do `_tronos` -- quem escreve o trono direto (as bancadas, o arquivo de antes) escreve so a conta, e um personagem velho preso a
+	/// vaga nao pode passar pra outra conta. Ver <see cref="SlotDoTrono"/>.
+	/// </summary>
+	private readonly Dictionary<string, (string Conta, int Slot, string Nome)> _personagensDosTronos = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Ao lado dos saves de conta. Um arquivo de texto de uma dezena de linhas -- cargo e
@@ -48,13 +61,19 @@ public partial class GameServer
 	private void CarregarCargos()
 	{
 		_tronos.Clear();
+		_personagensDosTronos.Clear();
 		CarregarAusencias();   // (2026-10-19) a ausencia de cada dono, que vaga o trono de quem sumiu -- ver `GameServer.CargoLivre.cs`
 		CarregarAprendizes();   // (2026-10-19) os vinculos de aprendiz de Kaioshin -- ver `GameServer.AprendizDeKaioshin.cs`
 		if (!System.IO.File.Exists(ArquivoDeCargos)) return;
 		foreach (string linha in System.IO.File.ReadAllLines(ArquivoDeCargos))
 		{
 			string[] p = linha.Split('\t');
-			if (p.Length == 2 && p[1].Length > 0) _tronos[p[0]] = p[1];
+			if (p.Length < 2 || p[1].Length == 0) continue;
+			_tronos[p[0]] = p[1];
+			// (2026-10-26) a terceira e a quarta colunas sao o PERSONAGEM (o slot e o nome); a linha de antes, so com a conta, e o trono da
+			// conta inteira esperando o primeiro personagem dela entrar
+			if (p.Length >= 3 && int.TryParse(p[2], out int slot))
+				_personagensDosTronos[p[0]] = (p[1], slot, p.Length >= 4 ? p[3] : "");
 		}
 		GD.Print($"[server] cargos ocupados: {_tronos.Count} de {Cargos.Todos.Length}");
 	}
@@ -63,8 +82,11 @@ public partial class GameServer
 	{
 		try
 		{
+			// (2026-10-26) ...e o PERSONAGEM, quando a vaga ja tem um: `vaga \t conta \t slot \t nome`
 			System.IO.File.WriteAllLines(ArquivoDeCargos,
-				_tronos.Select(kv => $"{kv.Key}\t{kv.Value}"));
+				_tronos.Select(kv => SlotDoTrono(kv.Key, out int slot)
+					? $"{kv.Key}\t{kv.Value}\t{slot}\t{_personagensDosTronos[kv.Key].Nome}"
+					: $"{kv.Key}\t{kv.Value}"));
 		}
 		catch (Exception e) { GD.PushWarning($"[server] nao gravei os cargos: {e.Message}"); }
 	}
@@ -72,8 +94,16 @@ public partial class GameServer
 	/// <summary>
 	/// Qual cargo esta conta carrega ("" = nenhum). A CHAVE DO CARGO, e nao a da vaga (2026-10-16): quem esta na 3a vaga do
 	/// Kaioshin responde `kaioshin`, e por isso os leitores de cargo do servidor (o kit, os verbs, o vacuo...) nao mudaram.
+	///
+	/// (2026-10-26) PELO PERSONAGEM DA CONTA QUE ESTA NO JOGO: o cargo e do personagem agora, e uma conta joga um personagem por vez -- entao
+	/// "o cargo desta conta" e o do personagem dela que esta aqui (<see cref="CargoDe(ServerPlayer)"/>). Com a conta fora do jogo, o primeiro
+	/// trono dela (o que o servidor sabe sem corpo). E por isso que as chamadas `CargoDe(pl.Conta)` espalhadas pelo servidor nao mudaram.
 	/// </summary>
-	private string CargoDe(string conta) => CargoDaVaga(VagaDaConta(conta));
+	private string CargoDe(string conta) =>
+		OnlinePorConta(conta) is { } pl ? CargoDe(pl) : CargoDaVaga(PrimeiraVagaDaConta(conta));
+
+	/// <summary>(2026-10-26) O cargo DESTE personagem ("" = nenhum). Ver <see cref="VagaDe(ServerPlayer)"/>.</summary>
+	private string CargoDe(ServerPlayer pl) => CargoDaVaga(VagaDe(pl));
 
 	// =====================================================================
 	// AS VAGAS (2026-10-16) -- o cargo de varias almas
@@ -99,9 +129,140 @@ public partial class GameServer
 		return i < 0 ? vaga : vaga[..i];
 	}
 
-	/// <summary>A VAGA que esta conta ocupa ("" = nenhuma) -- a chave crua de `_tronos`. Quem tira alguem de um trono tira DAQUI.</summary>
+	/// <summary>
+	/// A VAGA que esta conta ocupa ("" = nenhuma) -- a chave crua de `_tronos`. Quem tira alguem de um trono tira DAQUI. (2026-10-26) Pelo
+	/// personagem da conta que esta no jogo, como o <see cref="CargoDe(string)"/>; fora do jogo, a primeira.
+	/// </summary>
 	private string VagaDaConta(string conta) =>
+		OnlinePorConta(conta) is { } pl ? VagaDe(pl) : PrimeiraVagaDaConta(conta);
+
+	/// <summary>A primeira vaga da conta, de qualquer personagem ("" = nenhuma) -- o `VagaDaConta` de antes de o cargo ser do personagem.</summary>
+	private string PrimeiraVagaDaConta(string conta) =>
 		_tronos.FirstOrDefault(kv => string.Equals(kv.Value, conta, StringComparison.OrdinalIgnoreCase)).Key ?? "";
+
+	// =====================================================================
+	// (2026-10-26) O PERSONAGEM NO TRONO -- o cargo e de quem sentou, e nao da conta inteira
+	// =====================================================================
+
+	/// <summary>
+	/// O SLOT do personagem que carrega esta vaga. Falso quando a vaga nao tem personagem (vazia, ou o trono de antes, so da conta) ou
+	/// quando o personagem guardado e de OUTRA conta (o trono foi reescrito por cima so com a conta).
+	/// </summary>
+	private bool SlotDoTrono(string vaga, out int slot)
+	{
+		slot = -1;
+		if (!_tronos.TryGetValue(vaga, out string? conta) || conta.Length == 0
+			|| !_personagensDosTronos.TryGetValue(vaga, out (string Conta, int Slot, string Nome) p)
+			|| !string.Equals(p.Conta, conta, StringComparison.OrdinalIgnoreCase))
+			return false;
+		slot = p.Slot;
+		return true;
+	}
+
+	/// <summary>SENTA o personagem na vaga: a conta no `_tronos` (como sempre) e ele ao lado. Quem chama grava (`SalvarCargos`).</summary>
+	private void Ocupar(string vaga, ServerPlayer pl)
+	{
+		_tronos[vaga] = pl.Conta;
+		_personagensDosTronos[vaga] = (pl.Conta, pl.Slot, pl.Name);
+	}
+
+	/// <summary>Esvazia a vaga -- o dono e o personagem dele.</summary>
+	private void Desocupar(string vaga)
+	{
+		_tronos.Remove(vaga);
+		_personagensDosTronos.Remove(vaga);
+	}
+
+	/// <summary>
+	/// A VAGA DESTE PERSONAGEM ("" = nenhuma): a presa ao slot dele; ou, se nao houver, o trono da conta SEM personagem -- o de antes de
+	/// 2026-10-26 --, que se prende a ele AGORA. E o *"O 1o que entrar com ele"* do dono: o primeiro personagem da conta que o servidor ve no
+	/// jogo e quem pergunta primeiro (a ficha do login pergunta o cargo). Um corpo sem slot (os forjados de bancada) usa o trono sem prende-lo.
+	/// </summary>
+	private string VagaDe(ServerPlayer pl)
+	{
+		if (pl.Conta.Length == 0) return "";
+		string? semPersonagem = null;
+		foreach ((string vaga, string conta) in _tronos)
+		{
+			if (!string.Equals(conta, pl.Conta, StringComparison.OrdinalIgnoreCase)) continue;
+			if (SlotDoTrono(vaga, out int slot)) { if (slot == pl.Slot) return vaga; }
+			else semPersonagem ??= vaga;
+		}
+		if (semPersonagem == null) return "";
+		if (pl.Slot >= 0)
+		{
+			_personagensDosTronos[semPersonagem] = (pl.Conta, pl.Slot, pl.Name);
+			SalvarCargos();
+			GD.Print($"[server] cargos: o trono '{semPersonagem}' da conta {pl.Conta} (de quando o cargo era da conta) ficou com {pl.Name}, o primeiro a entrar");
+		}
+		return semPersonagem;
+	}
+
+	/// <summary>
+	/// O PERSONAGEM QUE CARREGA ESTA VAGA, se ele esta no jogo agora (nulo = vaga vazia, ou o dono fora). O irmao de conta que esta jogando
+	/// NAO e ele. A vaga sem personagem (o trono de antes, so da conta) e de qualquer personagem da conta, como era.
+	/// </summary>
+	private ServerPlayer? OnlineDoTrono(string vaga)
+	{
+		if (vaga.Length == 0 || !_tronos.TryGetValue(vaga, out string? conta) || conta.Length == 0) return null;
+		bool temSlot = SlotDoTrono(vaga, out int slot);
+		return _players.Values.FirstOrDefault(p => EhPessoa(p) && string.Equals(p.Conta, conta, StringComparison.OrdinalIgnoreCase)
+												   && (!temSlot || p.Slot == slot));
+	}
+
+	/// <summary>Este personagem carrega esta vaga?</summary>
+	private bool OcupaOTrono(string vaga, ServerPlayer pl) =>
+		vaga.Length > 0 && string.Equals(VagaDe(pl), vaga, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>A conta tem ALGUM personagem neste cargo (em qualquer vaga dele -- as cinco do Kaioshin inclusas)?</summary>
+	private bool ContaTemOCargo(string conta, string cargo) =>
+		conta.Length > 0 && Cargos.Get(cargo) is { } r
+		&& VagasDe(r).Any(v => _tronos.TryGetValue(v, out string? c) && string.Equals(c, conta, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>O cargo do personagem (conta, slot), dentro ou fora do jogo: a vaga presa a ele, ou o trono da conta sem personagem.</summary>
+	private string CargoDoPersonagem(string conta, int slot)
+	{
+		string? semPersonagem = null;
+		foreach ((string vaga, string c) in _tronos)
+		{
+			if (!string.Equals(c, conta, StringComparison.OrdinalIgnoreCase)) continue;
+			if (SlotDoTrono(vaga, out int s)) { if (s == slot) return CargoDaVaga(vaga); }
+			else semPersonagem ??= vaga;
+		}
+		return semPersonagem != null ? CargoDaVaga(semPersonagem) : "";
+	}
+
+	/// <summary>O cargo do personagem desta ASSINATURA, com a conta dele (a assinatura e um hash de conta+slot). "" = nenhum.</summary>
+	private string CargoDaAssinatura(string conta, string sig)
+	{
+		for (int s = 0; s < AccountStore.Slots; s++)
+			if (ServerPlayer.AssinaturaDe(conta, s) == sig) return CargoDoPersonagem(conta, s);
+		return "";
+	}
+
+	/// <summary>O NOME de quem carrega a vaga: o do personagem no jogo; fora dele, o que sentou nela; sem os dois, a conta (o de antes).</summary>
+	private string NomeDoTrono(string vaga)
+	{
+		if (OnlineDoTrono(vaga) is { } vivo) return vivo.Name;
+		if (SlotDoTrono(vaga, out _) && _personagensDosTronos[vaga].Nome.Length > 0) return _personagensDosTronos[vaga].Nome;
+		return _tronos.TryGetValue(vaga, out string? conta) ? conta : "";
+	}
+
+	/// <summary>A primeira vaga ocupada do cargo ("" = vago).</summary>
+	private string PrimeiraVagaOcupada(RankDef r) =>
+		VagasDe(r).FirstOrDefault(v => _tronos.TryGetValue(v, out string? d) && d.Length > 0) ?? "";
+
+	/// <summary>
+	/// O PERSONAGEM APAGADO DEIXA O TRONO: a vaga presa a ele (a assinatura e `hash(conta, slot)` -- a do slot que vagou) e destituida.
+	/// Senao o proximo personagem criado no mesmo slot nasceria com o cargo do que saiu. Chamado do `EsquecerAAssinaturaNoMundo`, na hora em
+	/// que o personagem e apagado (e de novo na criacao, pelo mesmo funil).
+	/// </summary>
+	private void VagarOsTronosDaAssinatura(string sig)
+	{
+		foreach (string vaga in _tronos.Keys.ToList())
+			if (SlotDoTrono(vaga, out int slot) && ServerPlayer.AssinaturaDe(_tronos[vaga], slot) == sig)
+				Destronar(CargoDaVaga(vaga), "o personagem que o carregava saiu do mundo", _tronos[vaga]);
+	}
 
 	/// <summary>As contas que carregam este cargo agora, na ordem das vagas.</summary>
 	private List<string> DonosDe(RankDef r)
@@ -132,7 +293,7 @@ public partial class GameServer
 		Classe = pl.Class,
 		BpBase = pl.Ficha.BP,
 		Karma = pl.Karma,
-		CargoAtual = CargoDe(pl.Conta),
+		CargoAtual = CargoDe(pl),
 
 		// OS QUATRO CAMPOS NOVOS. Sem preencher aqui, todo requisito que depende deles passava
 		// de graca (bool false e double 0 sao os defaults, e a comparacao e ">=") -- os cargos de
@@ -185,7 +346,14 @@ public partial class GameServer
 		}
 
 		// (2026-10-16) POR VAGA: o cargo de varias vagas (o Kaioshin, `RankDef.Vagas`) so recusa com TODAS ocupadas.
-		if (DonosDe(r).Contains(pl.Conta, StringComparer.OrdinalIgnoreCase)) { Avisar(pl, $"voce JA e {r.Nome}."); return false; }
+		if (string.Equals(CargoDe(pl), r.Chave, StringComparison.OrdinalIgnoreCase)) { Avisar(pl, $"voce JA e {r.Nome}."); return false; }
+		// (2026-10-26) O CARGO E DO PERSONAGEM, e a mesma conta nao poe dois no mesmo -- nem com as vagas do Kaioshin sobrando. O dono: *"assim
+		// n tem como ter varios personagens da mesma conta caindo no mesmo rank"*.
+		if (ContaTemOCargo(pl.Conta, r.Chave))
+		{
+			Avisar(pl, $"outro personagem da sua conta ja e {r.Nome} -- um cargo nao se repete na mesma conta.");
+			return false;
+		}
 		if (VagaLivre(r) is not { } vaga)
 		{
 			Avisar(pl, r.Vagas > 1 && !VagasIgnoradasDeTeste ? $"as {r.Vagas} vagas de {r.Nome} estao ocupadas." : $"{r.Nome} ja tem dono.");
@@ -194,7 +362,7 @@ public partial class GameServer
 
 		// UMA ALMA, UM TRONO. A escada e a excecao: subir de Kaio a Grande Kaio LARGA o cargo
 		// anterior em vez de acumular -- senao o mundo perderia um Kaio cardeal a cada promocao.
-		string atual = CargoDe(pl.Conta);
+		string atual = CargoDe(pl);
 		bool subindo = atual.Length > 0 && r.Degraus.Contains(atual, StringComparer.OrdinalIgnoreCase);
 		if (atual.Length > 0 && !subindo)
 		{
@@ -211,9 +379,9 @@ public partial class GameServer
 		// O RENOME E DE QUEM CARREGA O CARGO AGORA, e nao do trono: ver `RenomeDe`. Herdar o servico de
 		// quem veio antes seria comprar promocao com o trabalho alheio.
 		// ======================================================================================
-		if (subindo && !MissoesDeCargo.PodeAscender(RenomeDe(VagaDaConta(pl.Conta))))
+		if (subindo && !MissoesDeCargo.PodeAscender(RenomeDe(VagaDe(pl))))
 		{
-			int tem = RenomeDe(VagaDaConta(pl.Conta));
+			int tem = RenomeDe(VagaDe(pl));
 			Avisar(pl, $"ainda falta RENOME para almejar algo maior: {tem}/{MissoesDeCargo.TarefasParaAscender} "
 					 + $"tarefas cumpridas como {Cargos.Get(atual)?.Nome ?? atual}. Sirva ao cargo primeiro "
 					 + "(verb Rank Duty).");
@@ -228,8 +396,8 @@ public partial class GameServer
 
 		if (!conceder) return true;
 
-		if (subindo) _tronos.Remove(VagaDaConta(pl.Conta));
-		_tronos[vaga] = pl.Conta;
+		if (subindo) Desocupar(VagaDe(pl));
+		Ocupar(vaga, pl);
 		SalvarCargos();
 
 		// (2026-10-19) A CAMPANHA: `if(key == "president") M.zenni -= RQ_PRESIDENT_CAMPAIGN //a campanha cobra ao VENCER`
@@ -280,26 +448,24 @@ public partial class GameServer
 	/// </summary>
 	private void Outorgar(RankDef r, ServerPlayer pl)
 	{
-		string vagaVelha = VagaDaConta(pl.Conta);
+		string vagaVelha = VagaDe(pl);
 		string largou = CargoDaVaga(vagaVelha);
-		if (vagaVelha.Length > 0) _tronos.Remove(vagaVelha);
+		if (vagaVelha.Length > 0) Desocupar(vagaVelha);
+		// (2026-10-26) ...e o OUTRO personagem da mesma conta que estivesse neste cargo sai dele: o cargo nao se repete na conta, e o admin
+		// escolheu ESTE personagem
+		foreach (string v in VagasDe(r).ToList())
+			if (_tronos.TryGetValue(v, out string? c) && string.Equals(c, pl.Conta, StringComparison.OrdinalIgnoreCase)) Desocupar(v);
 
 		// (2026-10-16) A VAGA: a livre, se o cargo tiver (o Kaioshin, `RankDef.Vagas`); com todas ocupadas, a PRIMEIRA troca de dono.
 		string vaga = VagaLivre(r) ?? r.Chave;
 
-		// O EX-DONO E GUARDADO PRA DEPOIS DO `_tronos[...] =`: a reconciliacao dele so responde certo
+		// O EX-DONO E GUARDADO PRA DEPOIS DO `Ocupar`: a reconciliacao dele so responde certo
 		// com o trono JA trocado, senao ela leria o cargo velho e devolveria o mesmo kit.
-		string perdeu = "";
-		if (_tronos.TryGetValue(vaga, out string? antigo) && antigo.Length > 0
-			&& !string.Equals(antigo, pl.Conta, StringComparison.OrdinalIgnoreCase))
-		{
-			perdeu = antigo;
-			foreach (ServerPlayer o in _players.Values)
-				if (string.Equals(o.Conta, antigo, StringComparison.OrdinalIgnoreCase))
-					Avisar(o, $"voce nao e mais {r.Nome}.");
-		}
+		// (2026-10-26) E E O PERSONAGEM que estava na vaga, e nao todo personagem da conta dele.
+		ServerPlayer? velho = OnlineDoTrono(vaga);
+		if (velho != null) Avisar(velho, $"voce nao e mais {r.Nome}.");
 
-		_tronos[vaga] = pl.Conta;
+		Ocupar(vaga, pl);
 		SalvarCargos();
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) recebeu o cargo '{r.Nome}' por outorga de admin");
 
@@ -308,7 +474,7 @@ public partial class GameServer
 		// novas, com o argumento escrito: *"sem esta linha ele so o perderia no proximo tique de
 		// reconciliacao -- e num duelo pelo titulo isso e uma janela em que dois 'Deuses' existem"*. A
 		// outorga de admin tinha a mesma janela e nao tinha a linha.
-		if (perdeu.Length > 0 && OnlinePorConta(perdeu) is { } velho) ReconciliarDadiva(velho);
+		if (velho != null && velho != pl) ReconciliarDadiva(velho);
 		ReconciliarDadiva(pl);
 
 		AnunciarCargo(r, pl, largou);
@@ -350,7 +516,8 @@ public partial class GameServer
 			w.Put(r.Chave);
 			// (2026-10-16) OS DONOS, separados por virgula: o cargo de varias vagas tem ate cinco (ver `RankDef.Vagas`)
 			List<string> donos = DonosDe(r);
-			w.Put(string.Join(", ", donos.Select(NomeDoDono)));
+			// (2026-10-26) o NOME pela VAGA: o personagem que sentou nela, e nao "algum personagem da conta"
+			w.Put(string.Join(", ", VagasDe(r).Where(v => _tronos.TryGetValue(v, out string? d) && d.Length > 0).Select(NomeDoTrono)));
 			// o que falta PRA MIM: e a unica parte que muda de jogador pra jogador
 			// (2026-10-19) ...ou que o espirito dele esta sendo enfrentado agora -- e o botao "Reivindicar" some (`ProvaQueOcupa`)
 			w.Put(Cargos.OqueFalta(r, f) ?? ProvaQueOcupa(r, pl) ?? "");

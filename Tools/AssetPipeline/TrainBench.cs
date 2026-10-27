@@ -80,13 +80,15 @@ public static class TrainBench
 		Console.WriteLine("  o quanto se ganha DE UMA VEZ -- e o freio contra salto absurdo num tick so.");
 
 		// -----------------------------------------------------------------
-		Console.WriteLine("\n== ZENKAI ==\n");
-		ZenkaiCaso(cat, "derrota comum vs inimigo 10x", 10, false);
-		ZenkaiCaso(cat, "derrota com o corpo em farrapos", 10, true);
-		ZenkaiCaso(cat, "inimigo absurdo (1000x), teto corta", 1000, false);
-		ZenkaiCaso(cat, "inimigo absurdo + em farrapos", 1000, true);
-		Console.WriteLine("\n  O teto e sobre o BP FINAL: comum no maximo DOBRA a base, em farrapos TRIPLICA.");
-		Console.WriteLine("  Recarga de 1 hora de relogio real, e para de vir perto do BP de SSJ3.");
+		// (2026-10-26) O ZENKAI VIROU UM BANCO (o pedido 95b do dono): a tabela de antes (inimigo 10x, corpo em farrapos, a recarga de 1 h)
+		// descrevia o Zenkai que saiu.
+		Console.WriteLine("\n== ZENKAI (o banco) ==\n");
+		ZenkaiCaso(cat, "nocaute comum, banco de 500", 500, false, false);
+		ZenkaiCaso(cat, "nocaute com a maioria do corpo critica", 500, false, true);
+		ZenkaiCaso(cat, "a morte", 500, true, false);
+		ZenkaiCaso(cat, "sem banco nenhum", 0, false, false);
+		Console.WriteLine("\n  Todo nocaute solta de 20% a 80% do banco pra sempre (2x na morte e com a maioria do corpo critica); o banco");
+		Console.WriteLine("  enche treinando (5% a 15% de cada ganho), e o teto e o requisito do SSJ3.");
 	}
 
 	private enum Atividade { Nada, Treino, Meditacao, Spar }
@@ -156,16 +158,16 @@ public static class TrainBench
 		Console.WriteLine($"{nome,-40} {dezMin,12:0.0} {umaHora,12:0.0} {f.BP,12:0.0} {porHora,7:0.0}x");
 	}
 
-	private static void ZenkaiCaso(RaceCatalog cat, string nome, double vezesMaisForte, bool ferido)
+	private static void ZenkaiCaso(RaceCatalog cat, string nome, double banco, bool morreu, bool critico)
 	{
 		var rng = new Random(99);
 		Fighter f = Birth.Nascer(cat, "Saiyan", "Saiyan", rng, "cobaia");
 		f.BP = 1000;
 		f.Tick();
+		f.zenkaiGuardado = banco;
 
 		double antes = f.BP;
-		Fighter.ZenkaiResult r = f.GainZenkai(f.expressedBP * vezesMaisForte, agoraMs: 1_000_000, muitoFerido: ferido);
-		Console.WriteLine($"  {nome,-38} {antes,8:0} -> {f.BP,10:0}  ({r}" +
-						  (f.UltimoZenkaiNoTeto ? ", no teto)" : ")"));
+		double ganhou = f.SoltarOZenkai(morreu, critico, requisitoDoSsj3: 0);
+		Console.WriteLine($"  {nome,-38} {antes,8:0} -> {f.BP,10:0}  (+{ganhou:0}; o banco ficou com {f.zenkaiGuardado:0})");
 	}
 }

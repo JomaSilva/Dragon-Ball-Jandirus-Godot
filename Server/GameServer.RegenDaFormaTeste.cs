@@ -66,6 +66,8 @@ public partial class GameServer
 			RfADecisao();
 			LimparTudoDaBancada();
 			RfDePontaAPonta();
+			LimparTudoDaBancada();
+			RfDrenoEmPontos();
 		}
 		catch (Exception e)
 		{
@@ -240,6 +242,13 @@ public partial class GameServer
 		GD.Print("[regenforma] -- 3) de ponta a ponta: o SSJ1 nao dominado so perde o que o dreno cobra --");
 		ServerPlayer c = Forjar("Sustentado", RfOnde(48), 50_000);
 		Fighter f = c.Ficha;
+		// (2026-10-26) O KI DESPERTO E NO TETO DO BP DELE -- um tanque que aguenta dez segundos de SSJ1 em pontos (o pedido 93): a ficha
+		// forjada nasce com o Ki base de fabrica, e os 105 pontos por segundo do SSJ1 a esvaziariam em dois. Ainda ABAIXO do Ki de
+		// referencia do SSJ1 (o de quem tem os 1,5 milhao da porta): e o lado de quem paga uma fatia MAIOR que antes.
+		f.KiUnlockPercent = 1;
+		f.Statify();
+		f.baseKi = f.baseKiMax;
+		f.Statify();
 
 		// SEGURAR O SSJ1 CRU a partir de uma fracao do tanque, ate `tiques` ou ate a forma cair: a queda do Ki, o que o dreno
 		// cobrou (a conta do `TickDaForma`, feita antes de cada tique) e o tique em que a forma caiu (-1 = nao caiu).
@@ -253,7 +262,9 @@ public partial class GameServer
 			double ki0 = f.Ki, cobrado = 0;
 			for (int i = 0; i < tiques; i++)
 			{
-				cobrado += c.Forma.DrenoPorSegundo() * f.MaxKi * RfDt * c.Racial.Efeito.Dreno;
+				// (2026-10-26) EM PONTOS (o pedido 93): este corpo (50 mil de BP) esta ABAIXO do Ki de referencia do SSJ1, e paga os mesmos
+				// pontos de quem esta acima -- pontos puros, pra todos (o dono). A secao 4 e o outro lado.
+				cobrado += c.Forma.PontosDeDrenoPorSegundo() * RfDt * c.Racial.Efeito.Dreno;
 				TickDaForma(c, RfDt);
 				if (c.Forma.NaBase) return (ki0 - f.Ki, cobrado, i);
 				TickDaCarga(c, RfDt);
@@ -265,7 +276,13 @@ public partial class GameServer
 		// morava) ela cai no tique 308 -- o 307 contando do zero --, com meio tique de folga pros dois lados, pra conta de ponto
 		// flutuante nao decidir nada.
 		const double Segundos = 10.25;
-		double fracao = Segundos * Catalogo.DrenoPorSegundo("ssj1", new Maestrias()) * c.Racial.Efeito.Dreno;
+		// (2026-10-26) EM PONTOS (o pedido 93): o tanque que dura `Segundos` e o dreno vezes o tempo, sobre o Ki maximo DA FORMA.
+		c.Forma.Entrar("ssj1");
+		AplicarForma(c);
+		double tanqueDaForma = f.MaxKi;
+		c.Forma.Entrar(Catalogo.IdBase);
+		AplicarForma(c);
+		double fracao = Segundos * Catalogo.PontosDeDrenoPorSegundo("ssj1", new Maestrias()) * c.Racial.Efeito.Dreno / tanqueDaForma;
 		int esperado = (int)Math.Ceiling(Segundos / RfDt) - 1;
 
 		try
@@ -296,5 +313,62 @@ public partial class GameServer
 			finally { FormaNaoDominadaRegeneraDeTeste = false; }
 		}
 		finally { c.Forma.Entrar(Catalogo.IdBase); }
+	}
+
+	// =====================================================================
+	// 4) (2026-10-26) O DRENO EM PONTOS -- o pedido 93 do dono
+	// =====================================================================
+
+	/// <summary>
+	/// O `TickDaForma` de verdade num corpo FORTE (10 bilhoes de BP, o Ki desperto e o Ki base no teto): o SSJ1 cru tira os PONTOS da
+	/// referencia (o que tirava de quem tem os 1,5 milhao da porta), e nao a fatia de hoje do tanque dele -- e com o DOBRO do Ki, os
+	/// MESMOS pontos. O corpo fraco das secoes de cima (50 mil de BP) e o outro lado da regra: abaixo da referencia ele paga a fatia de
+	/// sempre, e a secao 3 o mede.
+	/// </summary>
+	private void RfDrenoEmPontos()
+	{
+		GD.Print("[regenforma] -- 4) o dreno em pontos (o pedido 93): o forte paga os pontos da referencia, e nao a fatia do tanque dele --");
+		ServerPlayer c = Forjar("Forte", RfOnde(56), 1e10);
+		Fighter f = c.Ficha;
+		f.KiUnlockPercent = 1;
+
+		// SEGURAR O SSJ1 CRU um segundo, com o Ki base em `fatorDoKi` vezes o teto: a queda do Ki por segundo, e o tanque da forma.
+		(double PorSegundo, double Tanque) Queda(double fatorDoKi)
+		{
+			c.Forma.Entrar(Catalogo.IdBase);
+			AplicarForma(c);
+			f.Statify();
+			f.baseKi = Math.Max(f.baseKiMax, 1) * fatorDoKi;
+			f.Statify();
+			c.Forma.Entrar("ssj1");
+			c.Forma.Maestria.Por("ssj1", 0);
+			AplicarForma(c);
+			f.Ki = f.MaxKi * 0.9;
+			double ki0 = f.Ki;
+			int tiques = (int)Math.Round(1 / RfDt);
+			for (int i = 0; i < tiques; i++) TickDaForma(c, RfDt);
+			return ((ki0 - f.Ki) / (tiques * RfDt), f.MaxKi);
+		}
+
+		try
+		{
+			double pontos = Catalogo.PontosDeDrenoPorSegundo("ssj1", new Maestrias()) * c.Racial.Efeito.Dreno;
+			double fatia = Catalogo.DrenoPorSegundo("ssj1", new Maestrias()) * c.Racial.Efeito.Dreno;
+			double referencia = Catalogo.KiDeReferencia(Catalogo.Def("ssj1")!);
+			(double cheio, double tanqueCheio) = Queda(1);
+			(double dobro, double tanqueDobro) = Queda(2);
+			AfirmarRf("o SSJ1 cru de quem tem 10 BILHOES de BP tira os PONTOS da referencia por segundo, e nao a fatia de hoje do tanque dele "
+					  + "(o dono: *\"quanto mais forte vc fica ou seja mais ki vc tem, menos essa forma gasta em % do seu ki total\"*)",
+					  tanqueCheio > referencia && pontos > 0 && Math.Abs(cheio - pontos) <= 1e-6 * pontos && cheio < fatia * tanqueCheio * 0.99,
+					  $"{cheio:0.###}/s contra {pontos:0.###} pontos (a fatia seria {fatia * tanqueCheio:0.###}/s; tanque {tanqueCheio:N0}, referencia {referencia:N0})");
+			AfirmarRf("...e com o DOBRO do Ki, os MESMOS pontos -- metade da fatia do tanque",
+					  Math.Abs(dobro - cheio) <= 1e-6 * cheio && tanqueDobro > tanqueCheio * 1.9,
+					  $"{dobro:0.###}/s com o tanque de {tanqueDobro:N0} contra {cheio:0.###}/s com {tanqueCheio:N0}");
+		}
+		finally
+		{
+			c.Forma.Entrar(Catalogo.IdBase);
+			AplicarForma(c);
+		}
 	}
 }

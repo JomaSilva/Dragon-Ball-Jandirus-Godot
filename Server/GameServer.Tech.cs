@@ -641,6 +641,8 @@ public partial class GameServer
 			List<Obra>? l = JsonSerializer.Deserialize<List<Obra>>(
 				System.IO.File.ReadAllText(caminho), new JsonSerializerOptions { IncludeFields = true });
 			if (l != null) _noChao.AddRange(l);
+			// (2026-10-26) O SINTETIZADOR DE VIRUS SAIU DO JOGO: o que estava aparafusado no chao nao volta -- ver `TirarOsSintetizadoresDoMundo`.
+			TirarOsSintetizadoresDoMundo();
 			_proximaObraId = _noChao.Count > 0 ? _noChao.Max(o => o.Id) + 1 : 1;
 
 			// A OBRA GRAVADA NUM LUGAR EM QUE NAO SE CONSTROI (mente, bolso da fusao, selo, interior de Majin --

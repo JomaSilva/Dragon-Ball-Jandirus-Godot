@@ -238,8 +238,20 @@ public sealed class SkillCatalog
 		Races.FormasDeFrost.Raca or Races.FormasDeFrost.RacaLegada => Races.FormasDeFrost.ClasseNormal,
 		"Saibaman" => "Saibamen",
 		"SpiritDoll" => "Spirit Doll",
+		// (2026-10-26) O MEIO-SAIYAJIN ("Halfbreed" na ficha) GANHA A RACIAL DO SAIYAJIN -- o pedido 107 do dono: *"meio saiyajins n tao vendo
+		// saiyan racial skill tree, faca eles terem acesso a ela"*. O mapa do DM so tem "Saiyan"; a propria arvore `SaiyanRacial` ja dizia
+		// "Saiyan" e "Half-Saiyan" na lista de racas dela (ver `EMeioSaiyajinDoDm`, o outro crivo).
+		Forms.Catalogo.RacaMeioSaiyajin => "Saiyan",
 		_ => raca,
 	};
+
+	/// <summary>
+	/// (2026-10-26) "Half-Saiyan" e a grafia do DM nas listas de raca das skills (a arvore `SaiyanRacial` a traz), e "Halfbreed" a da ficha --
+	/// o mesmo descompasso do <see cref="NomeDoDm"/>, do lado do crivo. O pedido 107.
+	/// </summary>
+	private static bool EMeioSaiyajinDoDm(string raca, string daSkill) =>
+		string.Equals(raca, Forms.Catalogo.RacaMeioSaiyajin, StringComparison.OrdinalIgnoreCase)
+		&& string.Equals(daSkill, "Half-Saiyan", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Este personagem PODE, em principio, destravar esta skill?
@@ -263,7 +275,7 @@ public sealed class SkillCatalog
 		// (v0.3.0) cada parte da RACA COM SANGUE vale -- ver `ArvoresDe`. Pelo `SangueDoBio.Tem`, que nao aloca: esta pergunta
 		// roda pra cada skill da aba e da leitura de capacidades da IA.
 		foreach (string r in s.Racas)
-			if (Races.SangueDoBio.Tem(raca, r)) return true;
+			if (Races.SangueDoBio.Tem(raca, r) || EMeioSaiyajinDoDm(raca, r)) return true;   // (2026-10-26) o meio-Saiyajin -- o pedido 107
 		return s.Classes.Contains(classe, StringComparer.OrdinalIgnoreCase);
 	}
 

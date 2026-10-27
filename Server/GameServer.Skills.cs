@@ -71,10 +71,6 @@ public partial class GameServer
 		if (save is { SkillsGanhos.Count: > 0 })
 		{
 			pl.Livro.CarregarGanhos(save.SkillsGanhos);
-			// SAVE DE ANTES DA RAZAO GARANTIDA (ver `Fighter.Statify`, o teto de Ki que caia a cada soco):
-			// a compra da One Hundred esta no livro sem a razao; recompoe-se com o BP de hoje, uma vez.
-			int rec = GanhoNaCompra.Reconciliar(pl.Ficha, pl.Livro);
-			if (rec > 0) GD.Print($"[skills] {pl.Name}: {rec} compra(s) antigas de potencial ganharam a razao garantida (potencialGarantido={pl.Ficha.potencialGarantido:0.###})");
 		}
 		if (save != null && save.MarcosTotais > 0)
 		{
@@ -120,9 +116,7 @@ public partial class GameServer
 
 		foreach (GanhoNaCompra.CompraAntigaDevolvida d in pl.ComprasAntigasDevolvidas)
 		{
-			string devolveu = string.Join(", ", d.Campos
-				.Where(kv => kv.Key != GanhoNaCompra.CampoDaRazao)
-				.Select(kv => $"{NomesLegiveis.Campo(kv.Key)} -{kv.Value:0.##}"));
+			string devolveu = string.Join(", ", d.Campos.Select(kv => $"{NomesLegiveis.Campo(kv.Key)} -{kv.Value:0.##}"));
 			Avisar(pl, devolveu.Length > 0
 				? $"a {d.Nome} que você comprou era a versão antiga: saiu do livro, {d.Marcos} marco(s) voltaram "
 				  + $"(você tem {pl.Livro.MarcosLivres} livre(s)) e o corpo devolveu {devolveu}. compre de novo pra ganhar 5% de BP."

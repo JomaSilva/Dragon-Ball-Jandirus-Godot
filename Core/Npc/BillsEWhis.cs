@@ -1,3 +1,4 @@
+using Jandirus.Core.Forms;
 using Jandirus.Core.World;
 
 namespace Jandirus.Core.Npc;
@@ -242,34 +243,47 @@ public static class BillsEWhis
 	/// *"no treino o whis é sempre pelomenos 3x mais forte q o player q quer treinar (3x o bp maximo do jogador no bp base do whis, se
 	/// considerar o UI ele vai ter mt mais ...), whis n tem um bp maximo, ele por ser um anjo é sempre mais forte q qualquer um"*.
 	///
-	/// O PICO, e nao o de agora: transformou, o Whis acompanha; saiu da forma, ele NAO desce. E e o BASE, e nao o expresso (como era ate
-	/// 2026-10-24, quando o treino com o Bills era "a mesma coisa"): o Ultra Instinto Perfeito dele (<see cref="FormaDoWhis"/>) multiplica
-	/// por cima -- e nao ha teto nenhum.
+	/// (2026-10-25) O EXPRESSO DE AGORA, E O UI NAO AUMENTA -- o dono: *"whis vai ter 3x o bp expresso do jogador e é considerado q esta usando UI
+	/// mas sem aumentar o bp"*. Era o triplo do PICO no base, com o Ultra Instinto Perfeito multiplicando por cima (2026-10-24). Agora o que vale
+	/// na luta e 3x o expresso de quem treina, quadro a quadro: transformou, ele sobe junto; saiu da forma, ele desce junto. Ele continua no
+	/// Instinto Perfeito (<see cref="FormaDoWhis"/>: a esquiva, as passivas), e o servidor divide o base pelo multiplicador da forma. Sem teto.
 	/// </summary>
 	public const double VezesOPoderDoParceiro = 3;
 
-	/// <summary>O BP BASE do Whis no treino: o triplo do pico do poder expresso do parceiro na aula.</summary>
-	public static double PoderDoTreino(double picoDoParceiro) =>
-		Math.Max(picoDoParceiro, 1) * (TreinoSemMultiploDeTeste ? 1 : VezesOPoderDoParceiro);
+	/// <summary>O EXPRESSO do Whis no treino: o triplo do expresso de agora de quem treina. Ver <see cref="VezesOPoderDoParceiro"/>.</summary>
+	public static double PoderDoTreino(double expressoDoParceiro) =>
+		Math.Max(expressoDoParceiro, 1) * (TreinoSemMultiploDeTeste ? 1 : VezesOPoderDoParceiro);
 
 	/// <summary>
-	/// (2026-10-24) O BILLS NO TREINO: o BASE dele iguala o BASE de quem treina, ate o trilhao dele (<see cref="PoderTotal"/>) -- o dono:
-	/// *"o bills no treinamento ele sempre iguala o bp base ao bp base do jogador ate chegar no bp do 100% dele, mas ja q ele ta no UE (com
-	/// multiplicador normal ds forma) ele ta sempre extremamente forte"*. O Ultra Ego (<see cref="FormaDoBillsNoTreino"/>) multiplica por cima.
+	/// (2026-10-25) O BILLS NO TREINO: na FURY, SEMPRE 2x o poder EXPRESSO de quem treina, ate os 100 tri dele -- o dono: *"o bills vai usar fury
+	/// e vai sempre ter 2x o bp do jogador expresso (ate o teto dele q vamos colocar 100T , o whis n tem limite)"*. Era o base do parceiro com o
+	/// Ultra Ego por cima (2026-10-24), e um Blue com furia passava dele. O teto e so o do treino (<see cref="TetoDoBillsNoTreino"/>): o desafio e
+	/// a Terra seguem o trilhao (<see cref="PoderTotal"/>).
 	/// </summary>
-	public static double BaseDoBillsNoTreino(double baseDoParceiro) => Math.Min(Math.Max(baseDoParceiro, 1), PoderTotal);
+	public const double VezesOPoderDoParceiroNoBills = 2;
+
+	/// <summary>(2026-10-25) O teto do Bills no treino: cem trilhoes de poder EXPRESSO. Ver <see cref="VezesOPoderDoParceiroNoBills"/>.</summary>
+	public const double TetoDoBillsNoTreino = 100_000_000_000_000;
+
+	/// <summary>O EXPRESSO do Bills no treino: o dobro do expresso de agora de quem treina, ate o teto. Ver <see cref="VezesOPoderDoParceiroNoBills"/>.</summary>
+	public static double PoderDoBillsNoTreino(double expressoDoParceiro) =>
+		Math.Min(Math.Max(expressoDoParceiro, 1) * (TreinoSemMultiploDeTeste ? 1 : VezesOPoderDoParceiroNoBills), TetoDoBillsNoTreino);
 
 	/// <summary>
 	/// (2026-10-24) A FORMA EM QUE O WHIS ESTA SEMPRE -- o dono: *"o whis deveria sempre estar na forma ultra instinto perfeito mas sem efeito
 	/// visual nenhum"*. Ela vale no servidor e ninguem a ve. Ver `GameServer.VestirAFormaDoWhis`.
 	/// </summary>
-	public const string FormaDoWhis = "ui_perfected";
+	// (2026-10-25) LIDA DO CATALOGO DAS DISCIPLINAS -- o ultimo degrau de forma do Instinto --, e nao escrita a mao: a `disciplinas` do pipeline
+	// barra o id de forma divina escrito fora do catalogo ("nenhum SEGUNDO RAMO").
+	public static string FormaDoWhis => Disciplinas.UltraInstinct.Degraus.Last(g => g.Forma.Length > 0).Forma;
 
 	/// <summary>
-	/// (2026-10-24) A FORMA DO BILLS NO TREINO, com o visual e a aura -- o dono: *"no modo treino com beels ele deve usar o ultra ego, e pode
-	/// manter o visual nele com a aura do ultra ego"*. Ver `GameServer.VestirOUltraEgoDoBills`.
+	/// (2026-10-24) O ULTRA EGO DO BILLS, com o visual e a aura -- o dono: *"no modo treino com beels ele deve usar o ultra ego, e pode manter o
+	/// visual nele com a aura do ultra ego"*. (2026-10-25) No treino ele passou a usar a FURY (<see cref="IdDaFury"/>, o dono); o Ultra Ego
+	/// ficou so pra fase da Terra. Ver `GameServer.VestirOUltraEgoDoBills`.
 	/// </summary>
-	public const string FormaDoBillsNoTreino = "ultra_ego";
+	// (2026-10-25) LIDA DO CATALOGO DAS DISCIPLINAS -- o ultimo degrau de forma da Destruicao --, pela mesma razao da `FormaDoWhis`.
+	public static string FormaDoBillsNoTreino => Disciplinas.PoderDaDestruicao.Degraus.Last(g => g.Forma.Length > 0).Forma;
 
 	/// <summary>DEFEITO INJETADO (bancada): o adversario de treino fica com o MESMO poder do parceiro. Lido por <see cref="PoderDoTreino"/>.</summary>
 	public static bool TreinoSemMultiploDeTeste;
@@ -696,15 +710,16 @@ public static class BillsEWhis
 	/// <summary>
 	/// (2026-10-24) O ENSINO DOS PRINCIPIOS -- o dono: *"apos alguns treinos ambos whis ou bills começam a ensinar os principios do UE (bills)
 	/// ou do UI (whis) ao qual dps de um tempo vc libera a técnica de ambos"*. Em TEMPO DE LUTA acumulado com cada mestre (a aula que acaba
-	/// cedo conta o que durou): tres aulas inteiras e ele comeca a ensinar; mais tres e a tecnica e sua. Ver `GameServer.CreditarAAula`.
+	/// cedo conta o que durou). Ver `GameServer.CreditarAAula`.
+	///
+	/// (2026-10-25) PELO TEMPO TOTAL DE TREINO, E SO POR ELE -- o dono: *"deveria ser quantidades de minutos totais em treinos, entao tipo, pedindo
+	/// pelomenos 1h de treino com whis pra aprender UI e 1 hora de treino com bills pra aprender UE"*: meia hora e ele comeca a ensinar; uma hora
+	/// e a tecnica e sua (eram meia hora pra liberar, e derrubar o mestre valia uma aula a mais -- o "aprende vencendo" do relato).
 	/// </summary>
-	public const double SegundosPraComecarAEnsinar = 3 * SegundosDeTreino;
+	public const double SegundosPraComecarAEnsinar = 30 * 60;
 
-	/// <summary>Ver <see cref="SegundosPraComecarAEnsinar"/>: seis aulas inteiras de luta, e a disciplina do mestre e aprendida.</summary>
-	public const double SegundosPraLiberar = 6 * SegundosDeTreino;
-
-	/// <summary>(2026-10-24) Derrubar o mestre no treino vale uma aula inteira a mais no ensino -- e o que acontece quando ele cai.</summary>
-	public const double SegundosPeloMestreCaido = SegundosDeTreino;
+	/// <summary>Ver <see cref="SegundosPraComecarAEnsinar"/>: uma hora de luta com o mestre, e a disciplina dele e aprendida.</summary>
+	public const double SegundosPraLiberar = 60 * 60;
 
 	/// <summary>DEFEITO INJETADO (bancada): o tempo de aula nao ensina nada. Lido pelo `GameServer.CreditarAAula`. Falso em jogo, sempre.</summary>
 	public static bool TreinoNaoEnsinaDeTeste;
@@ -1052,6 +1067,15 @@ public static class BillsEWhis
 	public const string AvisoDoDesafioAnulado = "O duelo de {nome} contra Bills foi ANULADO: alguém se meteu no meio.";
 	public const string AvisoDoTituloDefendido = "O GOD OF DESTRUCTION defendeu seu título contra {nome}.";
 	public const string BillsSemKiDivino = "Um mortal sem ki divino querendo o MEU título? Volte quando o seu poder tiver gosto de deus.";
+	/// <summary>(2026-10-25) O TREINO TAMBEM PEDE O KI DIVINO DESPERTO (o dono: *"so de pra treinar com bills e whis caso vc tenha god ki
+	/// despertado"*): a fala do Whis pra quem pede a aula sem ele. Ver `GameServer.PedirALuta`.</summary>
+	public const string WhisSemKiDivino = "Ohoho, sem o ki divino desperto não há o que eu possa lhe ensinar. Volte quando ele despertar.";
+	/// <summary>Ver <see cref="WhisSemKiDivino"/>: a do Bills.</summary>
+	public const string BillsSemKiDivinoNoTreino = "Treinar um mortal sem ki divino? Desperte o ki dos deuses primeiro, e aí eu penso no assunto.";
+	/// <summary>Ver <see cref="WhisSemKiDivino"/>: o aviso a quem pediu.</summary>
+	public const string AvisoDoTreinoSemKiDivino = "só quem despertou o ki divino pode treinar com o Bills e o Whis.";
+	/// <summary>DEFEITO INJETADO (bancada): o treino abre sem o ki divino desperto. Lido por `GameServer.PedirALuta`.</summary>
+	public static bool TreinoSemKiDivinoDeTeste;
 	public const string BillsDesafioCedo = "Você já tentou. Deixe o dia virar -- e o orgulho sarar.";
 	public const string BillsFundido = "Um de cada vez, e inteiro. Desfaça essa fusão e volte.";
 

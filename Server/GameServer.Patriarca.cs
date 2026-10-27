@@ -53,9 +53,9 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// FALAR COM O GRANDE PATRIARCA -- o `Guru/Click()` do DM (`PlanetPopulation.dm:220-234`), na ordem dele: longe, ele pede pra chegar
-	/// perto; caido, nao ouve; o malvisto do povo dele e mandado embora; quem ja despertou ouve que o resto do caminho e dele; e o resto
-	/// desperta -- pelo mesmo `DespertarPotencialG11` do verbo `Unlock_Potential` e do desejo ao dragao (`UnlockPotential.dm`), uma vez na
-	/// vida. As falas sao as do DM, com o nome do corpo no lugar do "Guru" cravado.
+	/// perto; caido, nao ouve; o malvisto do povo dele e mandado embora; e o resto desperta -- pelo liberador unico do banco do potencial
+	/// (`LiberarOPotencial`, o do Unlock Potential, da Agua, do ritual e do desejo). As falas sao as do DM, com o nome do corpo no lugar do
+	/// "Guru" cravado. (2026-10-26) O GURU SOLTA O BANCO 1,25x, de hora em hora (o dono, o pedido 95) -- era o despertar uma vez na vida.
 	///
 	/// DIVERGENCIA DECLARADA: diante do Guru caido o DM fica calado (`if(dead || KO) return`); aqui o servidor responde -- o menu so
 	/// PEDE, e um pedido sem resposta parece botao quebrado.
@@ -82,14 +82,15 @@ public sealed partial class GameServer
 			Avisar(pl, $"{guru.Name}: \"Sinto o sofrimento do meu povo em suas mãos... Saia da minha frente.\"");
 			return;
 		}
-		if (pl.Ficha.unlockPotential >= 1)
+		if (PorQueNaoLibera(pl, comRecarga: true, proprio: true) is { } recusa)
 		{
-			Avisar(pl, $"{guru.Name}: \"Seu potencial já foi despertado, jovem guerreiro. O resto do caminho é seu.\"");
+			Avisar(pl, $"{guru.Name}: \"Não há o que eu desperte em você agora, jovem guerreiro.\"");
+			Avisar(pl, recusa);
 			return;
 		}
 
 		AvisarPertoG3(guru, RaioDaVista, $"{guru.Name} põe a mão sobre a cabeça de {pl.Name}...");
-		DespertarPotencialG11(pl, pl, autor: guru.Name);
 		Avisar(pl, $"{guru.Name}: \"Desperte... AGORA!\" Uma torrente de poder oculto explode de dentro de você!");
+		LiberarOPotencial(pl, pl, Jandirus.Core.Stats.GainKnobs.LiberaOGuru, autor: guru.Name);
 	}
 }

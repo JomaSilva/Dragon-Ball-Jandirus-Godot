@@ -508,10 +508,12 @@ public partial class RoboDeForma : Node
 		// foi rodada no dia em que o Orange entrou.
 		// ===============================================================================================
 		string[] esperado =
+		// (2026-10-26) E DOZE DE NOVO: a Super Perfeita (`Raios = 2`) saiu do jogo, e as duas divinas do bio que a substituiram nao
+		// acendem faisca -- sao o SSG e o Blue Evolution dele, e nenhum dos dois acende.
 			["ssj2", "ssj3", "primal_legendary2", "primal_legendary3", "ssj4_limit_breaker",
-			 "mistico", "beast", "snamek", "orange", "heran2", "alien1", "alien2", "super_perfect"];
+			 "mistico", "beast", "snamek", "orange", "heran2", "alien1", "alien2"];
 		Conferir(comRaio.Count == esperado.Length && esperado.All(comRaio.Contains),
-				 $"SO treze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
+				 $"SO doze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
 
 		// O VOLUME. O SSJ2 e o UNICO leve porque no DM o `if(2)` acende UMA folha; o SSJ3 e o
 		// `primal_legendary2` sao o CHEIO porque os dois caem no `if(3)`, que soma tres; o Limit
@@ -600,8 +602,9 @@ public partial class RoboDeForma : Node
 		// ======================================================================================================
 		// (E DEZ COM O ORANGE: a linha do Namekuseijin tambem cai no `_ => d.Aura`, e a faisca dele sai no laranja
 		// `ff8a1e` da propria chama -- tom novo, uma forma so.)
-		Conferir(tomDaFaisca.Count == 10,
-				 $"as treze faiscas saem em DEZ tons ({tomDaFaisca.Count}: "
+		// (2026-10-26) E NOVE SEM A SUPER PERFEITA: o `9fe8a8` era so dela.
+		Conferir(tomDaFaisca.Count == 9,
+				 $"as doze faiscas saem em NOVE tons ({tomDaFaisca.Count}: "
 			   + $"{string.Join(" / ", tomDaFaisca.Select(p => $"{p.Key}={p.Value.Count}"))})");
 		Conferir(tomDaFaisca.TryGetValue("8fe3ff", out List<string>? azuis) && azuis.Count == 4,
 				 $"QUATRO delas sao azuis #8fe3ff ({Quem("8fe3ff")})");
@@ -610,7 +613,7 @@ public partial class RoboDeForma : Node
 		// as duas Alien, que sao a MESMA folha em tons diferentes porque a chama de cada degrau e que
 		// muda. Sem esta linha, duas racas trocando de cor entre si passariam pela conta de cima.
 		foreach ((string id, string tom) in new[]
-			{ ("snamek", "6fe36f"), ("orange", "ff8a1e"), ("heran2", "ff4a4a"), ("super_perfect", "9fe8a8") })
+			{ ("snamek", "6fe36f"), ("orange", "ff8a1e"), ("heran2", "ff4a4a") })
 			Conferir(tomDaFaisca.TryGetValue(tom, out List<string>? so) && so.Count == 1 && so[0] == id,
 					 $"e a faisca de `{id}` e #{tom}, so dela ({Quem(tom)})");
 		Conferir(tomDaFaisca.TryGetValue("ff2d2f", out List<string>? vermelhas)
@@ -1765,6 +1768,8 @@ public partial class RoboDeForma : Node
 		("grade3",                      150, "cinematics/UltraSSJCinematic.dm"),
 		("primal_legendary",            150, "cinematics/UltraSSJCinematic.dm"),
 		("blue_evolution",              150, "cinematics/UltraSSJCinematic.dm"),
+		// (2026-10-26) A MAX do bio-androide e forma nova do dono, sem proc no DM -- a cena e a do Blue Evolution, de que ela e a irma.
+		("bio_max",                     150, "cinematics/UltraSSJCinematic.dm (a do Blue Evolution)"),
 		("rose2",                       150, "cinematics/UltraSSJCinematic.dm"),
 
 		// `SSJ3Cinematic.dm`: VINTE sleeps -- 10+60+50+20+50+40+50+20+30+50+50+100+100+100+130+100+140+
@@ -1794,6 +1799,8 @@ public partial class RoboDeForma : Node
 		("ssg",                         145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`)"),
 		("rose_ssg",                    145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`)"),
 		("mistico",                     145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`)"),
+		// (2026-10-26) A GOLDEN PERFECT do bio-androide e forma nova do dono, sem proc no DM -- a cena e o ritual do SSG, de que ela e a irma.
+		("golden_perfect",              145, "GodRitual.dm:41 (`INITIALIZEGODPROTOCOL`, o ritual do SSG)"),
 
 		// ============================ O FROST DEMON TEM AS DUAS CENAS DO ORIGINAL ============================
 		// `Frost_Demon_Forms()` escolhe entre elas pelo ESTADO (Mutante entrando numa forma que nao
@@ -1860,17 +1867,8 @@ public partial class RoboDeForma : Node
 		("alien1",                          "`Alien_Trans()` nao tem um `sleep`"),
 		("alien2",                          "`Alien_Trans()` nao tem um `sleep` (o mesmo proc)"),
 
-		// ============================ E A SUPER PERFEITA, PELO MESMO MOTIVO DAS TRES DE CIMA ============================
-		// `Cell4()` (`CellFormBuff.dm:73-82`) sao sete linhas sem espera nenhuma: `chargeaura.wav`, o
-		// `startbuff`, `animate(src, time=7, color=rgb(243,240,46))` -- que e flash e nao cena, como o
-		// `animate` do Namekuseijin logo acima --, `createShockwavemisc(loc,1)` e `createCrater(loc,5)`.
-		//
-		// ELA ENTRA AQUI E NAO FICA DE FORA porque a ausencia precisa estar ESCRITA: `super_perfect` era
-		// a unica forma do catalogo inteiro sem cena nenhuma, e a bancada acusava isso por duas linhas
-		// diferentes ao mesmo tempo ("toda forma tem cena -- 1 sem" e "sem classificacao"). Portar a cena
-		// sem classificar o prazo dela trocaria uma acusacao pela outra.
-		// ==========================================================================================================
-		("super_perfect",                   "`Cell4()` nao tem um `sleep` -- o `animate(time=7)` e flash"),
+		// (2026-10-26) A SUPER PERFEITA SAIU DO JOGO, e com ela a linha que declarava a ausencia da cena dela (a `Cell4()` nao tinha
+		// `sleep`). As duas divinas do bio que a substituiram tem cena de receita do DM, e moram na tabela de tiques.
 
 		// A FURY DO DEUS DA DESTRUICAO (2026-10-11), pelo mesmo motivo das de cima: o `Buff()` do `GodFury`
 		// (`GodOfDestruction.dm:396-401`) veste a aura, toca `1aura.wav` e escreve uma linha -- sem espera nenhuma.
@@ -3398,6 +3396,11 @@ public partial class RoboDeForma : Node
 			bool ehBaseDoCatalogo = d.Id == Jandirus.Core.Forms.Catalogo.IdBase;
 			var esperada = d.Linha switch
 			{
+				// (2026-10-26) OS DOIS LIMIT BREAKER NAO TEM FOLHA: tem a nuvem, vermelha e sem pontinhos -- o dono, *"faca o
+				// ssj 4 lb ter uma aura igual o UI so q vermelha"*, e perguntado, *"Os dois"*. Pelo ID e no topo, como na bancada
+				// da nuvem (`RoboDeNebulosa.Varrer`): o Core os acha por derivacao, e aqui se cobra a frase.
+				_ when d.Id is "ssj4_limit_breaker" or "primal_legendary4_limit_breaker"
+					=> Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
 				Jandirus.Core.Forms.LinhaDeForma.Legendary
 					or Jandirus.Core.Forms.LinhaDeForma.LegendaryPrimal => Jandirus.Core.Forms.FolhaDeAura.Lssj,
 				Jandirus.Core.Forms.LinhaDeForma.Saiyajin
@@ -3420,6 +3423,11 @@ public partial class RoboDeForma : Node
 				// nuvem nas duas apagaria isso. O corte por `Ordem` e o mesmo das divinas acima.
 				Jandirus.Core.Forms.LinhaDeForma.UltraEgo when d.Ordem >= 20
 					=> Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
+				// (2026-10-26) AS DUAS DIVINAS DO BIO-ANDROIDE, pelo ID como as do Limit Breaker la em cima: a Golden Perfect veste o fogo
+				// do SSG em OURO (folha propria) e a MAX a chama do Blue, que tira o vermelho da cor dela -- o dono, *"uma aura igual a do
+				// ssj god so q dourada"* e *"Aura do blue/blue evolution so q vermelha"*.
+				Jandirus.Core.Forms.LinhaDeForma.BioAndroide => d.Id == "bio_max"
+					? Jandirus.Core.Forms.FolhaDeAura.DeusFrio : Jandirus.Core.Forms.FolhaDeAura.DeusDourado,
 				_ => Jandirus.Core.Forms.FolhaDeAura.Base,
 			};
 			var f = Jandirus.Core.Forms.Catalogo.Folha(d);
@@ -3433,8 +3441,11 @@ public partial class RoboDeForma : Node
 		// A SETIMA NAO E ARTE: e a `Nebulosa`, o simbolo que diz "esta forma nao usa folha" (ver o Core).
 		// Ela conta aqui pelo mesmo motivo das outras -- se a linha do Ultra Instinto voltasse a cair na
 		// `Base`, este numero cairia pra seis e a chama voltaria a acender por cima da nuvem.
-		Conferir(porFolha.Count == 7,
-				 "o catalogo usa as SETE folhas ("
+		//
+		// (2026-10-26) A OITAVA E O OURO DA GOLDEN PERFECT (`DeusDourado`): o fogo do SSG numa rampa propria. Se a linha do bio voltasse a
+		// cair na `Base` (a folha colorivel das mortais), o numero voltaria a sete.
+		Conferir(porFolha.Count == 8,
+				 "o catalogo usa as OITO folhas ("
 			   + string.Join(", ", porFolha.OrderBy(p => p.Key).Select(p => $"{p.Key} {p.Value}")) + ")");
 
 		// ============================ E TODAS EXISTEM MESMO NO DISCO ============================
@@ -3475,6 +3486,26 @@ public partial class RoboDeForma : Node
 				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusRosa) is { } er
 				  && eq != ef && ef != er && eq != er,
 					 "e as tres DIVINAS sao da chama por shader, cada uma com o seu desenho -- o fogo do SSG, a chama do Blue e a do Rose");
+
+		// ============================ (2026-10-26) E AS DUAS DIVINAS DO BIO, PELA COR ============================
+		// O dono: a Golden Perfect com *"uma aura igual a do ssj god so q dourada ao inves de laranja"*, e a MAX com a *"do blue/blue
+		// evolution so q vermelha"*. A Golden tem o MESMO desenho do fogo do SSG (o mesmo estilo do shader) e uma rampa propria: o meio
+		// dela tem de ser OURO -- vermelho e verde altos, azul baixo, o verde bem acima do laranja do SSG. A MAX tem o desenho do Blue
+		// Evolution e a cor dela, pela regra da chama do Blue (a rampa sai da cor da forma), tem de sair VERMELHA.
+		// ==========================================================================================================
+		var (_, meioDoOuro, bordaDoOuro, _) = ChamaDeAura.PaletaDe(Jandirus.Core.Forms.FolhaDeAura.DeusDourado, Colors.White);
+		var (_, meioDoFogo, _, _) = ChamaDeAura.PaletaDe(Jandirus.Core.Forms.FolhaDeAura.DeusQuente, Colors.White);
+		Conferir(ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusDourado) == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusQuente)
+				  && meioDoOuro.R > 0.9f && meioDoOuro.G > 0.75f && meioDoOuro.B < 0.45f && meioDoOuro.G > meioDoFogo.G + 0.1f
+				  && bordaDoOuro.G > bordaDoOuro.B,
+				 $"e a da GOLDEN PERFECT e o FOGO do Deus (o mesmo desenho) em OURO, e nao no laranja dele (meio #{meioDoOuro.ToHtml(false)} "
+			   + $"contra #{meioDoFogo.ToHtml(false)} do SSG)");
+		Jandirus.Core.Forms.FormaDef maxDoBio = Jandirus.Core.Forms.Catalogo.Def("bio_max")!;
+		var (_, meioDaMax, _, _) = ChamaDeAura.PaletaDe(Jandirus.Core.Forms.Catalogo.Folha(maxDoBio), new Color(maxDoBio.Aura));
+		Conferir(Jandirus.Core.Forms.Catalogo.Folha(maxDoBio)
+					 == Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("blue_evolution"))
+				  && meioDaMax.R > 0.8f && meioDaMax.G < 0.35f && meioDaMax.B < 0.35f,
+				 $"e a da MAX e a chama do Blue Evolution (o mesmo desenho) em VERMELHO (meio #{meioDaMax.ToHtml(false)})");
 		ChamaDeAura.DesenhaTudoDeTeste = true;
 		List<string> comODefeito;
 		try { comODefeito = DesenhistasErrados(); }
@@ -9877,20 +9908,14 @@ public partial class RoboDeForma : Node
 		("alien1",                          ModoCabelo.Base,             null,     null),
 		("alien2",                          ModoCabelo.Base,             null,     null),
 
-		// ============================ E O BIO-ANDROIDE, A DECIMA TERCEIRA AUSENCIA ============================
-		// `super_perfect` estava faltando aqui desde que a linha do bio entrou no catalogo, e a bancada
-		// a acusava pelo nome ("forma nova sem ninguem olhar"). A resposta e a mesma das doze acima, e
-		// nesta ela tem regra ESCRITA no original: **o bio-androide e careca em TODA forma**
-		// (`HairObject.dm:168` recusa cabelo pra a raca, e `dnl_bio_hatch` crava `hair = "Bald"` no
-		// nascimento). Rabo ele nao tem em lugar nenhum do jogo, e nenhuma forma dele encosta no olho.
-		//
-		// O QUE O DM ENCOSTA E OUTRO CANAL: `Cell4()` veste `/obj/overlay/hairs/SuperPerfect/sp1` com
-		// `icon = container.truehair` -- o PROPRIO cabelo do jogador, que num bio e o vazio -- e o
-		// `.../spc` com `snamek Elec.dmi`, que e ELETRICIDADE. Eletricidade e o campo `Raios` (que a
-		// entrada do catalogo declara como 2), e nao nenhuma das tres colunas desta tabela. E o mesmo
-		// caso do Heran e do Namekuseijin logo acima, palavra por palavra.
+		// ============================ E O BIO-ANDROIDE ============================
+		// A resposta e a mesma das doze acima, e nesta ela tem regra ESCRITA no original: **o bio-androide e careca em TODA forma**
+		// (`HairObject.dm:168` recusa cabelo pra a raca, e `dnl_bio_hatch` crava `hair = "Bald"` no nascimento). Rabo ele nao tem em
+		// lugar nenhum do jogo, e nenhuma forma dele encosta no olho. Era a Super Perfeita (`super_perfect`); desde 2026-10-26 sao as duas
+		// divinas que a substituiram -- o que elas trocam e o CORPO inteiro (`CorpoDeForma.BioGolden`/`BioMax`), outro canal.
 		// ==================================================================================================
-		("super_perfect",                   ModoCabelo.Base,             null,     null),
+		("golden_perfect",                  ModoCabelo.Base,             null,     null),
+		("bio_max",                         ModoCabelo.Base,             null,     null),
 
 		// A FURY DO DEUS DA DESTRUICAO (2026-10-11): o `Buff()` dela so escreve o multiplicador e veste a aura colada
 		// (`GodOfDestruction.dm:396-401`) -- nao ha `RemoveHair`/`AddHair`, overlay de olho nem tinta de rabo.

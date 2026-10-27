@@ -121,13 +121,14 @@ public partial class GameServer
 			// ---------------------------------------------------------------- 5. quem aguenta
 			GD.Print("[agua] -- 5) quem aguenta --");
 			ServerPlayer forte = Forjar("Forte", aoLado, 1);
-			forte.Ficha.BP = forte.Ficha.relBPmax * 0.5;   // abaixo do proprio teto: e quem ganha BP
+			forte.Ficha.BP = forte.Ficha.relBPmax * 0.5;
+			// (2026-10-26) O BANCO DO POTENCIAL (o pedido 95): mil guardados, que a agua solta 1x
+			forte.Ficha.hiddenpotential = 1000;
 			double vigorAntes = forte.Ficha.maxstamina, bpAntes = forte.Ficha.BP;
-			double ganhoEsperado = forte.Ficha.BPMod * forte.Ficha.relBPmax;
 			SorteioDaAguaDeTeste = 0.9;   // a moeda contra, de novo: quem salva e a resistencia
 			Ouvir(() => Verbo(forte, AguaSagrada.VerboBeber, ""));
-			AfirmarAg("**COM A RESISTENCIA EM 1 A AGUA NAO MATA**, com a moeda contra -- e a marca e gasta no gole",
-					  forte.Ficha.sacredwater == 1 && _golesDeAgua.Count == 1);
+			AfirmarAg("**COM A RESISTENCIA EM 1 A AGUA NAO MATA**, com a moeda contra -- e o gole comeca",
+					  _golesDeAgua.Count == 1 && !forte.Ficha.dead);
 			falas = Ouvir(() => { Passar(3000); Passar(3000); Passar(3000); });
 			AfirmarAg("no terceiro passo o corpo DESABA (o `KO` do original)", forte.Ficha.KO && !forte.Ficha.dead && Disse(falas, "desaba"), Ultimos(falas));
 			falas = Ouvir(() => Passar(29_000));
@@ -138,9 +139,14 @@ public partial class GameServer
 			falas = Ouvir(() => Passar(3000));
 			AfirmarAg("**O VIGOR MAXIMO SOBE 20%** (`maxstamina *= 1.2`)", Math.Abs(forte.Ficha.maxstamina - vigorAntes * 1.2) < 1e-6,
 					  $"{vigorAntes:0.##} -> {forte.Ficha.maxstamina:0.##}");
-			AfirmarAg("**E O BP SOBE** pela porta de ganho do treino: um quinto do `capcheck(BPMod * relBPmax)`",
-					  forte.Ficha.BP > bpAntes && forte.Ficha.BP <= bpAntes + ganhoEsperado / 5 * 1.3 + 1e-6,
-					  $"{bpAntes:0.#} -> {forte.Ficha.BP:0.#} (o cheio seria +{ganhoEsperado / 5:0.#})");
+			// (2026-10-26) O BANCO, COMO NO DU (`Skills.dm:2770-2773`; o dono, o pedido 95): solta o banco 1x e poe nele 10% do BP, minguando
+			AfirmarAg("**A AGUA SOLTA O BANCO DO POTENCIAL 1x** (o dono, 2026-10-25): os mil guardados viram mil de BP base -- e nao mais um quinto do teto pessoal",
+					  Math.Abs(forte.Ficha.BP - (bpAntes + 1000)) < 1e-6 && forte.Ficha.unlockPotential >= 1,
+					  $"{bpAntes:0.#} -> {forte.Ficha.BP:0.#}");
+			AfirmarAg("**...E POE NO BANCO 10% DO BP** (o primeiro gole: `/ (0 + 1)`), conta o gole e comeca a hora de recarga",
+					  Math.Abs(forte.Ficha.hiddenpotential - forte.Ficha.BP * 0.1) < 1e-6 && forte.Ficha.golesDaAgua == 1 && forte.Ficha.sacredwater == 1
+					  && forte.Ficha.liberarPotencialEm > NowMs() + Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs - 60_000,
+					  $"banco {forte.Ficha.hiddenpotential:0.##} (BP {forte.Ficha.BP:0.##}), goles {forte.Ficha.golesDaAgua}");
 
 			// (2026-10-16) O DONO: *"Agua sagrada do korin mostra o bp mesmo sem scouter"*. Sem medidor o ganho se SENTE (porcentagem) e o
 			// poder de luta nao e citado; o numero so com scouter (`PoderNaFrase`). O corpo da bancada nao tem scouter.
@@ -149,28 +155,47 @@ public partial class GameServer
 					  Ultimos(falas));
 			AfirmarAg("...e o gole acabou", _golesDeAgua.Count == 0);
 
-			// ---------------------------------------------------------------- 6. uma vez na vida
-			GD.Print("[agua] -- 6) uma vez na vida --");
-			double vigorDepois = forte.Ficha.maxstamina;
+			// ---------------------------------------------------------------- 6. de hora em hora (2026-10-26; era uma vez na vida)
+			GD.Print("[agua] -- 6) de hora em hora, o banco minguando --");
+			double vigorDepois = forte.Ficha.maxstamina, bpDepois = forte.Ficha.BP, bancoDepois = forte.Ficha.hiddenpotential;
 			falas = Ouvir(() => Verbo(forte, AguaSagrada.VerboBeber, ""));
-			AfirmarAg("**O SEGUNDO GOLE E SO AGUA**: nada acontece, e nenhum gole novo comeca",
-					  _golesDeAgua.Count == 0 && forte.Ficha.maxstamina == vigorDepois && Disse(falas, "nada acontece"), Ultimos(falas));
+			AfirmarAg("**DENTRO DA HORA O SEGUNDO GOLE NAO FAZ NADA** (o dono: \"repetiveis, 1h de recarga\"): o potencial \"ainda se assenta\", e nenhum gole novo comeca",
+					  _golesDeAgua.Count == 0 && forte.Ficha.maxstamina == vigorDepois && forte.Ficha.BP == bpDepois && Disse(falas, "ainda se assenta"),
+					  Ultimos(falas));
+			AdiantoDoRelogioDeTeste += Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs;
+			try
+			{
+				SorteioDaAguaDeTeste = 0.9;
+				falas = Ouvir(() => { Verbo(forte, AguaSagrada.VerboBeber, ""); Passar(3000); Passar(3000); Passar(3000); Passar(30_000); Passar(3000); });
+			}
+			finally { AdiantoDoRelogioDeTeste -= Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs; }
+			AfirmarAg("**PASSADA A HORA, BEBE DE NOVO**: o banco que a primeira deixou sai 1x, e o vigor NAO sobe outra vez (so na primeira)",
+					  Math.Abs(forte.Ficha.BP - (bpDepois + bancoDepois)) < 1e-6 && forte.Ficha.maxstamina == vigorDepois,
+					  $"BP {bpDepois:0.##} -> {forte.Ficha.BP:0.##} (banco {bancoDepois:0.##}); vigor {forte.Ficha.maxstamina:0.##}");
+			AfirmarAg("**...E O QUE ELA POE MINGUA**: no segundo gole, 10% do BP dividido por 2 (o `sacredWaterUses + 1` do DU)",
+					  Math.Abs(forte.Ficha.hiddenpotential - forte.Ficha.BP * 0.1 / 2) < 1e-6 && forte.Ficha.golesDaAgua == 2,
+					  $"banco {forte.Ficha.hiddenpotential:0.##} (BP {forte.Ficha.BP:0.##}), goles {forte.Ficha.golesDaAgua}");
 
-			ServerPlayer noTeto = Forjar("NoTeto", aoLado, 2);
-			noTeto.Ficha.BP = noTeto.Ficha.relBPmax;
-			double bpDoTeto = noTeto.Ficha.BP;
-			falas = Ouvir(() => { Verbo(noTeto, AguaSagrada.VerboBeber, ""); Passar(3000); Passar(3000); Passar(3000); Passar(30_000); Passar(3000); });
-			AfirmarAg("quem JA esta no proprio teto de BP ganha so o vigor (`if(BP &lt; relBPmax)`): \"forte demais\"",
-					  noTeto.Ficha.BP == bpDoTeto && noTeto.Ficha.maxstamina > 100 && Disse(falas, "forte demais"), Ultimos(falas));
+			// O ANDROIDE DE ABSORCAO GUARDA, MAS NAO SOLTA NA AGUA (o dono: "so libera com tech q da um upgrade")
+			ServerPlayer maquina = Forjar("Maquina", aoLado, 1);
+			maquina.Ficha.AndroideAbsorcao = true;
+			maquina.Ficha.hiddenpotential = 1000;
+			double bpDaMaquina = maquina.Ficha.BP;
+			falas = Ouvir(() => Verbo(maquina, AguaSagrada.VerboBeber, ""));
+			AfirmarAg("**O ANDROIDE DE ABSORCAO NAO TIRA NADA DA AGUA**: ouve que so um upgrade de tecnologia solta o banco dele, e nenhum gole comeca",
+					  _golesDeAgua.Count == 0 && maquina.Ficha.BP == bpDaMaquina && maquina.Ficha.hiddenpotential == 1000 && Disse(falas, "upgrade de tecnologia"),
+					  Ultimos(falas));
 
 			falas = Ouvir(() => Verbo(forte, AguaSagrada.VerboSobre, ""));
-			AfirmarAg("o `Description()` diz o que ela da e o que ela cobra", Disse(falas, "resistência") && Disse(falas, "uma vez"), Ultimos(falas));
+			AfirmarAg("o `Description()` diz o que ela da e o que ela cobra -- e a hora entre um gole e outro",
+					  Disse(falas, "resistência") && Disse(falas, "potencial") && Disse(falas, "uma hora"), Ultimos(falas));
 
 			// ---------------------------------------------------------------- 6b. o medidor
 			GD.Print("[agua] -- 6b) com scouter o numero; sem ele, nunca --");
 			List<string> GoleInteiro(ServerPlayer quem)
 			{
 				quem.Ficha.BP = quem.Ficha.relBPmax * 0.5;
+				quem.Ficha.hiddenpotential = 1000;   // (2026-10-26) o banco que a agua solta
 				SorteioDaAguaDeTeste = 0.9;   // quem salva e a resistencia (o corpo nasce com 1)
 				return Ouvir(() => { Verbo(quem, AguaSagrada.VerboBeber, ""); Passar(3000); Passar(3000); Passar(3000); Passar(30_000); Passar(3000); });
 			}

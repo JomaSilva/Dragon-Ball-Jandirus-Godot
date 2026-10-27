@@ -626,6 +626,11 @@ public partial class GameServer
 				  $"relaxou na base {relaxouNaBase}; relaxado {eu.Ficha.relaxado}; forma '{eu.Forma.Atual}' | {Ultimos(f)}");
 
 		// ---- o consumo pela barra, pelo tique de producao ----
+		// (2026-10-26) EM PONTOS DE KI (o pedido 93): o gasto de um segundo e medido em pontos, contra os pontos da referencia do SSJ2 -- e o
+		// tanque e levado a um que aguenta um segundo de SSJ2 cru (a ficha de bancada nasce com o Ki base de fabrica, menor que isso).
+		double baseKiGuardado = eu.Ficha.baseKi;
+		eu.Ficha.baseKi = Math.Max(eu.Ficha.baseKi, 1e6);
+		eu.Ficha.Statify();
 		double Gasto(double barra, double maestria)
 		{
 			eu.Forma.Maestria.Por("ssj2", maestria);
@@ -633,9 +638,10 @@ public partial class GameServer
 			eu.Ficha.powerMod = barra;
 			eu.Ficha.Ki = eu.Ficha.MaxKi;
 			TickDaForma(eu, 1.0);
-			return (eu.Ficha.MaxKi - eu.Ficha.Ki) / eu.Ficha.MaxKi;
+			return eu.Ficha.MaxKi - eu.Ficha.Ki;
 		}
-		double hoje = 0.045 * 0.32, dominado = 0.015 * 0.32;
+		double referencia = Jandirus.Core.Forms.Catalogo.KiDeReferencia(ssj2);
+		double hoje = 0.045 * 0.32 * referencia, dominado = 0.015 * 0.32 * referencia;
 		double g100 = Gasto(1.0, 10), g10 = Gasto(0.1, 10), g55 = Gasto(0.55, 10), gDominada = Gasto(1.0, 100);
 		AfirmarPw("**ABAIXAR O PODER ALIVIA O CONSUMO DA FORMA PELA MAESTRIA** (o dono): no SSJ2 a 10% de maestria, o poder inteiro gasta o de hoje; "
 				  + "a barra em 10% gasta o DOMINADO; em 55%, o meio dos dois; e dominado, o menor com o poder inteiro",
@@ -649,6 +655,8 @@ public partial class GameServer
 					  PertoPw(g10Antes, hoje, 1e-6), $"{g10Antes:0.######}");
 		}
 		finally { Jandirus.Core.Forms.Catalogo.DrenoSemLiberacaoDeTeste = false; }
+		eu.Ficha.baseKi = baseKiGuardado;
+		eu.Ficha.Statify();
 		eu.Ficha.powerMod = PoderEmUso.Cheio;
 		VestirForma(eu, Jandirus.Core.Forms.Catalogo.IdBase);
 	}

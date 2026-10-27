@@ -186,8 +186,9 @@ public sealed partial class GameServer
 		}
 
 		// ---- REVITALIZING METAMORPHOSIS: transformou com o tronco ferido ----
-		// (2026-10-17) NA FORMA DA PROPRIA LINHA: a do Frost Demon, e -- pro bio-androide que escolheu a skill do sangue Icer -- a Super Perfeita, a
-		// unica forma que ele veste (ESCOLHA minha: o texto do amigo e "transformar", e o bio nao tem as do Frost Demon).
+		// (2026-10-17) NA FORMA DA PROPRIA LINHA: a do Frost Demon, e -- pro bio-androide que escolheu a skill do sangue Icer -- as do corpo
+		// dele (ESCOLHA minha: o texto do amigo e "transformar", e o bio nao tem as do Frost Demon). Era a Super Perfeita; desde 2026-10-26
+		// sao as duas divinas que a substituiram, a Golden Perfect e a MAX.
 		if (forma != est.FormaAnterior)
 		{
 			if (est.Entrada.Tem(SkillRacial.Metamorfose) && !pl.Forma.NaBase

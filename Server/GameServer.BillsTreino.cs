@@ -29,7 +29,7 @@ namespace Jandirus.Server;
 ///     (<see cref="BillsEWhis.SegundosDeFolegoAoFim"/>).
 ///   * O DESAFIO SEGUE O DUELO PELO TITULO que ja existia entre jogadores (`GameServer.CargoDuelo.cs`): os dois
 ///     entram inteiros, contagem de cinco segundos, dez minutos de teto, nocaute decide (`Duelo.Passo`, a mesma
-///     regra pura), e quem desafia precisa do ki divino desperto. O que nao vale contra um NPC e a carencia de
+///     regra pura), e quem desafia precisa do ki divino desperto (e quem treina tambem, desde 2026-10-25). O que nao vale contra um NPC e a carencia de
 ///     sete dias e o intervalo de dois: no lugar deles, quem PERDE espera um dia in-game.
 ///   * NO DESAFIO O BILLS CARREGA O KIT DO DEUS DA DESTRUICAO INTEIRO, com a Fury por cima (dono, 2026-10-11) -- e
 ///     o Hakai conforme a chave do desafio (<see cref="BillsEWhis.HakaiNoDesafio"/>). Com ela ligada o duelo PODE
@@ -285,6 +285,14 @@ public partial class GameServer
 			return;
 		}
 
+		// (2026-10-25) O TREINO TAMBEM PEDE O KI DIVINO DESPERTO (o dono: "so de pra treinar com bills e whis caso vc tenha god ki
+		// despertado"). O desafio ja pedia, logo abaixo, com a fala dele.
+		if (!desafio && pl.Ficha.godki?.awakened != true && !BillsEWhis.TreinoSemKiDivinoDeTeste)
+		{
+			DizerDivino(c.Quem, c.Quem == QuemFala.Whis ? BillsEWhis.WhisSemKiDivino : BillsEWhis.BillsSemKiDivinoNoTreino);
+			Avisar(pl, BillsEWhis.AvisoDoTreinoSemKiDivino);
+			return;
+		}
 		if (!desafio) { ComecarOTreino(pl, c); return; }
 
 		// ---- o desafio pelo titulo ----
@@ -336,7 +344,7 @@ public partial class GameServer
 		npc.Papel!.PresaDoRoteiro = pl.Id;
 		npc.UltimoAgressor = pl.Id;
 		VestirADisciplina(c, ligada: true);
-		if (c == _bills) VestirOUltraEgoDoBills(npc);   // (2026-10-24) no treino o Bills luta no Ultra Ego, com o visual -- o dono
+		if (c == _bills) VestirAFuryDoBillsNoTreino(npc);   // (2026-10-25) no treino o Bills luta na Fury, com o visual -- o dono
 		ManterOMestre(c, s);
 
 		bool temADele = (c.Quem == QuemFala.Whis ? pl.UltraInstinct : pl.PoderDaDestruicao).Aprendida;
@@ -356,7 +364,7 @@ public partial class GameServer
 	///
 	/// SEM EFEITO VISUAL no Whis: o dono -- "por ele ser um ser da raca anjo o instinto superior nele n tem efeito visual
 	/// nenhum, so as passivas". (2026-10-24) Ele esta SEMPRE no Ultra Instinto Perfeito, e a forma vale -- so que calada
-	/// (`VestirAFormaDoWhis`, `ServerPlayer.FormaSemVisual`); o Bills treina no Ultra Ego, com o visual (`VestirOUltraEgoDoBills`).
+	/// (`VestirAFormaDoWhis`, `ServerPlayer.FormaSemVisual`); o Bills treina na Fury (2026-10-25), com o visual (`VestirAFuryDoBillsNoTreino`).
 	/// </summary>
 	private void VestirADisciplina(CorpoDivino c, bool ligada)
 	{
@@ -406,19 +414,21 @@ public partial class GameServer
 
 		if (s.Parceiro.Combate.Letal) s.Parceiro.Combate.Letal = false;
 
-		// (2026-10-24) O PODER DO TREINO MUDOU (o dono): o Whis tem de BASE o triplo do MAIOR poder que o parceiro mostrou na aula, e o Ultra
-		// Instinto Perfeito multiplica por cima ("sempre mais forte q qualquer um"); o Bills iguala o BASE do parceiro, ate o trilhao dele, com
-		// o Ultra Ego por cima ("sempre extremamente forte"). Cravado no BASE, e nao no expresso: quem faz a diferenca e a forma.
-		s.PicoDoParceiro = Math.Max(s.PicoDoParceiro, s.Parceiro.Ficha.expressedBP);
+		// (2026-10-25) O PODER DO TREINO, DE NOVO (o dono, depois de o Bills cair pra um Blue com furia): pelo EXPRESSO de AGORA de quem treina
+		// -- o Whis sempre 3x, sem teto, no Instinto Perfeito que NAO aumenta o poder dele ("e considerado q esta usando UI mas sem aumentar o
+		// bp"); o Bills, na FURY, sempre 2x, ate os 100 tri. O base e o expresso pedido dividido pelo multiplicador da forma em que ele esta: a
+		// forma vale (a esquiva do Instinto, a aura da Fury), e o numero que vale na luta e o pedido.
+		double expresso = Math.Max(s.Parceiro.Ficha.expressedBP, 1);
+		s.PicoDoParceiro = Math.Max(s.PicoDoParceiro, expresso);
 		if (c == _whis)
 		{
 			VestirAFormaDoWhis(npc);
-			CravarOPoder(npc, BillsEWhis.PoderDoTreino(s.PicoDoParceiro));
+			CravarOPoder(npc, BillsEWhis.PoderDoTreino(expresso) / Math.Max(MultiplicadorDaForma(npc), 1));
 		}
 		else
 		{
-			VestirOUltraEgoDoBills(npc);
-			CravarOPoder(npc, BillsEWhis.BaseDoBillsNoTreino(s.Parceiro.Ficha.BP));
+			VestirAFuryDoBillsNoTreino(npc);
+			CravarOPoder(npc, BillsEWhis.PoderDoBillsNoTreino(expresso) / Math.Max(MultiplicadorDaForma(npc), 1));
 		}
 
 		if (!BillsEWhis.InstintoQueCansaDeTeste)
@@ -512,6 +522,21 @@ public partial class GameServer
 
 	/// <summary>A forma Fury esta no catalogo de formas deste servidor? Sem ela o desafio nao abre.</summary>
 	private static bool FuryNoCatalogo => Catalogo.Def(BillsEWhis.IdDaFury) != null;
+
+	/// <summary>
+	/// (2026-10-25) O BILLS NA FURY, no treino -- o dono: *"o bills vai usar fury e vai sempre ter 2x o bp do jogador expresso"*. Pela FORMA, e
+	/// nao pela porta do titulo (`EntrarNaFury`, que pede o kit do Deus): no treino ele nao tem o kit, e nada de Hakai nem esfera numa aula. A
+	/// forma nao tem portao no catalogo (`Catalogo.SoPeloTitulo` so marca a linha), e o 77x dele sai do funil de sempre (`FuryDoBills`). Com o
+	/// visual (o anuncio de sempre) e sem cena; quem a tira e o fim da aula (`EncerrarASessao`), como tirava o Ultra Ego.
+	/// </summary>
+	private void VestirAFuryDoBillsNoTreino(ServerPlayer b)
+	{
+		if (b.Forma.Atual == BillsEWhis.IdDaFury || !FuryNoCatalogo) return;
+		string antes = b.Forma.Atual;
+		bool estreia = b.Forma.Entrar(BillsEWhis.IdDaFury);
+		AplicarForma(b);
+		AnunciarForma(b, antes, BillsEWhis.IdDaFury, estreia, semCena: true);
+	}
 
 	/// <summary>
 	/// ============================ A FURY E DO DESAFIO, E ENTRA POR AQUI ============================
@@ -757,7 +782,7 @@ public partial class GameServer
 		{
 			// O KIT ERA DA LUTA: sem ele a Fury cai na hora, pela regra do proprio kit (ver `BillsVesteAFury`).
 			if (EhDeusDaDestruicao(npc)) DesconsagrarDaLuta(npc);
-			// (2026-10-24) o Bills sai do Ultra Ego do treino (e da Fury do desafio); o Whis FICA no Instinto Perfeito -- e sempre
+			// o Bills sai da Fury (a do treino, desde 2026-10-25, e a do desafio); o Whis FICA no Instinto Perfeito -- e sempre
 			if (c == _bills && npc.Forma.Atual != Catalogo.IdDoPiso(Perfil(npc))) Reverter(npc, "");
 			VestirADisciplina(c, ligada: false);
 			VoltarAoPosto(c);
@@ -797,10 +822,10 @@ public partial class GameServer
 			if (noMundo) Avisar(p, fim == FimDaSessao.Intrometido
 				? "o treino acabou: alguém de fora acertou o seu mestre, e a aula é de um aluno só."
 				: "o treino acabou.");
-			// (2026-10-24) O TEMPO DE LUTA DA AULA VIRA ENSINO -- e derrubar o mestre vale uma aula inteira a mais. Ver `CreditarAAula`.
+			// (2026-10-24) O TEMPO DE LUTA DA AULA VIRA ENSINO. Ver `CreditarAAula`. (2026-10-25) So o tempo: derrubar o mestre valia uma aula
+			// inteira a mais, e o dono pediu o ensino pelo tempo total de treino ("vc aprende UE vencendo o bills").
 			if (noMundo && !p.Ficha.dead)
-				CreditarAAula(p, c, (s.Lutando ? _relogioDivino - s.AulaComecouEm : 0)
-									+ (fim == FimDaSessao.MestreCaiu ? BillsEWhis.SegundosPeloMestreCaido : 0));
+				CreditarAAula(p, c, s.Lutando ? _relogioDivino - s.AulaComecouEm : 0);
 			return;
 		}
 

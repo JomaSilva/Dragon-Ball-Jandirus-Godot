@@ -530,10 +530,10 @@ public partial class GameServer
 
 				DragaoPara(raditz);
 				string[] semPergunta = [.. MenuDe(raditz).Entradas.Where(e => !e.Acao && e.Pode && !e.TemPergunta).Select(e => e.Id)];
-				// (v0.3.0) "Liberar o meu potencial" e de toda raca: o Saiyajin a ve acesa e o laco abaixo a pede. (2026-10-21) E o
-				// "Aumentar o meu potencial" (dono) entra ao lado dele, sem pergunta: a 11a linha, que o laco tambem pede.
-				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "potencial", "aumentar_potencial", "reviver_todos", "supremo"];
-				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 11 linhas sem pergunta",
+				// (v0.3.0) "Liberar o meu potencial" e de toda raca: o Saiyajin a ve acesa e o laco abaixo a pede. (O "Aumentar o meu
+				// potencial", que entrava ao lado dele, saiu do jogo em 2026-10-26 com o potencial antigo.)
+				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "potencial", "reviver_todos", "supremo"];
+				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 10 linhas sem pergunta",
 					  semPergunta.ToHashSet().SetEquals(esperadas), string.Join(",", semPergunta));
 
 				var naoConcedeu = new List<string>();
@@ -574,9 +574,18 @@ public partial class GameServer
 					  raditz.Ficha.unlockPotential >= 1 && !raditz.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
 					  && !raditz.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange), $"potencial {raditz.Ficha.unlockPotential}");
 				DragaoPara(raditz);
+				// (2026-10-26) O BANCO DO POTENCIAL (o pedido 95): a linha acende sempre que ha o que soltar, e apaga com ele vazio, com o
+				// motivo. Era "uma vez por vida". O laco acabou de solta-lo: o banco e reposto a mao (o que o treino guardaria).
+				raditz.Ficha.hiddenpotential = 500;
+				DragaoPara(raditz);
 				EntradaDoDragao? doSaiyajin = MenuDe(raditz).Entrada("potencial");
-				Checa("...e depois a linha dele vem APAGADA, com o motivo (o potencial e uma vez por vida)",
-					  doSaiyajin is { Pode: false } && doSaiyajin.Motivo.Length > 10, doSaiyajin == null ? "sem linha" : $"pode={doSaiyajin.Pode}");
+				bool acesaComBanco = doSaiyajin is { Pode: true };
+				raditz.Ficha.hiddenpotential = 0;
+				DragaoPara(raditz);
+				doSaiyajin = MenuDe(raditz).Entrada("potencial");
+				Checa("...e depois a linha dele SE REPETE: acesa enquanto ha potencial guardado, e APAGADA com o banco vazio, com o motivo",
+					  acesaComBanco && doSaiyajin is { Pode: false } && doSaiyajin.Motivo.Contains("potencial guardado", StringComparison.Ordinal),
+					  doSaiyajin == null ? "sem linha" : $"acesa com banco={acesaComBanco}; vazio: pode={doSaiyajin.Pode}, motivo={doSaiyajin.Motivo}");
 				ServerPlayer piccolo = Forjar("Piccolo", pl.Pos, terra, "bancada_menu_n");
 				forjados.Add(piccolo);
 				piccolo.Race = "Namekian"; piccolo.Ficha.Race = "Namekian";

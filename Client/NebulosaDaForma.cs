@@ -170,6 +170,17 @@ public partial class NebulosaDaForma : Node2D
 		return v.VariantType == Variant.Type.Nil ? null : v.AsColor();
 	}
 
+	/// <summary>
+	/// UM UNIFORM DE NUMERO, LIDO DO MATERIAL -- a irma da <see cref="CorDeTeste"/>, e pelo mesmo motivo. NULO quer dizer "o
+	/// material nao tem valor proprio": o shader esta no padrao do ARQUIVO. Pra bancada (o `pontos_densidade` do Limit
+	/// Breaker, 2026-10-26).
+	/// </summary>
+	public float? NumeroDeTeste(string uniform)
+	{
+		Variant v = _tinta.GetShaderParameter(uniform);
+		return v.VariantType == Variant.Type.Nil ? null : v.AsSingle();
+	}
+
 	/// <summary>O lado do quad em pixels de mundo, ja com a escala aplicada. Pra bancada.</summary>
 	public float LadoDeTeste => _quad.Scale.X;
 
@@ -1127,6 +1138,11 @@ public partial class NebulosaDaForma : Node2D
 			_tinta.SetShaderParameter("cor_meio", new Color(p.Meio));
 			_tinta.SetShaderParameter("cor_perto", new Color(p.Perto));
 			_tinta.SetShaderParameter("cor_dos_pontos", new Color(p.Pontos));
+			// (2026-10-26) OS PONTINHOS DESLIGAM PELA DENSIDADE, e o "ligado" devolve o padrao do ARQUIVO (`default`), nunca um
+			// numero copiado dele -- ver o `Afinar`. Escrito toda vez que acende, como as cores: o mesmo corpo vai do Limit
+			// Breaker (sem pontos) pro Ultra Instinto (com) sem trocar de node.
+			if (p.SemPontos) _tinta.SetShaderParameter("pontos_densidade", 0f);
+			else _tinta.SetShaderParameter("pontos_densidade", default);
 		}
 
 		if (ligado) SeguirOBoneco();

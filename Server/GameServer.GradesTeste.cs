@@ -261,6 +261,11 @@ public partial class GameServer
 			pl.Forma.Liberar("grade3");
 			pl.Forma.Maestria.Por("ssj1", 100);
 			f.BP = 1e13;
+			// (2026-10-26) O DRENO DAS FORMAS E EM PONTOS (o pedido 93: o mesmo numero pra todo mundo): o tanque de fabrica deste corpo
+			// pagaria a escada inteira em dez por cento. Com um tanque de verdade, o que a % anda continua sendo SO o dreno -- e o "menos
+			// de 1%" la embaixo continua pegando um fator de forma vazado, que mexeria em dezenas de por cento.
+			f.Statify();
+			if (f.MaxKi < 1e9) { f.baseKi *= 1e9 / Math.Max(f.MaxKi, 1e-9); f.Statify(); }
 			f.Ki = f.MaxKi * 1.2;
 			Medir(pl);
 

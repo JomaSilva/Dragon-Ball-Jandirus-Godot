@@ -360,6 +360,17 @@ public sealed class CatalogoDeObras
 	/// <summary>DEFEITO INJETADO (`--inteligenciateste`): o mainframe com o tech do `construcoes.json` (50) -- o jogo de antes. Falso em jogo, sempre.</summary>
 	public static bool MainframeComOTechDoDmDeTeste;
 
+	/// <summary>
+	/// (2026-10-25) O MAINFRAME DE ANDROIDES TAMBEM E DO TSUFURUJIN -- o dono: *"tsufurujin n ta conseguindo contruir maquina de fazer
+	/// neotuffle, n aparece no menu de tech"*. O Neo Tuffle Lab (2026-10-18, `GameServer.NeoTuffle.cs`) se instala num mainframe, e o
+	/// `construcoes.json` traz o `allowedRaces` do DM (so o Humano): pro Tsufurujin a oferta nem virava linha na aba Tech (`Ofertas`). A regra
+	/// do port mora aqui, como a do <see cref="TechDoMainframe"/>; dentro do mainframe cada laboratorio continua pedindo a raca dele.
+	/// </summary>
+	public static readonly string[] RacasDoMainframe = ["Human", "Tsujin"];
+
+	/// <summary>DEFEITO INJETADO (`--tuffleteste`): o mainframe com as racas do `construcoes.json` (so o Humano) -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool MainframeSoDoHumanoDeTeste;
+
 	public static CatalogoDeObras Parse(string json)
 	{
 		var cat = new CatalogoDeObras();
@@ -398,6 +409,9 @@ public sealed class CatalogoDeObras
 		// (2026-10-18) o mainframe de androides pede a tecnologia da instalacao -- ver `TechDoMainframe`
 		if (!MainframeComOTechDoDmDeTeste && cat._porId.TryGetValue(Mainframe, out Construcao? mainframe))
 			mainframe.Tech = Math.Max(mainframe.Tech, TechDoMainframe);
+		// (2026-10-25) ...e o Tsufurujin tambem o constroi -- ver `RacasDoMainframe`
+		if (!MainframeSoDoHumanoDeTeste && cat._porId.TryGetValue(Mainframe, out Construcao? doTuffle) && doTuffle.Racas.Length > 0)
+			doTuffle.Racas = [.. doTuffle.Racas.Union(RacasDoMainframe, StringComparer.OrdinalIgnoreCase)];
 		return cat;
 	}
 

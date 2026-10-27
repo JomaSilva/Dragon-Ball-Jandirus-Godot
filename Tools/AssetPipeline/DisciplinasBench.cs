@@ -125,10 +125,13 @@ public static class DisciplinasBench
 		// A AURA NUNCA ZERA O DANO. Se a reducao passasse de 100 o golpe viraria cura.
 		Checa("a reducao de dano nunca chega a 100%", Disciplinas.ReducaoDeDano(100) < 100);
 
-		// A MAESTRIA REAL: 0,04/s = ~42 min de luta continua pra 100%.
+		// A MAESTRIA REAL (2026-10-25, o dono: *"masterizar o UE e UI esta muito rapido, deveria ser o tempo q o lssj antigos tinha pra
+		// dominar"*): a taxa da escada (`Catalogo.MaestriaPorSegundo`) -- 3 h de luta continua pra 100%, o LSSJ antes de o ritmo dele dobrar.
+		// Era 0,04/s (~42 min), a do DM.
 		double minutos = 100 / Disciplinas.UltraInstinct.RealPorSegundo / 60;
-		Checa($"maestria REAL leva ~{minutos:0} min de combate continuo",
-			  minutos is > 35 and < 45, $"{minutos:0.0}");
+		Checa($"maestria REAL leva ~{minutos:0} min de combate continuo (as 3 h do LSSJ antigo, nas duas disciplinas)",
+			  minutos is > 175 and < 185 && Math.Abs(Disciplinas.PoderDaDestruicao.RealPorSegundo - Disciplinas.UltraInstinct.RealPorSegundo) < 1e-12,
+			  $"{minutos:0.0}");
 
 		// O GATILHO ENSINA MUITO MAIS RAPIDO que o tempo: esquivar vale 5 segundos de luta.
 		Checa("uma esquiva vale mais que um segundo de luta",

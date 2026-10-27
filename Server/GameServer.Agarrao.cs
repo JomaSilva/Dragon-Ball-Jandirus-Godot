@@ -258,6 +258,8 @@ public sealed partial class GameServer
 		// passo, sem ninguem lembrar de vir aqui.
 		// ================================================================================================
 		if (!PodeMexerOCorpo(pl)) { Avisar(pl, "não dá pra agarrar ninguém assim."); return; }
+		// (2026-10-26) NA ZONA SEGURA DO BERCO NINGUEM LUTA -- nem agarra (o pedido 82). Ver `NaZonaSegura`.
+		if (NaZonaSegura(pl)) { Avisar(pl, FraseDaZonaSegura); return; }
 
 		// O BRACO ESTICADO DO NAMEKUSEIJIN (lote G11) vem ANTES de quem esta na frente, como no DM
 		// (`Grabbing.dm:97`): com a flag e um alvo marcado a tres tiles ou mais, o agarrao vai ate ele

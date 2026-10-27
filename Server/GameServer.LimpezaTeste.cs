@@ -562,9 +562,14 @@ public partial class GameServer
 
 			// O DISCO
 			var sobraram = _store.TodosOsArquivos().Select(System.IO.Path.GetFileName).ToList();
-			bool soLog = sobraram.All(n => string.Equals(n, "admin.log", StringComparison.OrdinalIgnoreCase));
-			AfirmarWt("a pasta so tem o admin.log depois do wipe", soLog,
+			// (2026-10-26) O QUE SOBRA E O QUE UM INSCRITO PRESERVA: o `admin.log` e, desde o pedido 94, o campeao do mundo que acabou (o
+			// `campeao-do-wipe.json`, quando a limpeza guardou um -- ver `GameServer.CampeaoDoWipe.cs`). Qualquer outro arquivo e a vassoura falhando.
+			bool soLog = sobraram.All(n => _sistemasDoMundo.Any(s => s.Preservar && s.Meu(n ?? "")));
+			AfirmarWt("a pasta so tem o que um inscrito PRESERVA depois do wipe (o admin.log, e o campeao guardado)", soLog,
 					  soLog ? "" : string.Join(", ", sobraram.Take(8)));
+			AfirmarWt("o campeao guardado pela limpeza SOBREVIVEU a vassoura",
+					  _campeao == null || sobraram.Contains(ArquivoDoCampeao, StringComparer.OrdinalIgnoreCase),
+					  $"campeao '{_campeao?.Personagem.Nome}', pasta: {string.Join(", ", sobraram.Take(8))}");
 			AfirmarWt("o admin.log SOBREVIVEU (e a testemunha do wipe)",
 					  !arquivos.Contains("admin.log")
 					  || sobraram.Any(n => string.Equals(n, "admin.log", StringComparison.OrdinalIgnoreCase)));
@@ -648,6 +653,7 @@ public partial class GameServer
 		RefazerColisaoDeTudo();
 		CarregarSagas();
 		CarregarReputacao();
+		CarregarCampeaoDoWipe();   // (2026-10-26) o campeao guardado e a fase dele: o leitor zera antes de ler e nao grava nada
 		CarregarPlanetasMortos();
 		// AS RESERVAS DE RECURSO, depois dos mortos como no boot (planeta destruido nao tem reserva). O leitor
 		// esvazia antes de ler e nao grava nada -- ver `CarregarReservas`.

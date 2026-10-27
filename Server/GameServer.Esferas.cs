@@ -1518,8 +1518,8 @@ public sealed partial class GameServer
 			// personagem. Uma comparacao "assinatura contra conta" nunca casaria, e o Guardiao
 			// legitimo levaria a recusa: e exatamente o defeito que a Fase 0 achou no set eterno do
 			// DM (`blockid = Earth_Guardian` comparado contra `usr.key`).
-			if (!_tronos.TryGetValue("guardian", out string? dono)
-				|| !string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase))
+			// (2026-10-26) e o PERSONAGEM no trono (o cargo passou a ser dele): o irmao de conta do Guardiao nao ergue a estatua
+			if (!OcupaOTrono("guardian", pl))
 			{
 				Avisar(pl, "somente o Guardião da Terra pode erguer uma Estátua do Dragão na Terra.");
 				return;

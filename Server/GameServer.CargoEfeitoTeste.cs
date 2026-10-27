@@ -168,7 +168,7 @@ public partial class GameServer
 		["Majin"] = "o buff de forma liga em si mesmo: BPadd, physoffMod x1,3, kiregenMod +0,5, angerMod /1,2 (`Magic/Majin.dm:25-50`)",
 		["Observe"] = "a mente se projeta ate o alvo e devolve onde ele esta, como esta e quem esta em volta (`observe.dm:1-14`, sem olho remoto)",
 		["Self_Destruct"] = "com alguem agarrado, o segundo aperto DETONA: tira `power` de cada membro de quem detona, zera o Ki e mata o agarrado (`Ki/misc.dm:166-268`)",
-		["Unlock_Potential"] = "o alvo aceita e o potencial desperta: BP += capcheck(BP*0,25*Potencial), kiskill +0,4, uma vez por vida (`UnlockPotential.dm:21-45`)",
+		["Unlock_Potential"] = "o alvo aceita e o banco do potencial sai 1x pro BP base (o DU; 2026-10-26), de hora em hora -- a primeira vez da vida ainda da kiskill +0,4",
 		["Mafuba"] = "com um Pote Selante a vista o alvo e SELADO dentro dele -- e quebrar o pote solta o preso (`Sealing.dm`)",
 		["Open_Dead_Zone"] = "o alvo e selado com o BP declarado -- o caminho da Dead Zone (`Sealing.dm`)",
 	};
@@ -234,7 +234,7 @@ public partial class GameServer
 			["Majin"] = ("Server/GameServer.G11Teste.cs", "Majin liga: BPadd += BP*1,2*(MaxAnger/100)/10, physoffMod x1,3, kiregenMod +0,5, angerMod /1,2, MajinPcnt 1,2"),
 			["Observe"] = ("Server/GameServer.G11Teste.cs", "Observe:<nome> projeta a mente: diz o mundo, o tile e a condicao, e marca `observingnow`"),
 			["Self_Destruct"] = ("Server/GameServer.G11Teste.cs", "detonar tira exatamente `power` de CADA membro de quem detona (o `usr.SpreadDamage(power)`)"),
-			["Unlock_Potential"] = ("Server/GameServer.G11Teste.cs", "ao aceitar, o potencial desperta: BP += pelo menos capcheck(BP*0,25*Potencial), kiskill +0,4, flag gravada"),
+			["Unlock_Potential"] = ("Server/GameServer.G11Teste.cs", "**AO ACEITAR, O BANCO SAI 1x**"),
 			["Mafuba"] = ("Server/GameServer.SeloTeste.cs", "QUEBRAR O POTE SOLTA O PRESO -- a interacao principal do Mafuba"),
 			["Open_Dead_Zone"] = ("Server/GameServer.SeloTeste.cs", "...e selar com BP declarado vale o BP declarado (o caminho da Dead Zone)"),
 		};

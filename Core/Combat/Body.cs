@@ -297,27 +297,17 @@ public sealed class Body
 	public IEnumerable<BodyPart> Perdidos() => Partes.Where(p => p.Decepado);
 
 	/// <summary>
-	/// "Extremamente ferido" -- o gatilho do Zenkai maior. E a fracao do corpo que esta
-	/// quebrada ou perdida.
+	/// (2026-10-26) A MAIORIA DO CORPO EM ESTADO CRITICO -- o Zenkai em dobro sem morrer (o dono: *"se a maioria do corpo do saiyajin estiver
+	/// em estado crtico, ele ganha o boost igual da morte (2x) sem precisar morrer"*). "Critico" e a faixa da aba Corpo
+	/// (`MenuJogo.PalavraDeFerimento`): abaixo de <see cref="LimiarCritico"/> da vida do membro -- o quebrado e o decepado contam junto. A
+	/// maioria e MAIS da metade dos membros. (Era o "extremamente ferido" do DM, `Injuries.dm:181-195`, que pedia 45% ou dois membros
+	/// arrancados, e so servia ao Zenkai antigo.)
 	/// </summary>
-	public bool MuitoFerido(double fracao = 0.45)
-	{
-		if (Partes.Count == 0) return false;
+	public bool MaioriaEmEstadoCritico() =>
+		Partes.Count > 0 && Partes.Count(p => p.Decepado || p.Fracao < LimiarCritico) * 2 > Partes.Count;
 
-		// `if(lopcount >= 2) return TRUE //two or more limbs ripped clean off is brutal enough on its own`
-		// (`Injuries.dm:191`). Conta-se o membro de FORA: aqui o braco leva a mao junto (`Decepar`), e contar os
-		// dois faria de UM braco perdido "dois membros arrancados" -- no DM a mao nunca cai de carona.
-		int arrancados = 0;
-		foreach (BodyPart p in Partes)
-			if (p.Decepado && !(p.Aninhado && p.Dono != null && Achar(p.Dono) is { Decepado: true })) arrancados++;
-		if (arrancados >= ArrancadosQueBastam) return true;
-
-		int ruins = Partes.Count(p => p.Decepado || p.Quebrado);
-		return (double)ruins / Partes.Count >= fracao;
-	}
-
-	/// <summary>Quantos membros ARRANCADOS ja bastam, sozinhos, pro corpo contar como "extremamente ferido" (`Injuries.dm:191`).</summary>
-	public const int ArrancadosQueBastam = 2;
+	/// <summary>(2026-10-26) O "Critico" da aba Corpo: abaixo de 40% da vida do membro (de 20 a 40% e "Critico", abaixo e "Quebrado").</summary>
+	public const double LimiarCritico = 0.4;
 
 	// =====================================================================
 	// DANO

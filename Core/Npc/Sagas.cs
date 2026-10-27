@@ -123,8 +123,8 @@ public sealed class ChefeDaSaga
 /// UM ELO DA CADEIA: um marco de BP, um planeta, e a onda de chefes que vem por causa dele.
 ///
 /// **DADO, E NAO CODIGO.** Mora na secao `sagas` do `Assets/Data/npcs.json`, ao lado dos moldes que
-/// ela cita. Acrescentar um elo -- e a especificacao aponta a lacuna entre Cell (5M) e Boo (1,5B)
-/// como o lugar natural -- e acrescentar um objeto nessa lista.
+/// ela cita. Acrescentar um elo -- e a especificacao aponta a lacuna entre Cell (20M desde 2026-10-26; 5M no DM) e Boo
+/// (1,5B) como o lugar natural -- e acrescentar um objeto nessa lista.
 /// </summary>
 public sealed class EloDaSaga
 {
@@ -398,7 +398,10 @@ public sealed class EstadoDoElo
 	/// </summary>
 	public string MarcoBatidoPor = "";
 
-	/// <summary>(2026-10-18) O BP de quem bateu o marco, no instante em que bateu -- so pro registro do console.</summary>
+	/// <summary>
+	/// (2026-10-18) O BP de quem bateu o marco, no instante em que bateu. (2026-10-26) Nao e mais so pro console: a auditoria do boot o
+	/// compara com o marco de AGORA, e um registro abaixo dele nao vale -- o marco subiu desde que foi anotado (o Cell foi de 5M pra 20M).
+	/// </summary>
 	public double MarcoBatidoComBp;
 }
 

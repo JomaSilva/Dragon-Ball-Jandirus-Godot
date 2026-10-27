@@ -3470,59 +3470,26 @@ public static class Cinematicas
 	};
 
 	/// <summary>
-	/// A SUPER PERFEITA -- `Cell4()` (`CellFormBuff.dm:73-82`).
+	/// (2026-10-26) A GOLDEN PERFECT -- o SSG do bio-androide, e a cena e a DELE: o ritual do `GodRitual.dm` (<see cref="Ssg"/>), mudo e
+	/// sem cratera, no banho da cor da forma (o ouro da Golden). A forma e nova, do dono, sem proc no DM; a mesma cena porque e o mesmo
+	/// acontecimento -- o ki divino despertando sobre a forma base -- e as duas entram pelo mesmo caminho.
 	///
-	/// ============================ ESTA E FORMA DE VERDADE, E ENTRA NA `Todas` ============================
-	/// `super_perfect` e uma entrada do <see cref="Catalogo"/> (8x temporario, com dreno) e ate hoje era
-	/// a UNICA forma do jogo sem cena -- `Cinematicas.De("super_perfect")` devolvia nulo, o que a
-	/// bancada ja acusa por escrito (*"toda forma tem cena"*, `RoboDeForma`). O `NoDegrau` transformava
-	/// isso em transformacao instantanea: o bio subia 8x num quadro, sem nada na tela.
-	///
-	/// ============================ O DM NAO TEM `sleep` AQUI, E O RELOGIO E DESENHO ============================
-	/// O proc inteiro sao sete linhas sem espera nenhuma: `chargeaura.wav`, o buff,
-	/// `animate(src, time=7, color=rgb(243,240,46))`, `createShockwavemisc(loc,1)`,
-	/// `createCrater(loc,5)`. E a mesma situacao das outras tres cenas sem `sleep` de origem, que este
-	/// arquivo ja marca uma a uma (<see cref="Destroyer"/>, <see cref="Oozaru"/>,
-	/// <see cref="SurtoCurto"/>) -- e os 2,5 s aqui saem da mesma regua do `SurtoCurto`, que e a
-	/// familia mais parecida: um corpo que ja e o da forma se enchendo de energia.
-	///
-	/// ============================ O BANHO DE COR E O `animate`, E A COR DIVERGE DE PROPOSITO ============================
-	/// O DM lava o corpo de `rgb(243,240,46)` -- AMARELO. O <see cref="Efeito.BanhoDeCor"/> deriva a cor
-	/// do <see cref="FormaDef.Aura"/> (`9fe8a8`, o verde-branco da carapaca), e essa derivacao e regra
-	/// da casa e nao descuido: um campo `CorDoBanho` cobraria uma quinta cor por forma e a primeira
-	/// forma nova nasceria com ele vazio e o banho invisivel. Ver o bloco do proprio bit.
-	///
-	/// E O `color = null` DA LINHA SEGUINTE E O DEFEITO DO ORIGINAL, nao o gesto: no BYOND ele mata o
-	/// tween no mesmo tique e nada aparece. Este arquivo ja julgou esse caso duas vezes (`LSSj()`,
-	/// `Ritual_God/Buff()`) e no mesmo sentido -- *"portar o silencio seria portar o defeito"*.
-	/// ============================================================================================================
+	/// (Ela ficou no lugar da cena da Super Perfeita -- a `Cell4()`, sete linhas sem `sleep` --, que saiu do jogo com a forma.)
 	/// </summary>
-	public static readonly Cinematica SuperPerfeito = new()
-	{
-		Forma = "super_perfect",
+	public static readonly Cinematica GoldenPerfect = RitualDivino(
+		"golden_perfect",
+		"o ar em volta ganha um brilho dourado que não vem de lugar nenhum.",
+		"o ouro se junta na carapaça, e os pés deixam o chão.",
+		"o poder divino se acomoda: a carapaça inteira fica dourada.");
 
-		// SEM TEMA: `Cell4()` nao toca musica. Os dois temas do bio que existem no disco sao dos
-		// DEGRAUS (ver `BioSemiPerfeito`/`BioPerfeito`), e emprestar um deles aqui poria a trilha da
-		// forma perfeita numa transformacao que acontece muito depois dela.
-		Musica = "",
-		SegundosPreso = 2.5,
-		Beats =
-		[
-			// `emit_Sound('chargeaura.wav')` + o `animate` de 0,7 s, os dois na largada.
-			new(0.0, Efeito.Tremor | Efeito.BanhoDeCor, Som: "chargeaura",
-				Narra: "a carapaça se enrijece e o corpo inteiro se acende por dentro."),
-
-			// A FAISCA E DO CATALOGO (`Raios = 2` na entrada de `super_perfect`), e ela e o
-			// `snamek Elec.dmi` que o buff veste (`CellFormBuff.dm:31-32`) chegando um instante antes.
-			new(1.2, Efeito.Tremor | Efeito.Raios),
-
-			// `createShockwavemisc(loc,1)` + `createCrater(loc,5)`. A cratera sai do funil.
-			new(2.5, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque | Efeito.ClaraoDeTela,
-				Narra: "eletricidade percorre a carapaça inteira: o SUPER PERFEITO."),
-
-			new(3.6, Efeito.Poeira | Efeito.Raios),
-		],
-	};
+	/// <summary>
+	/// (2026-10-26) A MAX -- o Blue Evolution do bio-androide, e a cena e a dele: a espinha do Grade (<see cref="BlueEvolution"/>,
+	/// `UltraSSJCinematic.dm`), muda. A forma e nova, do dono, sem proc no DM.
+	/// </summary>
+	public static readonly Cinematica BioMax = EspinhaSaiyajin(
+		"bio_max", "", Largada.Direta,
+		"o ki divino já está aceso, e ainda assim o chão treme.",
+		"o ouro vira vermelho e passa a queimar de dentro para fora.");
 
 	/// <summary>
 	/// QUAL CENA DO BIO -- o unico conteudo do `S2C.CenaDoBio`, e o vocabulario das duas pontas.
@@ -3851,10 +3818,9 @@ public static class Cinematicas
 		// (2026-10-23) o Super Majin do Majin que nao e Corrupted
 		SuperMajin,
 
-		// e o BIO-ANDROIDE, a unica forma do catalogo que estava sem cena nenhuma -- as tres cenas
-		// avulsas dele (os dois degraus e o SSJ2 pela morte) NAO entram aqui, pelo motivo escrito
-		// junto delas.
-		SuperPerfeito,
+		// e o BIO-ANDROIDE: as duas divinas dele (2026-10-26; a Super Perfeita saiu do jogo) -- as tres cenas avulsas dele (os dois
+		// degraus e o SSJ2 pela morte) NAO entram aqui, pelo motivo escrito junto delas.
+		GoldenPerfect, BioMax,
 
 		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN, as duas. As quatro cenas dos degraus da saga NAO entram aqui, pelo motivo
 		// escrito junto delas.

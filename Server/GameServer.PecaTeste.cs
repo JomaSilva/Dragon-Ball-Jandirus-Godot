@@ -82,6 +82,9 @@ public partial class GameServer
 	/// </summary>
 	internal static List<(int Para, byte[] Fio)>? EscutaDeRetratosDePecas;
 
+	/// <summary>(2026-10-26) OS RETRATOS DE MARCAS QUE SAIRAM (`S2C.Marcas`), pelo mesmo motivo da de cima. Nula em jogo.</summary>
+	internal static List<(int Para, byte[] Fio)>? EscutaDeRetratosDeMarcas;
+
 	private void AfirmarPeca(string oque, bool passou, string detalhe = "")
 	{
 		if (passou) { _pcOk++; GD.Print($"[peca]   OK    {oque}   {detalhe}"); return; }
@@ -109,6 +112,7 @@ public partial class GameServer
 			ODanoDiretoArranca();
 			ORetratoPraQuemEntra();
 			OTetoEOPrazo();
+			AsMarcasDeDestruicao();   // (2026-10-26) as crateras e as trilhas de um dia
 		}
 		catch (Exception e)
 		{
@@ -119,7 +123,9 @@ public partial class GameServer
 			EscutaDeGolpes = null;
 			EscutaDeDecalques = null;
 			EscutaDeRetratosDePecas = null;
+			EscutaDeRetratosDeMarcas = null;
 			LimparTudoDaBancada();
+			MarcasDaZona(ZonaDaBancadaDeProjetil.Hash).Clear();   // (as crateras e trilhas de bancada tambem nao ficam um dia na Terra)
 			// O CHAO DA ZONA VOLTA LIMPO: o servidor continua de pe depois da bancada, e quem logasse
 			// na Terra receberia no retrato os bracos de bancada que ela deixou -- por dez minutos.
 			PecasDaZona(ZonaDaBancadaDeProjetil.Hash).Clear();
@@ -959,5 +965,102 @@ public partial class GameServer
 					chao.Count == dentro, $"{chao.Count} x {dentro}");
 
 		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 10) AS MARCAS DE DESTRUICAO: UM DIA DO JOGO NO CHAO (2026-10-26)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia ingame"*. Quatro perguntas, cada uma com a
+	/// sua linha vermelha: o servidor GUARDA a cratera e a trilha (e so elas -- a fumaca e o sangue sao o instante); quem entra na zona as
+	/// RECEBE, com o que falta de cada uma; o prazo e UM DIA DO JOGO (escrito aqui em minutos, e nao lido da constante, pra uma constante
+	/// mexida reprovar); e o teto da zona empurra a mais velha. O funil e o de producao -- o `MandarDecalque`, por onde passa toda cratera e
+	/// toda trilha do servidor --, e o relogio e simulado escrevendo o `CaiuEm` pro passado, como na familia 9.
+	/// </summary>
+	private void AsMarcasDeDestruicao()
+	{
+		GD.Print("[peca] -- 10) AS CRATERAS E AS TRILHAS FICAM UM DIA DO JOGO NO CHAO (`S2C.Marcas`)");
+		ZoneKey zona = ZonaDaBancadaDeProjetil;
+		List<MarcaNoChao> chao = MarcasDaZona(zona.Hash);
+		chao.Clear();   // (as familias de cima abriram crateras de verdade; aqui se conta a partir do zero)
+		const long UmDiaDoJogo = 24 * 60 * 1000;   // o `Ceu.SegundosPorDia`, escrito por extenso
+		Vec2 aqui = CorredorLivre(8);
+
+		// 1. O QUE FICA: a cratera e a trilha, pelo funil de producao -- e nada da fumaca nem do sangue
+		MandarDecalque(zona, Protocol.Decal.Cratera, aqui, Facing.South);
+		MandarDecalque(zona, Protocol.Decal.Fumaca, aqui, Facing.South);
+		MandarDecalque(zona, Protocol.Decal.Sulco, aqui + new Vec2(32, 0), Facing.East);
+		MandarDecalque(zona, Protocol.Decal.SulcoPonta, aqui + new Vec2(64, 0), Facing.East);
+		MandarDecalque(zona, Protocol.Decal.CrateraGrande, aqui + new Vec2(0, 96), Facing.South);
+		MandarDecalque(zona, Protocol.Decal.Sangue, aqui, Facing.South);
+		AfirmarPeca("O SERVIDOR GUARDA A CRATERA E A TRILHA: das seis marcas que sairam pelo funil, ficam as duas crateras e os dois "
+					+ "pedacos da trilha -- a fumaca e o sangue sao o instante, e nao ficam",
+					chao.Count == 4 && chao.TrueForAll(m => (Protocol.Decal)m.Tipo is Protocol.Decal.Cratera or Protocol.Decal.CrateraGrande
+															 or Protocol.Decal.Sulco or Protocol.Decal.SulcoPonta),
+					string.Join(", ", chao.Select(m => (Protocol.Decal)m.Tipo)));
+
+		// 2. QUEM ENTRA NA ZONA RECEBE O RETRATO -- a ida pro Outro Mundo e a volta, como na familia 8
+		Vec2 onde = CorredorLivre(9);
+		ServerPlayer novo = Forjar("ChegouDepois", onde, 5_000);
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		EscutaDeRetratosDeMarcas = [];
+		MoveToZone(novo.Id, alem, MesaDoEnma(alem));
+		MoveToZone(novo.Id, zona, onde);
+		List<(ulong Zona, List<(Protocol.Decal Tipo, Vec2 Onde, Facing Dir, int RestanteMs)> Marcas, int Sobrou)> retratos =
+			[.. EscutaDeRetratosDeMarcas.Where(r => r.Para == novo.Id).Select(r => LerRetratoDeMarcas(r.Fio))];
+		EscutaDeRetratosDeMarcas = null;
+		var volta = retratos.Count == 2 ? retratos[^1] : default;
+		AfirmarPeca("QUEM ENTRA NA ZONA RECEBE O RETRATO DAS MARCAS: um por entrada (a ida pro Outro Mundo e a volta), e o da volta traz as "
+					+ "quatro, cada uma no tipo, no ponto e na direcao em que caiu, sem sobra no fio",
+					retratos.Count == 2 && volta.Zona == zona.Hash && volta.Marcas.Count == chao.Count && volta.Sobrou == 0
+					&& chao.Select((m, i) => (Protocol.Decal)m.Tipo == volta.Marcas[i].Tipo && (Facing)m.Dir == volta.Marcas[i].Dir
+											  && Math.Abs(m.Onde.X - volta.Marcas[i].Onde.X) < 0.01f
+											  && Math.Abs(m.Onde.Y - volta.Marcas[i].Onde.Y) < 0.01f).All(x => x),
+					$"{retratos.Count} retrato(s); {volta.Marcas?.Count ?? 0} no da volta x {chao.Count} no chao");
+		AfirmarPeca("...e com QUANTO FALTA de cada uma: mais de 23 minutos (eram 18 s a cratera e 20 s a trilha), e nunca mais que um dia",
+					volta.Marcas is { Count: > 0 } && volta.Marcas.TrueForAll(m => m.RestanteMs > 23 * 60 * 1000 && m.RestanteMs <= UmDiaDoJogo),
+					$"[{string.Join(",", volta.Marcas?.Select(m => m.RestanteMs) ?? [])}]");
+
+		// 3. O PRAZO E UM DIA DO JOGO
+		long agora = NowMs();
+		chao[0].CaiuEm = agora - (UmDiaDoJogo - 5_000);   // quase um dia: fica
+		chao[1].CaiuEm = agora - UmDiaDoJogo - 1;         // um dia e 1 ms: sai
+		long quaseUmDia = chao[0].CaiuEm, venceu = chao[1].CaiuEm;
+		int antes = chao.Count;
+		TickDasPecas();
+		AfirmarPeca("O PRAZO E UM DIA DO JOGO (24 min reais): a marca de 23 min 55 s CONTINUA no chao, e a de 24 min + 1 ms SAIU no tique",
+					chao.Count == antes - 1 && chao.Exists(m => m.CaiuEm == quaseUmDia) && !chao.Exists(m => m.CaiuEm == venceu),
+					$"{chao.Count} de {antes}");
+		foreach (MarcaNoChao m in chao) m.CaiuEm = agora;
+		int dentro = chao.Count;
+		for (int i = 0; i < 100; i++) TickDasPecas();
+		AfirmarPeca("CONTRA-EXEMPLO: com todas dentro do dia, cem tiques nao tiram nenhuma", chao.Count == dentro, $"{chao.Count} x {dentro}");
+
+		// 4. O TETO DA ZONA, medido na BEIRADA como o das pecas: cheia, UMA a mais tira exatamente a mais velha. Enchida com CRATERA e com
+		// um numero CERTO de voltas: um laco "ate encher" nunca acabaria num binario em que a marca nao fica (a contraprova da trilha, r1,
+		// estourou o prazo da bancada assim) -- e cratera, porque a regua de cima ja cobra a trilha.
+		for (int i = 0; i < MarcasNoChao.TetoPorZona && chao.Count < MarcasNoChao.TetoPorZona; i++)
+			MandarDecalque(zona, Protocol.Decal.Cratera, aqui + new Vec2(i % 50 * 32, i / 50 * 32), Facing.South);
+		chao[0].CaiuEm = 1;
+		chao[1].CaiuEm = 2;
+		MandarDecalque(zona, Protocol.Decal.Cratera, aqui, Facing.South);
+		AfirmarPeca($"O TETO: a zona lembra {MarcasNoChao.TetoPorZona} marcas, e a seguinte empurra a MAIS VELHA",
+					chao.Count == MarcasNoChao.TetoPorZona && !chao.Exists(m => m.CaiuEm == 1) && chao[0].CaiuEm == 2,
+					$"{chao.Count} marcas, primeira caiu em {chao[0].CaiuEm}");
+
+		chao.Clear();
+		LimparTudoDaBancada();
+	}
+
+	/// <summary>(2026-10-26) O `S2C.Marcas` lido como o `GameClient` le -- zona, n (`ushort`), e n x (tipo, ponto, direcao, restante).</summary>
+	private static (ulong Zona, List<(Protocol.Decal Tipo, Vec2 Onde, Facing Dir, int RestanteMs)> Marcas, int Sobrou) LerRetratoDeMarcas(byte[] fio)
+	{
+		var r = new NetDataReader(fio);
+		r.GetByte();
+		ulong zona = r.GetULong();
+		int n = r.GetUShort();
+		var l = new List<(Protocol.Decal, Vec2, Facing, int)>(n);
+		for (int i = 0; i < n; i++) l.Add(((Protocol.Decal)r.GetByte(), r.GetVec(), (Facing)r.GetByte(), r.GetInt()));
+		return (zona, l, r.AvailableBytes);
 	}
 }

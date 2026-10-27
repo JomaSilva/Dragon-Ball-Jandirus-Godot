@@ -12,7 +12,8 @@ namespace Jandirus.Client;
 ///   P1b. CONTRA-EXEMPLO (`GameServer.PatriarcaSemMenuDeTeste`, o apontador que nao o enxerga): sem dica -- foto `patriarca-1b-defeito`;
 ///   P2. a tecla E de verdade abre o menu dele, "Falar com o Grande Patriarca" -- foto `patriarca-2-menu`;
 ///   P3. o botao: as falas do DM no chat ("põe a mão sobre a cabeça de...", o ganho, "Desperte... AGORA!") -- foto `patriarca-3-despertou`;
-///   P4. de novo: "Seu potencial já foi despertado" -- foto `patriarca-4-de-novo`.
+///   P4. de novo: "ainda se assenta" (2026-10-26: o Guru solta o banco do potencial de hora em hora; era "Seu potencial já foi
+///       despertado", uma vez na vida) -- foto `patriarca-4-de-novo`.
 ///
 ///     Godot --path . --host --rede 8881 --horateste 0.5 --semfauna --diagpatriarca --raca Human --conta bancada_patriarca --nome Discipulo
 /// </summary>
@@ -109,17 +110,17 @@ public partial class RoboDoPatriarca : Node
 			bool despertou = apertou && await Ate(() => _ditas.Any(t => t.Contains("Desperte... AGORA!", StringComparison.Ordinal)), 5);
 			await Segundos(0.6);
 			Conferir(despertou && _ditas.Any(t => t.Contains("põe a mão sobre a cabeça de", StringComparison.Ordinal))
-							   && _ditas.Any(t => t.Contains("seu potencial desperta", StringComparison.Ordinal)),
+							   && _ditas.Any(t => t.Contains("o potencial que você guardou se liberta", StringComparison.Ordinal)),
 					 $"P3. FALAR COM ELE DESPERTA O POTENCIAL, com as falas do DM no chat [ouvi: {string.Join(" | ", _ditas.TakeLast(4))}]");
 			Fotografar("user://patriarca-3-despertou.png");
 
-			// ---- P4. de novo: uma vez na vida ----
+			// ---- P4. de novo, dentro da hora (2026-10-26: o banco do potencial se solta de hora em hora) ----
 			_ditas.Clear();
 			Apertar(Key.E);
 			bool deNovo = await Ate(() => menu.NaTela, 3) && menu.ApertarDesenhado(Botao)
-						  && await Ate(() => _ditas.Any(t => t.Contains("Seu potencial já foi despertado", StringComparison.Ordinal)), 5);
+						  && await Ate(() => _ditas.Any(t => t.Contains("ainda se assenta", StringComparison.Ordinal)), 5);
 			await Segundos(0.6);
-			Conferir(deNovo, $"P4. DE NOVO, NAO: \"Seu potencial já foi despertado, jovem guerreiro\" [ouvi: {string.Join(" | ", _ditas.TakeLast(2))}]");
+			Conferir(deNovo, $"P4. DE NOVO DENTRO DA HORA, NAO: o potencial \"ainda se assenta\" [ouvi: {string.Join(" | ", _ditas.TakeLast(2))}]");
 			Fotografar("user://patriarca-4-de-novo.png");
 		}
 		finally { cli.Falou -= Ouvir; }

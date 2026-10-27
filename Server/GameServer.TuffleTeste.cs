@@ -155,6 +155,18 @@ public sealed partial class GameServer
 
 			// ============================================================ M) A MAQUINA
 			GD.Print("[tuffle] -- M) a maquina: o Neo Tuffle Lab e a conversao --");
+			// (2026-10-25) O BUG DO DONO: "tsufurujin n ta conseguindo contruir maquina de fazer neotuffle, n aparece no menu de tech". O Neo
+			// Tuffle Lab se instala num mainframe, e o catalogo so deixava o Humano construir um (`CatalogoDeObras.RacasDoMainframe`).
+			bool NaAbaTech(CatalogoDeObras cat, ServerPlayer p) => cat.Ofertas(p.Ficha, p.Race).Any(o => o.Obra.Id == CatalogoDeObras.Mainframe);
+			AfirmarTf("**O MAINFRAME ESTA NA ABA TECH DO TSUFURUJIN** (o bug de 2026-10-25: sem ele nao ha Neo Tuffle Lab): a oferta e linha pro Baby e pra Bulma (Humana) -- e pro Vegeta (Saiyajin) continua nao sendo",
+				_obras != null && NaAbaTech(_obras, baby) && NaAbaTech(_obras, bulma) && !NaAbaTech(_obras, vegeta));
+			CatalogoDeObras doDm;
+			CatalogoDeObras.MainframeSoDoHumanoDeTeste = true;
+			try { doDm = CatalogoDeObras.Parse(Godot.FileAccess.GetFileAsString("res://Assets/Data/construcoes.json")); }
+			finally { CatalogoDeObras.MainframeSoDoHumanoDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o catalogo com as racas do DM): o Baby nao ve o mainframe na aba Tech -- a regua de cima REPROVA",
+				!NaAbaTech(doDm, baby) && NaAbaTech(doDm, bulma));
+
 			Interacoes.Acao[] labs = Interacoes.De("Android_Creation_Mainframe/labs");
 			Interacoes.Acao[] conversao = Interacoes.De("Android_Creation_Mainframe/tuffle");
 			AfirmarTf("O MENU DO MAINFRAME: o Neo Tuffle Lab entre os laboratorios, e a conversao nas duas moedas -- um milhao de zeni ou o dobro em recursos",

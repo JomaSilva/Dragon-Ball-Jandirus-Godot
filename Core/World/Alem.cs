@@ -67,6 +67,20 @@ public static class Alem
 	public static bool EhOAlem(ZoneKey z) => z.Kind == ZoneKey.KindPremade && EhOAlem(z.Name);
 
 	/// <summary>
+	/// (2026-10-26) NO OUTRO MUNDO A PAREDE BARRA QUEM VOA -- o dono: *"Ta dando pra voar por cima das paredes do outro mundo, assim dando
+	/// pra burlar quando vc tem karma negativo"*. A barreira espiritual sela as portas do Outro Mundo pro coracao negro e pra quem cumpre
+	/// pena (`GameServer.APortaDoOutroMundoAbrePara`), e o patio do Enma e fechado: a saida e pela porta. Quem voava acima do cenario
+	/// passava por cima do muro (so a parede de predio barra o voo alto, `ClasseDePredio`), e a porta nem era perguntada. Neste mapa a
+	/// parede para o voo alto como para quem anda (`ZoneCollision.ParedeBarraQuemVoa`) -- o mesmo mapa em que a parede nao cai (o Ceu e o
+	/// Inferno tem as regras deles). As duas pontas ligam a marca pela MESMA pergunta, na leitura do mapa.
+	/// </summary>
+	public static bool ParedeBarraQuemVoa(string nomeDaZona) =>
+		string.Equals(nomeDaZona, ZonaDoOutroMundo, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>DEFEITO INJETADO (bancada `--alemteste`): o voo alto volta a passar por cima do muro do Outro Mundo -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool MuroDeixaVoarDeTeste;
+
+	/// <summary>
 	/// ============================ A MESA DO ENMA, EM COORDENADA BYOND ============================
 	/// `loc = locate(187, 104, 6)` -- `Death.dm:110`. Guardado como o DM escreve, e nao ja
 	/// convertido, porque e assim que da pra conferir contra o original sem fazer conta de cabeca.
@@ -206,9 +220,9 @@ public static class Alem
 	public static bool DebuffDoEnmaComoAntesDeTeste;
 
 	/// <summary>
-	/// (v0.3.0) A FRACAO DO PODER QUE A REENCARNACAO LEVAVA: o `Reincarnate(0.1)` do Enma (`SkyNPCs.dm:204`) -- o proximo
-	/// personagem da conta nascia com `round(oldBP * 0.1)` de BP base (`Reincarnation.dm:9`). Desde 2026-10-22 o BP inteiro vira
-	/// potencial oculto (`GameServer.AplicarOEcoDaReencarnacao`); a fracao so vale no defeito injetado da regra de antes.
+	/// (v0.3.0) A FRACAO DO PODER QUE A REENCARNACAO LEVA: o `Reincarnate(0.1)` do Enma (`SkyNPCs.dm:204`) -- o proximo personagem
+	/// da conta ganha `round(oldBP * 0.1)` de BP base (`Reincarnation.dm:9`) por cima do da raca. (De 2026-10-22 a 2026-10-25 o BP
+	/// inteiro virava potencial oculto; desde 2026-10-26 e o DU de novo -- ver `GameServer.AplicarOEcoDaReencarnacao`.)
 	/// </summary>
 	public const double FracaoDaReencarnacao = 0.1;
 

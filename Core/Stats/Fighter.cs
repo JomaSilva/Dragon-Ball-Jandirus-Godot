@@ -812,24 +812,41 @@ public sealed partial class Fighter
 	// =====================================================================
 	public double UPMod = 1;          // Potencial da raca: define o teto pessoal de treino
 	public double relcaprate = 1, HBTCMod = 1, bgains = 1, tgains = 1, tailgain = 1;
-	public double hiddenpotential = 1, hdnptltoBP = 1;
+	/// <summary>
+	/// O BANCO DO POTENCIAL (o `unusedPotential` do DU) -- o nome do DM ficou, a pedido do dono: *"o hidden potential meio q pode ser
+	/// usado como essa pool, so pra manter a variavel"*. Enche com uma fatia de cada ganho (`GanhoDeAtividade`) e so sai pelos que
+	/// liberam (`LiberarOPotencial`). Nasce com 1, o do DM. (2026-10-26) O sistema antigo que morava aqui -- o pingo no BP, a idade que
+	/// somava, a razao potencial/BP no Ki maximo e na raiva -- saiu do jogo.
+	/// </summary>
+	public double hiddenpotential = 1;
+
+	/// <summary>
+	/// (2026-10-26) O ESTOQUE DO SISTEMA ANTIGO JA FOI ZERADO NESTA FICHA -- o dono escolheu zerar o potencial oculto que os saves de antes
+	/// do banco traziam (o 1 de nascenca, os anos, a heranca, as compras, o eco de quem reencarnou). Falso num save de antes (o campo nao
+	/// existia), verdadeiro em quem nasce depois. Ver <see cref="ZerarOPotencialAntigo"/>.
+	/// </summary>
+	public bool potencialAntigoZerado;
+
+	/// <summary>
+	/// (2026-10-26) ZERA O ESTOQUE ANTIGO, uma vez por ficha: o login de um save de antes do banco chega aqui com o numero do sistema
+	/// velho, e o banco comeca do zero. Devolve se zerou.
+	/// </summary>
+	public bool ZerarOPotencialAntigo()
+	{
+		if (potencialAntigoZerado) return false;
+		potencialAntigoZerado = true;
+		hiddenpotential = 0;
+		return true;
+	}
 
 	/// <summary>
 	/// ANOS VIVIDOS DEPOIS QUE O PERSONAGEM FOI CRIADO. Nao e a idade da ficha.
 	///
 	/// Quem nasce aos 18 e faz 19 tem 1 aqui. Nasce em 0 ate num Majin criado com a idade no milhao:
 	/// a idade digitada na criacao, o desejo de juventude e o admin nao entram. So sobe quando um ano
-	/// de vida de verdade fecha (calendario, sala do tempo, estirao), em <see cref="SomarPotencialOcultoDaIdade"/>.
+	/// de vida de verdade fecha (calendario, sala do tempo, estirao), em <see cref="ContarOsAnos"/>.
 	/// </summary>
 	public int anosDesdeACriacao;
-
-	/// <summary>
-	/// A RAZAO potencial-escondido/BP que uma compra antiga de One Punch ainda garante. One Hundred e
-	/// One Training dessa versao sao devolvidas no login (<see cref="Jandirus.Core.Skills.GanhoNaCompra.ReembolsarVersaoAntiga"/>).
-	/// O estoque novo vem da idade (<see cref="SomarPotencialOcultoDaIdade"/>).
-	/// Ver `Statify`, onde a razao entra no `hdnptlmod`.
-	/// </summary>
-	public double potencialGarantido;
 	public double BoostMult = 0;
 	public bool isHV, BoostActive;
 
@@ -944,7 +961,6 @@ public sealed partial class Fighter
 	public double weight_cap_hw = 0;   // RECORDE do corpo: nunca cai (senao vira espiral)
 
 	// --- Zenkai ----------------------------------------------------------
-	public long zenkaiReady;           // relogio real (ms) em que o proximo Zenkai libera
 	public double ssj3at = 2e10;       // BP de referencia do SSJ3 -- teto de aposentadoria do Zenkai
 	public double ssj3LearnReq = 0;    // requisito pessoal, quando ja sorteado
 	public string ParentRace = "";
@@ -965,6 +981,12 @@ public sealed partial class Fighter
 	public double stuckage;                // kanassa-jin.dm:60 -- a idade em que o Time Store prendeu o corpo (0 = ainda nao)
 	public double unlockPotential;         // UnlockPotential.dm:5 -- 1 = ja despertou, UMA vez por vida
 	public double sacredwater;             // EarthRanks.dm:181 -- 1 = ja bebeu a Agua Ultra Divina do Mirante e aguentou (ver `Tech.AguaSagrada`)
+	// (2026-10-26) O BANCO DO POTENCIAL, COMO NO DU (`GainKnobs.PotencialDoGanhoMin`): a hora em que o proximo liberador pode soltar o
+	// banco (relogio real, ms -- o `nextUnlockUse`), os goles da Agua que deram (o `sacredWaterUses`) e o ritual do Kaioshin, que e uma
+	// vez por personagem (o dono).
+	public long liberarPotencialEm;
+	public int golesDaAgua;
+	public bool ritualDoKaioshinRecebido;
 	public double expandlevel;             // Body Expansion.dm:9 -- o grau atual da expansao
 	public double observingnow;            // observe.dm:7/12 -- projetando a mente em alguem
 

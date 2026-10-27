@@ -668,6 +668,12 @@ public static class VerbosDoJogo
 			+ "Quem o derrotar ganha zeni e karma. Um por vez.",
 			() => C?.SendVerbo("admin_inferno")));
 
+		// (2026-10-26) O CAMPEAO DO MUNDO ANTERIOR, na hora -- o pedido 94 do dono. Ver `GameServer.CampeaoDoWipe.cs`.
+		Verbos.Registrar(new Verbo("Summon Wipe Champion", Verbos.Admin,
+			"Faz o campeão do mundo anterior (o personagem mais forte que a última limpeza guardou) despertar na Terra agora, sem esperar "
+			+ "os 50% -- é a aparição dele neste wipe. Sem campeão guardado, diz por quê.",
+			() => C?.SendVerbo("admin_campeao")));
+
 		Verbos.Registrar(new Verbo("Kill This Planet (slow)", Verbos.Admin,
 			"Acende o pavio lento deste planeta: 20 minutos em quatro estagios, e no fim ele explode. "
 			+ "Os habitantes vao morrendo e o chao comeca a se abrir.",

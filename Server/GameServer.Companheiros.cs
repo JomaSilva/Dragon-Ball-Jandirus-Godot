@@ -72,8 +72,9 @@ public sealed partial class GameServer
 			case Companheiros.AcaoMelhorar: GastarAMelhoria(pl, def, arg2); return true;
 			case Companheiros.AcaoPoder: AtualizarOPoder(pl, def, arg2); return true;
 			case Companheiros.AcaoRacao: DarARacao(pl, def); return true;
-			// (lote T5) o que o sintetizador de virus fabrica -- `GameServer.Sintetizador.cs`.
-			default: return AcaoDeSintetizado(pl, def, acao, arg2);
+			// (lote T5) o kit de reparo e o kit mecanico -- `GameServer.KitsDeAndroide.cs`. (O sintetizador de virus, que ficava no meio desta
+			// corrente, saiu do jogo em 2026-10-26: o pedido 98.)
+			default: return AcaoDeKit(pl, def, acao, arg2);
 		}
 	}
 

@@ -459,6 +459,19 @@ public static class Protocol
     }
 
     /// <summary>
+    /// (2026-10-26) AS MARCAS DE DESTRUICAO DO CENARIO: as quatro crateras e a trilha (o sulco e as pontas dele). O dono:
+    /// *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia ingame"*. Elas ficam UM DIA DO JOGO no chao
+    /// (`Core.Combat.MarcasNoChao.MsNoChao`), o servidor as GUARDA e as reapresenta a quem chega na zona (<see cref="S2C.Marcas"/>), e o
+    /// cliente as segura numa fila propria, que a poeira de uma briga nao despeja (`Client/Decalques`).
+    ///
+    /// O QUE FICA DE FORA, e por que: a FUMACA, o SANGUE e a AGUA sao o instante (a nuvem do impacto, o respingo, a onda), e nao o
+    /// estrago; o MEMBRO tem o prazo dele (os 600 s do DM, pelo <see cref="S2C.Pecas"/>); e o CHAO DANIFICADO ja e permanente (ate o
+    /// mapa recarregar).
+    /// </summary>
+    public static bool MarcaDeDestruicao(Decal t) =>
+        t is Decal.Sulco or Decal.SulcoPonta or Decal.Cratera or Decal.CrateraGrande or Decal.CrateraEnorme or Decal.CrateraDoPod;
+
+    /// <summary>
     /// Quanto tempo a pose de soco fica no ar, quando o servidor ainda nao disse outra coisa.
     ///
     /// E so um DEFAULT de partida: a cadencia de verdade vem na ficha (<see cref="SheetState.SocoMs"/>),
@@ -1561,6 +1574,15 @@ public static class Protocol
         Pecas = 53,
 
         /// <summary>
+        /// (2026-10-26) AS MARCAS DE DESTRUICAO NO CHAO DA ZONA -- crateras e trilhas (<see cref="MarcaDeDestruicao"/>) --, o RETRATO pra
+        /// quem chega: zona (hash) + `ushort n` + n x (tipo, X, Y, direcao, quanto falta em ms). O irmao do <see cref="Pecas"/>, pelo mesmo
+        /// motivo e com a mesma regra: o <see cref="Decalque"/> e o instante, e uma marca que fica UM DIA DO JOGO no chao tem que chegar
+        /// a quem entra depois, reloga ou volta de outro planeta. A lista INTEIRA (no maximo `MarcasNoChao.TetoPorZona`, por isso o
+        /// `ushort`), e vazio tambem sai. Sai junto do <see cref="Pecas"/> (`GameServer.MandarPecas`).
+        /// </summary>
+        Marcas = 182,
+
+        /// <summary>
         /// QUEM ESTA ONLINE, pra um admin escolher o alvo de um verb sem ter marcado ninguem: `ushort n`
         /// + n x (`int id`, `string nome`, `string onde`). E o `input(... in world)` dos verbs de admin
         /// do original, sem travar a tela. So sai pra admin, a pedido (`admin_online`).
@@ -2130,6 +2152,20 @@ public static class Protocol
         /// </summary>
         public float Ascensao;
 
+        /// <summary>
+        /// (2026-10-26) O KARMA DESTE PERSONAGEM (`ServerPlayer.Karma`, -100 a 100) -- a linha "Karma" da aba Stats (o pedido 106 do dono). No
+        /// FIM do pacote, depois da Ascensao.
+        /// </summary>
+        public short Karma;
+
+        /// <summary>
+        /// (2026-10-26) A REPUTACAO DESTA CONTA COM O POVO DO PLANETA ONDE O CORPO ESTA (`GameServer.ReputacaoDe`, -200 a 200) -- o cartao
+        /// "Reputação" da aba World (o pedido 106). <see cref="TemReputacao"/> falso = o lugar nao e um mundo com povo (o espaco, um interior,
+        /// o Outro Mundo), e o cartao nao existe.
+        /// </summary>
+        public bool TemReputacao;
+        public float Reputacao;
+
         /// <summary>Quantos kg dos pesos estao NO CORPO agora (`Fighter.Weighted`): a aba Equip escreve "vestindo X kg".</summary>
         public float PesoKg;
 
@@ -2236,6 +2272,7 @@ public static class Protocol
             w.Put(SkillsRaciais); w.Put(SkillsDoSangue);
             w.Put(VigorMult);
             w.Put(Ascensao);
+            w.Put(Karma); w.Put(TemReputacao); w.Put(Reputacao);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -2275,6 +2312,9 @@ public static class Protocol
             SkillsDoSangue = r.GetUInt(),
             VigorMult = r.GetFloat(),
             Ascensao = r.GetFloat(),
+            Karma = r.GetShort(),
+            TemReputacao = r.GetBool(),
+            Reputacao = r.GetFloat(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)

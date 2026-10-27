@@ -70,7 +70,7 @@ public sealed partial class Fighter
         mult *= GainKnobs.GlobalTrainGain * zoneGainMult * racialGanhoDeTreino;   // (v0.4.0) o Persistence -- `Fighter.racialGanhoDeTreino`
 
         // (2026-10-16) O LUGAR MULTIPLICA A ATIVIDADE: a gravidade efetiva na parcela da atividade, que ja levava o peso e a zona. E
-        // o numero do painel -- ver `FatorDaGravidade`. A parcela do potencial oculto NAO o leva (dono, 2026-10-20): `LugarDoPotencialOculto`.
+        // o numero do painel -- ver `FatorDaGravidade`.
         double lugar = FatorDaGravidade();
 
         if (BP < relBPmax)
@@ -90,12 +90,8 @@ public sealed partial class Fighter
                 tmp_activ_gains = Math.Max(0, tmp_activ_gains - 25);
             }
 
-            BP += CapCheck(amount);
-
-            // potencial escondido vira poder sozinho, mais rapido se ja passou do BP atual -- e sem o lugar, o peso e a zona, como no
-            // DM (`Train.dm:26-29`): ver `LugarDoPotencialOculto`
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 32 : 1.0 / 64)
-                           * LugarDoPotencialOculto(lugar * weight * zoneGainMult));
+            // (2026-10-26) O POTENCIAL NAO PINGA MAIS: o ganho GUARDA uma parte no banco -- ver `GanhoDeAtividade`
+            BP += GanhoDeAtividade(CapCheck(amount));
         }
 
         if (DmMath.Prob(rng, 10)) maxstamina += 0.01 * weight;
@@ -120,10 +116,7 @@ public sealed partial class Fighter
             double amount = CapCheck(BpGainBase() * GainKnobs.BPTick * GainKnobs.GlobalMedGain * multi
                                      * Egains * MedMod * (1.0 / 24) * GainKnobs.MeditarRende * lugar);
 
-            BP += amount;
-
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 30 : 1.0 / 50)
-                           * GainKnobs.MeditarRende * LugarDoPotencialOculto(lugar));   // sem o lugar, como no DM (`Meditate.dm:12-15`)
+            BP += GanhoDeAtividade(amount);   // (2026-10-26) e o potencial nao pinga mais -- ver `GanhoDeAtividade`
         }
 
         if (baseKi <= baseKiMax)
@@ -156,11 +149,10 @@ public sealed partial class Fighter
             if (BP < 10 && (KiUnlockPercent == 1 || DmMath.Prob(rng, 50))
                 && DmMath.Prob(rng, 1) && DmMath.Prob(rng, 50)) BP += 1;
 
-            // (2026-10-16) a gravidade multiplica a luta -- ver `FatorDaGravidade` (o potencial oculto nao: `LugarDoPotencialOculto`,
-            // `combatgains.dm:156-159`)
+            // (2026-10-16) a gravidade multiplica a luta -- ver `FatorDaGravidade`. (2026-10-26) E o potencial nao pinga mais: o soco
+            // GUARDA uma parte no banco -- ver `GanhoDeAtividade`.
             double lugar = FatorDaGravidade();
-            BP += CapCheck(GainKnobs.BPTick * BpGainBase() * Etechnique * SparMod * Egains * weight * mult * lugar);
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 6 : 1.0 / 12) * LugarDoPotencialOculto(lugar));
+            BP += GanhoDeAtividade(CapCheck(GainKnobs.BPTick * BpGainBase() * Etechnique * SparMod * Egains * weight * mult * lugar));
         }
 
         if (DmMath.Prob(rng, 20)) maxstamina += 0.01 * weight;
@@ -220,7 +212,7 @@ public sealed partial class Fighter
 
         if (baseKi <= baseKiMax && kamount != 0) baseKi += KiCapCheck(kamount);
 
-        if (BP < relBPmax && amount != 0) BP += CapCheck(amount);
+        if (BP < relBPmax && amount != 0) BP += GanhoDeAtividade(CapCheck(amount));
     }
 
     /// <summary>
@@ -237,7 +229,7 @@ public sealed partial class Fighter
     /// </summary>
     public void FlightGain()
     {
-        if (BP < relBPmax) BP += CapCheck(BpGainBase() * GainKnobs.BPTick * (1.0 / 24));
+        if (BP < relBPmax) BP += GanhoDeAtividade(CapCheck(BpGainBase() * GainKnobs.BPTick * (1.0 / 24)));
         if (baseKi <= baseKiMax)
             baseKi += KiCapCheck(0.001 * KiMod * baseKiMax / Math.Max(baseKi, 1e-9));
     }
@@ -245,7 +237,7 @@ public sealed partial class Fighter
     /// <summary>Nadar, idem -- so conta quando muda de direcao.</summary>
     public void SwimGain()
     {
-        if (BP < relBPmax) BP += CapCheck(BpGainBase() * GainKnobs.BPTick * (1.0 / 30));
+        if (BP < relBPmax) BP += GanhoDeAtividade(CapCheck(BpGainBase() * GainKnobs.BPTick * (1.0 / 30)));
     }
 
     // =====================================================================
@@ -254,7 +246,7 @@ public sealed partial class Fighter
     /// <summary>
     /// QUANTO A GRAVIDADE MULTIPLICA O TIQUE -- a gravidade de verdade do chao (o planeta mais o campo de maquina), nunca abaixo
     /// de 1: o espaco (gravidade zero) nao zera o treino, so nao ajuda. Multiplica a parcela da ATIVIDADE no treino, na meditacao,
-    /// na luta e no ki -- a do potencial oculto nao (dono, 2026-10-20: ver <see cref="LugarDoPotencialOculto"/>). Parado nao se
+    /// na luta e no ki (o potencial nao pinga mais: ver <see cref="GanhoDeAtividade"/>). Parado nao se
     /// ganha nada em gravidade nenhuma: ela multiplica o que a atividade paga, e quem nao faz nada nao recebe nada pra multiplicar.
     ///
     /// ============================ ELA SO SOMAVA, E SOMAVA QUASE NADA (dono, 2026-10-16) ============================
@@ -285,22 +277,38 @@ public sealed partial class Fighter
     }
 
     /// <summary>
-    /// O QUE O LUGAR FAZ COM O POTENCIAL OCULTO: nada -- 1, e a parcela pinga igual em qualquer chao, como no DM
-    /// (`Train.dm:26-29`, `Meditate.dm:12-15`, `combatgains.dm:156-159`: `hiddenpotential*BPTick*(1/N)`, sem gravidade, peso
-    /// ou zona). <paramref name="lugar"/> e o que a parcela da atividade da MESMA chamada leva, e e o que o defeito injetado devolve.
+    /// (2026-10-26) O GANHO DE UMA ATIVIDADE -- treino, meditacao, luta, ki, voo, nado -- entra inteiro no BP e GUARDA uma parte no banco do
+    /// potencial (`hiddenpotential`): de 20 a 40% de si, 1,5x isso na classe Prodigial (o dono). Devolve o proprio ganho, pra o chamador
+    /// somar no BP. Ver <see cref="GainKnobs.PotencialDoGanhoMin"/>.
     ///
-    /// ============================ OS 20 BILHOES (dono, 2026-10-20) ============================
-    /// *"teve um jogador q de alguma forma treinou na gravidade de 500x com peso no maximo ... ganhou 20 BILHOES de bp"*. De
-    /// 2026-10-16 a 2026-10-20 o lugar multiplicava o tique INTEIRO, potencial incluso (a escolha daquele dia, que o dono nao
-    /// tinha confirmado). A atividade e linear e pequena (base fixa x marcos); o potencial nao: a One Hundred da `relBPmax*2`
-    /// e a One Punch e a One Training `relBPmax*0,5` cada (`GanhoNaCompra`) -- de 14 a 20 vezes o BP do dia da compra -- e ele
-    /// nunca se gasta. A 500x com o peso no teto (8x) a parcela pingava 4000x a do DM: medido fora do jogo, um Majin de 1B com
-    /// as tres compradas com 1B ia a 14B em uma hora de treino e a 20B em tres (morto, o vigor nao acaba); no DM, a 1,03B. Sem
-    /// as compras nada muda: uns 270 mil de BP por hora nesse mesmo lugar. O dono escolheu "como no DM": o lugar multiplica o
-    /// esforco (treino, luta, meditacao, ki), e o potencial pinga cru.
-    /// ======================================================================================
+    /// ============================ O PINGO QUE SAIU (e os 20 bilhoes de 2026-10-20) ============================
+    /// Ate 2026-10-25 o potencial oculto PINGAVA no BP a cada tique de treino, de meditacao e de soco (`hiddenpotential*BPTick*(1/N)`,
+    /// `Train.dm:26-29`, `Meditate.dm:12-15`, `combatgains.dm:156-159`), e o estoque nunca se gastava; o ano ainda somava `BP*Potencial`
+    /// nele. Foi por ele que um Majin de 1B com a One Hundred, a One Punch e a One Training ia a 14B numa hora de treino a 500x
+    /// (2026-10-20), e por ele que meditar dava um milhao a cada poucos segundos (2026-10-25). No DU o potencial nao pinga: ACUMULA, e so
+    /// o Unlock o solta -- e e o que o dono pediu.
+    /// ==========================================================================================================
     /// </summary>
-    private static double LugarDoPotencialOculto(double lugar) => GainKnobs.PotencialOcultoComOLugarDeTeste ? lugar : 1;
+    public double GanhoDeAtividade(double ganho)
+    {
+        if (ganho <= 0) return ganho;
+        // (2026-10-26) E O BANCO DO ZENKAI, so pra quem tem sangue Saiyajin: de 5 a 15% do mesmo ganho (o DU). Ver `SoltarOZenkai`.
+        if (HasZenkai())
+            zenkaiGuardado += ganho * (GainKnobs.ZenkaiDoGanhoMin
+                                       + GainKnobs.SorteioDoBanco.NextDouble() * (GainKnobs.ZenkaiDoGanhoMax - GainKnobs.ZenkaiDoGanhoMin));
+        if (PotencialSemBancoDeTeste) return ganho;
+        double fracao = GainKnobs.PotencialDoGanhoMin
+                        + GainKnobs.SorteioDoBanco.NextDouble() * (GainKnobs.PotencialDoGanhoMax - GainKnobs.PotencialDoGanhoMin);
+        if (string.Equals(Class, "Prodigial", StringComparison.OrdinalIgnoreCase)) fracao *= GainKnobs.BancoDoProdigial;
+        hiddenpotential += ganho * fracao;
+        return ganho;
+    }
+
+    /// <summary>DEFEITO INJETADO (`--ganhoteste`): o ganho nao guarda nada no banco. Lido pela <see cref="GanhoDeAtividade"/>. Falso em jogo, sempre.</summary>
+    public static bool PotencialSemBancoDeTeste;
+
+    /// <summary>Ha potencial guardado pra soltar? Menos de 1 de BP nao e nada (um corpo novo nasce com 1).</summary>
+    public bool TemPotencialGuardado => hiddenpotential >= 1;
 
     /// <summary>
     /// A MAESTRIA DE GRAVIDADE: o teto de aclimatacao so sobe encarando gravidade ACIMA dele -- a cada passe de ficha de todo jogador
@@ -339,7 +347,7 @@ public sealed partial class Fighter
     /// fora de zona especial) DO MESMO CORPO: `FatorDaGravidade * weight * zona`. Gravidade e LINEAR,
     /// entao 10x de gravidade le 10x -- e desde 2026-10-16 e isso que o tique de treino PAGA (antes a
     /// gravidade so somava uma parcela de `gravidade/1500`, e o painel mentia). E o numero do ESFORCO: o
-    /// potencial oculto pinga o mesmo em qualquer lugar (2026-10-20, <see cref="LugarDoPotencialOculto"/>).
+    /// potencial nao pinga mais no BP (2026-10-26, <see cref="GanhoDeAtividade"/>).
     ///
     /// O VIGOR ENTRA NO NUMERO (dono, 2026-10-21: *"coloque no bp gain no painel esse multiplicador de
     /// vigor, pros jogadores saberem"*). `StamBPGainMod` e 1,25 com o tanque em 62,5% ou mais e 0,5 no
@@ -527,18 +535,12 @@ public sealed partial class Fighter
 
     /// <summary>
     /// (2026-10-24) QUANTO DO TETO DO ZENKAI SOBRA NESTE BP: 1 no BP zero, 0 no requisito pessoal do SSJ3, em linha reta entre os
-    /// dois -- o dono: *"faca o zenkai tb ir perdendo forca (o teto de 3x e 2x vao caindo) lentamente ao se aproximar do requisito do
-    /// ssj3, ate zerar"*, e na pergunta de desde quando: "linha reta desde o zero". Com 10% do requisito o teto e 1,9x (2,8x com o corpo
-    /// em farrapos); com a metade, 1,5x (2x); no requisito, nada. Sem requisito (0, quem chama sem saber) fica o teto cheio de antes.
+    /// dois -- o dono: *"faca o zenkai tb ir perdendo forca ... lentamente ao se aproximar do requisito do ssj3, ate zerar"* ("linha reta
+    /// desde o zero"). Desde 2026-10-26 ele pesa o que o banco solta (`SoltarOZenkai`): o dono quis o limite "no req do ssj3 como e
+    /// hoje". Sem requisito (0, quem chama sem saber), 1.
     /// </summary>
     public static double FatorDoTetoDoZenkai(double bp, double requisitoDoSsj3) =>
-        requisitoDoSsj3 <= 0 || ZenkaiSemMinguaDeTeste ? 1 : Math.Clamp(1 - bp / requisitoDoSsj3, 0, 1);
-
-    /// <summary>
-    /// DEFEITO INJETADO (bancada `--v030teste`): o teto do Zenkai volta a ser cheio (2x e 3x) ate a aposentadoria -- o jogo de antes de
-    /// 2026-10-24. Lido pelo <see cref="FatorDoTetoDoZenkai"/>. Falso em jogo, sempre.
-    /// </summary>
-    public static bool ZenkaiSemMinguaDeTeste;
+        requisitoDoSsj3 <= 0 ? 1 : Math.Clamp(1 - bp / requisitoDoSsj3, 0, 1);
 
     /// <summary>
     /// DEFEITO INJETADO (bancada `--desejoteste`): a classe Kaio se aposenta no teto como todo Saiyajin -- o jogo de antes de
@@ -546,55 +548,47 @@ public sealed partial class Fighter
     /// </summary>
     public static bool KaioSeAposentaDeTeste;
 
-    /// <summary>Por que o Zenkai nao veio desta vez. Vazio = veio.</summary>
-    public enum ZenkaiResult { Concedido, SemDnaSaiyajin, InimigoMaisFraco, Aposentado, EmRecarga, Morto }
+    /// <summary>
+    /// (2026-10-26) O BANCO DO ZENKAI -- o `unusedZenkai` do DU (`Train New 2021.dm:2`). Enche com uma fatia de cada ganho de atividade de
+    /// quem tem sangue Saiyajin (<see cref="GanhoDeAtividade"/>) e so sai pelo nocaute (<see cref="SoltarOZenkai"/>). Vai pro disco.
+    /// </summary>
+    public double zenkaiGuardado;
 
     /// <summary>
-    /// Ser DERROTADO por alguem mais forte arranca poder do corpo. Pago NA HORA, direto no BP
-    /// base e SEM passar pelo CapCheck: e recompensa, nao treino. (O "banco" antigo comia o
-    /// ganho -- gotejava via CapCheck e a diferenca evaporava.)
+    /// (2026-10-26) O ZENKAI, COMO O DONO O MISTUROU COM O DU: todo nocaute solta de 20 a 80% do banco do Zenkai (sem recarga), e o que
+    /// sai fica PRA SEMPRE no BP base. O dono, nas perguntas: *"mistura, so saiyajin teria, e o limite dele é no req do ssj3 como é hoje,
+    /// e saiyajin kaio n tem limite"*, *"oq sair do banco fica pra sempre"*, *"todo nocaute sem recarga"* e *"se a maioria do corpo do
+    /// saiyajin estiver em estado crtico, ele ganha o boost igual da morte (2x) sem precisar morrer"*.
     ///
-    /// <paramref name="poderInimigo"/> e o poder EFETIVO do inimigo, nao o BP base: um inimigo
-    /// transformado conta como mais forte mesmo com base menor.
-    /// O teto e sobre o BP FINAL: um Zenkai comum no maximo DOBRA a base; com o corpo em
-    /// farrapos, no maximo TRIPLICA. (2026-10-24) E os dois MINGUAM em linha reta ate o requisito
-    /// pessoal do SSJ3 (<paramref name="requisitoDoSsj3"/>), onde zeram -- ver
-    /// <see cref="FatorDoTetoDoZenkai"/>. E a recarga e proporcional ao multiplicador
-    /// (`GainKnobs.RecargaProporcionalMs`).
+    ///   * QUEM TEM: o sangue Saiyajin (<see cref="HasZenkai"/>). Sem ele o banco nem enche.
+    ///   * O DOBRO: <paramref name="morreuAgora"/> (o `Zenkai(2)` da morte do DU) ou <paramref name="maioriaCritica"/>.
+    ///   * QUEM JA ESTAVA MORTO NAO GANHA: o torneio do Ceu nao vira fazenda de BP (`combatgains.dm:28-33`) -- a morte em si conta (e o
+    ///     que da o dobro), o nocaute de uma alma, nao.
+    ///   * O TETO: o requisito pessoal do SSJ3 (<paramref name="requisitoDoSsj3"/>; sem ele, <see cref="ZenkaiCeiling"/>): o que sai
+    ///     mingua em linha reta ate ele (<see cref="FatorDoTetoDoZenkai"/>) e o BP nunca passa dele -- la o Zenkai se aposenta e o banco
+    ///     fica. A classe Kaio nao tem teto (<see cref="ZenkaiSemTeto"/>).
+    ///
+    /// Devolve o BP ganho (0 = nada). Ate 2026-10-25 o Zenkai era pago na hora, pelo poder de quem venceu (10%, ou 15% com o corpo em
+    /// farrapos, ate 2x/3x o BP), com recarga de 2,5 h por "x" -- o sistema que este substituiu.
     /// </summary>
-    public ZenkaiResult GainZenkai(double poderInimigo, long agoraMs, bool muitoFerido = false, double requisitoDoSsj3 = 0)
+    public double SoltarOZenkai(bool morreuAgora, bool maioriaCritica, double requisitoDoSsj3)
     {
-        double meuPoder = Math.Max(expressedBP, BP);
-        if (poderInimigo <= 0 || poderInimigo <= meuPoder) return ZenkaiResult.InimigoMaisFraco;
-        if (dead) return ZenkaiResult.Morto;
-        if (!HasZenkai()) return ZenkaiResult.SemDnaSaiyajin;
+        UltimoZenkai = 0;
+        if (!HasZenkai() || zenkaiGuardado <= 0) return 0;
+        if (dead && !morreuAgora) return 0;
+        double teto = ZenkaiSemTeto ? double.PositiveInfinity : requisitoDoSsj3 > 0 ? requisitoDoSsj3 : ZenkaiCeiling();
+        double espaco = teto - BP;
+        if (espaco <= 0) return 0;
 
-        // a classe Kaio (corpo do desejo divino) tem Zenkai sem limite. (2026-10-24) Era um parametro `classeKaio` que nenhum chamador
-        // passava: o Kaio se aposentava no mesmo teto de todo Saiyajin. Ver `ZenkaiSemTeto`.
-        if (BP >= ZenkaiCeiling() && !ZenkaiSemTeto) return ZenkaiResult.Aposentado;
-
-        // (2026-10-24) O TETO MINGUA ATE O REQUISITO DO SSJ3: o que passa de 1x (o +100% do comum, o +200% do corpo em farrapos) cai em
-        // linha reta do BP zero ate o requisito pessoal, e la o Zenkai se aposenta. O Kaio, sem teto (`ZenkaiSemTeto`), nao mingua.
+        double sai = zenkaiGuardado * (GainKnobs.ZenkaiSoltaMin
+                                       + GainKnobs.SorteioDoBanco.NextDouble() * (GainKnobs.ZenkaiSoltaMax - GainKnobs.ZenkaiSoltaMin));
+        zenkaiGuardado -= sai;
         double fator = ZenkaiSemTeto ? 1 : FatorDoTetoDoZenkai(BP, requisitoDoSsj3);
-        if (fator <= 0) return ZenkaiResult.Aposentado;
-        if (agoraMs < zenkaiReady) return ZenkaiResult.EmRecarga;
-
-        double pct = muitoFerido ? GainKnobs.ZenkaiPctInjured : GainKnobs.ZenkaiPct;
-        double capmult = 1 + (muitoFerido ? 2 : 1) * fator;
-
-        double bruto = pct * poderInimigo;
-        double teto = BP * (capmult - 1);
-        UltimoZenkai = Math.Min(bruto, teto);
-        UltimoZenkaiNoTeto = bruto >= teto;
-
+        UltimoZenkai = Math.Min(sai * (morreuAgora || maioriaCritica ? GainKnobs.ZenkaiDobrado : 1) * fator, espaco);
         BP += UltimoZenkai;
-        // (2026-10-24) A RECARGA E PROPORCIONAL AO MULTIPLICADOR (dono): 2,5 h por "x" -- o que dobra deixa 5 h, o que triplica 7,5 h.
-        zenkaiReady = agoraMs + (GainKnobs.RecargaFixaDeTeste ? GainKnobs.RecargaFixaMs
-                                                               : GainKnobs.RecargaProporcionalMs(BP - UltimoZenkai, BP));
-        return ZenkaiResult.Concedido;
+        return UltimoZenkai;
     }
 
-    /// <summary>Tamanho do ultimo Zenkai concedido (pro chamador narrar sem repetir a conta).</summary>
+    /// <summary>O BP que o ultimo <see cref="SoltarOZenkai"/> deu (0 = nada) -- o servidor o le pro log.</summary>
     public double UltimoZenkai;
-    public bool UltimoZenkaiNoTeto;
 }

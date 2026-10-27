@@ -711,6 +711,12 @@ public partial class GameServer
 	/// </summary>
 	private Percepcao LerPercepcao(ServerPlayer npc, ServerPlayer? alvo, Vec2 destino, bool quemAtira)
 	{
+		// (2026-10-26) O REVIDE LETAL DO HABITANTE ACABA COM O RANCOR -- o golpe dele volta a ser o que derruba e nao mata. Ver `MarcarAgressao`.
+		if (npc.LetalDoRevideAte > 0 && NowMs() >= npc.LetalDoRevideAte && npc.Combate is { } revide)
+		{
+			revide.Letal = false;
+			npc.LetalDoRevideAte = 0;
+		}
 		Fighter f = npc.Ficha;
 		bool temAlvo = alvo != null;
 		bool comOKit = KitNaMaoDaIa(npc);

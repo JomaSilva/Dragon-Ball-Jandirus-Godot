@@ -168,6 +168,17 @@ public static class Disciplinas
 		return false;
 	}
 
+	/// <summary>
+	/// (2026-10-25) A MAESTRIA REAL DO UI E DO UE SOBE NA TAXA DA ESCADA -- o dono: *"a galera falou q masterizar o UE e UI esta muito rapido,
+	/// deveria ser o tempo q o lssj antigos tinha pra dominar (antes de vc dividir a velocidade da maestria dele por 2)"*. O LSSJ antigo era a
+	/// taxa da escada (`Catalogo.MaestriaPorSegundo`: 3 h pra 100%); era 0,04 por segundo de luta (~42 min), a do DM -- DIVERGENCIA DECLARADA.
+	/// O treino com o mestre continua acelerando (`BillsEWhis.AceleracaoDaMaestria`).
+	/// </summary>
+	public const double RealPorSegundoDoDono = Catalogo.MaestriaPorSegundo;
+
+	/// <summary>(2026-10-25) Quanto a taxa caiu (a nova sobre a do DM): os gatilhos -- a esquiva, o proc da aura -- caem na mesma proporcao.</summary>
+	public const double EscalaDaMaestriaDivina = RealPorSegundoDoDono / 0.04;
+
 	// ==================================================================================
 	// ULTRA INSTINCT -- a tecnica dos Anjos
 	// ==================================================================================
@@ -182,8 +193,8 @@ public static class Disciplinas
 		DrenoLigado = 0.5,        // UI_DRAIN_ACTIVE
 		DrenoNaForma = 0.35,      // UI_DRAIN_FORM
 		Regen = 0.25,             // UI_REGEN_PROF
-		RealPorSegundo = 0.04,    // UI_REAL_PER_SEC
-		RealPorGatilho = 0.2,     // UI_REAL_PER_EVADE
+		RealPorSegundo = RealPorSegundoDoDono,            // (2026-10-25) era o UI_REAL_PER_SEC do DM (0,04) -- ver RealPorSegundoDoDono
+		RealPorGatilho = 0.2 * EscalaDaMaestriaDivina,    // UI_REAL_PER_EVADE, na escala nova
 		AtualAoEntrarNaPrimeiraForma = 80,   // UI_PROF_SIGN_START
 		AtualAoEntrarNaSegundaForma = 100,   // UI_PROF_PERF_START
 		Degraus =
@@ -268,8 +279,8 @@ public static class Disciplinas
 		DrenoLigado = 0.5,        // UE_DRAIN_ACTIVE
 		DrenoNaForma = 0.35,      // UE_DRAIN_FORM
 		Regen = 0.25,             // UE_REGEN
-		RealPorSegundo = 0.04,    // UE_REAL_PER_SEC
-		RealPorGatilho = 0.1,     // UE_REAL_PER_PROC -- METADE do UI, e do DM
+		RealPorSegundo = RealPorSegundoDoDono,            // (2026-10-25) era o UE_REAL_PER_SEC do DM (0,04) -- ver RealPorSegundoDoDono
+		RealPorGatilho = 0.1 * EscalaDaMaestriaDivina,    // UE_REAL_PER_PROC -- METADE do UI, e do DM (na escala nova)
 		AtualAoEntrarNaPrimeiraForma = 80,   // UE_ENERGY_D_START
 		AtualAoEntrarNaSegundaForma = 100,   // UE_ENERGY_U_START
 		Degraus =

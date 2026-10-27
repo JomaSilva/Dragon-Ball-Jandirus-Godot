@@ -188,7 +188,7 @@ public static class Discipulado
 		// O cabecalho desta classe lista *"evento (o Bio de laboratorio, a saga Majin)"* entre as
 		// exclusoes -- e, igual a do (1b), **a exclusao nao existia no codigo**. Enquanto a linha do
 		// bio-androide nao tinha entrada no catalogo nao havia o que excluir; quando a Super Perfeita
-		// entrou (`super_perfect`), ela passou calada por todos os passos: tem porta de BP
+		// entrou (`super_perfect`, que saiu do jogo em 2026-10-26), ela passou calada por todos os passos: tem porta de BP
 		// (`cell4at / cell3mult`), nao se compra, e tronco, nao pede maestria, e a linha dela nao esta
 		// no passo (5). Quem acusou foi o conjunto escrito a mao da bancada (`--mestreteste`, secao 1b),
 		// que existe exatamente pra isso.
@@ -281,10 +281,11 @@ public static class Discipulado
 	/// nao as ensina. Ver la o porque de a exclusao ter passado anos escrita no cabecalho e nao
 	/// existir no codigo.
 	///
-	/// **`super_perfect` NAO entra**, pelo passo (1c): a porta que sobra alem do BP e o estagio do
+	/// **`super_perfect` NAO entrava**, pelo passo (1c): a porta que sobra alem do BP e o estagio do
 	/// corpo do bio-androide (evento, nao despertar). O DM tambem nao a ensina -- o `mst_form_tag`
 	/// devolve nulo com o buff dela (`MasterStudent.dm:196`). Ela ficou DENTRO desta lista desde que
-	/// entrou no catalogo, sem ninguem decidir, ate a bancada acusar.
+	/// entrou no catalogo, sem ninguem decidir, ate a bancada acusar. (2026-10-26) Ela saiu do jogo, e as
+	/// duas divinas do bio que a substituiram (`golden_perfect`, `bio_max`) ficam de fora pelo mesmo passo.
 	///
 	/// **`alta_tensao` e `tensao_extrema` ENTRARAM (v0.4.0)** -- as duas formas de Tensao do Humano com porta de BP. Nao sao do DM (la
 	/// o Humano nao tinha forma), e entraram pelo funil de todo mundo sem uma linha nova aqui: tronco, porta de BP com limiar pessoal,

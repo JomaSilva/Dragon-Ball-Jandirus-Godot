@@ -50,6 +50,9 @@ public partial class GameServer
 	private void MandarDecalque(ZoneKey zona, Protocol.Decal tipo, Vec2 onde, Facing dir,
 								PecaDeCorpo peca = PecaDeCorpo.Nenhuma)
 	{
+		// (2026-10-26) A CRATERA E A TRILHA FICAM UM DIA DO JOGO NO CHAO, e o servidor as guarda pra quem chegar depois -- ver `GuardarMarca`.
+		if (Protocol.MarcaDeDestruicao(tipo)) GuardarMarca(zona, tipo, onde, dir);
+
 		var w = Protocol.Begin(Protocol.S2C.Decalque);
 		w.Put((byte)tipo);
 		w.PutVec(onde);

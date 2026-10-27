@@ -143,6 +143,14 @@ public partial class RoboDasAbas
 			  clima != null && DentroDoCartao(LinhaEscrita(pg, "Clima"), clima) && PilulasEm(clima).Count > 0,
 			  clima == null ? "sem cartao" : $"Clima='{menu.ValorDesenhado("World", "Clima")}' pode cair [{string.Join("|", PilulasEm(clima))}]");
 
+		// ---------------- (2026-10-26) A REPUTACAO -- o pedido 106 do dono ----------------
+		// Num planeta, o cartao 'Reputação' com a reputacao da conta com o povo dele, pela ficha lenta.
+		PanelContainer? reputacao = CartaoComTitulo(pg, "Reputação");
+		string? rep = menu.ValorDesenhado("World", "com o povo deste planeta");
+		Checa("o cartao 'Reputação' (o pedido 106): num planeta, a reputacao com o povo dele, a da ficha lenta, com a faixa",
+			  reputacao != null && cli.Atributos.TemReputacao && rep == MenuJogo.TextoDaReputacao(cli.Atributos.Reputacao),
+			  $"cartao {(reputacao != null)}, tem {cli.Atributos.TemReputacao}, tela '{rep}', ficha {cli.Atributos.Reputacao:0}");
+
 		// ---------------- 1a. O CALENDARIO (dono, 2026-10-17) ----------------
 		// A data na tela e a do servidor DESTE processo (`--host`): a mesma conta do Core, com a origem que chegou no `S2C.Ceu`. A idade com os
 		// meses e a da ficha lenta, e ela tem que bater com o corpo do servidor.

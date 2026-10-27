@@ -1538,7 +1538,8 @@ public partial class GameServer
 		double sobra = DanoDeKiPelaDestruicao(ue, agressor, 100);
 		AfirmarGdk("**A AURA DEVORA 35% DO KI E REDUZ 25% DO RESTO**: de 100 sobram 48,75",
 				  Math.Abs(sobra - 48.75) < 1e-9 && Math.Abs(ue.UltimoGolpeRecebido - 48.75) < 1e-9, $"{sobra:0.####}");
-		AfirmarGdk("...e o gatilho ensina a Destruicao (`UE_REAL_PER_PROC 0.1`)", Math.Abs(ue.PoderDaDestruicao.Real - 50.1) < 1e-9, $"{ue.PoderDaDestruicao.Real:0.###}");
+		AfirmarGdk("...e o gatilho ensina a Destruicao (o `UE_REAL_PER_PROC 0.1`, na escala das 3 h de 2026-10-25)",
+				   Math.Abs(ue.PoderDaDestruicao.Real - (50 + Disciplinas.PoderDaDestruicao.RealPorGatilho)) < 1e-9, $"{ue.PoderDaDestruicao.Real:0.#####}");
 		ue.PoderDaDestruicao.Real = 100;
 
 		ServerPlayer infundido = ForjarDisciplinado("Infundido", chao + new Vec2(0, 3 * T), TipoDeDisciplina.PoderDaDestruicao);

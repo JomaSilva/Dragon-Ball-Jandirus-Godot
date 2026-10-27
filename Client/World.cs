@@ -2770,6 +2770,9 @@ public partial class World : Node2D
 		// Se so uma ligasse, o cliente andaria pelo vazio e o servidor puxaria de volta -- o corpo
 		// tremendo na costura, que e o modo de falha classico de regra de colisao duplicada.
 		if (m != null && Jandirus.Core.World.SalaDoTempo.SemBorda(zona)) m.SemBorda = true;
+		// (2026-10-26) E O OUTRO MUNDO, onde a parede barra quem voa alto -- a MESMA pergunta do servidor (`Alem.ParedeBarraQuemVoa`), senao
+		// o cliente passaria voando por cima do muro e o servidor puxaria de volta.
+		if (m != null && Jandirus.Core.World.Alem.ParedeBarraQuemVoa(zona)) m.ParedeBarraQuemVoa = true;
 
 		_mapas[caminho] = m;
 		return m;
@@ -5888,7 +5891,7 @@ public partial class World : Node2D
 			// discordando. (Na estreia ele e sempre falso -- maestria zero --, e e justamente por isso
 			// que ele tem que passar por aqui: um dia a condicao muda e ninguem vai lembrar desta linha.)
 			if (souEu && degrau == Jandirus.Core.Forms.DegrauDeCena.Estreia)
-				Chat.Sistema($"** {Jandirus.Core.Forms.Catalogo.NomeDe(def, dominada)} **");
+				Chat.Sistema($"** {Jandirus.Core.Forms.Catalogo.NomeDe(def, dominada, GameClient.Instance?.Atributos.Raca)} **");
 
 			// O SOM PROPRIO DA FORMA NA CENA ENCURTADA (o do Ultra Instinto): toca na chegada, junto com o primeiro beat. Na estreia a
 			// regra devolve vazio -- la quem fala e o tema.

@@ -118,6 +118,8 @@ public partial class GameServer
 		// O DEGRAU DE BIO-ANDROIDE que o `VestirCorpoRacial` veste e despe a cada linha (ver la).
 		int estagioBioAntes = pl.Ficha.bio_stage;
 		bool nascidoNoTanqueAntes = pl.Ficha.bio_lab_born, perfeitaAntes = pl.Ficha.form3cantrevert;
+		// (2026-10-26) E O KI DIVINO, que o `VestirCorpoRacial` da a linha que so tem forma divina (a do bio-androide).
+		_kiDivinoAntesDaEscadaRacial = pl.Ficha.godki;
 		var skillsDadas = new List<string>();
 
 		try
@@ -146,6 +148,7 @@ public partial class GameServer
 			pl.Ficha.bio_stage = estagioBioAntes;
 			pl.Ficha.bio_lab_born = nascidoNoTanqueAntes;
 			pl.Ficha.form3cantrevert = perfeitaAntes;
+			pl.Ficha.godki = _kiDivinoAntesDaEscadaRacial;
 			pl.Forma = formaAntes;
 			pl.Ficha.BP = bpAntes;
 			pl.FuriaExtremaAte = extremaAntes;
@@ -396,20 +399,29 @@ public partial class GameServer
 		// --- (a) O PODER ---------------------------------------------------
 		// BP 1 e nao "a porta menos um": o limiar e PESSOAL (sorteado por personagem), e uma bancada
 		// que o recalculasse aqui estaria reescrevendo o `LimiaresPessoais` pra conferir a si mesma.
+		//
+		// (2026-10-26) SO QUANDO O PRIMEIRO DEGRAU TEM PORTA DE BP. A Golden Perfect do bio-androide nao tem (como o SSG, a porta dela e
+		// o ki divino desperto), e "sem PODER o C nao sobe" seria uma regra que o jogo nao tem.
 		double bpGuardado = pl.Ficha.BP;
-		pl.Ficha.BP = 1;
-		pl.Ficha.Statify();
-		pl.Ficha.Ki = pl.Ficha.MaxKi;
-		List<string> ditos = ApertarCEOuvir(pl);
-		Checa($"{e.Raca}: sem PODER, o C nao sobe", pl.Forma.NaBase || pl.Forma.Atual == Catalogo.IdDoPiso(Perfil(pl)),
-			  pl.Forma.Atual);
-		Checa($"{e.Raca}: ...e a frase diz que a forma esta alem do alcance (e nao o numero secreto)",
-			  ditos.Any(a => a.Contains("alem do seu alcance", StringComparison.OrdinalIgnoreCase))
-			  && !ditos.Any(a => a.Contains(primeiro.PortaBp.ToString("0"), StringComparison.Ordinal)),
-			  string.Join(" | ", ditos));
-		pl.Ficha.BP = bpGuardado;
-		pl.Ficha.Statify();
-		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		List<string> ditos = [];
+		if (primeiro.PortaBp <= 0)
+			GD.Print($"[raciais] {e.Raca}: `{primeiro.Id}` nao tem porta de BP -- a (a) nao se aplica");
+		else
+		{
+			pl.Ficha.BP = 1;
+			pl.Ficha.Statify();
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			ditos = ApertarCEOuvir(pl);
+			Checa($"{e.Raca}: sem PODER, o C nao sobe", pl.Forma.NaBase || pl.Forma.Atual == Catalogo.IdDoPiso(Perfil(pl)),
+				  pl.Forma.Atual);
+			Checa($"{e.Raca}: ...e a frase diz que a forma esta alem do alcance (e nao o numero secreto)",
+				  ditos.Any(a => a.Contains("alem do seu alcance", StringComparison.OrdinalIgnoreCase))
+				  && !ditos.Any(a => a.Contains(primeiro.PortaBp.ToString("0"), StringComparison.Ordinal)),
+				  string.Join(" | ", ditos));
+			pl.Ficha.BP = bpGuardado;
+			pl.Ficha.Statify();
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+		}
 
 		// --- (b) A HABILIDADE COMPRADA -------------------------------------
 		if (primeiro.PedeFlag is { } flag && e.Skill.Length > 0)
@@ -587,6 +599,9 @@ public partial class GameServer
 	/// `CenaSegundos`, e cena PARA os relogios de Ki. Numa bancada que nao faz o tempo escorrer, uma
 	/// estreia deixaria o corpo congelado e as checagens seguintes mediriam o congelamento.
 	/// </summary>
+	/// <summary>O ki divino de quem roda a bancada, guardado na entrada da secao: o `VestirCorpoRacial` o devolve as linhas mortais.</summary>
+	private Jandirus.Core.Stats.GodKiState? _kiDivinoAntesDaEscadaRacial;
+
 	private void VestirCorpoRacial(ServerPlayer pl, EscadaRacial e)
 	{
 		pl.Race = e.Raca;
@@ -621,6 +636,17 @@ public partial class GameServer
 		pl.Ficha.bio_stage = estagioBio;
 		pl.Ficha.bio_lab_born = estagioBio > 0;
 		pl.Ficha.form3cantrevert = estagioBio >= BioAndroids.Perfeito;
+
+		// ============================ (2026-10-26) A LINHA QUE SO TEM FORMA DIVINA SOBE COM O KI DIVINO DESPERTO ============================
+		// A do bio-androide virou isso (a Golden Perfect e a MAX, no lugar da Super Perfeita): sem o ki divino o C nao sai da base, e a
+		// secao 2 mediria a recusa em vez da escada. Pelo mesmo argumento do degrau de cima, DERIVADO da linha -- a maestria divina e a
+		// maior que alguma forma dela pede -- e so pra linha em que TODA forma e divina: dar ki divino a um Saiyajin abriria a escada do
+		// SSG por cima da dele, e o C sairia da linha medida. As outras voltam ao ki divino de quem roda a bancada.
+		// ==================================================================================================================================
+		FormaDef[] daLinha = [.. Catalogo.DaLinha(e.Linha)];
+		pl.Ficha.godki = daLinha.Length > 0 && daLinha.All(d => d.PedeGodKi >= 0)
+			? new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = daLinha.Max(d => d.PedeGodKi) }
+			: _kiDivinoAntesDaEscadaRacial;
 
 		pl.Ficha.KO = pl.Ficha.dead = false;
 		pl.Ficha.BP = BpDeSobraRacial;

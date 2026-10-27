@@ -294,7 +294,6 @@ public sealed partial class GameServer
 		"curar_planeta" => DesejoDeCurarPlaneta(pl, s, alvo),
 		"super_saiyajin" => DesejoDeSuperSaiyajin(pl, s),
 		"potencial" => DesejoDePotencial(pl, s),
-		"aumentar_potencial" => DesejoDeAumentarPotencial(pl, s),
 		"reviver_todos" => DesejoDeReviverTodos(pl, s),
 		"matar" => DesejoDeMatar(pl, s, alvo),
 		"supremo" => DesejoSupremo(pl, s, pl),
@@ -741,8 +740,8 @@ public sealed partial class GameServer
 	///     qualquer momento, mas so ganham a liberacao de potencial, mais nada."*
 	///
 	/// TODA RACA PEDE, e cada uma recebe o que e dela:
-	///   * QUALQUER RACA: o potencial desperta, pela MESMA porta do verbo do Guru (<see cref="DespertarPotencialG11"/>, o
-	///     `UnlockPotential.dm`) -- uma vez por vida;
+	///   * QUALQUER RACA: o banco do potencial se solta 1,5x, pela MESMA porta do Guru, da Agua e do Unlock (<see cref="LiberarOPotencial"/>;
+	///     2026-10-26, o dono -- era o despertar uma vez na vida), sem a recarga de uma hora: o desejo e o dragao;
 	///   * O NAMEKUSEIJIN, alem dele, o MISTICO (<see cref="ConcederMistico"/>) e o ORANGE (`Forma.Liberar`) -- `Liberar` e
 	///     nao `Entrar`: a estreia da forma fica pro dia em que ele apertar o C. E SO COM O PODER DO KI DIVINO DELE: o BP
 	///     base no requisito pessoal (<see cref="RequisitoDeGodKi"/>), mesmo que nenhuma das duas formas seja divina.
@@ -762,7 +761,8 @@ public sealed partial class GameServer
 		AnunciarDesejo(namek
 			? $"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL -- e o dragão dá muito mais!"
 			: $"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL!");
-		if (pl.Ficha.unlockPotential < 1) DespertarPotencialG11(pl, pl, autor: s.NomeDoDragao);
+		if (pl.Ficha.TemPotencialGuardado)
+			LiberarOPotencial(pl, pl, Jandirus.Core.Stats.GainKnobs.LiberaODesejo, autor: s.NomeDoDragao, comRecarga: false);
 		if (namek)
 		{
 			ConcederMistico(pl, s.NomeDoDragao);
@@ -778,15 +778,15 @@ public sealed partial class GameServer
 	/// <summary>
 	/// POR QUE ESTE CORPO NAO PODE PEDIR A LIBERACAO DO POTENCIAL AGORA -- nulo = pode. A recusa do desejo e a linha apagada do
 	/// menu do dragao perguntam aqui, e por isso as duas dizem a mesma coisa:
-	///   * quem nao e Namekuseijin: so o potencial, entao so quem ainda nao o despertou;
-	///   * o Namekuseijin: o poder do ki divino dele (sem numero), e enquanto faltar o potencial, o Mistico ou o Orange.
+	///   * quem nao e Namekuseijin: so o banco do potencial, entao so quem tem o que soltar (2026-10-26: `PorQueNaoLibera`, sem a recarga);
+	///   * o Namekuseijin: o poder do ki divino dele (sem numero), e enquanto houver banco, ou faltar o Mistico ou o Orange.
 	/// </summary>
 	private string? PorQueNaoLiberaOPotencial(ServerPlayer pl)
 	{
 		if (!EhNamekuseijinDoDesejo(pl))
-			return pl.Ficha.unlockPotential >= 1 ? "O seu potencial já foi despertado -- o dragão não tem mais o que liberar em você." : null;
+			return PorQueNaoLibera(pl, comRecarga: false, proprio: true);
 
-		if (pl.Ficha.unlockPotential >= 1 && pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
+		if (!pl.Ficha.TemPotencialGuardado && pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
 			&& pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange))
 			return "O dragão já liberou tudo o que dormia em você.";
 
@@ -801,39 +801,6 @@ public sealed partial class GameServer
 
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o Namekuseijin pede sem o poder do ki divino -- e ganha o Mistico e o Orange de graca.</summary>
 	internal static bool RequisitoDoPotencialIgnoradoDeTeste;
-
-	/// <summary>
-	/// DEFEITO INJETADO (`--desejoteste`): as Black Star multiplicam a fracao do potencial pelos 5x dos outros desejos delas -- o
-	/// absurdo que o dono vetou. Lido pela linha da fracao em <see cref="DesejoDeAumentarPotencial"/>. Falso em jogo, sempre.
-	/// </summary>
-	internal static bool PotencialNegroComOs5xDeTeste;
-
-	/// <summary>
-	/// "AUMENTAR O MEU POTENCIAL" (dono, 2026-10-21) -- nao e o "Liberar" de cima. Soma no `hiddenpotential` uma FRACAO de um ano de
-	/// vida, na unidade da idade (`BP * UPMod`, `Fighter.SomarPotencialOcultoDaIdade`), pelo BP de agora. Shenron e Porunga pela forca
-	/// do set (<see cref="Desejos.FracaoDoAnoDoSet"/>); as Black Star, a fracao FIXA delas (<see cref="Desejos.FracaoDoAnoNaBlackStar"/>),
-	/// SEM o `FatorNegro`. O Super Shenron tem o ramo dele em `ConcederDoSuper`. Pede-se quantas vezes houver pedido.
-	/// </summary>
-	private bool DesejoDeAumentarPotencial(ServerPlayer pl, SetDeEsferas s)
-	{
-		double fracao = s.Id == EsferasNegras.IdDoSet
-			? Desejos.FracaoDoAnoNaBlackStar * (PotencialNegroComOs5xDeTeste ? FatorNegro(s) : 1)
-			: Desejos.FracaoDoAnoDoSet(PoderDeCadaPedido(s));   // (2026-10-22) a forca de UM pedido -- a forca dividida
-		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} que AUMENTE O SEU POTENCIAL!");
-		SomarPotencialDoDesejo(pl, fracao);
-		return true;
-	}
-
-	/// <summary>
-	/// A SOMA, o aviso e o save -- a mesma pros quatro dragoes. A frase diz a parte do ano, e nao numero de poder (a regra principal
-	/// do BP: sem scouter ninguem sabe o proprio BP).
-	/// </summary>
-	private void SomarPotencialDoDesejo(ServerPlayer quem, double fracaoDoAno)
-	{
-		quem.Ficha.hiddenpotential += Desejos.PotencialDoDesejo(quem.Ficha.BP, quem.Ficha.UPMod, fracaoDoAno);
-		Avisar(quem, $"um poder escondido se acumula em você: o que {fracaoDoAno * 100:0.#}% de um ano de vida daria.");
-		Persistir(quem);
-	}
 
 	/// <summary>
 	/// "Strongest in the Universe" -- `WishTable.dm:198-204` + `proc/sw_strongest_wish` (:102-113).

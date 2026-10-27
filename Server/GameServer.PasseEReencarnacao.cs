@@ -21,11 +21,6 @@ public sealed partial class GameServer
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o eco da reencarnacao e ignorado -- o novo personagem nasce do zero, o jogo de antes.</summary>
 	internal static bool EcoDaReencarnacaoIgnoradoDeTeste;
 
-	/// <summary>
-	/// DEFEITO INJETADO (`--v030teste` L, `--diagv030` L): o eco volta a dar 10% do BP e nenhum potencial -- a regra de 2026-10-15 a
-	/// 2026-10-22. Lido pelo <see cref="AplicarOEcoDaReencarnacao"/>. Falso em jogo, sempre.
-	/// </summary>
-	internal static bool EcoDeDezPorCentoDeTeste;
 
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o passe nao poe o morto de pe -- entre os vivos ele e o cadaver de sempre.</summary>
 	internal static bool PasseDeitaDeTeste;
@@ -48,9 +43,10 @@ public sealed partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// REENCARNAR: o personagem acaba PARA SEMPRE e o jogador volta pra CRIACAO; o proximo personagem da conta nasce com o BP da
-	/// raca e o BP deste inteiro como potencial oculto. O dono (2026-10-15): *"falta a opcao de reencarnar no enma, ao qual vc perde
-	/// seu personagem voltando pra criacao de personagem porem o personagem reencarnado comeca com 10% do bp do personagem
-	/// anterior"* -- e os 10% viraram potencial em 2026-10-22 (ver <see cref="AplicarOEcoDaReencarnacao"/>).
+	/// raca mais 10% do BP deste, e com o banco do potencial dele. O dono (2026-10-15): *"falta a opcao de reencarnar no enma, ao qual
+	/// vc perde seu personagem voltando pra criacao de personagem porem o personagem reencarnado comeca com 10% do bp do personagem
+	/// anterior"* -- de 2026-10-22 a 2026-10-25 o BP inteiro virava potencial oculto; desde 2026-10-26 e o DU (ver
+	/// <see cref="AplicarOEcoDaReencarnacao"/>).
 	///
 	/// A CONFIRMACAO E A DO `DeleteChar` DESTE PORT (digitar o nome), e nao o `alert()` de dois botoes do DM: e o mesmo gesto
 	/// -- apagar um personagem pra sempre --, e o port ja escolheu como se confirma isso.
@@ -89,8 +85,8 @@ public sealed partial class GameServer
 			return;
 		}
 
-		var eco = new Reencarnacao { De = pl.Name, BPAntigo = pl.Ficha.BP, Fracao = Alem.FracaoDaReencarnacao };
-		GD.Print($"[server] {pl.Name} pediu ao Enma pra reencarnar: o proximo personagem de {pl.Conta} nasce com o BP da raca e {eco.BPAntigo:0} de potencial oculto");
+		var eco = new Reencarnacao { De = pl.Name, BPAntigo = pl.Ficha.BP, Fracao = Alem.FracaoDaReencarnacao, BancoAntigo = Math.Max(pl.Ficha.hiddenpotential, 0) };
+		GD.Print($"[server] {pl.Name} pediu ao Enma pra reencarnar: o proximo personagem de {pl.Conta} nasce com o BP da raca + {eco.BPDoNovo():0} e {eco.BancoAntigo:0} no banco do potencial");
 		ApagarOPersonagemParaSempre(pl, "reencarnou pelo Enma", eco);
 	}
 
@@ -109,17 +105,15 @@ public sealed partial class GameServer
 	/// slot novo ir pro disco (quem grava e o `CreateChar`, logo depois); sem isto, a segunda copia (a tela de selecao de outra
 	/// conexao) o daria de novo.
 	///
-	/// ============================ O PODER VIRA POTENCIAL (dono, 2026-10-22) ============================
-	/// *"reencarnar no jogo agr ao inves de vc voltar com 10% do bp original, vc volta com hidden potential = do seu personagem
-	/// anterior"* e *"o bp inicial é o da raça normal"* -- e, perguntado, *"todo bp da vida anterior vira potencial e q afeta o ki
-	/// max"*. O novo nasce com o BP que a raca da (o `CheckIncarnate` do DM o levava a `round(oldBP * 0,1)`, a regra daqui de
-	/// 2026-10-15 ate esse dia), e o BP base inteiro da vida anterior SOMA no potencial oculto: ele pinga no treino, na meditacao
-	/// e na luta (`Fighter.TrainGain` e irmaos -- uns 0,2% dele por hora de treino com o vigor cheio, enquanto for maior que o BP)
-	/// e engorda o Ki maximo (`Fighter.KiBasePeloPotencial`). DIVERGENCIA DECLARADA.
+	/// ============================ COMO NO DU (dono, 2026-10-26) ============================
+	/// Perguntado como ficava a reencarnacao sem o potencial oculto antigo, o dono quis o DU: la a pessoa volta com o BP limitado a
+	/// 10% (`available_potential = "Reincarnation BP Limit Multiplier"`, `Reincarnation.dm:72`) e o banco dela fica. Aqui o Enma cria
+	/// um personagem NOVO, entao os 10% do BP base da vida anterior SOMAM no BP que a raca da (<see cref="Reencarnacao.BPDoNovo"/>), e o
+	/// banco do potencial dela vem inteiro (<see cref="Reencarnacao.BancoAntigo"/>). De 2026-10-22 a 2026-10-25 o BP inteiro virava
+	/// potencial oculto, que pingava no BP e engordava o Ki maximo -- o sistema antigo, que saiu do jogo.
 	///
-	/// NASCE DESCANSADO, como no `Fighter.FromGenome`: o potencial novo engorda o Ki maximo, e sem o `Statify` e o tanque cheio
-	/// aqui o renascido entraria no mundo com o Ki do corpo de antes do eco -- uma fracao do tanque novo, e o poder expresso
-	/// cortado pelo Ki baixo ate a regen o encher.
+	/// NASCE DESCANSADO, como no `Fighter.FromGenome`: o BP novo muda o Ki maximo, e sem o `Statify` e o tanque cheio aqui o
+	/// renascido entraria no mundo com o Ki do corpo de antes do eco.
 	/// =================================================================================================
 	///
 	/// A `naturalization` do God Ki que o DM carrega junto (`:14`) nao vem: o port nao tem naturalizacao.
@@ -131,14 +125,11 @@ public sealed partial class GameServer
 		EmTodaCopiaViva(acc.Conta, v => v.Reencarnacao = null);
 		if (EcoDaReencarnacaoIgnoradoDeTeste) return null;
 
-		if (EcoDeDezPorCentoDeTeste) lutador.BP = Math.Max(lutador.BP, eco.BPDoNovo());
-		else
-		{
-			lutador.hiddenpotential += eco.BPAntigo;
-			lutador.Statify();
-			lutador.Ki = lutador.MaxKi;
-		}
-		GD.Print($"[server] {acc.Conta}: o eco de {eco.De} nasce junto -- BP base {lutador.BP:0}, potencial oculto {lutador.hiddenpotential:0}");
+		lutador.BP += eco.BPDoNovo();
+		lutador.hiddenpotential += eco.BancoAntigo;
+		lutador.Statify();
+		lutador.Ki = lutador.MaxKi;
+		GD.Print($"[server] {acc.Conta}: o eco de {eco.De} nasce junto -- BP base {lutador.BP:0}, banco do potencial {lutador.hiddenpotential:0}");
 		return eco;
 	}
 

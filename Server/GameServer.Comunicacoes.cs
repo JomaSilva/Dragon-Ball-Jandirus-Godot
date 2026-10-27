@@ -31,8 +31,9 @@ public sealed partial class GameServer
 			case Vigilancia.VerboCameras: VerAsCamerasDoComunicador(pl); return true;
 			case Vigilancia.VerboHistorico: VerOHistorico(pl); return true;
 			case Vigilancia.VerboDna: TrancarOComunicador(pl); return true;
-			// (lote T5) o sintetizador de virus -- `GameServer.Sintetizador.cs`.
-			default: return ComandoDeSintetizador(pl, cmd, arg);
+			// (lote T6) o super computador -- `GameServer.SuperComputador.cs`. (O sintetizador de virus, que ficava no meio desta corrente, saiu
+			// do jogo em 2026-10-26: o pedido 98.)
+			default: return ComandoDeSuperComputador(pl, cmd, arg);
 		}
 	}
 

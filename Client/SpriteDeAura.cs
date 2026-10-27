@@ -186,6 +186,7 @@ public partial class SpriteDeAura : Node2D
 		Jandirus.Core.Forms.FolhaDeAura.DeusQuente => null,
 		Jandirus.Core.Forms.FolhaDeAura.DeusFrio => null,
 		Jandirus.Core.Forms.FolhaDeAura.DeusRosa => null,
+		Jandirus.Core.Forms.FolhaDeAura.DeusDourado => null,
 		Jandirus.Core.Forms.FolhaDeAura.Nebulosa => null,
 		Jandirus.Core.Forms.FolhaDeAura.Kaioken => FolhaKaioken,
 	};

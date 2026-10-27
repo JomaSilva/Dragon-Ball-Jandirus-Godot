@@ -52,7 +52,7 @@ public partial class RoboDeBioRetrato : Node
 	private const double SegundosPraAssentar = 2.0;
 
 	/// <summary>Quantas poses a escada tem. Ver o cabecalho do `GameServer.BioPalco.cs`.</summary>
-	private const int Poses = 8;
+	private const int Poses = 9;
 
 	/// <summary>
 	/// ============================ O RECORTE, E ELE FOI CALIBRADO NA FOTO E NAO NO CHUTE ============================
@@ -142,6 +142,13 @@ public partial class RoboDeBioRetrato : Node
 		/// <summary>O que os nodes de efeito diziam no momento do clique.</summary>
 		public bool AuraAcesa, RaiosEmitindo;
 		public string CorDaAura = "";
+
+		/// <summary>
+		/// (2026-10-26) A CHAMA DAS FORMAS DIVINAS NA CARGA DO CORPO (`CargaVisual` -> `ChamaDeAura`): acesa, e com que simbolo. E ela
+		/// que as duas divinas do bio mostram carregando -- o fogo DOURADO da Golden Perfect e a chama do Blue, vermelha, da MAX.
+		/// </summary>
+		public bool ChamaAcesa;
+		public string SimboloDaChama = "";
 
 		/// <summary>
 		/// A CAMADA DE OLHOS ESTAVA DESENHADA? -- e ela responde ao pedido literal do dono: *"os bio
@@ -338,6 +345,7 @@ public partial class RoboDeBioRetrato : Node
 		Node2D? corpo = World.Instancia?.CorpoDeTeste(_idDoPalco);
 		Aura? aura = corpo?.GetNodeOrNull<Aura>("Aura");
 		RaiosDaForma? raios = corpo?.GetNodeOrNull<RaiosDaForma>("Raios");
+		ChamaDeAura? chama = corpo?.GetNodeOrNull<CargaVisual>("Carga")?.ChamaDeTeste;
 
 		var r = new Retrato
 		{
@@ -346,6 +354,8 @@ public partial class RoboDeBioRetrato : Node
 			AuraAcesa = aura?.AcesaDeTeste ?? false,
 			RaiosEmitindo = raios?.EmitindoDeTeste ?? false,
 			CorDaAura = aura?.CorDaLuzDeTeste.ToHtml(false) ?? "",
+			ChamaAcesa = chama?.AcesaDeTeste ?? false,
+			SimboloDaChama = chama != null ? chama.SimboloDeTeste.ToString() : "",
 			Contorno = vis.ContornoNoMaterialDeTeste().Item2,
 			OlhosVisiveis = vis.OlhosVisiveisDeTeste,
 		};
@@ -354,7 +364,7 @@ public partial class RoboDeBioRetrato : Node
 		Anotar($"pose {r.Pose}: raca '{r.Raca}' | corpo \"{Nome(folha)}\" | forma \"{Nome(forma)}\" "
 			 + $"| cabelo visivel {vis.TemCabeloVisivelDeTeste} | OLHOS {r.OlhosVisiveis} "
 			 + $"| AURA acesa {r.AuraAcesa} ({r.CorDaAura}) "
-			 + $"| RAIOS {r.RaiosEmitindo} | CONTORNO {r.Contorno:0.000} "
+			 + $"| RAIOS {r.RaiosEmitindo} | CHAMA {r.ChamaAcesa} ({r.SimboloDaChama}) | CONTORNO {r.Contorno:0.000} "
 			 + $"| recorte {(r.Corte == null ? "SEM FOTO" : $"{r.Corte.GetWidth()}x{r.Corte.GetHeight()}")}");
 
 		if (r.Corte != null)
@@ -446,15 +456,16 @@ public partial class RoboDeBioRetrato : Node
 			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Imperfeito)],
 			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.SemiPerfeito)],
 			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Perfeito)],
-			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Perfeito)],   // 5 -- a Super Perfeita e CAMADA
+			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Perfeito)],   // 5 -- a Golden Perfect e CAMADA
 			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Perfeito)],   // 6 -- o SSJ nao troca corpo
 			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Perfeito)],   // 7 -- nem carregando
+			BioAndroids.Corpos[BioAndroids.IndiceDoCorpo(BioAndroids.Perfeito)],   // 8 -- a MAX tambem e CAMADA
 		];
 
 		string[] rotulo =
 		[
 			"HUMANO (o controle)", "LARVA", "IMPERFEITO", "SEMI-PERFEITO", "FORMA PERFEITA",
-			"SUPER PERFEITA", "SUPER SAIYAJIN", "SUPER SAIYAJIN CARREGANDO",
+			"GOLDEN PERFECT CARREGANDO", "SUPER SAIYAJIN", "SUPER SAIYAJIN CARREGANDO", "MAX CARREGANDO",
 		];
 
 		for (int i = 0; i < _retratos.Count && i < esperado.Length; i++)
@@ -475,20 +486,24 @@ public partial class RoboDeBioRetrato : Node
 				   + $"que `BioAndroids.Corpos` manda -- e o que chegou foi \"{Nome(r.Folha)}\"");
 		}
 
-		// A SUPER PERFEITA E CAMADA DE FORMA, e e por isso que ela tem uma linha propria: o corpo de
-		// repouso continua sendo o perfeito, e quem troca e o `CorposDeForma`. Sem esta linha, uma
-		// Super Perfeita que nao vestisse nada passaria pela linha de cima (o corpo perfeito esta la).
+		// AS DIVINAS DO BIO SAO CAMADA DE FORMA (2026-10-26, no lugar da Super Perfeita), e e por isso que elas tem uma linha propria:
+		// o corpo de repouso continua sendo o perfeito, e quem troca e o `CorposDeForma`. Sem estas linhas, uma Golden Perfect que nao
+		// vestisse nada passaria pela linha de cima (o corpo perfeito esta la). As artes sao as que o dono apontou.
 		if (_retratos.Count > 5)
-			Conferir(_retratos[5].FolhaDaForma.Contains("Bio Android 4", StringComparison.OrdinalIgnoreCase),
-					 "pose 5 (SUPER PERFEITA): a CAMADA DE FORMA vestiu `Bio Android 4` -- ela nao "
+			Conferir(_retratos[5].FolhaDaForma.Contains("Bio Android 6", StringComparison.OrdinalIgnoreCase),
+					 "pose 5 (GOLDEN PERFECT): a CAMADA DE FORMA vestiu `Bio Android 6` -- ela nao "
 				   + "troca o corpo de repouso, ela veste por cima. O que chegou foi "
 				   + $"\"{Nome(_retratos[5].FolhaDaForma)}\"");
 
 		if (_retratos.Count > 6)
 			Conferir(_retratos[6].FolhaDaForma.Length == 0
-					 || !_retratos[6].FolhaDaForma.Contains("Bio Android 4", StringComparison.OrdinalIgnoreCase),
-					 "pose 6 (SUPER SAIYAJIN): a camada da Super Perfeita SAIU do corpo -- as duas "
-				   + "escadas nao convivem, e no DM o SSJ2 sobrescrevia a Super Perfeita calado");
+					 || !_retratos[6].FolhaDaForma.Contains("Bio Android 6", StringComparison.OrdinalIgnoreCase),
+					 "pose 6 (SUPER SAIYAJIN): a camada da Golden Perfect SAIU do corpo -- o Super Saiyajin nao veste corpo de forma");
+
+		if (_retratos.Count > 8)
+			Conferir(_retratos[8].FolhaDaForma.Contains("Bio Android - Form 5", StringComparison.OrdinalIgnoreCase),
+					 "pose 8 (MAX): a CAMADA DE FORMA vestiu `Bio Android - Form 5`. O que chegou foi "
+				   + $"\"{Nome(_retratos[8].FolhaDaForma)}\"");
 
 		// ============================ E OS EFEITOS, QUE SAO A UNICA ROUPA DAS DUAS ULTIMAS POSES ============================
 		// A aura e os raios sao lidos do NODE (`Aura.AcesaDeTeste`, `RaiosDaForma.EmitindoDeTeste`), e
@@ -536,10 +551,17 @@ public partial class RoboDeBioRetrato : Node
 					 $"pose {i} ({rotulo[i]}): os OLHOS VOLTARAM -- os degraus acima da larva sao "
 				   + "humanoides desenhados, e apaga-los neles seria trocar um defeito por outro");
 
+		// (2026-10-26) AS DUAS DIVINAS DO BIO CARREGANDO: a chama da carga acende no simbolo de cada uma -- o fogo do Deus DOURADO na
+		// Golden Perfect (*"uma aura igual a do ssj god so q dourada"*) e a chama do Blue na MAX (*"do blue/blue evolution so q vermelha"*;
+		// o vermelho sai da cor da forma). A foto das duas e a `bio-retrato-5.png` e a `bio-retrato-8.png`.
 		if (_retratos.Count > 5)
-			Conferir(_retratos[5].RaiosEmitindo,
-					 "pose 5 (SUPER PERFEITA): os RAIOS estao emitindo -- e sao eles, e nao a aura, que "
-				   + "fazem esta forma se ver na tela (`Raios = 2` na entrada do catalogo)");
+			Conferir(_retratos[5].ChamaAcesa && _retratos[5].SimboloDaChama == nameof(Jandirus.Core.Forms.FolhaDeAura.DeusDourado),
+					 "pose 5 (GOLDEN PERFECT carregando): a CHAMA DIVINA acendeu no fogo DOURADO "
+				   + $"(acesa {_retratos[5].ChamaAcesa}, simbolo {_retratos[5].SimboloDaChama})");
+		if (_retratos.Count > 8)
+			Conferir(_retratos[8].ChamaAcesa && _retratos[8].SimboloDaChama == nameof(Jandirus.Core.Forms.FolhaDeAura.DeusFrio),
+					 "pose 8 (MAX carregando): a CHAMA DIVINA acendeu na chama do BLUE (vermelha pela cor da forma) "
+				   + $"(acesa {_retratos[8].ChamaAcesa}, simbolo {_retratos[8].SimboloDaChama})");
 
 		// ============================ E AQUI A BANCADA COBRA O **CONTRARIO**, PORQUE A REGRA E DO DONO ============================
 		// A aura deste port NAO acende por estar transformado: *"so aparece quando o ki passa de 100%;
@@ -564,10 +586,11 @@ public partial class RoboDeBioRetrato : Node
 				   + "doador chega ate a tela de quem esta olhando");
 
 			// O CONTROLE DA LINHA DE CIMA, e ele e a metade que separa "acendeu" de "estava aceso o
-			// tempo todo": nas sete poses anteriores o corpo esteve com o Ki dentro do limite, e o
-			// contorno tem que ter ficado em zero em todas elas.
-			Conferir(_retratos.Take(7).All(r => r.Contorno <= 0.01f),
-					 "...e ele estava em ZERO nas sete poses anteriores -- o contorno significa 'passei "
+			// tempo todo": nas poses anteriores o corpo esteve com o Ki dentro do limite, e o
+			// contorno tem que ter ficado em zero em todas elas. (2026-10-26) MENOS a 5, que tambem
+			// carrega -- e a Golden Perfect com o tanque acima de 100%, pra a chama dourada aparecer.
+			Conferir(_retratos.Take(7).Where(r => r.Pose != 5).All(r => r.Contorno <= 0.01f),
+					 "...e ele estava em ZERO nas poses anteriores que nao carregavam -- o contorno significa 'passei "
 				   + "do meu limite', e nao 'estou transformado'");
 		}
 	}

@@ -304,16 +304,6 @@ public sealed class ServerPlayer
 	public long IrritadoAte;
 
 	/// <summary>
-	/// DESDE QUANDO ESTE CORPO ESTA NA RAIVA DE UMA INJECAO (relogio real, ms; zero = nao esta), e que fracao da folga de
-	/// raiva ela acendeu (`Jandirus.Core.Tech.Sintetizador.FracaoDaRaiva`). E a TERCEIRA fonte do numero de raiva
-	/// (`GameServer.RaivaComoNumero`), e so do numero: nao e um degrau -- `NivelDaRaivaDe` nao a ve --, entao nao abre
-	/// forma nenhuma (o `anger_ssj = 0` das duas injecoes do original, *"Can't give SSJ"*). Nao tem prazo: la a injecao
-	/// nao arma `rageExpire`, e so o gotejamento a apaga. NAO PERSISTE, como as duas de cima.
-	/// </summary>
-	public long RaivaDeInjecaoDesde;
-	public double RaivaDeInjecaoFracao;
-
-	/// <summary>
 	/// ATE QUANDO A CENA DE FURIA DESTE CORPO ESTA EM RECARGA (relogio real, ms). Zero = pode tocar.
 	///
 	/// O `rageCinematicCD` do DM (`Murder.dm:139-140`: `world.time + 600` -> 60,0 s, ver
@@ -766,6 +756,12 @@ public sealed class ServerPlayer
 	/// `GameServer.PulsoDosTanques` e `Regenerador.SegundosSemGolpear`.
 	/// </summary>
 	public long NoTanqueAte;
+
+	/// <summary>
+	/// (2026-10-26) ATE QUANDO o habitante revida NO LETAL quem o enfrentou fora do spar -- o fim do rancor (`RancorAte`); 0 = nao esta revidando.
+	/// Ver `GameServer.MarcarAgressao` (o pedido 83 do dono).
+	/// </summary>
+	public long LetalDoRevideAte;
 
 	/// <summary>
 	/// A FASE DA LUA QUE ESTE JOGADOR JA VIU ANUNCIADA neste ceu, e se ela estava no alto.
@@ -3750,6 +3746,9 @@ public partial class GameServer : Node
 			// em `World.MapaCacheado`, porque duas respostas diferentes pra "aqui ha parede?" e o
 			// corpo tremendo na costura.
 			if (SalaDoTempo.SemBorda(e.Zona)) e.Mapa.SemBorda = true;
+			// (2026-10-26) E O OUTRO MUNDO, onde a parede barra quem voa alto: a barreira das portas nao se pula pelo ceu. O cliente
+			// pergunta o mesmo em `World.MapaCacheado`. Ver `Alem.ParedeBarraQuemVoa`.
+			if (Alem.ParedeBarraQuemVoa(e.Zona)) e.Mapa.ParedeBarraQuemVoa = true;
 
 			// A AGUA E UM PLANO SEPARADO PENDURADO NO MESMO MAPA (arquivo `.agua` proprio, e nao a
 			// cauda do `.col`, que ja tem dono). Sem esta linha a agua vira chao comum e se anda por
@@ -3932,6 +3931,8 @@ public partial class GameServer : Node
 		// pagaria heroismo num livro-caixa que ainda nao tinha sido lido do disco.
 		CarregarSagas();
 		CarregarReputacao();
+		// (2026-10-26) O CAMPEAO DO MUNDO ANTERIOR e a fase dele -- quem estava na Terra volta a ela no primeiro tique. Ver `GameServer.CampeaoDoWipe.cs`.
+		CarregarCampeaoDoWipe();
 
 		// DEPOIS DAS SAGAS, e a ordem tem razao: e a cadeia que CONDENA um planeta, e o livro dos
 		// mortos e quem o mata. Carregado antes, um servidor que caiu no meio dos cinco minutos de
@@ -4652,9 +4653,9 @@ public partial class GameServer : Node
 		string classeDoFrost = bebe == null ? GastarAClasseDoFrost(acc, slot, ficha) : "";
 		Fighter lutador = bebe == null ? Nascer(ficha, nome, classeRara.Length > 0 ? classeRara : classeDoFrost) : NascerDoBebe(ficha, nome, bebe);
 
-		// (v0.3.0) A REENCARNACAO PELO ENMA: quem nasce numa conta com eco leva o BP de quem reencarnou como potencial oculto
-		// (2026-10-22; antes, 10% dele em BP) -- no ponto do `CheckIncarnate` do DM (`CharacterCreation.dm:208`). Consumido aqui,
-		// antes do gravar logo abaixo. Ver `AplicarOEcoDaReencarnacao`.
+		// (v0.3.0) A REENCARNACAO PELO ENMA: quem nasce numa conta com eco leva 10% do BP de quem reencarnou e o banco do potencial dele
+		// (2026-10-26, como no DU) -- no ponto do `CheckIncarnate` do DM (`CharacterCreation.dm:208`). Consumido aqui, antes do gravar
+		// logo abaixo. Ver `AplicarOEcoDaReencarnacao`.
 		Reencarnacao? eco = AplicarOEcoDaReencarnacao(acc, lutador);
 
 		// APARENCIA: saneada, nunca recusada. Ela nao da vantagem nenhuma, entao um indice
@@ -5787,6 +5788,9 @@ public partial class GameServer : Node
 		// numeros de outro e so se acerta no proximo recalculo.
 		f.Idade = ficha.Age;
 		AplicarPorte(f, ficha.Porte);
+		// (2026-10-26) QUEM NASCE DEPOIS DO BANCO DO POTENCIAL NAO TEM ESTOQUE ANTIGO: o login nunca zera o banco dele (ver
+		// `Fighter.ZerarOPotencialAntigo`) -- nem o que o eco da reencarnacao poe por cima. O filho tambem nasce por aqui.
+		f.potencialAntigoZerado = true;
 		f.Statify();
 		return f;
 	}
@@ -6313,7 +6317,6 @@ public partial class GameServer : Node
 		_aoEsquecer.Add(EsquecerMaquinasGrandes);
 		_aoEsquecer.Add(EsquecerComunicacoes);
 		_aoEsquecer.Add(EsquecerCompanheiros);
-		_aoEsquecer.Add(EsquecerSintetizador);
 		_aoEsquecer.Add(EsquecerKits);
 		_aoEsquecer.Add(EsquecerSuperComputador);
 		_aoEsquecer.Add(EsquecerG10);
@@ -6581,6 +6584,7 @@ public partial class GameServer : Node
 		if (_tickCount % TicksPorSegundo == 0)
 			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDoPalcoDaAgonia(1); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDoChao(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
 			if (_tickCount % TicksPorSegundo == 0) TickDosViloesDoInferno();   // (2026-10-16) OS VILOES DE SAGA NO INFERNO -- ver `GameServer.ViloesDoInferno.cs`
+			if (_tickCount % TicksPorSegundo == 0) TickDoCampeaoDoWipe();   // (2026-10-26) O CAMPEAO DO MUNDO ANTERIOR: os 50%, a volta do reinicio e o derrotado que sai -- ver `GameServer.CampeaoDoWipe.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosViloes();     // OS VILOES AVULSOS (item 12 do playtest de 2026-10-10): o relogio de cada planeta com gente, e o prazo de quem esta de pe -- ver `GameServer.Viloes.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosAnimais();    // OS ANIMAIS (dono, 2026-10-10): a fauna de cada planeta com gente -- quem nasce, quem some, a forca fixa e as carcacas. Ver `GameServer.Animais.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosSentidos();   // OS SENTIDOS (a aba Sense/Scan) ANDAM A 1 Hz: a lista de quem eu sinto so muda quando alguem anda um tile, e so sai quando muda -- ver `GameServer.Sentidos.cs`

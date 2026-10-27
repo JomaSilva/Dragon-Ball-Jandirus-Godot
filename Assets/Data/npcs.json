@@ -45,7 +45,7 @@
     "e sempre BP **BASE** e nao expresso. Cada chefe do elo tem a propria contagem em DIAS IN-GAME",
     "(1 dia = 24 min reais), e e assim que 'os androides na hora e o Cell dois dias depois' vira",
     "dado em vez de codigo. Acrescentar chefe ao jogo e acrescentar ELO aqui -- a lacuna entre Cell",
-    "(5M) e Boo (1,5B) e o lugar natural pro proximo.",
+    "(20M desde 2026-10-26; 5M no DM) e Boo (1,5B) e o lugar natural pro proximo.",
     "",
     "O BP DO CHEFE E PINADO NO DISPARO DO MARCO e vai pro save: quem chegar depois nao empurra a",
     "dificuldade. Pra ficha de BP constante isso da o proprio numero da ficha; pra ficha com",
@@ -130,7 +130,7 @@
       "id": "cell",
       "nome": "Os Androides e Cell",
       "planeta": "Earth",
-      "gatilhoBp": 5000000,
+      "gatilhoBp": 20000000,
       "anuncioDoMarco": "Duas maquinas assassinas surgiram na Terra: os ANDROIDES 17 e 18 estao espalhando destruicao!",
       "anuncioDaVitoria": "A AMEACA DOS ANDROIDES ACABOU! A Terra esta finalmente livre.",
       "chefes": [
@@ -144,7 +144,7 @@
           "anuncioDaChegada": "Uma criatura aterrorizante emergiu na Terra... CELL esta cacando os androides!",
           "anuncioDaQueda": "CELL FOI DESTRUIDO! A Terra esta a salvo!" }
       ],
-      "_nota": "BEV_M3_TRIGGER_BP 5M, BEV_CELL_DELAY_DAYS 2. 'absorve' e o cell_absorb_contact (:680): encostar num androide NOCAUTEADO sobe um degrau da ficha dele. 'ressurgeNoDegrau: 3' e o Cell morto na forma Perfeita voltando Super Perfeito em 1 min (:760). Esta saga NAO destroi planeta -- no original ela tambem nao. (2026-10-19) 'torneioNoDegrau: 3' e o TORNEIO DO CELL (o dono: 'se ele virar perfeito, ele avisa q em 5 dias tera um torneio do cell'): chegando na Perfeita ele para a luta e some; em 'diasAteOTorneio' dias espera na arena da Terra os desafiantes, um por vez, no x1. Nocauteado ele 'morre na luta' e volta Super Perfeito pelo 'ressurgeNoDegrau' -- por isso os dois tem de ser o mesmo degrau; vencendo todos (a fila vazia por 5 min), ele explode a Terra com um Kamehameha (Core/Npc/TorneioDoCell.cs, Server/GameServer.TorneioDoCell.cs)."
+      "_nota": "(2026-10-26) O MARCO SUBIU PRA 20M -- o dono: 'Faça com q a saga cell/androides comece quando o bp seja 20m e nao 5m'. No DM era BEV_M3_TRIGGER_BP 5M. BEV_CELL_DELAY_DAYS 2. 'absorve' e o cell_absorb_contact (:680): encostar num androide NOCAUTEADO sobe um degrau da ficha dele. 'ressurgeNoDegrau: 3' e o Cell morto na forma Perfeita voltando Super Perfeito em 1 min (:760). Esta saga NAO destroi planeta -- no original ela tambem nao. (2026-10-19) 'torneioNoDegrau: 3' e o TORNEIO DO CELL (o dono: 'se ele virar perfeito, ele avisa q em 5 dias tera um torneio do cell'): chegando na Perfeita ele para a luta e some; em 'diasAteOTorneio' dias espera na arena da Terra os desafiantes, um por vez, no x1. Nocauteado ele 'morre na luta' e volta Super Perfeito pelo 'ressurgeNoDegrau' -- por isso os dois tem de ser o mesmo degrau; vencendo todos (a fila vazia por 5 min), ele explode a Terra com um Kamehameha (Core/Npc/TorneioDoCell.cs, Server/GameServer.TorneioDoCell.cs)."
     },
     {
       "id": "boo",

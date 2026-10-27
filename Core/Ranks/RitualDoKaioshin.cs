@@ -86,8 +86,9 @@ public static class RitualDoKaioshin
 	public static string HorasEMinutos(long ms) => $"{ms / 3_600_000}h{ms % 3_600_000 / 60_000:00}m";
 
 	/// <summary>
-	/// O QUE O RITUAL AINDA DA A ESTE CORPO: o despertar do potencial (uma vez na vida -- quem ja despertou ganha so a forma) e a
-	/// forma. Os dois falsos = nada a dar, e o Kaioshin ouve isso na oferta, antes de o alvo ficar dez minutos parado a toa.
+	/// (2026-10-26) O RITUAL E UMA VEZ POR PERSONAGEM -- o dono: *"o ritual do kaioshin so pode ser feito 1 vez por personagem"*. Ele solta o
+	/// banco do potencial 2x (`GainKnobs.LiberaORitual`) e abre o Potential Unleashed. Quem ja o recebeu (`Fighter.ritualDoKaioshinRecebido`)
+	/// ouve isso na oferta, antes de ficar dez minutos parado a toa. Era "o que falta": o despertar uma vez na vida, e a forma.
 	/// </summary>
-	public static (bool Potencial, bool Forma) OQueDa(double unlockPotential, bool temAForma) => (unlockPotential < 1, !temAForma);
+	public static bool PodeReceber(bool jaRecebeu) => !jaRecebeu;
 }

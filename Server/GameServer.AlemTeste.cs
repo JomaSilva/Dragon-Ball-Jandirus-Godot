@@ -125,6 +125,7 @@ public partial class GameServer
 			AAlmaForaDoOutroMundoVolta(pl, forjados, zonaGuardada, posGuardada);
 			AsParedesDoOutroMundoNaoCaem();
 			AsPortasDoOutroMundoEAAlma(pl);
+			OMuroDoOutroMundoBarraQuemVoa();
 			OCorpoQueFicaEOPrecoDoRevive(pl, forjados, zonaGuardada, posGuardada);
 
 			AfirmarAlem("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
@@ -555,14 +556,14 @@ public partial class GameServer
 		AfirmarAlem("...e FORA dele nao (o cadaver dos 2 s fica no chao)",
 					!Alem.MortoDePe(true, "Earth") && !Alem.MortoDePe(false, Alem.ZonaDoOutroMundo));
 
-		// --- SEM ZENKAI: `if(dead) return` (`combatgains.dm:33`) ---
-		var cobaia = new Fighter { Race = "Saiyan", BP = 1000, dead = true };
+		// --- SEM ZENKAI PRA QUEM JA ESTA MORTO: `if(dead) return` (`combatgains.dm:33`). (2026-10-26) O banco do Zenkai so solta no vivo e
+		// na hora da morte, em dobro -- o nocaute de uma alma, nao ---
+		var cobaia = new Fighter { Race = "Saiyan", BP = 1000, dead = true, zenkaiGuardado = 500 };
 		cobaia.Statify();
-		AfirmarAlem("MORTO nao ganha Zenkai (o torneio do ceu nao vira fazenda de BP)",
-					cobaia.GainZenkai(1e9, NowMs()) == Fighter.ZenkaiResult.Morto);
-		cobaia.dead = false;
-		AfirmarAlem("...e vivo ele ganha (senao a linha acima estaria medindo outra coisa)",
-					cobaia.GainZenkai(1e9, NowMs()) == Fighter.ZenkaiResult.Concedido);
+		AfirmarAlem("MORTO nao ganha Zenkai (o torneio do ceu nao vira fazenda de BP): o nocaute de uma alma nao solta o banco",
+					cobaia.SoltarOZenkai(morreuAgora: false, maioriaCritica: false, 0) == 0 && cobaia.zenkaiGuardado == 500);
+		AfirmarAlem("...mas a MORTE em si solta, em dobro (senao a linha acima estaria medindo outra coisa)",
+					cobaia.SoltarOZenkai(morreuAgora: true, maioriaCritica: false, 0) > 0 && cobaia.zenkaiGuardado < 500);
 
 		// --- SEM DIGERIR, E O VIGOR TRAVADO NO CHEIO (v0.3.0, dono: *"mortos tem vigor infinito"*; o DM o cravava em 50%,
 		// `StaminaDrain.dm:35-36`) ---
@@ -1678,6 +1679,72 @@ public partial class GameServer
 	/// causas: o tique das portas pulava TODO morto (`pl.Ficha.dead`), e nao havia barreira pela alma. Aqui:
 	/// o fantasma neutro abre; o coracao negro e quem cumpre pena batem na barreira espiritual.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-26) 11b) O MURO DO OUTRO MUNDO BARRA QUEM VOA -- o dono: *"Ta dando pra voar por cima das paredes do outro mundo, assim dando
+	/// pra burlar quando vc tem karma negativo"*. A porta de cima do patio do Enma e a barreira (a familia 11); aqui, o muro ao lado dela,
+	/// pelo funil do movimento: a caixa de um corpo no ar, acima do cenario (`Voo.ModoNaAltura`), em cima do muro, e o passo que o
+	/// servidor valida (`MoveRules.ValidateStep`) de dentro do patio pra fora, por cima dele. O controle: o mesmo voo, numa parede da Terra
+	/// que nao e de predio, passa. O contra-exemplo: `Alem.MuroDeixaVoarDeTeste`.
+	/// </summary>
+	private void OMuroDoOutroMundoBarraQuemVoa()
+	{
+		GD.Print("[alem] -- 11b) o muro do Outro Mundo barra quem voa (a barreira das portas nao se pula pelo ceu) --");
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(alem);
+		if (mapa == null || !_portasDoMapa.TryGetValue(alem.Name, out List<PortaDoMapa>? portas) || portas.Count == 0)
+		{ AfirmarAlem("(montagem) o mapa do Outro Mundo e as portas dele estao carregados", false); return; }
+		const int T = ZoneCollision.TileSize;
+		ModoDeTravessia noAlto = Voo.ModoNaAltura(Voo.AlturaQueAtravessa + T, ModoDeTravessia.Voando);
+
+		// O MURO: a porta mais perto da mesa do Enma, e a celula do muro a quatro celulas dela na mesma fileira (parede, e nao porta).
+		(int ex, int ey) = CelulaDoPonto(MesaDoEnma(alem));
+		PortaDoMapa porta = portas.OrderBy(p => Math.Abs(p.X - ex) + Math.Abs(p.Y - ey)).First();
+		int mx = porta.X - 4, my = porta.Y;
+		bool ehMuro = mapa.BlockedCell(mx, my) && !portas.Any(p => p.X == mx && p.Y == my);
+		Vec2 emCima = new(mx * T + T / 2f, my * T + T / 2f - MoveRules.FeetOffsetY);
+		// o passo: do chao livre ao sul do muro pra dois tiles ao norte dele, de uma vez (um passo valido no tempo, com o orcamento cheio)
+		int sul = my + 1;
+		while (sul < my + 6 && mapa.BlockedCell(mx, sul)) sul++;
+		Vec2 de = new(mx * T + T / 2f, (sul + 1) * T + T / 2f - MoveRules.FeetOffsetY), pra = new(de.X, de.Y - 4 * T);
+
+		bool PassaPorCima(ZoneCollision m, Vec2 c, Vec2 a, Vec2 b, out bool cabeEmCima)
+		{
+			cabeEmCima = !MoveRules.Occupied(m, c, noAlto);
+			float orcamento = 1e6f;
+			bool aceito = MoveRules.ValidateStep(a, b, 1f, 1000f, m, ref orcamento, out Vec2 ficou, false, noAlto);
+			return aceito && Math.Abs(ficou.Y - b.Y) < 1;
+		}
+		bool passou = PassaPorCima(mapa, emCima, de, pra, out bool cabe);
+		AfirmarAlem("**O MURO DO OUTRO MUNDO BARRA QUEM VOA** (o dono, 2026-10-26: *\"da pra voar por cima das paredes do outro mundo\"*): no ar, acima do cenario, o corpo nao cabe em cima do muro do patio do Enma, e o passo de dentro do patio pra fora, por cima dele, e recusado",
+					ehMuro && !cabe && !passou, $"muro ({mx},{my}) parede={ehMuro}; cabe em cima={cabe}; passo aceito={passou}");
+
+		Alem.MuroDeixaVoarDeTeste = true;
+		bool passouComODefeito;
+		try { passouComODefeito = PassaPorCima(mapa, emCima, de, pra, out _); }
+		finally { Alem.MuroDeixaVoarDeTeste = false; }
+		AfirmarAlem("   DEFEITO INJETADO (o voo alto por cima do muro, o jogo de antes): o mesmo passo passa por cima -- a regua de cima REPROVA",
+					passouComODefeito, $"passou={passouComODefeito}");
+
+		// O CONTROLE: na Terra, uma parede que nao e de predio, com chao livre ao sul e ao norte -- o mesmo voo passa por cima.
+		ZoneCollision? terra = MapaDaZonaOuCatalogo(ZoneKey.Premade("Earth"));
+		bool passaNaTerra = false;
+		string ondeNaTerra = "nenhuma";
+		if (terra != null)
+			for (int y = 20; y < terra.Height - 20 && ondeNaTerra == "nenhuma"; y++)
+				for (int x = 20; x < terra.Width - 20 && ondeNaTerra == "nenhuma"; x++)
+				{
+					if (!terra.BlockedCell(x, y) || terra.Bloqueia(x, y, noAlto)) continue;
+					bool livre(int dy) => !terra.BlockedCell(x - 1, y + dy) && !terra.BlockedCell(x, y + dy) && !terra.BlockedCell(x + 1, y + dy)
+										  && !terra.EhAgua(x, y + dy) && !terra.Bloqueia(x, y + dy, noAlto);
+					if (!livre(2) || !livre(3) || !livre(-2) || !livre(-3)) continue;
+					ondeNaTerra = $"({x},{y})";
+					Vec2 c = new(x * T + T / 2f, y * T + T / 2f - MoveRules.FeetOffsetY);
+					passaNaTerra = PassaPorCima(terra, c, new Vec2(c.X, c.Y + 2 * T), new Vec2(c.X, c.Y - 2 * T), out _);
+				}
+		AfirmarAlem("...e o MESMO voo, numa parede da Terra que nao e de predio, passa por cima: a regra e do mapa do Outro Mundo",
+					passaNaTerra, $"parede {ondeNaTerra}; passou={passaNaTerra}");
+	}
+
 	private void AsPortasDoOutroMundoEAAlma(ServerPlayer pl)
 	{
 		GD.Print("[alem] -- 11) as portas do Outro Mundo e a alma --");

@@ -10,6 +10,13 @@ namespace Jandirus.Core.Tech;
 /// unico jarro do Mirante (`Maps/1to26.dmm`, celula 142,62 do z 12, area `Lookout/Inside`) e este -- a agua
 /// que mata quem nao aguenta e desperta poder em quem aguenta, que e a Chōshinsui do anime.
 ///
+/// ============================ (2026-10-26) O QUE ELA FAZ AGORA: O BANCO DO POTENCIAL, COMO NO DU ============================
+/// O dono (o pedido 95): ela SOLTA o banco do potencial 1x (`GainKnobs.LiberaAAgua`) e POE nele 10% do BP base, minguando a cada gole
+/// (`GainKnobs.AguaPoeNoBanco`, o `Skills.dm:2770-2773` do DU) -- e se bebe de novo, de hora em hora (*"repetiveis, 1h de recarga e a
+/// agua pode matar"*): o risco de morte vale a cada gole. O vigor maximo sobe so na PRIMEIRA que se aguenta. O que esta abaixo e o DM,
+/// que ela era ate 2026-10-25 (uma vez na vida, e um quinto do teto pessoal em BP).
+/// ==================================================================================================================================
+///
 /// ============================ O QUE O VERB `Drink()` FAZ, LINHA A LINHA ============================
 ///   * UMA VEZ POR PERSONAGEM: `mob/var/sacredwater`. Quem ja bebeu e sobreviveu so sente gosto de agua.
 ///   * O RISCO: `if(prob(50) || usr.Ephysdef >= 1)`. Quem tem a resistencia fisica em 1 ou mais SEMPRE
@@ -53,9 +60,6 @@ public static class AguaSagrada
 
 	/// <summary>`maxstamina *= 1.2`.</summary>
 	public const double GanhoDeVigor = 1.2;
-
-	/// <summary>O divisor do ganho de BP: `capcheck(BPMod * relBPmax) / 5`.</summary>
-	public const double DivisorDoBp = 5;
 
 	/// <summary>
 	/// ESTE CORPO AGUENTA A AGUA? <paramref name="sorteio"/> e um numero em [0,1): abaixo de

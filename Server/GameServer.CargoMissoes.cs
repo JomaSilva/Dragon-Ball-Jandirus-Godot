@@ -220,7 +220,7 @@ public partial class GameServer
 			// prazo na ausencia seria tres falhas em poucas horas e o cargo perdido dormindo. Nada e
 			// atribuido nem cobrado, e o prazo renasce inteiro quando ele voltar.
 			// ==========================================================================================
-			ServerPlayer? portador = OnlinePorConta(dono);
+			ServerPlayer? portador = OnlineDoTrono(vaga);   // (2026-10-26) o PERSONAGEM da vaga, e nao o irmao de conta que esta jogando
 			if (portador == null)
 			{
 				f.Proxima = agora + MissoesDeCargo.SegundosDoLaco;
@@ -573,7 +573,7 @@ public partial class GameServer
 	/// </summary>
 	private void VerboMeusDeveres(ServerPlayer pl)
 	{
-		string chave = CargoDe(pl.Conta);
+		string chave = CargoDe(pl);
 		RankDef? r = Cargos.Get(chave);
 		if (r == null || !r.TemDeveres)
 		{
@@ -639,7 +639,7 @@ public partial class GameServer
 	/// </summary>
 	private void VerboDepositarVerba(ServerPlayer pl)
 	{
-		if (!_missoes.TryGetValue(VagaDaConta(pl.Conta), out FichaDeMissao? f) || f.Tarefa != TipoDeTarefa.Verba)
+		if (!_missoes.TryGetValue(VagaDe(pl), out FichaDeMissao? f) || f.Tarefa != TipoDeTarefa.Verba)
 		{
 			Avisar(pl, "você não tem uma tarefa de verba em aberto.");
 			return;

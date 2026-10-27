@@ -185,6 +185,9 @@ public partial class GameServer
 	private string ContaDoDeus =>
 		_tronos.TryGetValue(CargoEmDisputa, out string? c) ? c : "";
 
+	/// <summary>(2026-10-26) O DEUS NO JOGO: o PERSONAGEM no trono, e nao qualquer personagem da conta dele (nulo = vago, ou fora).</summary>
+	private ServerPlayer? DeusNoJogo => OnlineDoTrono(CargoEmDisputa);
+
 	// =====================================================================
 	// 1. O DESAFIO
 	// =====================================================================
@@ -197,7 +200,7 @@ public partial class GameServer
 	{
 		long agora = NowMs();
 		string dono = ContaDoDeus;
-		ServerPlayer? deus = OnlinePorConta(dono);
+		ServerPlayer? deus = DeusNoJogo;
 
 		RecusaDeDuelo r = Duelo.PodeDesafiar(_duelo, agora,
 			haDono: dono.Length > 0,
@@ -248,7 +251,7 @@ public partial class GameServer
 	private void VerboResponderDesafio(ServerPlayer pl, bool aceitou)
 	{
 		if (_desafianteEsperando.Length == 0
-			|| !string.Equals(ContaDoDeus, pl.Conta, StringComparison.OrdinalIgnoreCase))
+			|| !OcupaOTrono(CargoEmDisputa, pl))   // (2026-10-26) o Deus e o PERSONAGEM no trono
 		{
 			Avisar(pl, "ninguem esta te desafiando pelo titulo.");
 			return;
@@ -399,7 +402,7 @@ public partial class GameServer
 		// (a) DESAFIO SEM RESPOSTA = ADIAMENTO. Ver o item 1 do cabecalho.
 		if (_desafianteEsperando.Length > 0 && agora > _prazoDaResposta)
 		{
-			ServerPlayer? deus = OnlinePorConta(ContaDoDeus);
+			ServerPlayer? deus = DeusNoJogo;
 			string nome = OnlinePorConta(_desafianteEsperando)?.Name ?? "o desafiante";
 			if (deus != null) { Adiar(deus, nome); }
 			else { _desafianteEsperando = ""; _duelo.EmDuelo = false; }
@@ -528,7 +531,7 @@ public partial class GameServer
 			// o Deus nao pode ser destituido porque o vilao deslogou.
 			_tarefaAlvo = _tarefaNomeDoAlvo = "";
 			_tarefaProxima = agora + EsperaSemAlvo;
-			if (OnlinePorConta(ContaDoDeus) is { } g)
+			if (DeusNoJogo is { } g)
 				Avisar(g, MissoesDeCargo.AvisoDeAlvoQueSaiu("God of Destruction"));
 			SalvarTitulo();
 			return;
@@ -551,7 +554,7 @@ public partial class GameServer
 		_tarefaProxima = agora + IntervaloDeTarefa;
 		SalvarTitulo();
 
-		if (OnlinePorConta(ContaDoDeus) is { } deus)
+		if (DeusNoJogo is { } deus)
 			Avisar(deus, $"God of Destruction: TAREFA FALHADA -- o prazo acabou. Falhas: {_tarefaFalhas}/{FalhasQueDestituem} "
 					   + $"(com {FalhasQueDestituem}, você perde o título).");
 		foreach (ServerPlayer o in _players.Values)
@@ -590,7 +593,7 @@ public partial class GameServer
 			&& !string.Equals(p.Conta, deusConta, StringComparison.OrdinalIgnoreCase)
 			&& (EhVilao(p) || p.Karma <= KarmaDeAmeaca)).ToList();
 
-		ServerPlayer? deus = OnlinePorConta(deusConta);
+		ServerPlayer? deus = DeusNoJogo;
 
 		if (vilaes.Count == 0)
 		{
@@ -640,7 +643,7 @@ public partial class GameServer
 		_tarefaProxima = NowMs() + IntervaloDeTarefa;
 		SalvarTitulo();
 
-		if (OnlinePorConta(ContaDoDeus) is { } deus)
+		if (DeusNoJogo is { } deus)
 			Avisar(deus, $"God of Destruction: TAREFA CUMPRIDA ({quem}) -- e 1 falha a menos (agora {_tarefaFalhas}/{FalhasQueDestituem}). "
 					   + "O equilíbrio agradece.");
 		foreach (ServerPlayer o in _players.Values)
@@ -658,7 +661,7 @@ public partial class GameServer
 	{
 		long agora = NowMs();
 		string dono = ContaDoDeus;
-		Avisar(pl, $"-- GOD OF DESTRUCTION: {(dono.Length > 0 ? NomeDoDono(dono) : "trono VAGO")} --");
+		Avisar(pl, $"-- GOD OF DESTRUCTION: {(dono.Length > 0 ? NomeDoTrono(CargoEmDisputa) : "trono VAGO")} --");
 		if (dono.Length == 0)
 		{
 			// (2026-10-19) O CAMINHO DE VERDADE: ate aqui a frase dizia "outorga" (o admin), e o Bills na casa dele -- que coroa quem

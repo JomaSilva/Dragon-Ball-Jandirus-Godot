@@ -25,6 +25,9 @@ namespace Jandirus.Server;
 ///   4. UMA VEZ SO: o save sai gravado na versao de hoje, e o segundo login (pelo disco) nao acha o que tirar.
 ///   5. O `Staff` DE DEPOIS FICA: fabricado pela bancada de hoje, e o cajado magico, e atravessa o relog.
 ///   6. QUEM NUNCA TEVE nao e tocado.
+///   7. (2026-10-26) O SINTETIZADOR DE VIRUS SAIU DO JOGO -- o pedido 98 do dono: a maquina e os dezenove produtos na lista (versao 2) e
+///      fora dos catalogos; no login a maquina recolhida e os produtos saem da mochila com o recado, e o LSD que estava no sangue e
+///      desfeito; na carga do mundo, a maquina aparafusada sai do chao (e o resto fica).
 ///
 /// DOIS defeitos injetados, um pra cada lado da regra:
 ///   * `ItensAposentados.SomeCaladoDeTeste` e o jogo de antes -- o `Sanear` leva o item calado, sem frase, e o
@@ -79,8 +82,8 @@ public partial class GameServer
 			GD.Print("[aposentados] -- 1) a lista e o catalogo --");
 			if (_obras == null) { AfirmarAp("ha catalogo de construcoes pra conferir", false); return; }
 
-			AfirmarAp("as SEIS estao na lista dos aposentados, cada uma com o porque que o jogador vai ler (e nenhum porque fala em dinheiro), todas na versao de hoje",
-					  ItensAposentados.Todos.Length == 6
+			AfirmarAp("as SEIS estao na lista dos aposentados (a versao 1), cada uma com o porque que o jogador vai ler (e nenhum porque fala em dinheiro), e a lista esta na versao de hoje",
+					  ItensAposentados.Todos.Count(a => a.SaiuNaVersao == 1) == 6
 					  && idsQueSairam.Append("Staff").All(id => ItensAposentados.Todos.Any(a => a.Id == id && a.Porque.Length > 0 && !RecadoFalaDeDinheiro(a.Porque)))
 					  && ItensAposentados.Todos.Max(a => a.SaiuNaVersao) == ItensAposentados.VersaoAtual,
 					  string.Join(", ", ItensAposentados.Todos.Select(a => $"{a.Id} v{a.SaiuNaVersao}")));
@@ -234,6 +237,59 @@ public partial class GameServer
 			var m4 = Logar(novato, semNada);
 			AfirmarAp("quem nunca teve uma das seis nao e tocado: 500 zeni, as macas e o scouter, nada pra avisar",
 					  m4.Zeni == zeniDeAntes && m4.Macas == 3 && m4.Scouters == 1 && m4.Recados == 0 && m4.Falas.Count == 0, $"zeni {m4.Zeni:0}");
+
+			// ---------------------------------------------------------------- 7. o sintetizador de virus (2026-10-26, o pedido 98)
+			GD.Print("[aposentados] -- 7) o sintetizador de virus saiu do jogo (o pedido 98 do dono) --");
+			string[] doSintetizador = [Sintetizador.Tipo, .. Sintetizador.Produtos.Select(p => p.Id)];
+			AfirmarAp("7a. a MAQUINA e os DEZENOVE produtos estao na lista dos aposentados, na versao 2, com o porque (o sintetizador saiu do jogo)",
+					  doSintetizador.Length == 20 && doSintetizador.All(id => ItensAposentados.Todos.Any(x => x.Id == id && x.SaiuNaVersao == 2
+						  && x.Porque.Contains("sintetizador") && !RecadoFalaDeDinheiro(x.Porque))),
+					  string.Join(", ", doSintetizador.Where(id => !ItensAposentados.Todos.Any(x => x.Id == id && x.SaiuNaVersao == 2))));
+			List<string> sintetizadorAinda = [.. doSintetizador.Where(id => _obras.Get(id) != null || CatalogoDeItens.Get(id) != null)];
+			AfirmarAp("7b. ...e nenhum deles esta num catalogo: a maquina nao se fabrica mais, e nenhum produto vira item",
+					  sintetizadorAinda.Count == 0, string.Join(", ", sintetizadorAinda));
+
+			// O SAVE DE ANTES: a maquina recolhida, um LSD e duas RAGE na mochila -- e o LSD no sangue (o reforco de cinquenta segundos ligado).
+			var drogado = new CharacterSave
+			{
+				Nome = "Drogado", Raca = "Human",
+				Ficha = new Fighter { Race = "Human", Zeni = zeniDeAntes, LsdAte = 1_760_000_000_000, Tmagi = 2, Tkiregen = 2 },
+				Mochila = new Inventario
+				{
+					Pilhas = [new Pilha(Sintetizador.Tipo, 1), new Pilha("LSD", 1), new Pilha("RAGE", 2), new Pilha(CatalogoDeItens.Maca, 3)],
+				},
+				ItensVersao = 1,
+			};
+			ServerPlayer usuario = Forjar("Drogado", CorredorLivre(2), 1000);
+			AccountStore.ParaJogador(drogado, usuario);
+			List<string> falasDoDrogado = Ouvir(() => AvisarDosItensAposentados(usuario));
+			AfirmarAp("7c. NO LOGIN a maquina, o LSD e as duas RAGE saem da mochila, um recado por item, sem zeni -- e as macas ficam",
+					  usuario.Mochila.Quantos(Sintetizador.Tipo) == 0 && usuario.Mochila.Quantos("LSD") == 0 && usuario.Mochila.Quantos("RAGE") == 0
+					  && usuario.Mochila.Quantos(CatalogoDeItens.Maca) == 3 && usuario.Ficha.Zeni == zeniDeAntes
+					  && falasDoDrogado.Count == 3 && falasDoDrogado.TrueForAll(f => f.Contains("sintetizador")),
+					  Ultimos(falasDoDrogado));
+			AfirmarAp("7d. ...e o LSD que estava no SANGUE e desfeito: a magia e a regeneracao de Ki voltam ao normal, e a marca zera",
+					  usuario.Ficha.LsdAte == 0 && usuario.Ficha.Tmagi == 1 && usuario.Ficha.Tkiregen == 1,
+					  $"Tmagi {usuario.Ficha.Tmagi}, Tkiregen {usuario.Ficha.Tkiregen}, LsdAte {usuario.Ficha.LsdAte}");
+
+			// O MUNDO DE ANTES: um sintetizador aparafusado no chao, e um saco de pancada do lado -- pela carga de producao.
+			ZoneKey terra = ZoneKey.Premade("Earth");
+			var sint = new Obra { Id = 94_801, Tipo = Sintetizador.Tipo, DoMapa = false };
+			sint.PorZona(terra);
+			var saco = new Obra { Id = 94_802, Tipo = "Punching_Bag", DoMapa = false };
+			saco.PorZona(terra);
+			string mundoDeAntes = System.IO.Path.Combine(pasta, "mundo-de-antes.json");
+			System.IO.Directory.CreateDirectory(pasta);
+			System.IO.File.WriteAllText(mundoDeAntes, System.Text.Json.JsonSerializer.Serialize(new List<Obra> { sint, saco },
+				new System.Text.Json.JsonSerializerOptions { IncludeFields = true }));
+			try
+			{
+				CarregarMundoDeDisco(mundoDeAntes);
+				AfirmarAp("7e. NA CARGA DO MUNDO o sintetizador aparafusado SAI do chao -- e o saco de pancada do lado fica",
+						  !_noChao.Exists(o => o.Id == sint.Id) && _noChao.Exists(o => o.Id == saco.Id),
+						  $"sintetizador {_noChao.Exists(o => o.Id == sint.Id)}, saco {_noChao.Exists(o => o.Id == saco.Id)}");
+			}
+			finally { _noChao.RemoveAll(o => o.Id == sint.Id || o.Id == saco.Id); }
 
 			// ---------------------------------------------------------------- os contra-exemplos
 			GD.Print("[aposentados] -- os dois contra-exemplos --");

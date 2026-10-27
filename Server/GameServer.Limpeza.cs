@@ -95,7 +95,10 @@ public sealed partial class GameServer
 		/// </summary>
 		public string[] Arquivos = [];
 
-		/// <summary>SOBREVIVE A LIMPEZA. Hoje so o `admin.log` -- ver o cabecalho.</summary>
+		/// <summary>
+		/// SOBREVIVE A LIMPEZA: o `admin.log`, a configuracao do servidor e (2026-10-26) o campeao do mundo que acabou -- ver o cabecalho e
+		/// `GameServer.CampeaoDoWipe.cs`.
+		/// </summary>
 		public bool Preservar;
 
 		/// <summary>
@@ -372,7 +375,7 @@ public sealed partial class GameServer
 			Arquivos = ["cargos.txt"],
 			Unidade = "cargo(s) com dono",
 			Contar = () => _tronos.Count,
-			Zerar = _tronos.Clear,
+			Zerar = () => { _tronos.Clear(); _personagensDosTronos.Clear(); },   // (2026-10-26) e os personagens deles
 		});
 
 		// ---------------------------------------------------------- discipulado
@@ -528,6 +531,18 @@ public sealed partial class GameServer
 			Arquivos = ["admin.log"],
 			Preservar = true,
 			Unidade = "arquivo de log",
+			Contar = () => 0,
+		});
+
+		// (2026-10-26) O CAMPEAO DO MUNDO QUE ACABOU -- o pedido 94 do dono: o personagem mais forte vira o chefe secreto do mundo novo.
+		// Ele SOBREVIVE de proposito (e a unica coisa do mundo velho que atravessa pro novo), e quem o reescreve e a propria limpeza, no
+		// passo 1b do `ExecutarLimpeza`, com o campeao do mundo que esta acabando. Ver `GameServer.CampeaoDoWipe.cs`.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "o campeao do mundo anterior -- o chefe secreto do mundo novo (SOBREVIVE a limpeza)",
+			Arquivos = [ArquivoDoCampeao],
+			Preservar = true,
+			Unidade = "campeao guardado",
 			Contar = () => 0,
 		});
 
@@ -768,6 +783,9 @@ public sealed partial class GameServer
 			linhas.Add($"{banidas}  banimento(s) e {caladas} mute(s) -- PERDOADOS (moram dentro da conta)");
 
 		if (vazios > 0) linhas.Add($"({vazios} outro(s) sistema(s) ja estao vazios)");
+		// (2026-10-26) E QUEM VIRA O CAMPEAO -- o pedido 94: quem confirma sabe quem o mundo novo vai encontrar. Ver `GameServer.CampeaoDoWipe.cs`.
+		if (OMaisForteDoMundo() is { } campeao)
+			linhas.Add($"o campeão deste mundo, {campeao.Save.Nome} (BP base {campeao.Save.Ficha.BP:N0}), vira o chefe secreto do próximo -- SOBREVIVE");
 		linhas.Add("o admin.log SOBREVIVE -- e a unica testemunha de quem limpou");
 		return linhas;
 	}
@@ -924,6 +942,11 @@ public sealed partial class GameServer
 		_limpezaEmCurso = true;
 		try
 		{
+			// ------------------------------------------------------ 1b. o campeao deste mundo (2026-10-26)
+			// ANTES de todo mundo cair: quem esta online entra com o save de AGORA, e nao com o do ultimo autosave (o portao ja fechou, e o
+			// `Drop` nao grava mais). O arquivo dele e POUPADO pela vassoura do passo 4. Ver `GameServer.CampeaoDoWipe.cs` -- o pedido 94.
+			GuardarOCampeaoDoWipe();
+
 			// ------------------------------------------------------ 2. todo mundo cai
 			int caiu = DerrubarTodoMundoParaALimpeza(adm);
 

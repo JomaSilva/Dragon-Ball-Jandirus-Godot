@@ -872,8 +872,8 @@ public partial class GameServer
 			  bio.Visual.Corpo == BioAndroids.IndiceDoCorpo(BioAndroids.Larva) && bio.Ficha.expressedBP == 5 && !TemEnergiaQueSeSente(bio) && PodeVoar(bio),
 			  $"expresso {bio.Ficha.expressedBP:N0}");
 		List<string> forma = Ouvir(() => Transformar(bio, subir: true));
-		RecusaForma super = bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
-		Checa("...e NENHUMA forma entra por cima dela -- nem a Super Perfeita que o degrau perfeito abre (`EstadoDeForma.Avaliar`)",
+		RecusaForma super = bio.Forma.Avaliar("golden_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("...e NENHUMA forma entra por cima dela -- nem a Golden Perfect que o degrau perfeito abre (`EstadoDeForma.Avaliar`)",
 			  bio.Forma.NaBase && super == RecusaForma.FormaErrada && Disse(forma, "não se transforma"), $"{super} | {Ultimos(forma)}");
 		List<string> deNovo = Ouvir(() => UsarHabilidade(bio, "larva"));
 		Checa("...e a larva nao se veste duas vezes: pra sair, so enterrada", Disse(deNovo, "enterre-se"), Ultimos(deNovo));
@@ -1073,7 +1073,7 @@ public partial class GameServer
 	// =====================================================================
 	private void MedirAsFormasDoBio(Checagem Checa, ServerPlayer bio)
 	{
-		GD.Print("--- 5. AS FORMAS ---");
+		GD.Print("--- 5. AS FORMAS (2026-10-26: a Golden Perfect e a MAX, no lugar da Super Perfeita) ---");
 
 		PerfilDeFormas perfil = Perfil(bio);
 		Checa("a linha do BIO-ANDROIDE esta aberta pra ele",
@@ -1082,74 +1082,121 @@ public partial class GameServer
 			  + "que o gerou)",
 			  Catalogo.LinhasAbertas(perfil).Contains(LinhaDeForma.Saiyajin));
 
-		// ---- a Super Perfeita, com poder de sobra ----
-		bio.Ficha.BP = Catalogo.PortaSuperPerfeito * 2;
-		bio.Ficha.Ki = bio.Ficha.MaxKi;
-		perfil = Perfil(bio);
-		Checa("com a FORMA PERFEITA e poder de sobra, a SUPER PERFEITA e alcancavel",
-			  bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, perfil) == RecusaForma.Pode,
-			  $"{bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, perfil)}");
+		// ---- a SUPER PERFEITA SAIU, e o nome dela foi pro SSJ2 do bio ----
+		FormaDef ssj2 = Catalogo.Def("ssj2")!, ssj3 = Catalogo.Def("ssj3")!;
+		Checa("a SUPER PERFEITA (a `Cell4()` do DM) SAIU DO JOGO, e a linha do bio e so das duas divinas -- a escolha do dono",
+			  Catalogo.Def("super_perfect") == null && Catalogo.DaLinha(LinhaDeForma.BioAndroide).All(d => d.PedeGodKi >= 0),
+			  string.Join(", ", Catalogo.DaLinha(LinhaDeForma.BioAndroide).Select(d => d.Id)));
+		Checa("o SSJ2 do bio se chama \"Super Perfeito\" e o SSJ3 \"Super Perfeito 2\" (o dono) -- e os de um Saiyajin continuam Super Saiyajin",
+			  Catalogo.NomeDe(ssj2, false, bio.Race) == "Super Perfeito" && Catalogo.NomeDe(ssj3, false, bio.Race) == "Super Perfeito 2"
+			  && Catalogo.NomeDe(ssj2, false, "Saiyan") == ssj2.Nome && Catalogo.NomeDe(ssj3, false, "Saiyan") == ssj3.Nome,
+			  $"{Catalogo.NomeDe(ssj2, false, bio.Race)} / {Catalogo.NomeDe(ssj3, false, bio.Race)} / {Catalogo.NomeDe(ssj2, false, "Saiyan")}");
 
-		// ---- e ela NAO pede DNA Saiyajin: o dono achava que sim ----
+		GodKiState? kiDivinoGuardado = bio.Ficha.godki;
+		int estagioGuardado = bio.Ficha.bio_stage;
 		bool saiyanGuardado = bio.Ficha.bio_saiyan_dna, canGuardado = bio.Ficha.canSSJ;
+		bio.Forma.Entrar(Catalogo.IdBase);
+		AplicarForma(bio);
+		bio.Ficha.Ki = bio.Ficha.MaxKi;
+
+		// ---- A GOLDEN PERFECT: o ki divino desperto, a forma perfeita, e nada de sangue ----
+		bio.Ficha.godki = null;
+		RecusaForma semKiDivino = bio.Forma.Avaliar("golden_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("SEM o ki divino desperto a GOLDEN PERFECT e recusada pelo ki divino (`PedeGodKi` 0: e o SSG do bio)",
+			  semKiDivino == RecusaForma.SemGodKi, $"{semKiDivino}");
+		bio.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
+		RecusaForma desperto = bio.Forma.Avaliar("golden_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("com o ki divino DESPERTO e a FORMA PERFEITA ela abre -- o dono: *\"o bio androide pode ter god ki ao qual ele libera a forma "
+			  + "Golden Perfect\"*", desperto == RecusaForma.Pode, $"{desperto}");
 		bio.Ficha.bio_saiyan_dna = false;
 		bio.Ficha.canSSJ = false;
-		Checa("a SUPER PERFEITA **nao** pede DNA Saiyajin -- `Cell4()` nao olha raca nem DNA uma "
-			  + "unica vez (`CellFormBuff.dm:74`). Ela e do CORPO dele, nao do sangue do doador",
-			  bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, Perfil(bio)) == RecusaForma.Pode);
+		RecusaForma semSangue = bio.Forma.Avaliar("golden_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("...e ela NAO pede DNA Saiyajin: e do CORPO dele -- o bio sem sangue Saiyajin fica com as duas divinas",
+			  semSangue == RecusaForma.Pode, $"{semSangue}");
 		bio.Ficha.bio_saiyan_dna = saiyanGuardado;
 		bio.Ficha.canSSJ = canGuardado;
+		bio.Ficha.bio_stage = BioAndroids.SemiPerfeito;
+		RecusaForma goldenNoSemi = bio.Forma.Avaliar("golden_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
+		bio.Ficha.godki = new GodKiState { awakened = true, mastery = Catalogo.GodkiRoyalePct };
+		RecusaForma maxNoSemi = bio.Forma.Avaliar("bio_max", bio.Ficha.BP, 1, false, Perfil(bio));
+		bio.Ficha.bio_stage = estagioGuardado;
+		Checa("...e as duas SO NO ESTAGIO PERFEITO (o dono: \"So o Perfeito\") -- o semi-perfeito e recusado nas duas, com o ki divino maduro",
+			  goldenNoSemi == RecusaForma.SemFormaAnterior && maxNoSemi == RecusaForma.SemFormaAnterior,
+			  $"Golden {goldenNoSemi}, MAX {maxNoSemi}");
 
-		// ---- entrar nela de verdade, pelo mesmo funil da tecla C ----
-		TransformarPara(bio, "super_perfect");
-		Checa("ele ENTRA na Super Perfeita pelo funil de producao (`TransformarPara`)",
-			  bio.Forma.Atual == "super_perfect", bio.Forma.Atual);
+		// ---- entrar de verdade, e o multiplicador pela maestria divina ----
+		bio.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
+		TransformarPara(bio, "golden_perfect");
+		Checa("ele ENTRA na Golden Perfect pelo funil de producao (`TransformarPara`)", bio.Forma.Atual == "golden_perfect", bio.Forma.Atual);
 		double degrau = BioAndroids.MultAbsoluto(bio.Ficha.bio_stage, bio.Ficha.bio_marco);
-		Checa("...e o multiplicador e 20x ABSOLUTO sobre o imperfeito (o adendo do dono; era 8x por cima do perfeito) -- a forma vale o que "
-			  + "falta ate ele sobre o degrau que ja mora no BP base",
-			  Math.Abs(bio.Ficha.ssjBuff * degrau - Catalogo.SuperPerfeitoDoBio.Sem) < 1e-6,
-			  $"forma {bio.Ficha.ssjBuff:0.###} x degrau {degrau:0.#} = {bio.Ficha.ssjBuff * degrau:0.###}");
-
-		// ---- E COM O KI DIVINO: 22x desperto, 32x no nivel do Blue, 56x no do Blue Evolution ----
-		GodKiState? kiDivinoGuardado = bio.Ficha.godki;
+		FormaDef ssg = Catalogo.Def("ssg")!, blue = Catalogo.Def("blue")!, evolution = Catalogo.Def("blue_evolution")!;
+		double meio = Catalogo.GodkiBluePct / 2;
 		foreach ((double maestria, double esperado, string nivel) in new[]
-			{ (0.0, Catalogo.SuperPerfeitoDoBio.AoDespertar, "o ki divino DESPERTO"),
-			  (Catalogo.GodkiBluePct, Catalogo.SuperPerfeitoDoBio.NoBlue, "o nivel do Blue (33%)"),
-			  (Catalogo.GodkiRoyalePct, Catalogo.SuperPerfeitoDoBio.NaEvolution, "o nivel do Blue Evolution (50%)") })
+			{ (0.0, ssg.Mult[0], "o ki divino DESPERTO vale o do SSG"),
+			  (meio, (ssg.Mult[0] + blue.Mult[0]) / 2, $"a meio caminho ({meio:0.#}%) vale o meio entre os dois"),
+			  (Catalogo.GodkiBluePct, blue.Mult[0], "aos 33% vale o do BLUE"),
+			  (Catalogo.GodkiRoyalePct, blue.Mult[0], "e aos 50% continua no do Blue -- o degrau de cima e a MAX") })
 		{
 			bio.Ficha.godki = new GodKiState { awakened = true, mastery = maestria };
 			AplicarForma(bio);
-			Checa($"...com {nivel}, a Super Perfeita vale {esperado:0}x o imperfeito (o adendo: *\"ao atingir o nivel do blue o multiplicador "
-				  + "sobe pra 32x e ao atingir o nivel do blue evolved vc fica com 56x\"*)",
-				  Math.Abs(bio.Ficha.ssjBuff * degrau - esperado) < 1e-6, $"{bio.Ficha.ssjBuff * degrau:0.###}");
+			Checa($"...{nivel}: {esperado:0.##}x o IMPERFEITO (o dono: *\"a golden tem a mesma forca do ssjg mas vai subindo o multiplicador "
+				  + "ate chegar no mesmo multiplicador do ssj blue quando atinger 33% de ki divino\"*) -- a forma vale o que falta sobre o degrau "
+				  + "que ja mora no BP base",
+				  Math.Abs(bio.Ficha.ssjBuff * degrau - esperado) < 1e-6,
+				  $"forma {bio.Ficha.ssjBuff:0.###} x degrau {degrau:0.#} = {bio.Ficha.ssjBuff * degrau:0.###}");
 		}
 		bio.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
 		TickDaMaestriaDivina(bio, 60);
-		Checa("...e e NELA que o bio amadurece o ki divino: um minuto na Super Perfeita sobe a maestria divina (`UsaOKiDivino`)",
+		Checa("...e e NELA que o bio amadurece o ki divino: um minuto na Golden Perfect sobe a maestria divina (`UsaOKiDivino`)",
 			  bio.Ficha.godki.mastery > 0, $"{bio.Ficha.godki.mastery:0.####}%");
+
+		// ---- A MAX: os 50%, da Golden ou da base ----
+		bio.Ficha.godki = new GodKiState { awakened = true, mastery = Catalogo.GodkiRoyalePct - 1 };
+		RecusaForma antesDos50 = bio.Forma.Avaliar("bio_max", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("a MAX e recusada abaixo dos 50% de ki divino", antesDos50 == RecusaForma.SemGodKi, $"{antesDos50}");
+		bio.Ficha.godki = new GodKiState { awakened = true, mastery = Catalogo.GodkiRoyalePct };
+		bio.Ficha.Ki = bio.Ficha.MaxKi;
+		TransformarPara(bio, "bio_max");
+		Checa("aos 50% ele ENTRA na MAX a partir da GOLDEN (o dono: *\"ao chegar em 50% de god ki, ele libera a forma MAX\"*)",
+			  bio.Forma.Atual == "bio_max", bio.Forma.Atual);
+		Checa("...e ela vale os 56x do BLUE EVOLUTION sobre o imperfeito (*\"a max tem o mesmo bp do blue evolved\"*)",
+			  Math.Abs(bio.Ficha.ssjBuff * degrau - evolution.Mult[0]) < 1e-6, $"{bio.Ficha.ssjBuff * degrau:0.###}");
+		bio.Forma.Entrar(Catalogo.IdBase);
+		AplicarForma(bio);
+		bio.Ficha.Ki = bio.Ficha.MaxKi;
+		RecusaForma daBase = bio.Forma.Avaliar("bio_max", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("...e tambem DA BASE, sem passar pela Golden", bio.Forma.NaBase && daBase == RecusaForma.Pode, $"{bio.Forma.Atual}: {daBase}");
+
+		// ---- o consumo, o corpo e a aura ----
+		FormaDef golden = Catalogo.Def("golden_perfect")!, max = Catalogo.Def("bio_max")!;
+		Checa("o CONSUMO de Ki e o das irmas -- a Golden o do SSG, a MAX o do Blue Evolution (o dono: *\"Mesma coisa do god e blue evolution "
+			  + "atual\"*)",
+			  golden.Dreno.SequenceEqual(ssg.Dreno) && max.Dreno.SequenceEqual(evolution.Dreno),
+			  $"Golden [{string.Join(", ", golden.Dreno)}] / SSG [{string.Join(", ", ssg.Dreno)}]; MAX [{string.Join(", ", max.Dreno)}] / "
+			  + $"Evolution [{string.Join(", ", evolution.Dreno)}]");
+		Checa("os CORPOS sao os que o dono apontou: `Bio Android 6` na Golden e `Bio Android - Form 5` na MAX",
+			  golden.Corpo == CorpoDeForma.BioGolden && max.Corpo == CorpoDeForma.BioMax
+			  && BioAndroids.CorpoGoldenPerfect.Contains("Bio Android 6") && BioAndroids.CorpoMax.Contains("Bio Android - Form 5"),
+			  $"{golden.Corpo} {BioAndroids.CorpoGoldenPerfect} / {max.Corpo} {BioAndroids.CorpoMax}");
+		Checa("e as AURAS: a Golden o fogo do SSG em OURO (folha propria) e a MAX a chama do Blue em VERMELHO",
+			  Catalogo.Folha(golden) == FolhaDeAura.DeusDourado && Catalogo.Folha(max) == Catalogo.Folha(blue)
+			  && Catalogo.Folha(max) == FolhaDeAura.DeusFrio,
+			  $"{Catalogo.Folha(golden)} / {Catalogo.Folha(max)}");
+
+		// ---- e o UI e o UE, no requisito de ki divino (o pedido 88) ----
+		PerfilDeFormas abaixo = Perfil(bio) with { GodKi = Catalogo.GodkiUiUePct - 1 };
+		PerfilDeFormas noRequisito = Perfil(bio) with { GodKi = Catalogo.GodkiUiUePct };
+		Checa("o bio-androide tem o ULTRA INSTINTO e o ULTRA EGO quando chega no requisito de ki divino (o dono: *\"bio androides podem ter UI "
+			  + "e UE quando atingem o requisito de god ki\"*) -- e nao antes",
+			  Catalogo.LinhasAbertas(noRequisito).Contains(LinhaDeForma.UltraInstinct) && Catalogo.LinhasAbertas(noRequisito).Contains(LinhaDeForma.UltraEgo)
+			  && !Catalogo.LinhasAbertas(abaixo).Contains(LinhaDeForma.UltraInstinct) && !Catalogo.LinhasAbertas(abaixo).Contains(LinhaDeForma.UltraEgo),
+			  $"{Catalogo.GodkiUiUePct:0}%: {string.Join(", ", Catalogo.LinhasAbertas(noRequisito))}");
+
 		bio.Ficha.godki = kiDivinoGuardado;
 		AplicarForma(bio);
-
-		// ---- o conserto do bug do DM: o SSJ nao atropela a Super Perfeita ----
-		bio.Forma.Liberar("ssj1");
-		RecusaForma porCimaDaSuper = bio.Forma.Avaliar("ssj1", bio.Ficha.BP, 1, false, Perfil(bio));
-		Checa("estando em SUPER PERFEITA, o Super Saiyajin NAO entra por cima -- no DM as duas "
-			  + "escrevem a MESMA `mob/var/ssj` e o SSJ2 SOBRESCREVE a Super Perfeita (8x virando "
-			  + "1,75x, calado, no segundo Transform). Aqui a proibicao e dita e vale nos dois lados",
-			  porCimaDaSuper == RecusaForma.FormaErrada, $"{porCimaDaSuper}");
-
-		// ---- e o inverso: estando em SSJ, a Super Perfeita nao entra (o `!ssj` do DM) ----
-		TransformarPara(bio, Catalogo.IdBase);
-		TransformarPara(bio, "ssj1");
-		if (bio.Forma.Atual == "ssj1")
-		{
-			RecusaForma superSobreSsj =
-				bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
-			Checa("...e estando em Super Saiyajin a Super Perfeita tambem nao entra (o `!ssj` do "
-				  + "`Cell4()`, este lado o DM tem)",
-				  superSobreSsj == RecusaForma.FormaErrada, $"{superSobreSsj}");
-		}
-		TransformarPara(bio, Catalogo.IdBase);
+		// A CENA DA ESTREIA DA MAX ainda o prendia: a volta desta secao e pelo `Entrar` cru, e nao pela descida de producao que zera a
+		// cena -- e a secao seguinte (a larva) recusaria tudo com "espere a cena acabar". O mesmo idioma da absorcao de combate.
+		bio.CenaSegundos = 0;
 	}
 
 	// =====================================================================
@@ -1203,6 +1250,14 @@ public partial class GameServer
 			  + "DM documenta em `mst_form_apply` -- 'ficava com uma forma na qual nao conseguia "
 			  + "reentrar')",
 			  depois == RecusaForma.Pode, $"{depois} (forma atual: {bio.Forma.Atual})");
+
+		// (2026-10-26) E ELA SE ANUNCIA "SUPER PERFEITO" -- o dono: *"bio androide quando vira ssj2 n deveria aparecer super saiyan 2"*.
+		List<string> anuncio = Ouvir(() => TransformarPara(bio, "ssj2"));
+		Checa("...e o SSJ2 do bio se ANUNCIA \"Super Perfeito\", e nao \"Super Saiyajin 2\" (o anuncio do servidor, pelo funil do nome)",
+			  bio.Forma.Atual == "ssj2" && Disse(anuncio, Catalogo.NomeDoSsj2DoBio) && !Disse(anuncio, Catalogo.Def("ssj2")!.Nome),
+			  $"{bio.Forma.Atual} | {Ultimos(anuncio)}");
+		bio.Forma.Entrar(Catalogo.IdBase);
+		AplicarForma(bio);
 		TransformarPara(bio, Catalogo.IdBase);
 
 		// ---- uma vez na vida ----
@@ -1714,7 +1769,7 @@ public partial class GameServer
 		bool koGuardado = bio.Ficha.KO, mortoGuardado = bio.Ficha.dead;
 		bio.Ficha.BP = 1_000_000;
 		bio.Ficha.dead = false;
-		bio.Ficha.zenkaiReady = 0;
+		bio.Ficha.zenkaiGuardado = 100_000;   // (2026-10-26) o banco do Zenkai que a derrota solta
 		bio.Ficha.Statify();
 
 		// ============================ `Statify()` NAO RECALCULA O PODER EXPRESSO, E ISSO CUSTOU UMA RODADA ============================
@@ -1735,17 +1790,17 @@ public partial class GameServer
 			  + "\"Bio-Android\" com hifen contra uma raca gravada \"BioAndroid\" sem: escrito e "
 			  + "inalcancavel",
 			  bio.Ficha.BP > antes, $"{antes:N0} -> {bio.Ficha.BP:N0}");
-		Checa("...e o tamanho e os 10% do poder do vencedor (`ZenkaiPct`), com teto no BP final",
-			  Math.Abs(bio.Ficha.UltimoZenkai - algoz.Ficha.BP * Jandirus.Core.Stats.GainKnobs.ZenkaiPct) < 1
-			  || bio.Ficha.UltimoZenkaiNoTeto,
-			  $"{bio.Ficha.UltimoZenkai:N0}");
+		double fatorDoBio = Fighter.FatorDoTetoDoZenkai(antes, RequisitoDoSsj3De(bio));
+		Checa("...e o tamanho e o do banco do Zenkai (2026-10-26): de 20 a 80% dos 100.000 guardados, pesados pelo requisito do SSJ3",
+			  bio.Ficha.UltimoZenkai >= 20_000 * fatorDoBio - 1 && bio.Ficha.UltimoZenkai <= 80_000 * fatorDoBio + 1,
+			  $"{bio.Ficha.UltimoZenkai:N0} (fator {fatorDoBio:0.####})");
 
 		// ---- (v0.3.0) o bio SEM DNA Saiyajin NAO tem: o Zenkai e do SANGUE (dono, 2026-10-15) ----
 		if (semDna != null)
 		{
 			double a2 = semDna.Ficha.BP;
 			semDna.Ficha.BP = 1_000_000;
-			semDna.Ficha.zenkaiReady = 0;
+			semDna.Ficha.zenkaiGuardado = 100_000;
 			semDna.Ficha.dead = false;
 			semDna.Ficha.KO = true;
 			semDna.Ficha.Statify();
@@ -1765,7 +1820,7 @@ public partial class GameServer
 		if (humano != null)
 		{
 			humano.Ficha.BP = 1_000_000;
-			humano.Ficha.zenkaiReady = 0;
+			humano.Ficha.zenkaiGuardado = 100_000;
 			humano.Ficha.Statify();
 			RepercutirPoder(humano);
 			double antesH = humano.Ficha.BP;
@@ -1775,7 +1830,7 @@ public partial class GameServer
 				  + "nao ganha nada -- sem esta linha, um `HasZenkai` que devolvesse `true` pra todo "
 				  + "mundo passaria pela linha de cima",
 				  Math.Abs(humano.Ficha.BP - antesH) < 1
-				  && humano.Ficha.GainZenkai(1e9, NowMs()) == Fighter.ZenkaiResult.SemDnaSaiyajin,
+				  && !humano.Ficha.HasZenkai() && humano.Ficha.SoltarOZenkai(false, false, 0) == 0,
 				  $"{antesH:N0} -> {humano.Ficha.BP:N0}");
 			humano.Ficha.KO = false;
 		}
@@ -1852,13 +1907,15 @@ public partial class GameServer
 		Checa("...e apertando o verbo ele continua na base -- as duas metades da frase do dono",
 			  semDna.Forma.Atual == Catalogo.IdBase, semDna.Forma.Atual);
 
-		// ---- A SUPER PERFEITA E OUTRA PORTA: ela nao pede o sangue ----
-		Checa("...mas a SUPER PERFEITA continua sendo dele: `Cell4()` nao olha raca nem DNA uma unica "
-			  + "vez -- o dono acha que as duas sao a mesma porta, e no DM sao duas",
-			  semDna.Ficha.bio_stage == BioAndroids.Perfeito
-			  && semDna.Forma.Avaliar("super_perfect", semDna.Ficha.BP, 1, false, p) == RecusaForma.Pode,
-			  $"estagio {semDna.Ficha.bio_stage}, "
-			  + $"{semDna.Forma.Avaliar("super_perfect", semDna.Ficha.BP, 1, false, p)}");
+		// ---- (2026-10-26) A GOLDEN PERFECT E OUTRA PORTA: ela nao pede o sangue, pede o ki divino ----
+		GodKiState? kiDivinoDoSemDna = semDna.Ficha.godki;
+		semDna.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
+		RecusaForma goldenSemDna = semDna.Forma.Avaliar("golden_perfect", semDna.Ficha.BP, 1, false, Perfil(semDna));
+		semDna.Ficha.godki = kiDivinoDoSemDna;
+		Checa("...mas a GOLDEN PERFECT continua sendo dele, com o ki divino desperto: e a forma do CORPO, e o bio sem sangue Saiyajin fica "
+			  + "com as duas divinas (a escolha do dono)",
+			  semDna.Ficha.bio_stage == BioAndroids.Perfeito && goldenSemDna == RecusaForma.Pode,
+			  $"estagio {semDna.Ficha.bio_stage}, {goldenSemDna}");
 
 		// ---- E O SSJ2 PELA MORTE: **ESSE** pede o sangue, e a diferenca e UM campo ----
 		semDna.Forma.Maestria.Por("ssj1", 100);
@@ -2185,7 +2242,8 @@ public partial class GameServer
 		Numero("`DNL_BIO_BP_SHARE` (o bio nasce com metade do doador mais forte)",
 			   BioAndroids.FracaoDoDoador, 0.5);
 		Numero("`DNL_BIO_MAX_DNA` (amostras por tanque)", BioAndroids.MaxDna, 4);
-		// (2026-10-17) A ESCADA E A SUPER PERFEITA SAO DO ADENDO DO DONO, e nao mais do DM (`DNL_BIO_EVO_*`, `cell4mult = 8`).
+		// (2026-10-17) A ESCADA E DO ADENDO DO DONO, e nao mais do DM (`DNL_BIO_EVO_*`); (2026-10-26) as divinas sao do pedido dele (a Super
+		// Perfeita, `cell4mult = 8`, saiu do jogo).
 		Numero("o PASSO de um jogador absorvido (o adendo: um marco inteiro)", BioAndroids.PassoDoJogador, 1);
 		Numero("o PASSO de um NPC (o adendo: *\"bem menos\"* -- escolha: um quinto)", BioAndroids.PassoDoNpc, 0.2);
 		Numero("os MARCOS por forma (o sexto passo sobe a forma)", BioAndroids.MarcosPorForma, 5);
@@ -2193,10 +2251,10 @@ public partial class GameServer
 		Numero("o semi-perfeito no marco 5", BioAndroids.MultAbsoluto(BioAndroids.SemiPerfeito, 5), 3);
 		Numero("o perfeito no marco 0", BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 0), 4);
 		Numero("o perfeito no marco 5", BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 5), 14);
-		Numero("a SUPER PERFEITA, absoluta sobre o imperfeito", Catalogo.SuperPerfeitoDoBio.Sem, 20);
-		Numero("...com o ki divino desperto", Catalogo.SuperPerfeitoDoBio.AoDespertar, 22);
-		Numero("...no nivel do Blue", Catalogo.SuperPerfeitoDoBio.NoBlue, 32);
-		Numero("...no nivel do Blue Evolution", Catalogo.SuperPerfeitoDoBio.NaEvolution, 56);
+		Numero("a GOLDEN PERFECT ao despertar o ki divino (o SSG), absoluta sobre o imperfeito", Catalogo.GoldenPerfectDoBio.AoDespertar, 22);
+		Numero("...no nivel do Blue, o teto da rampa", Catalogo.GoldenPerfectDoBio.NoTopo, 32);
+		Numero("...e o nivel do Blue e os 33% de ki divino", Catalogo.GoldenPerfectDoBio.TopoEm, 33);
+		Numero("a MAX (o Blue Evolution), absoluta sobre o imperfeito", Catalogo.MultDaMaxDoBio, 56);
 		Numero("a EXECUCAO de absorcao, em segundos", BioAndroids.SegundosDaExecucao, 5);
 		Numero("...e o que ela devolve (vida, folego e Ki)", BioAndroids.DevolveAExecucao, 0.2);
 		Numero("`nerfSSJ()` no SSJ1 de quem chegou por `canSSJ`", Catalogo.Ssj1BaseDiluido, 1.35);
@@ -2347,13 +2405,14 @@ public partial class GameServer
 				() => SabeTecnica(bio, VerboDaRaca),
 				() => bio.Livro.DarComoEnsinada(SkillDaRaca));
 
-		// ---- 6. A PORTA DA SUPER PERFEITA ----
-		Injetar("a porta da SUPER PERFEITA (rebaixando o degrau pra semi-perfeito, ela TEM que "
-				+ "fechar) -- e o `cell3 == 1` do `Cell4()`",
-				() => bio.Ficha.bio_stage = BioAndroids.SemiPerfeito,
-				() => bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, Perfil(bio))
+		// ---- 6. A PORTA DA GOLDEN PERFECT (2026-10-26, no lugar da Super Perfeita) ----
+		GodKiState? kiDivinoDaInjecao = bio.Ficha.godki;
+		Injetar("a porta da GOLDEN PERFECT (com o ki divino desperto, rebaixando o degrau pra semi-perfeito ela TEM que fechar) -- o "
+				+ "\"So o Perfeito\" do dono",
+				() => { bio.Ficha.godki = new GodKiState { awakened = true, mastery = 0 }; bio.Ficha.bio_stage = BioAndroids.SemiPerfeito; },
+				() => bio.Forma.Avaliar("golden_perfect", bio.Ficha.BP, 1, false, Perfil(bio))
 					  == RecusaForma.Pode,
-				() => bio.Ficha.bio_stage = estagioGuardado);
+				() => { bio.Ficha.bio_stage = estagioGuardado; bio.Ficha.godki = kiDivinoDaInjecao; });
 
 		// ---- 7. O NUCLEO INFINITO ----
 		ServerPlayer? robo = ForjarCorpo(host, "Human", "Cobaia do Nucleo", forjados);

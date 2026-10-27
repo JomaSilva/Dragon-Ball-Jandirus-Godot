@@ -393,16 +393,15 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// O CORPO DO FILHO: o `Nascer` de sempre, com a classe mais rara dos pais (`Filhos.ClasseDoFilho`) e o poder herdado -- o BP ganha de
-	/// 1/24 a 1/6 do de cada um (`Genome.StartingBp`) e o potencial escondido ganha os dois inteiros (`hiddenpotential += Father_BP` e
-	/// `+= Parent_BP`, `CharacterCreation.dm:53-58`).
+	/// 1/24 a 1/6 do de cada um (`Genome.StartingBp`). (2026-10-26) O POTENCIAL NAO SE HERDA MAIS -- o dono: *"os filhos q antes herdavam o
+	/// bp dos dois pais como hidden n vao ter mais isso"*: o banco do potencial e o do DU, e enche treinando (`GainKnobs.PotencialDoGanhoMin`).
+	/// Era `hiddenpotential += Father_BP` e `+= Parent_BP` (`CharacterCreation.dm:53-58`).
 	/// </summary>
 	private Fighter NascerDoBebe(CharacterDraft ficha, string nome, BebeACaminho b)
 	{
 		bool herda = !FilhoSemHerancaDeTeste && _racas != null;
 		string classe = herda ? Filhos.ClasseDoFilho(_racas!, b, ficha.ChosenClass, _rng) : "";
-		Fighter f = Nascer(ficha, nome, classe, herda ? b.BpDoPai : 0, herda ? b.BpDaMae : 0);
-		if (herda) f.hiddenpotential += b.BpDoPai + b.BpDaMae;
-		return f;
+		return Nascer(ficha, nome, classe, herda ? b.BpDoPai : 0, herda ? b.BpDaMae : 0);
 	}
 
 	/// <summary>

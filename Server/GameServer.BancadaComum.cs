@@ -82,6 +82,35 @@ public partial class GameServer
 		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.Ficha.godki = antes;
 	}
 
+	/// <summary>
+	/// (2026-10-26) A DISCIPLINA CRAVADA NUM CORPO: aprendida, trilhada e com esta proficiencia real -- o robo das abas confere o cartao da
+	/// tecnica (UI/UE) da aba Forms. Devolve o estado de antes pra o <see cref="DesfazerDisciplinaDeTeste"/>. A ficha lenta sai sozinha.
+	/// </summary>
+	internal (Jandirus.Core.Forms.TipoDeDisciplina? Antes, bool Aprendida, double Real)? CravarDisciplinaDeTeste(int id, Jandirus.Core.Forms.TipoDeDisciplina tipo, double real)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return null;
+		Jandirus.Core.Forms.EstadoDeDisciplina est = EstadoDe(pl, tipo);
+		var antes = (pl.Disciplina, est.Aprendida, est.Real);
+		est.Aprendida = true;
+		est.Real = real;
+		pl.Disciplina = tipo;
+		AplicarDisciplina(pl);
+		pl.SigAtributos = "";
+		return antes;
+	}
+
+	/// <summary>(2026-10-26) Devolve a disciplina de antes do <see cref="CravarDisciplinaDeTeste"/>.</summary>
+	internal void DesfazerDisciplinaDeTeste(int id, Jandirus.Core.Forms.TipoDeDisciplina tipo, (Jandirus.Core.Forms.TipoDeDisciplina? Antes, bool Aprendida, double Real)? antes)
+	{
+		if (antes is not { } a || !_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		Jandirus.Core.Forms.EstadoDeDisciplina est = EstadoDe(pl, tipo);
+		est.Aprendida = a.Aprendida;
+		est.Real = a.Real;
+		pl.Disciplina = a.Antes;
+		AplicarDisciplina(pl);
+		pl.SigAtributos = "";
+	}
+
 	internal double CravarMaestriaDeGravidadeDeTeste(int id, double maestria)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return 0;

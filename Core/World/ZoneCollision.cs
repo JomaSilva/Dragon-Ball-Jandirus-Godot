@@ -517,6 +517,7 @@ public sealed class ZoneCollision
 	public bool Bloqueia(int cx, int cy, ModoDeTravessia modo) =>
 		modo == ModoDeTravessia.PorCima
 			? ForaDoMapaBarraQuemVoa(cx, cy) || ClasseDePredio.BarraQuemVoa(this, cx, cy)
+			  || (ParedeBarraQuemVoa && !Alem.MuroDeixaVoarDeTeste && BlockedCell(cx, cy))
 			: BlockedCell(cx, cy)
 			  || (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy))
 			  || (ClasseDeNuvem.Bloqueia(modo, _nuvemDerruba) && EhNuvem(cx, cy));
@@ -529,6 +530,13 @@ public sealed class ZoneCollision
 	/// seguia pro preto. Fora do mapa e parede pra todo modo, como o <see cref="BlockedCell"/> ja dizia pra quem anda --
 	/// menos onde nao ha borda (<see cref="SemBorda"/>, a Sala do Tempo).
 	/// </summary>
+	/// <summary>
+	/// (2026-10-26) NESTE MAPA TODA PAREDE PARA QUEM VOA ALTO, como para quem anda -- o mapa do Outro Mundo (`Alem.ParedeBarraQuemVoa`):
+	/// sem isto se passava voando por cima do muro do patio do Enma, e a barreira espiritual das portas nao segurava o coracao negro. Ligado
+	/// por quem le o mapa (o `CarregarZonas` do servidor e o `World.MapaCacheado` do cliente), como o <see cref="SemBorda"/>.
+	/// </summary>
+	public bool ParedeBarraQuemVoa;
+
 	private bool ForaDoMapaBarraQuemVoa(int cx, int cy) =>
 		!SemBorda && !QuemVoaSaiDoMapaDeTeste && (cx < 0 || cy < 0 || cx >= Width || cy >= Height);
 

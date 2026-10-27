@@ -279,7 +279,7 @@ public partial class GameServer
 		ServerPlayer plateia = forjar(12, "bancada: quem assiste", mente, PosMental + new Vec2(32, 0), 1_000);
 		DeclararDeTeste(plateia, vitima, Jandirus.Core.Social.Relacao.Bom);
 
-		vitima.Ficha.zenkaiReady = 0;
+		vitima.Ficha.zenkaiGuardado = 100_000;   // (2026-10-26) o banco do Zenkai que a derrota soltaria
 		double bpAntes = vitima.Ficha.BP;
 
 		AoPerderALuta(vitima, algoz, morreu: false);
@@ -303,7 +303,7 @@ public partial class GameServer
 			p.Zone = fora;
 			ZoneList(fora.Hash).Add(p);
 		}
-		vitima.Ficha.zenkaiReady = 0;
+		vitima.Ficha.zenkaiGuardado = 100_000;   // (2026-10-26) o banco do Zenkai que a derrota soltaria
 		bpAntes = vitima.Ficha.BP;
 
 		AoPerderALuta(vitima, algoz, morreu: false);

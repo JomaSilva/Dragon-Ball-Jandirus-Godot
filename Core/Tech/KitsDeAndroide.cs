@@ -49,4 +49,16 @@ public static class KitsDeAndroide
 
 	/// <summary>DEFEITO INJETADO (bancada `--v021teste`, familia X8): os kits servem a qualquer corpo.</summary>
 	public static bool QualquerUmUsaDeTeste;
+
+	// ---- (2026-10-26) O UPGRADE -- o pedido 95c do dono ----
+	/// <summary>
+	/// O ANDROID UPGRADE: o que solta o banco de potencial do androide de absorcao -- o dono: *"os androides de absorçao eles tem uma pool de
+	/// hidden q so libera com tech q da um 'upgrade' neles liberando esse potencial, nao pelos metodos tradicionais"*; e as escolhas dele
+	/// (2026-10-26): um ITEM DA ABA TECH (100 mil zeni, tecnologia 40) que o androide usa em si -- dez segundos parado e sem apanhar, como os
+	/// kits --, soltando 1x o banco (`Stats.GainKnobs.LiberaOUpgrade`), com a hora de recarga dos outros liberadores. O Guru, a Agua, o
+	/// desejo e o Unlock de um jogador continuam recusando o androide de absorcao; o de energia infinita os usa como todo mundo, e o upgrade
+	/// nao e dele.
+	/// </summary>
+	public const string Upgrade = "Android_Upgrade";
+	public const string AcaoUpgrade = "kit_upgrade";
 }

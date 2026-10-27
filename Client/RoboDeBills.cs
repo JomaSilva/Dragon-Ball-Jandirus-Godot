@@ -444,6 +444,9 @@ public partial class RoboDeBills : Node
 		// derrubar o fotografo no ultimo instante da briga da Terra -- depois da ultima cura de la, com o poder do host ja
 		// devolvido --, e ele chegava aqui no chao: "caido, voce nao chama ninguem pra lutar", nove falhas em cascata.
 		srv.ManterOHostDePeDeTeste(eu);
+		// (2026-10-25) O TREINO PEDE O KI DIVINO DESPERTO (o dono): o palco desperta o host aqui, e nao so pro desafio. A recusa de quem nao
+		// despertou e medida pela bancada do servidor (`--billsteste`, o menu).
+		srv.DespertarOHostDeTeste(eu);
 		srv.AoLadoDoDivinoDeTeste(eu, whis: true);
 		for (int i = 0; i < 16 && E?.DicaNaTela != "[E] Whis"; i++) yield return 0.25;
 		Tecla(Key.E);

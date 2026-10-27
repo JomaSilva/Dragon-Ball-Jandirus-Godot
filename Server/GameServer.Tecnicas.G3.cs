@@ -1180,6 +1180,8 @@ public partial class GameServer
 	{
 		CombatState? c = vitima.Combate;
 		if (c == null || dano <= 0 || EhCadaver(vitima) || c.Intocavel) return;
+		// (2026-10-26) QUEM ESTA NA ZONA SEGURA NAO FERE NINGUEM -- o preco que um corpo paga a si mesmo (autor = vitima) continua. Ver `NaZonaSegura`.
+		if (autor != vitima && NaZonaSegura(autor)) return;
 
 		// SEM ALGOZ (autor = vitima: o esmagamento, o vacuo, o preco de uma tecnica) a tag arma, e a BRIGA nao --
 		// ninguem trocou golpe com ninguem. Ver `CombatState.BrigandoComAlguem`.
@@ -1234,7 +1236,7 @@ public partial class GameServer
 		if (fim == FimDoNucleo.Morre && c.Morrer())
 		{
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
-			else ZenkaiPorDerrota(vitima, autor);
+			else ZenkaiPorDerrota(vitima, autor, morreu: true);
 			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} {relato}");
 		}
 		else if (fim == FimDoNucleo.SeDesfaz)
@@ -1242,7 +1244,7 @@ public partial class GameServer
 			if (c.Desfeito) return;
 			c.Desfazer();
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
-			else ZenkaiPorDerrota(vitima, autor);
+			else ZenkaiPorDerrota(vitima, autor, morreu: false);
 			GD.Print($"[server] {autor.Name} DESFEZ {vitima.Name} {relato}");
 		}
 		// O COMA DE QUEM REFAZ MEMBRO (o nucleo DECEPADO) cai aqui tambem -- ver `MeleeResolver.AplicarNoMembro`.
@@ -1250,7 +1252,7 @@ public partial class GameServer
 		{
 			c.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
-			else ZenkaiPorDerrota(vitima, autor);
+			else ZenkaiPorDerrota(vitima, autor, morreu: false);
 		}
 	}
 

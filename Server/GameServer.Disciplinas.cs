@@ -156,8 +156,8 @@ public partial class GameServer
 		foreach (DisciplinaDef def in Disciplinas.Todas)
 		{
 			// (o trono DESTE cargo, direto: a reconciliacao roda pra todo mundo a cada segundo)
-			if (!_tronos.TryGetValue(def.RankQueEnsina, out string? dono)
-				|| !string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase)) continue;
+			// (2026-10-26) o cargo DESTE personagem -- o irmao de conta do Deus nao desperta o poder dele
+			if (!string.Equals(CargoDe(pl), def.RankQueEnsina, StringComparison.OrdinalIgnoreCase)) continue;
 
 			EstadoDe(pl, def.Tipo).Aprendida = true;
 			pl.Disciplina = def.Tipo;

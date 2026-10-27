@@ -354,6 +354,41 @@ public partial class RoboDasAbas
 		}
 		else Checa("PRECONDICAO: o servidor neste processo (`--host`) pra cravar o ki divino", false);
 
+		// ---------------- 3d. A MAESTRIA DA TECNICA NA ABA FORMS (dono, 2026-10-26) ----------------
+		// *"e a maestria da técnica do UE e UI devem aparecer logo abaixo do god ki no mesmo estilo"*. O Ultra Instinto e cravado no servidor
+		// deste processo, aprendido e com uma proficiencia quebrada (42,5%); a ficha lenta a traz, e a aba Forms desenha o cartao com o nome
+		// da tecnica e a barra -- e o cartao vem DEPOIS do "Ki divino".
+		if (Jandirus.Server.GameServer.Instance is { } tecnica)
+		{
+			Jandirus.Core.Stats.GodKiState? kiAntes = tecnica.CravarKiDivinoDeTeste(cli.LocalId, 80);
+			var antes = tecnica.CravarDisciplinaDeTeste(cli.LocalId, Jandirus.Core.Forms.TipoDeDisciplina.UltraInstinct, 42.5);
+			bool chegou = await Ate(() => cli.Atributos.Disciplina == Jandirus.Core.Forms.Disciplinas.Rede(Jandirus.Core.Forms.TipoDeDisciplina.UltraInstinct)
+										&& Math.Abs(cli.Atributos.DiscReal - 42.5) < 0.05 && cli.KiDivino.Desperto, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			string? maestria = menu.ValorDesenhado("Forms", "Maestria da técnica");
+			PanelContainer? cartaoDaTecnica = CartaoComTitulo(pg, "Ultra Instinto");
+			PanelContainer? cartaoDoKi = CartaoComTitulo(pg, "Ki divino");
+			bool depoisDoKi = cartaoDaTecnica != null && cartaoDoKi != null && cartaoDaTecnica.GetIndex() == cartaoDoKi.GetIndex() + 1
+							  && cartaoDaTecnica.GetParent() == cartaoDoKi.GetParent();
+			Checa("**A MAESTRIA DA TECNICA NA ABA FORMS** (o dono, 2026-10-26): com o Ultra Instinto trilhado, o cartao 'Ultra Instinto' com a barra da proficiencia -- LOGO ABAIXO do 'Ki divino'",
+				  chegou && cartaoDaTecnica != null && maestria == $"{cli.Atributos.DiscReal:0.0}%" && depoisDoKi
+				  && DentroDoCartao(LinhaEscrita(pg, "Maestria da técnica"), cartaoDaTecnica),
+				  $"'{maestria}', no fio {cli.Atributos.DiscReal:0.0} (chegou {chegou}); logo abaixo do ki divino {depoisDoKi}");
+			MenuJogo.DisciplinaForaDaAbaFormasDeTeste = true;
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			Injeta("(defeito injetado: o cartao da tecnica fora da aba Forms) a linha da maestria da tecnica some -- a regua de cima REPROVA",
+				   menu.ValorDesenhado("Forms", "Maestria da técnica") == null);
+			MenuJogo.DisciplinaForaDaAbaFormasDeTeste = false;
+			tecnica.DesfazerDisciplinaDeTeste(cli.LocalId, Jandirus.Core.Forms.TipoDeDisciplina.UltraInstinct, antes);
+			tecnica.DesfazerKiDivinoDeTeste(cli.LocalId, kiAntes);
+			await Ate(() => cli.Atributos.Disciplina == 0 || antes is { Antes: not null }, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+		}
+		else Checa("PRECONDICAO: o servidor neste processo (`--host`) pra cravar a disciplina", false);
+
 		// ---------------- 4. AS INJECOES: cada regra recebe uma amostra estragada ----------------
 		Injeta("a regra do multiplicador reprova o texto sem o × ('1,09')", !MultiplicadorBemEscrito("1,09", 1.09));
 		Injeta("...e reprova o numero que nao bate com a ficha ('×1,09' contra 2,0)", !MultiplicadorBemEscrito("×1,09", 2.0));

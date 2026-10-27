@@ -99,7 +99,8 @@ public partial class GameServer
 				_ausencias[vaga] = a;
 				mexeu = true;
 			}
-			if (OnlinePorConta(conta) != null)
+			// (2026-10-26) O PERSONAGEM da vaga esta no jogo -- o irmao de conta jogando nao zera a ausencia de quem carrega o cargo
+			if (OnlineDoTrono(vaga) != null)
 			{
 				if (a.Ms != 0) { a.Ms = 0; mexeu = true; }
 				continue;

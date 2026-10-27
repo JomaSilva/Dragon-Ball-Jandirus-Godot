@@ -85,6 +85,11 @@ public partial class RoboDasAbas
 		string vigor = menu.ValorDesenhado("Stats", "Vigor") ?? "(nulo)";
 		Checa("'Vigor' e a razao VIVA da ficha rapida (a mesma da barra do HUD)", vigor == $"{f.RazaoDeVigor * 100:0}%", $"tela '{vigor}', ficha {f.RazaoDeVigor * 100:0}%");
 
+		// (2026-10-26) O KARMA -- o pedido 106 do dono: a linha da aba Stats diz o karma que a ficha lenta trouxe, com a faixa.
+		string? karma = menu.ValorDesenhado("Stats", "Karma");
+		Checa("'Karma' esta na aba Stats e diz o karma da ficha lenta, com a faixa (o pedido 106)",
+			  karma == MenuJogo.TextoDoKarma(cli.Atributos.Karma), $"tela '{karma}', ficha {cli.Atributos.Karma}");
+
 		// ---- as barras ----
 		List<ProgressBar> barras = BarrasDaAba(pg);
 		Checa("as 4 barras de vitais existem (ProgressBar com meta 'barra': Vida, Ki, Vigor, Nutrição)",

@@ -55,20 +55,34 @@ public partial class Decalques : Node2D
 	/// <summary>Quantos decalques permanentes estao no mapa. So pras bancadas.</summary>
 	public static int PermanentesDeTeste;
 
+	/// <summary>
+	/// (2026-10-26) A FILA DAS MARCAS DE DESTRUICAO -- crateras e trilhas (`Protocol.MarcaDeDestruicao`) --, a terceira, separada das
+	/// outras duas. O dono pediu que elas fiquem *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia ingame"*, e na fila dos 120 isso nao se sustenta: a poeira de uma briga varre
+	/// os 120 lugares em segundos, e a cratera de um dia sairia pelo despejo do mais velho no primeiro minuto. O teto e o do servidor
+	/// (`MarcasNoChao.TetoPorZona`): a tela segura exatamente o que o retrato (`S2C.Marcas`) pode trazer.
+	/// </summary>
+	public const int MaxMarcas = MarcasNoChao.TetoPorZona;
+
+	/// <summary>As marcas no chao, com quando morrem e a VIDA cheia de cada uma (o esmaecer e pela idade -- ver <see cref="TickDasMarcas"/>).</summary>
+	private readonly List<(Node2D No, double Morre, double Vida, Protocol.Decal Tipo)> _marcas = [];
+	private double _relogioDasMarcas;
+
+	/// <summary>Quantas marcas de destruicao estao no chao. So pras bancadas.</summary>
+	public static int MarcasVivasDeTeste;
+
+	/// <summary>Quantas crateras CRESCERAM (o tween de abrir). So pra bancada: a do retrato nasce aberta e nao entra aqui.</summary>
+	public static int CrescimentosDeTeste;
+
 	/// <summary>Quanto cada tipo fica na tela, em segundos.</summary>
 	private static double Prazo(Protocol.Decal t) => t switch
 	{
-		// O DU deixa o sulco 600 tiques (~60 s). Aqui e menos: la o mapa era pequeno e a briga
-		// acontecia num lugar so; um minuto de sulco em cada troca de socos entulha o chao.
-		Protocol.Decal.Sulco or Protocol.Decal.SulcoPonta => 20,
-		Protocol.Decal.Cratera => 18,
-		// A GRANDE FICA MAIS TEMPO. Ela e o buraco de uma transformacao de raiva -- some antes da
-		// luta acabar seria negar o que acabou de acontecer ali.
-		Protocol.Decal.CrateraGrande => 40,
-		// (v0.3.0) A DA GENKIDAMA FICA MAIS AINDA: e o buraco que conta o que aconteceu ali.
-		Protocol.Decal.CrateraEnorme => 90,
-		// (2026-10-18) A DO POD tambem fica: e o buraco que conta que alguem caiu do ceu ali.
-		Protocol.Decal.CrateraDoPod => 90,
+		// ============================ (2026-10-26) AS CRATERAS E A TRILHA FICAM UM DIA DO JOGO ============================
+		// O dono: *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia ingame"*. Eram 20 s
+		// o sulco (o DU deixava 600 tiques), 18 s a cratera, 40 s a grande da raiva e 90 s a da Genkidama e a do pod -- e o argumento de
+		// entao ("um minuto de sulco em cada troca de socos entulha o chao") e de antes da fila propria: hoje elas nao disputam lugar com
+		// a poeira (`_marcas`), e o teto delas e o do servidor. O numero e do CORE, o mesmo que o servidor usa pra expirar a lista.
+		// ==============================================================================================================
+		_ when Protocol.MarcaDeDestruicao(t) => MarcasNoChao.MsNoChao / 1000.0,
 		Protocol.Decal.Fumaca => 2.6,
 		// ============================ O CHAO DANIFICADO NAO SOME ============================
 		// Decisao do dono: a terra revirada FICA. Ela so desaparece quando o jogo reinicia e o
@@ -342,10 +356,13 @@ public partial class Decalques : Node2D
 	{
 		foreach ((Node2D no, _, _) in _vivos) Apagar(no);
 		foreach (Node2D no in _permanentes) Apagar(no);
+		foreach ((Node2D no, _, _, _) in _marcas) Apagar(no);
 		_vivos.Clear();
 		_permanentes.Clear();
+		_marcas.Clear();
 		VivosDeTeste = 0;
 		PermanentesDeTeste = 0;
+		MarcasVivasDeTeste = 0;
 	}
 
 	/// <summary>
@@ -375,8 +392,23 @@ public partial class Decalques : Node2D
 	/// <summary>Quantas ondas de agua estao no chao agora. So pra bancada -- ver <see cref="MaxAgua"/>.</summary>
 	public int AguasVivasDeTeste => Contar(Protocol.Decal.Agua);
 
-	/// <summary>Quantas crateras de pod estao no chao agora. So pra bancada (`--diagcapital`).</summary>
-	public int CraterasDoPodVivasDeTeste => Contar(Protocol.Decal.CrateraDoPod);
+	/// <summary>
+	/// Quantas crateras de pod estao no chao agora. So pra bancada (`--diagcapital`). (2026-10-26) Elas moram na fila das marcas
+	/// desde que as crateras passaram a ficar um dia -- e a pergunta continua a mesma.
+	/// </summary>
+	public int CraterasDoPodVivasDeTeste => Contar(Protocol.Decal.CrateraDoPod) + _marcas.Count(m => m.Tipo == Protocol.Decal.CrateraDoPod);
+
+	/// <summary>(2026-10-26) Quanto falta pra este decalque sumir, em segundos -- nulo se ele nao esta em fila nenhuma com prazo. So pra bancada.</summary>
+	public double? RestaDeTeste(Node2D no)
+	{
+		foreach ((Node2D n, double morre, _, _) in _marcas) if (n == no) return morre - _relogio;
+		foreach ((Node2D n, double morre, _) in _vivos) if (n == no) return morre - _relogio;
+		return null;
+	}
+
+	/// <summary>(2026-10-26) As marcas de destruicao no chao: o tipo, o ponto, quanto falta e a opacidade. So pra bancada.</summary>
+	public List<(Protocol.Decal Tipo, Vector2 Onde, double Resta, float Alfa)> MarcasDeTeste() =>
+		[.. _marcas.Select(m => (m.Tipo, m.No.Position, m.Morre - _relogio, m.No.Modulate.A))];
 
 	/// <summary>Quantos decalques deste tipo estao no chao agora. Ver <see cref="Cota"/>.</summary>
 	private int Contar(Protocol.Decal tipo)
@@ -466,6 +498,8 @@ public partial class Decalques : Node2D
 
 		double prazo = restaSegundos ?? Prazo(tipo);
 		bool permanente = prazo <= 0;
+		// (2026-10-26) A CRATERA E A TRILHA TEM FILA PROPRIA -- ver `_marcas`.
+		bool marca = !permanente && Protocol.MarcaDeDestruicao(tipo);
 
 		// ============================ O TETO DISPARA, E TEM QUE DISPARAR ============================
 		// Sem isto uma briga de dois minutos deixaria centenas de nodes no mapa. O mais VELHO sai --
@@ -481,6 +515,15 @@ public partial class Decalques : Node2D
 			{
 				Apagar(_permanentes[0]);
 				_permanentes.RemoveAt(0);
+			}
+		}
+		else if (marca)
+		{
+			// A FILA DAS MARCAS TEM O TETO DELA, e o despejo e o do mais velho: a marca mais velha e a mais apagada.
+			while (_marcas.Count >= MaxMarcas)
+			{
+				Apagar(_marcas[0].No);
+				_marcas.RemoveAt(0);
 			}
 		}
 		else
@@ -550,7 +593,10 @@ public partial class Decalques : Node2D
 			// o tamanho". Sao DOIS fatores multiplicados, e por isso ela cresce tanto: a folha ja e
 			// 3x maior (96x96 contra o recorte pequeno) e este alvo triplica por cima -- um buraco
 			// de uns 8 tiles, que e o que se ve quando alguem vira Super Saiyajin pela primeira vez.
-			float alvo = (float)GD.RandRange(0.75, 1.15)
+			//
+			// (2026-10-26) O "SORTEIO" E PELO PONTO, e nao mais pelo `GD.RandRange`: a cratera fica um dia no chao e chega pelo retrato
+			// a quem entra depois, e a mesma cratera nao pode ter aberto de um tamanho pra quem viu o golpe e de outro pra quem chegou.
+			float alvo = (float)(0.75 + 0.40 * Dado01(onde))
 					   // 3,0 cobria uns 15 tiles e engolia a tela (o dono fotografou). A folha ja e
 					   // 3x maior que o recorte pequeno, entao este fator MULTIPLICA aquilo -- e o
 					   // erro foi tratar os dois como se fossem um so.
@@ -561,8 +607,15 @@ public partial class Decalques : Node2D
 					   // (2026-10-18) A DO POD: ~1,8x a folha de 96 px, uns 4 a 6 tiles de lado a lado em volta de um pod de um tile. O dono pediu
 					   // "uma cratera grande", e ela abre mais que a grande da raiva (1,4x) -- e bem menos que a da Genkidama.
 					   * (tipo == Protocol.Decal.CrateraDoPod ? 1.8f : 1.0f);
-			s.CreateTween().TweenProperty(s, "scale", new Vector2(alvo, alvo), 0.35)
-				.SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+			// (2026-10-26) A DO RETRATO NASCE ABERTA: ela ja estava no chao quando quem chega a viu, e abrir de novo na frente dele
+			// seria mentir que o golpe foi agora. So a do INSTANTE (sem prazo vindo de fora) cresce.
+			if (restaSegundos is null)
+			{
+				if (!_deEnsaio) CrescimentosDeTeste++;
+				s.CreateTween().TweenProperty(s, "scale", new Vector2(alvo, alvo), 0.35)
+					.SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+			}
+			else s.Scale = new Vector2(alvo, alvo);
 		}
 
 		if (tipo == Protocol.Decal.Fumaca)
@@ -587,6 +640,18 @@ public partial class Decalques : Node2D
 			return s;
 		}
 
+		// (2026-10-26) A MARCA NAO GANHA TWEEN: um dia de intervalo seriam mil tweens vivos (um por cratera e por pedaco de trilha),
+		// processados a cada quadro pra nao fazer nada por 17 minutos. Quem a esmaece e o `TickDasMarcas`, quatro vezes por segundo e
+		// pela IDADE -- a que chega no retrato com cinco minutos de vida ja nasce esmaecida, como esta na tela de quem a viu abrir.
+		if (marca)
+		{
+			double vida = Prazo(tipo);
+			_marcas.Add((s, _relogio + prazo, vida, tipo));
+			Esmaecer(s, prazo, vida);
+			if (!_deEnsaio) MarcasVivasDeTeste = _marcas.Count;
+			return s;
+		}
+
 		// APAGA ESMAECENDO. Sumir de uma vez le como bug de desenho; esmaecer le como marca velha.
 		//
 		// A FUMACA NAO PASSA POR AQUI: ela ja tem o proprio par de tweens (cresce + dissolve), e um
@@ -602,6 +667,65 @@ public partial class Decalques : Node2D
 		_vivos.Add((s, _relogio + prazo, tipo));
 		if (!_deEnsaio) VivosDeTeste = _vivos.Count;
 		return s;
+	}
+
+	/// <summary>
+	/// (2026-10-26) O RELOGIO DAS MARCAS -- a expiracao e o esmaecer das crateras e trilhas de um dia. Quatro vezes por segundo, e nao
+	/// por quadro: mil marcas varridas a cada quadro pra mudar um alfa que anda 1/432 por segundo seria trabalho jogado fora.
+	/// </summary>
+	private void TickDasMarcas(double delta)
+	{
+		if (_marcas.Count == 0) return;
+		_relogioDasMarcas += delta;
+		if (_relogioDasMarcas < 0.25) return;
+		_relogioDasMarcas = 0;
+
+		for (int i = _marcas.Count - 1; i >= 0; i--)
+		{
+			(Node2D no, double morre, double vida, _) = _marcas[i];
+			double resta = morre - _relogio;
+			if (resta <= 0)
+			{
+				Apagar(no);
+				_marcas.RemoveAt(i);
+				continue;
+			}
+			Esmaecer(no, resta, vida);
+		}
+		if (!_deEnsaio) MarcasVivasDeTeste = _marcas.Count;
+	}
+
+	/// <summary>
+	/// (2026-10-26) A OPACIDADE PELA IDADE: cheia ate os 70% da vida, e caindo ate zero nos 30% finais -- a mesma curva do tween dos
+	/// outros decalques (`TweenInterval(prazo * 0.7)` e o apagar em `prazo * 0.3`), so que calculada de quanto FALTA, e nao de quando o
+	/// node nasceu. Por isso a marca que veio no retrato chega com a opacidade da idade dela.
+	/// </summary>
+	private static void Esmaecer(Node2D no, double resta, double vida)
+	{
+		if (!IsInstanceValid(no)) return;
+		float a = (float)Math.Clamp(resta / (vida * 0.3), 0, 1);
+		Color m = no.Modulate;
+		if (Mathf.IsEqualApprox(m.A, a)) return;
+		m.A = a;
+		no.Modulate = m;
+	}
+
+	/// <summary>
+	/// (2026-10-26) UM NUMERO EM [0, 1) TIRADO DO PONTO -- o "sorteio" do tamanho da cratera. FNV-1a das coordenadas arredondadas (pelo
+	/// `int` antes do `uint`: coordenada negativa existe), a mesma familia do embaralhador do `World.Decalques` e do `PecasNoChao.Espalhar`.
+	/// </summary>
+	private static double Dado01(Vector2 onde)
+	{
+		unchecked
+		{
+			uint h = 2166136261u;
+			h = (h ^ (uint)(int)MathF.Round(onde.X)) * 16777619u;
+			h = (h ^ (uint)(int)MathF.Round(onde.Y)) * 16777619u;
+			h ^= h >> 13;
+			h *= 0x5bd1e995u;
+			h ^= h >> 15;
+			return h % 10_000 / 10_000.0;
+		}
 	}
 
 	/// <summary>
@@ -641,6 +765,7 @@ public partial class Decalques : Node2D
 	public override void _Process(double delta)
 	{
 		_relogio += delta;
+		TickDasMarcas(delta);
 		if (_vivos.Count == 0) return;
 
 		// A LISTA E VARRIDA DE TRAS PRA FRENTE porque ela e ordenada por NASCIMENTO, e quem morre

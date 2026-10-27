@@ -89,6 +89,7 @@ public sealed partial class GameServer
 			OCellQueVoltaDoAlem();
 			OVilaoDoInfernoVolta();
 			OMarcoBatido(pl);
+			OMarcoDoCellEm20M(pl);   // (2026-10-26) o dono: a saga do Cell aos 20M, e nao aos 5M
 			AHoraDoChefe();
 			OChefeDeSagaMata();
 			NamekSalvaDoFreezaCaido();   // (2026-10-19) ver `GameServer.NamekSalvaTeste.cs`
@@ -110,6 +111,7 @@ public sealed partial class GameServer
 			VilaoSoNaMemoriaDeTeste = false;
 			MarcoSoDeQuemEstaAquiDeTeste = false;
 			SemAuditoriaDeTeste = false;
+			RegistroVelhoValeDeTeste = false;
 			ChefeMorreAntesDaHoraDeTeste = false;
 			PularSoAFaseDeTeste = false;
 			AgoraEsperaAViradaDeTeste = TropaNaoVemDeTeste = TropaFicaSemOChefeDeTeste = SoldadoComoHostilComumDeTeste = false;
@@ -900,6 +902,65 @@ public sealed partial class GameServer
 		AuditarSagasNoBoot();
 		AfirmarCh("...e a saga MARCADA E NUNCA COMECADA (o `Disparou` sem fase de um save cortado) volta a esperar o marco, do comeco",
 				  cortada is { Disparou: false, Fase: FaseDaSaga.Adormecida, Chefes.Count: 0 }, $"{cortada.Disparou} {cortada.Fase} {cortada.Chefes.Count}");
+
+		pl.Ficha.BP = bpDeVolta;
+		SagasLimpas();
+	}
+
+	// =====================================================================
+	// M2) O MARCO DO CELL EM 20M (2026-10-26)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"Faça com q a saga cell/androides comece quando o bp seja 20m e nao 5m"*. O marco e DADO (`gatilhoBp` no `npcs.json`), entao a
+	/// prova e pelo funil que o tique de producao usa (<see cref="QuemBateOMarco"/>): 19,9M nao bate, 20M bate. E a metade que nao se ve no
+	/// dado: um save de antes pode ter ANOTADO quem bateu os 5M (o registro do marco, que dispara a saga na vez dela) -- a auditoria do boot
+	/// tem que o apagar, e manter o registro de quem bateu os 20M de verdade.
+	/// </summary>
+	private void OMarcoDoCellEm20M(ServerPlayer pl)
+	{
+		GD.Print("[chefes] -- M2) o marco do Cell: a saga dos Androides e do Cell comeca aos 20M de BP base, e nao mais aos 5M --");
+		EloDaSaga? cell = Array.Find(_cadeia, e => e.Id == "cell");
+		if (cell == null) { AfirmarCh("(montagem) a cadeia tem a saga do Cell", false); return; }
+		double bpDeVolta = pl.Ficha.BP;
+
+		// 1. o funil do marco, com o heroi da bancada sozinho no mundo
+		bool Bate(double bp)
+		{
+			pl.Ficha.BP = bp;
+			return QuemBateOMarco(cell) == pl;
+		}
+		bool com5 = Bate(5_000_000), com19 = Bate(19_900_000), com20 = Bate(20_000_000);
+		AfirmarCh("**A SAGA DO CELL COMECA AOS 20M** (*\"Faça com q a saga cell/androides comece quando o bp seja 20m e nao 5m\"*): o marco "
+				  + "dela e 20M de BP base -- com 5M e com 19,9M o heroi nao bate o marco, com 20M bate",
+				  cell.GatilhoBp == 20_000_000 && !com5 && !com19 && com20,
+				  $"marco {cell.GatilhoBp:N0}; 5M {com5}, 19,9M {com19}, 20M {com20}");
+
+		// 2. o registro de antes: a cadeia esperando (a saga do Freeza de Namek em curso), e o save anotou alguem nos 5M
+		const string Velho = "Velho do Marco de 5M", Novo = "Novo do Marco de 20M";
+		(string DoVelho, string DoNovo) Boot()
+		{
+			string depois(string quem, double bpDele)
+			{
+				SagasLimpas();
+				pl.Ficha.BP = 1;
+				EstadoDoElo est = _sagas.Do("cell")!;
+				est.MarcoBatidoPor = quem;
+				est.MarcoBatidoComBp = bpDele;
+				AuditarSagasNoBoot();
+				return est.MarcoBatidoPor;
+			}
+			return (depois(Velho, 5_000_000), depois(Novo, 25_000_000));
+		}
+		var boot = Boot();
+		AfirmarCh("**...E O REGISTRO DOS 5M NAO DISPARA A SAGA**: no boot, o registro de quem bateu o marco VELHO (5M) e apagado; o de quem bateu "
+				  + "os 20M fica",
+				  boot.DoVelho != Velho && boot.DoNovo == Novo, $"{boot}");
+		RegistroVelhoValeDeTeste = true;
+		(string DoVelho, string DoNovo) comODefeito;
+		try { comODefeito = Boot(); }
+		finally { RegistroVelhoValeDeTeste = false; }
+		AfirmarCh("(defeito injetado: o registro velho vale, o jogo de antes) o registro dos 5M sobrevive ao boot -- a regua de cima REPROVA",
+				  comODefeito.DoVelho == Velho, $"{comODefeito}");
 
 		pl.Ficha.BP = bpDeVolta;
 		SagasLimpas();

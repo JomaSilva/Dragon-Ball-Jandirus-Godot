@@ -1,3 +1,4 @@
+using Jandirus.Core.Stats;
 namespace Jandirus.Core.Social;
 
 /// <summary>
@@ -96,69 +97,24 @@ public static class AbsorcaoNamekuseijin
 		Fusao.BpDaFusao(meuBp, bpDoAbsorvido);
 
 	// =====================================================================
-	// N4 -- O NPC. **ISTO E DESENHO NOVO** (o DM nao distingue)
+	// N4 -- O NPC: A FUSAO E UM ZENKAI DO POTENCIAL (2026-10-26)
 	// =====================================================================
 	/// <summary>
-	/// ============================ O DM NAO TEM ESTA REGRA, E O PEDIDO DO DONO TEM ============================
-	/// Medido no `Fusion.dm`: o verb aceita qualquer `mob` do `oview(1)` (`:553`) e a formula so le
-	/// `Loser.BP` (`:264`) -- **nao ha uma linha distinguindo jogador de NPC**. Na pratica fundir com
-	/// NPC nunca acontecia la, mas por ACIDENTE e nao por regra: o aceite e um `input(M, ...)`
-	/// (`:566`) e um mob sem `client` nunca responde "Yes".
+	/// ============================ O NPC NAO DA PODER: ELE SOLTA O SEU POTENCIAL ============================
+	/// O dono: *"faca com q fusao namek com npc seja o mesmo q o zenkai, libera seu potencial (mesmo valor de liberacao do zenkai) fundir com player ai continua o multiplicador atual pelo fato de ter q valer a pena deletar o save"* -- e, perguntado, *"20% a 80%, como o Zenkai"*, *"Sai, fica so o
+	/// potencial"* e *"Sem recarga"*. Absorver um NPC Namekuseijin SOLTA de 20% a 80% do BANCO DO POTENCIAL de quem absorve -- o MESMO
+	/// sorteio que o nocaute faz no banco do Zenkai (`GainKnobs.ZenkaiSoltaMin` e `ZenkaiSoltaMax`), sem o dobro -- e so isso. O BP do NPC
+	/// nao conta mais nada.
 	///
-	/// Entao "NPC da BEM MENOS" e desenho novo. **A FORMA dele nao e**: ela e copiada do unico lugar
-	/// do jogo que ja resolve essa mesma pergunta, a absorcao (`Absorption.dm:50-53`), transcrita:
-	///
-	///     if(M.Player)  usr.absorbadd += (M.BP/50) + M.absorbadd*(M.PowerPcnt/100)*(M.Anger/100)
-	///     else          usr.absorbadd += (usr.bp_gain_base()*BPTick*1/250)
-	///
-	/// Leitura: jogador rende uma FRACAO do BP DELE; NPC rende um filete que **nao escala com quem foi
-	/// comido**. O comentario do proprio DM ja declarava a intencao (`Absorption.dm:7-8`: *"NPCs will
-	/// give lower gains than people"*). O que muda aqui e so a escala -- la e um tique de treino, aqui
-	/// e um gesto de uma vez por hora.
+	/// O QUE SAIU: o ganho de antes era 10% do BP do NPC, com teto de 5% do proprio BP (o "bem menos" do jogador, desenhado em cima da
+	/// absorcao do DM, `Absorption.dm:50-53`), e a recarga proporcional era o freio da escada do vilarejo que o povoamento repoe. Agora o freio
+	/// e o BANCO: ele so enche treinando, meditando e lutando, e cada absorcao leva de 20% a 80% do que sobrou -- a quinta seguida ja quase nao
+	/// rende. Com JOGADOR continua o (meu + dele) x 2 do `Fusion.dm` (<see cref="BpDepoisDeAbsorverJogador"/>): ali alguem apaga o personagem,
+	/// e tem que valer a pena.
 	/// ====================================================================================================
-	///
-	/// O NPC RENDE UMA FRACAO DO BP DELE, e nao a soma dobrada: **10%**. Um NPC Namek de vilarejo tem BP
-	/// de vilarejo, entao na pratica isto e ruido -- que e o ponto do "bem menos". Absorver um NPC forte
-	/// (um chefe de saga Namekuseijin) rende de verdade, e ai o <see cref="TetoDoGanhoDeNpc"/> entra.
 	/// </summary>
-	public const double FracaoDoBpDoNpc = 0.10;
-
-	/// <summary>
-	/// O TETO DO GANHO POR NPC, como fracao do MEU proprio BP: **5%**.
-	///
-	/// ============================ ELE EXISTE POR UM EXPLOIT, E O EXPLOIT E REAL ============================
-	/// O povoamento de planeta REPOE habitante (`GameServer.Povoamento`), e Namek e um planeta de
-	/// Namekuseijin. Sem teto, "absorver o vilarejo" seria uma escada de poder infinita limitada so pela
-	/// paciencia -- e o unico freio seria a recarga (o `FUSION_COOLDOWN` do `Fusion.dm:6`; desde 2026-10-24
-	/// proporcional ao multiplicador, `GainKnobs.RecargaProporcionalMs`), que ja se aplica aqui.
-	///
-	/// Com o teto, a conta fecha: 5% do proprio BP a cada ~2,6 h, no MELHOR caso, contra as horas de treino
-	/// que o mesmo tempo renderia. Absorver NPC vira o que o dono pediu que fosse -- um caminho que
-	/// existe e que vale MUITO menos que o outro.
-	/// ======================================================================================================
-	/// </summary>
-	public const double TetoDoGanhoDeNpc = 0.05;
-
-	/// <summary>
-	/// O BP DEPOIS DE ABSORVER UM NPC. Ver <see cref="FracaoDoBpDoNpc"/> e <see cref="TetoDoGanhoDeNpc"/>.
-	///
-	/// O `Math.Min` E A REGRA E NAO UMA SALVAGUARDA: e ele que faz o resultado depender de QUEM foi
-	/// comido enquanto o NPC e fraco (o caso normal) e parar de depender quando ele e absurdamente
-	/// forte -- que e a unica forma de "escala com o absorvido" e "nao vira escada" caberem juntas.
-	/// </summary>
-	public static double BpDepoisDeAbsorverNpc(double meuBp, double bpDoNpc) =>
-		meuBp + Math.Min(Math.Max(bpDoNpc, 0) * FracaoDoBpDoNpc, Math.Max(meuBp, 0) * TetoDoGanhoDeNpc);
-
-	/// <summary>
-	/// O BP DEPOIS DE ABSORVER, **o funil unico dos dois casos**.
-	///
-	/// Um metodo e nao dois chamados de fora: quem absorve nao deve escolher a formula, deve dizer o
-	/// que absorveu. As duas contas divergindo em um `if` escrito no servidor seria a copia que
-	/// envelhece -- o defeito mais repetido deste port.
-	/// </summary>
-	public static double BpDepoisDeAbsorver(double meuBp, double bpDoAbsorvido, bool ehJogador) =>
-		ehJogador ? BpDepoisDeAbsorverJogador(meuBp, bpDoAbsorvido)
-				  : BpDepoisDeAbsorverNpc(meuBp, bpDoAbsorvido);
+	public static double PotencialQueONpcSolta(double banco, double sorteio01) =>
+		Math.Max(banco, 0) * (GainKnobs.ZenkaiSoltaMin + sorteio01 * (GainKnobs.ZenkaiSoltaMax - GainKnobs.ZenkaiSoltaMin));
 
 	// =====================================================================
 	// N1 e N4 -- O QUE VEM ALEM DO BP ("outros bonus")

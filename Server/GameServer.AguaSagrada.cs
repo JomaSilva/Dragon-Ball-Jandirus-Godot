@@ -42,9 +42,9 @@ public sealed partial class GameServer
 	private void SobreAAguaSagrada(ServerPlayer pl)
 	{
 		if (ObraQueAceita(pl, AguaSagrada.VerboSobre) == null) { Avisar(pl, "não há jarro da Água Ultra Divina por perto."); return; }
-		Avisar(pl, "a Água Ultra Divina aumenta o seu poder de luta e o seu vigor máximo -- mas o corpo precisa de resistência "
-				   + "física pra aguentar. Sem ela, é meio a meio: metade das vezes a água MATA.");
-		Avisar(pl, "só funciona uma vez na vida. Quem já bebeu e sobreviveu só sente gosto de água.");
+		Avisar(pl, "a Água Ultra Divina solta o potencial que você guardou treinando e lutando, e deixa um pouco mais dele em você -- mas "
+				   + "o corpo precisa de resistência física pra aguentar. Sem ela, é meio a meio: metade das vezes a água MATA.");
+		Avisar(pl, "na primeira vez que você aguenta, o vigor máximo sobe. Depois de um gole, uma hora até o próximo.");
 	}
 
 	/// <summary>O `verb/Drink()` (`EarthRanks.dm:187-226`). As fases seguintes sao do <see cref="TickDaAguaSagrada"/>.</summary>
@@ -59,18 +59,16 @@ public sealed partial class GameServer
 		// chamada e um proc a mais correndo -- ali e um furo, e aqui nao ha por que copia-lo.
 		if (_golesDeAgua.Exists(g => g.Id == pl.Id)) { Avisar(pl, "você ainda está com a água na boca."); return; }
 
-		if (pl.Ficha.sacredwater >= 1)
+		// (2026-10-26) A AGUA SE BEBE DE NOVO, DE HORA EM HORA -- o dono: *"repetiveis, 1h de recarga e a agua pode matar"*. O risco vale a
+		// cada gole. O androide de absorcao nao tira nada dela (so uma tech de upgrade solta o banco dele -- `PorQueNaoLibera`).
+		if (PorQueNaoLibera(pl, comRecarga: true, proprio: true, exigeBanco: false) is { } recusa)
 		{
 			Avisar(pl, "você bebe a Água Ultra Divina... e nada acontece.");
-			Avisar(pl, "você já bebeu esta água. Pra você, agora, ela é só água -- com um leve gosto de xixi de gato. Argh.");
+			Avisar(pl, recusa);
 			return;
 		}
 
 		bool aguenta = AguaSagrada.Aguenta(pl.Ficha.Ephysdef, SorteioDaAguaDeTeste ?? _rng.NextDouble());
-
-		// A MARCA E GASTA NO GOLE, E SO POR QUEM AGUENTA: `usr.sacredwater = 1` e a primeira linha do ramo do
-		// sucesso (`:190`). Quem morre pode voltar e tentar de novo.
-		if (aguenta) pl.Ficha.sacredwater = 1;
 
 		Avisar(pl, "você bebe a Água Ultra Divina...");
 		_golesDeAgua.Add(new GoleDeAgua { Id = pl.Id, Fase = 0, Quando = NowMs() + AguaSagrada.MsEntreFalas, Aguenta = aguenta });
@@ -136,32 +134,26 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// O QUE A AGUA DA (`:205-210`): o vigor maximo sobe 20% e, pra quem esta abaixo do proprio teto, o BP sobe
-	/// um quinto do `capcheck(BPMod * relBPmax)` -- a mesma porta de ganho do treino, com os mesmos freios.
+	/// O QUE A AGUA DA. (2026-10-26) O BANCO DO POTENCIAL, COMO NO DU (`Skills.dm:2770-2773`; o dono, o pedido 95): ela SOLTA o banco 1x
+	/// (`LiberarOPotencial`) e POE nele 10% do BP base, minguando a cada gole (`GainKnobs.AguaPoeNoBanco`, dividido pelos goles + 1). O
+	/// vigor maximo sobe 20% so na PRIMEIRA agua que se aguenta (o `sacredwater` do DM, `:205`). Era um quinto do `capcheck(BPMod *
+	/// relBPmax)`, uma vez na vida -- e a quem tinha bilhoes dava bilhoes.
 	/// </summary>
 	private void DarOQueAAguaDa(ServerPlayer pl)
 	{
 		Jandirus.Core.Stats.Fighter f = pl.Ficha;
-		f.maxstamina *= AguaSagrada.GanhoDeVigor;
-		Avisar(pl, "!!* O seu VIGOR aumentou *!!");
-
-		if (f.BP < f.relBPmax)
+		if (f.sacredwater < 1)
 		{
-			double antes = f.BP;
-			f.BP += f.CapCheck(f.BPMod * f.relBPmax) / AguaSagrada.DivisorDoBp;
-
-			// ============================ (2026-10-16) O GANHO SE SENTE, NAO SE LE ============================
-			// O dono: *"Agua sagrada do korin mostra o bp mesmo sem scouter, resolva"*. A frase do DM (*"Battle Power has increased"*,
-			// `EarthRanks.dm:209`) contava o PODER DE LUTA a quem nao tem medidor -- e pela regra principal do BP ninguem sabe dele sem
-			// um. Fecha do jeito que o dono mandou fechar as outras frases de poder (`PoderNaFrase`, 2026-10-12): o numero so com scouter;
-			// sem ele, quanto o corpo cresceu, em porcentagem. O robo de tela (`--diagaguasagrada`) e a `--aguateste` cobram os dois lados.
-			// ==============================================================================================
-			Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, antes, f.BP))
-				? $"!!* O seu PODER DE LUTA aumentou: {antes:N0} -> {f.BP:N0} *!!"
-				: $"!!* Você se sente {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, f.BP)} *!!");
+			f.sacredwater = 1;
+			f.maxstamina *= AguaSagrada.GanhoDeVigor;
+			Avisar(pl, "!!* O seu VIGOR aumentou *!!");
 		}
-		else Avisar(pl, "você é forte demais pra tirar alguma coisa desta água...");
 
+		if (!f.TemPotencialGuardado) Avisar(pl, "não havia potencial guardado pra soltar -- mas a água deixa um pouco dele em você.");
+		LiberarOPotencial(pl, pl, Jandirus.Core.Stats.GainKnobs.LiberaAAgua, autor: "a Água Ultra Divina", exigeBanco: false);
+		f.hiddenpotential += f.BP * Jandirus.Core.Stats.GainKnobs.AguaPoeNoBanco / (f.golesDaAgua + 1);
+		f.golesDaAgua++;
+		f.liberarPotencialEm = NowMs() + Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs;
 		MandarFicha(pl);
 	}
 

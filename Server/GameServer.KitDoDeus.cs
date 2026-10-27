@@ -59,8 +59,8 @@ public partial class GameServer
 	/// </summary>
 	internal bool EhDeusDaDestruicao(ServerPlayer pl) =>
 		_deusesSemDono.Contains(pl.Id)
-		|| (pl.Conta.Length > 0 && _tronos.TryGetValue(KitDoDeus.Cargo, out string? dono)
-			&& string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase));
+		// (2026-10-26) o PERSONAGEM no trono, e nao a conta: o irmao de conta nao e Deus
+		|| (pl.Conta.Length > 0 && OcupaOTrono(KitDoDeus.Cargo, pl));
 
 	/// <summary>
 	/// FAZ DE UM CORPO SEM DONO UM DEUS DA DESTRUICAO (ou desfaz). So vale pra corpo sem `Peer`: jogador ganha o
@@ -215,7 +215,7 @@ public partial class GameServer
 	private void SaudarOCaminhoDoDeus(ServerPlayer pl)
 	{
 		string dono = _tronos.TryGetValue(KitDoDeus.Cargo, out string? conta) ? conta : "";
-		if (dono.Length == 0 || !string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase))
+		if (dono.Length == 0 || !OcupaOTrono(KitDoDeus.Cargo, pl))   // (2026-10-26) o personagem, e nao a conta
 		{
 			// (este corpo nao e o dono: so se anota o trono VAGO, ou o dono que estava la na primeira olhada)
 			if (_tronoVistoPeloKit == null || dono.Length == 0) _tronoVistoPeloKit = dono;

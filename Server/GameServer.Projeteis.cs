@@ -589,6 +589,7 @@ public sealed partial class GameServer
 		{
 			Id = _proximoProjetil++,
 			Dono = pl.Id,
+			DaZonaSegura = NaZonaSegura(pl),   // (2026-10-26) quem atira de dentro da zona segura nao fere ninguem -- ver `NaZonaSegura`
 			Tipo = r.Tipo,
 			Pos = berco,
 			Cauda = berco,
@@ -1690,6 +1691,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool Acertar(Projetil p, ServerPlayer alvo)
 	{
+		// (2026-10-26) O TIRO DE QUEM ESTAVA NA ZONA SEGURA NAO ACERTA NINGUEM: ele atravessa os corpos. Este e o funil dos tres caminhos do
+		// impacto -- o voo (`Colidiu`), o cano (`AcertarQuemEstavaNoCano`: quem esta colado na borda de fora da zona) e o corte do tronco do
+		// raio, que nem chega a cortar (`CortarOndeEncostaram`). Ver `NaZonaSegura`.
+		if (p.DaZonaSegura) return false;
 		// SEM DONO NAO HA IMPACTO, e isso e falha ALTA e nao silenciosa: um tiro cujo atirador sumiu
 		// do `_players` no meio do voo nao tem a quem creditar o dano, e o funil de derrota
 		// (`ResolverDesfecho` -> Zenkai, luto, raiva) precisa dos dois lados. O caminho normal ja
@@ -2143,7 +2148,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void FerirComAExplosao(Projetil p, ServerPlayer dono, ServerPlayer alvo, double fracao)
 	{
-		if (alvo.Combate is not { Intocavel: false } cd || fracao <= 0) return;
+		if (alvo.Combate is not { Intocavel: false } cd || fracao <= 0 || p.DaZonaSegura) return;
 
 		bool defendendo = cd.Bloqueando;
 		double batida = DanoDeKi.Final(p.ModsAgora(), p.BaseDano, p.MaxDano, p.Bp, cd, defendendo, p.Fisico);

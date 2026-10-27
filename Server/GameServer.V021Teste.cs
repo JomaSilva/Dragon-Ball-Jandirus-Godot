@@ -149,7 +149,6 @@ public sealed partial class GameServer
 			AsMaquinasGrandesV21();
 			OTeleporteEAVigilanciaV21();
 			OsCompanheirosV21();
-			OSintetizadorV21();
 			OsKitsDeAndroideV21();
 			OSuperComputadorV21();
 			ABancadaDeCriacaoV21();
@@ -1189,9 +1188,12 @@ public sealed partial class GameServer
 		GainKnobs.MeditarRende = 1;
 		try
 		{
+			// (2026-10-26) O POTENCIAL NAO PINGA MAIS (o banco do DU, o pedido 95): a queixa de 2026-10-13 vinha do pingo, que era quase igual
+			// nas duas atividades. Sem ele, o defeito mostra o que o `MeditarRende` faz: a razao treino/meditar cai a 40% da de fabrica.
 			var igual = Ganhos(50_000);
-			AfirmarV21("(defeito injetado: o meditar rende inteiro) com potencial alto os dois rendem quase o MESMO -- *\"meditar e training tao dano o mesmo bp/s\"*",
-					   igual.Treino < igual.Meditar * 1.25, $"treino +{igual.Treino:0.####}, meditar +{igual.Meditar:0.####} ({igual.Treino / Math.Max(igual.Meditar, 1e-12):0.##}x)");
+			double razaoDeFabrica = comum.Treino / Math.Max(comum.Meditar, 1e-12), razaoInteira = igual.Treino / Math.Max(igual.Meditar, 1e-12);
+			AfirmarV21("(defeito injetado: o meditar rende inteiro) a razao treino/meditar cai a 40% da de fabrica (o 0,4 do `MeditarRende`) -- as reguas de cima medem a de fabrica",
+					   Math.Abs(razaoInteira / razaoDeFabrica - 0.4) < 0.05, $"de fabrica {razaoDeFabrica:0.##}x, inteira {razaoInteira:0.##}x ({razaoInteira / razaoDeFabrica:0.###})");
 		}
 		finally { GainKnobs.MeditarRende = _v21MeditarRendeDeFabrica; }
 

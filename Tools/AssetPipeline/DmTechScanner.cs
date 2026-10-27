@@ -139,6 +139,9 @@ public static class DmTechScanner
 		// ===========================================================================================
 		var lista = todas.Where(c => c.Custo > 0 || c.TechNecessario > 0)
 						 .Where(c => AcimaDoTetoEntraDeTeste || c.TechNecessario <= Jandirus.Core.Tech.CatalogoDeObras.TechMaximoDoDm)
+						 // (2026-10-26) O SINTETIZADOR DE VIRUS SAIU DO JOGO (o pedido 98 do dono): o DM ainda o declara, e uma regeneracao
+						 // do `construcoes.json` o traria de volta. Ver `Jandirus.Core.Tech.Sintetizador`.
+						 .Where(c => c.Id != Jandirus.Core.Tech.Sintetizador.Tipo)
 						 .ToList();
 		lista.AddRange(MobiliaDeMapa());
 

@@ -182,6 +182,12 @@ public sealed partial class GameServer
 		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.Ficha.BP = bp;
 	}
 
+	/// <summary>(2026-10-26) O banco do potencial deste corpo, cravado -- a familia L confere que o renascido o leva.</summary>
+	internal void PalcoV30_Banco(int id, double banco)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.Ficha.hiddenpotential = banco;
+	}
+
 	/// <summary>(v0.3.0, item 30) O Spin Attack deste corpo pelo funil de producao (`GiratorioG7`), com o Ki cheio e a recarga zerada.</summary>
 	internal void PalcoV30_Giro(int id)
 	{
@@ -212,7 +218,7 @@ public sealed partial class GameServer
 	internal (string Conta, string Nome) PalcoV30_QuemE(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? pl) ? (pl.Conta, pl.Name) : ("", "");
 
-	/// <summary>O corpo VIVO desta conta com este nome, o BP base e o potencial oculto dele -- nulo se nao ha.</summary>
+	/// <summary>O corpo VIVO desta conta com este nome, o BP base e o banco do potencial dele -- nulo se nao ha.</summary>
 	internal (int Id, double BP, double Potencial)? PalcoV30_DaConta(string conta, string nome) =>
 		_players.Values.FirstOrDefault(p => string.Equals(p.Conta, conta, StringComparison.OrdinalIgnoreCase)
 											&& string.Equals(p.Name, nome, StringComparison.OrdinalIgnoreCase)
@@ -221,8 +227,8 @@ public sealed partial class GameServer
 			: null;
 
 	/// <summary>
-	/// A conta (a viva, ou a do disco): este slot esta ocupado? E o eco que ela guarda -- o BP de quem reencarnou, que o proximo leva
-	/// como potencial oculto (2026-10-22).
+	/// A conta (a viva, ou a do disco): este slot esta ocupado? E o eco que ela guarda -- o BP base de quem reencarnou, de que o
+	/// proximo leva 10% (2026-10-26, como no DU).
 	/// </summary>
 	internal (bool Ocupado, double? Eco) PalcoV30_Conta(string conta, int slot)
 	{

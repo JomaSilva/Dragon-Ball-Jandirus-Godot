@@ -81,7 +81,7 @@ public partial class GameServer
 		// O DEGRAU DO BIO-ANDROIDE -- a metade "forma perfeita" do gate da Super Perfeita. Zero pra
 		// todo mundo que nao saiu de um tanque, que e o lado seguro (ver `PerfilDeFormas.EstagioBio`).
 		EstagioBio: pl.Ficha.bio_stage,
-		// (2026-10-17) E O MARCO DELE: a Super Perfeita vale o absoluto dela sobre o degrau que ja mora no BP base -- `Catalogo.MultDoBio`.
+		// (2026-10-17) E O MARCO DELE: as divinas do bio valem o absoluto delas sobre o degrau que ja mora no BP base -- `FormaDef.SobreOImperfeito`.
 		MarcoBio: pl.Ficha.bio_marco,
 		// (2026-10-17) A LARVA ESTA SELADA: nenhuma forma por cima da carapaca (`EstadoDeForma.Avaliar`).
 		EmLarva: Jandirus.Core.Races.BioAndroids.EmLarva(pl.Ficha),
@@ -212,15 +212,9 @@ public partial class GameServer
 
 		// A MAIOR DAS DUAS, pelo mesmo motivo do `NivelDaRaivaDe`: um nocaute chegando no meio de um
 		// luto nao pode ENCURTAR nem REBAIXAR o luto, e a raiva que vale e a mais alta que ainda corre.
-		// (v0.2.1) A RAIVA DE UMA INJECAO (`Jandirus.Core.Tech.Sintetizador`): acende numa fracao da folga e SO goteja --
-		// la ela nao arma `rageExpire`, entao nao ha o corte seco dos dois degraus. Funcao do relogio, como o resto.
-		// Ver `ServerPlayer.RaivaDeInjecaoDesde`.
-		double daInjecao = pl.RaivaDeInjecaoDesde == 0 ? 100
-			: Math.Max(100, 100 + folga * (pl.RaivaDeInjecaoFracao - (agora - pl.RaivaDeInjecaoDesde) / 1000.0 / SegundosDeGotejamento));
-
-		return Math.Max(daInjecao, Math.Max(DaJanela(NivelDeRaiva.Extrema, pl.FuriaExtremaAte),
-											Math.Max(DaJanela(NivelDeRaiva.Comum, pl.RaivaComumAte),
-													 DaJanela(NivelDeRaiva.Irritado, pl.IrritadoAte))));
+		return Math.Max(DaJanela(NivelDeRaiva.Extrema, pl.FuriaExtremaAte),
+						Math.Max(DaJanela(NivelDeRaiva.Comum, pl.RaivaComumAte),
+								 DaJanela(NivelDeRaiva.Irritado, pl.IrritadoAte)));
 	}
 
 	/// <summary>
@@ -574,7 +568,6 @@ public partial class GameServer
 		pl.FuriaExtremaAte = 0;
 		pl.RaivaComumAte = 0;
 		pl.IrritadoAte = 0;
-		pl.RaivaDeInjecaoDesde = 0;   // (v0.2.1) a raiva de injecao tambem: meditar acalma TODA raiva
 		pl.Ficha.Anger = 100;
 
 		// O PODER CAI JA (o buff da raiva saiu da conta), e a ficha do dono mostra na hora -- sem isto o
@@ -854,7 +847,7 @@ public partial class GameServer
 		AplicarForma(pl);
 		Avisar(pl, recuo == Catalogo.IdBase
 			? "voce volta ao normal."
-			: $"voce recua para {Catalogo.NomeDe(Catalogo.Def(recuo), Dominou(pl, recuo))}.");
+			: $"voce recua para {Catalogo.NomeDe(Catalogo.Def(recuo), Dominou(pl, recuo), pl.Race)}.");
 		AnunciarForma(pl, antes, recuo, estreou);
 	}
 
@@ -956,7 +949,7 @@ public partial class GameServer
 		// lista de ids pelo mesmo motivo do `NoCaminhoDoC`: quem acrescentar um ramo lateral novo nao
 		// precisa vir reescrever esta frase.
 		if (pl.Forma.Def is { ForaDoTronco: true } atual)
-			Avisar(pl, $"voce continua em {Catalogo.NomeDe(atual, Dominou(pl, atual.Id))} -- isto e "
+			Avisar(pl, $"voce continua em {Catalogo.NomeDe(atual, Dominou(pl, atual.Id), pl.Race)} -- isto e "
 					 + "uma preferencia, nao uma transformacao. O proximo C te tira dai.");
 	}
 
@@ -1045,7 +1038,7 @@ public partial class GameServer
 
 		// `pelaTecla`: a forma divina ja usada e a com 50% de maestria nela vao direto (2026-10-23) -- ver o cabecalho
 		RecusaForma r = est.Avaliar(id, pl.Ficha.BP, kiFracao, caido: false, perfil, pelaTecla: true);
-		if (r != RecusaForma.Pode) { Avisar(pl, FraseDaRecusa(est, d, r)); return; }
+		if (r != RecusaForma.Pode) { Avisar(pl, FraseDaRecusa(est, d, r, pl.Race)); return; }
 
 		EntrarNaForma(pl, d);
 	}
@@ -1188,7 +1181,8 @@ public partial class GameServer
 		// forma passa por aqui --, e e a segunda metade do pedido do dono: quem dominou o Super
 		// Saiyajin tem que ouvir "Super Saiyajin Grade 4" no mesmo instante em que o cabelo vira o
 		// `SSjFP`. Os dois saem do mesmo fato (`Dominou`), que e o mesmo que vai no `S2C.Forma`.
-		string nome = Catalogo.NomeDe(alvo, Dominou(pl, alvo.Id));
+		// (2026-10-26) E PELA RACA: o SSJ2 e o SSJ3 do bio-androide se anunciam "Super Perfeito" e "Super Perfeito 2" (`Catalogo.NomeNoBio`).
+		string nome = Catalogo.NomeDe(alvo, Dominou(pl, alvo.Id), pl.Race);
 		Avisar(pl, primeira
 			? $"VOCE DESPERTA: {nome}!"
 			: $"{nome} (x{mostrado:0.##}).");
@@ -1247,7 +1241,7 @@ public partial class GameServer
 		}
 		if (candidato == null) return "nao ha mais degrau acima deste.";
 
-		return FraseDaRecusa(est, candidato, pior);
+		return FraseDaRecusa(est, candidato, pior, pl.Race);
 	}
 
 	/// <summary>
@@ -1265,11 +1259,12 @@ public partial class GameServer
 	/// graca o que o jogo quer que se descubra tentando). Uma copia esquecida teria vazado o numero.
 	/// ==============================================================================================================
 	/// </summary>
-	private string FraseDaRecusa(EstadoDeForma est, FormaDef candidato, RecusaForma pior)
+	/// <param name="raca">(2026-10-26) A raca de quem ouve: o SSJ2 e o SSJ3 do bio-androide tem nome proprio (`Catalogo.NomeNoBio`).</param>
+	private string FraseDaRecusa(EstadoDeForma est, FormaDef candidato, RecusaForma pior, string raca)
 	{
-		string nome = Catalogo.NomeDe(candidato, est.Maestria);
+		string nome = Catalogo.NomeDe(candidato, est.Maestria, raca);
 		string anterior = Catalogo.Anterior(candidato) is { } ant
-			? Catalogo.NomeDe(ant, est.Maestria) : "a forma anterior";
+			? Catalogo.NomeDe(ant, est.Maestria, raca) : "a forma anterior";
 
 		// ============================ A MAESTRIA NEM SEMPRE E DO DEGRAU ANTERIOR ============================
 		// `PedeMaestriaDe` existe justamente pra apontar pra OUTRA forma, e o SSJ4 e o caso: ele
@@ -1279,7 +1274,7 @@ public partial class GameServer
 		// mentindo, que e pior que nao existir.
 		// ================================================================================================
 		FormaDef? cobra = Catalogo.Def(candidato.PedeMaestriaDe) ?? Catalogo.Anterior(candidato);
-		string deQuem = cobra != null ? Catalogo.NomeDe(cobra, est.Maestria) : anterior;
+		string deQuem = cobra != null ? Catalogo.NomeDe(cobra, est.Maestria, raca) : anterior;
 		double tenho = est.Maestria.De(cobra?.Id);
 
 		return pior switch
@@ -1295,7 +1290,7 @@ public partial class GameServer
 			RecusaForma.SemFormaAnterior =>
 				$"{nome} exige que voce ja tenha assumido "
 				+ $"{(Catalogo.Def(candidato.PedeFormaDespertada) is { } exigida
-					   ? Catalogo.NomeDe(exigida, est.Maestria) : "outra forma")} ao menos uma vez.",
+					   ? Catalogo.NomeDe(exigida, est.Maestria, raca) : "outra forma")} ao menos uma vez.",
 			// (2026-10-16) O `0` E O KI DIVINO DESPERTO (o SSG, o Limit Breaker do Primal): a frase diz isso, e nao "0% de maestria"
 			RecusaForma.SemGodKi => candidato.PedeGodKi <= 0
 				? $"{nome} pede o ki divino desperto."
@@ -1692,7 +1687,10 @@ public partial class GameServer
 
 		// (v0.4.0) vezes o dreno racial (False Advantage 0,5; Unmatched Ferocity 0; Primal Evolution; o Demonic 1,1) -- `GameServer.Passivas`
 		// (2026-10-25) E PELA BARRA: abaixar o poder alivia o consumo conforme a maestria -- ver `Catalogo.DrenoPorSegundo` com a liberacao
-		double dreno = est.DrenoPorSegundo(LiberacaoDoPoder(pl)) * pl.Ficha.MaxKi * dt * pl.Racial.Efeito.Dreno;
+		// (2026-10-26) E EM PONTOS DE KI, e nao mais numa fatia fixa do tanque -- o pedido 93 do dono: a forma tira os pontos que tirava de
+		// quem tem o BP em que ela libera, e quem tem mais Ki paga uma fatia menor (e quem tem menos, uma maior: pontos puros, o dono). Ver
+		// `Catalogo.PontosDeDrenoPorSegundo`.
+		double dreno = est.PontosDeDrenoPorSegundo(LiberacaoDoPoder(pl)) * dt * pl.Racial.Efeito.Dreno;
 		pl.Ficha.Ki -= dreno;
 
 		// (2026-10-19) A ESCADA DO FROST DEMON TAMBEM NAO CAI POR FALTA DE KI -- ver `FrostNaoCaiPorKi`.
@@ -1731,7 +1729,7 @@ public partial class GameServer
 			// O NOME SAI DO FUNIL, e aqui isso muda o texto de verdade: quem acaba de cruzar os 100%
 			// no SSJ1 le "Super Saiyajin Grade 4: forma DOMINADA" -- o nome novo chega junto com o
 			// marco que o criou, e nao uma transformacao depois.
-			Avisar(pl, $"{Catalogo.NomeDe(est.Def, Dominou(pl, est.Atual))}: {marco}.");
+			Avisar(pl, $"{Catalogo.NomeDe(est.Def, Dominou(pl, est.Atual), pl.Race)}: {marco}.");
 			GD.Print($"[server] {pl.Name}: {est.Atual} -> {marco}");
 		}
 
@@ -1754,7 +1752,7 @@ public partial class GameServer
 		if (treina && TreinaTambemDe(est.Def) is { Length: > 0 } outra
 			&& SubirMaestriaDaZona(pl, outra, Catalogo.MaestriaPorSegundo, dt, out string marcoDaOutra))
 		{
-			Avisar(pl, $"{Catalogo.NomeDe(Catalogo.Def(outra), Dominou(pl, outra))}: {marcoDaOutra}.");
+			Avisar(pl, $"{Catalogo.NomeDe(Catalogo.Def(outra), Dominou(pl, outra), pl.Race)}: {marcoDaOutra}.");
 			GD.Print($"[server] {pl.Name}: {outra} -> {marcoDaOutra} (treinado no {est.Atual})");
 		}
 

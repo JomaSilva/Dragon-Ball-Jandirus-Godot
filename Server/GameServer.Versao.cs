@@ -357,6 +357,10 @@ public partial class GameServer
 		// chefe no disco e o reinicio, o Cell que volta do alem, o vilao do Inferno, o marco batido e a auditoria do boot. O jogador entra pela
 		// porta. Ver `GameServer.ChefesTeste.cs`.
 		if (Array.IndexOf(args, "--chefesteste") >= 0) RodarBancadaDosChefes(porta);
+		// `--campeaoteste`: (2026-10-26) o CAMPEAO DO MUNDO ANTERIOR -- a limpeza que o guarda, os 50% que o acordam na Terra, o reinicio, a
+		// derrota com o premio e a vez unica, a limpeza seguinte e o verbo do admin. Numa pasta de saves temporaria; os jogadores entram pela
+		// porta. Ver `GameServer.CampeaoDoWipeTeste.cs`.
+		if (Array.IndexOf(args, "--campeaoteste") >= 0) RodarBancadaDoCampeao(porta);
 		// `--pesosteste`: (2026-10-18) os pesos com estado no id (dois pesos, dois itens; o que cai e o que se pega e o mesmo peso; a migracao do
 		// save de antes) e a maestria de gravidade que o peso travava. O jogador entra pela porta. Ver `GameServer.PesosTeste.cs`.
 		if (Array.IndexOf(args, "--pesosteste") >= 0) RodarBancadaDosPesos(porta);

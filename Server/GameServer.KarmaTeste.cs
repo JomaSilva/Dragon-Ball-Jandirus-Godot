@@ -35,8 +35,57 @@ public partial class GameServer
 {
 	private const int IdBaseDoKarma = 90_900;
 
+	/// <summary>
+	/// (2026-10-26) O KARMA E A REPUTACAO NA FICHA LENTA -- o pedido 106 do dono: a aba Stats mostra o karma, e a aba World a reputacao com o
+	/// povo do planeta de agora. Os dois so existiam no servidor; aqui se mede o que sai no FIO (`EscutaDeAtributos`), no host de verdade --
+	/// o karma do personagem e a reputacao da conta com o mundo onde o corpo esta. Tudo devolvido no `finally`.
+	/// </summary>
+	private void OKarmaEAReputacaoNaFicha(ServerPlayer host, Action<string, bool, string> Checa)
+	{
+		int karmaAntes = host.Karma;
+		var planeta = CorpoDaZona(host.Zone);
+		string chave = planeta?.Nome ?? "";
+		bool tinha = _reputacao.TryGetValue(chave, out Dictionary<string, double>? livroAntes) && livroAntes.ContainsKey(host.Conta);
+		double repAntes = tinha ? livroAntes![host.Conta] : 0;
+		List<Jandirus.Net.Protocol.AtributosState>? escutaAntes = EscutaDeAtributos;
+		EscutaDeAtributos = [];
+		try
+		{
+			Checa("PRECONDICAO: o host da bancada esta num MUNDO com povo (senao nao ha reputacao a mostrar)", planeta != null, host.Zone.Name);
+			host.Karma = -37;
+			if (planeta != null)
+			{
+				if (!_reputacao.TryGetValue(chave, out Dictionary<string, double>? livro))
+					_reputacao[chave] = livro = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+				livro[host.Conta] = 23;
+			}
+			host.SigAtributos = "";
+			MandarAtributos(host);
+			Jandirus.Net.Protocol.AtributosState? a = EscutaDeAtributos.Count > 0 ? EscutaDeAtributos[^1] : null;
+			Checa("a FICHA LENTA leva o KARMA do personagem -- a linha 'Karma' da aba Stats (o pedido 106)",
+				  a is { Karma: -37 }, $"{a?.Karma}");
+			Checa("...e a REPUTACAO da conta com o povo do planeta onde o corpo esta -- o cartao 'Reputação' da aba World",
+				  planeta != null && a is { TemReputacao: true } x && Math.Abs(x.Reputacao - 23) < 0.01,
+				  $"planeta '{chave}': tem {a?.TemReputacao}, {a?.Reputacao}");
+		}
+		finally
+		{
+			host.Karma = karmaAntes;
+			if (planeta != null && _reputacao.TryGetValue(chave, out Dictionary<string, double>? livro))
+			{
+				if (tinha) livro[host.Conta] = repAntes;
+				else livro.Remove(host.Conta);
+			}
+			EscutaDeAtributos = escutaAntes;
+			host.SigAtributos = "";
+		}
+	}
+
 	private void OKarmaAoVivo(ServerPlayer host, Action<string, bool, string> Checa)
 	{
+		// (2026-10-26) PRIMEIRO A FICHA LENTA: o karma e a reputacao que as abas Stats e World mostram -- o pedido 106.
+		OKarmaEAReputacaoNaFicha(host, Checa);
+
 		ZoneKey zona = ZoneKey.Premade(
 			Espaco.PreFeitos().Select(p => p.Nome)
 				.FirstOrDefault(n => !_players.Values.Any(

@@ -147,6 +147,50 @@ public partial class RoboDasAbas
 				Image? f2 = await Foto();
 				await Guardar("people-02-retrato", f2);
 
+				// (2026-10-26) A BUSCA DE CONHECIDOS -- o dono: *"alem de ter uma forma de pesquisar pessoas na aba people"*. Sem acento e
+				// sem caixa, por pedaco do nome: "RETRA" deixa so a Retratada (e esvazia o "So de vista"); "vista" deixa a NuncaVista e a
+				// SoDeVista; "zzz" nao deixa ninguem e diz que ninguem casa; vazia, volta tudo.
+				{
+					List<string> Nomes() => menu.PaginaDeTeste("People") is { } pagina
+						? [.. CartoesDeSecao(pagina, "pessoa").Select(c => Rotulos(c).Select(l => l.Text).FirstOrDefault(t => t is "Retratada" or "NuncaVista") ?? "?")]
+						: [];
+					List<string> DeVista() => menu.PaginaDeTeste("People") is { } pagina && CartaoComTitulo(pagina, "Só de vista") is { } v ? PilulasEm(v) : [];
+					async System.Threading.Tasks.Task Buscar(string texto)
+					{
+						LineEdit? campo = menu.PaginaDeTeste("People") is { } pagina
+							? Todos(pagina).OfType<LineEdit>().FirstOrDefault(l => !l.IsQueuedForDeletion() && l.PlaceholderText == MenuJogo.DicaDaBuscaDeGente)
+							: null;
+						if (campo == null) { Checa($"(montagem) a caixa \"{MenuJogo.DicaDaBuscaDeGente}\" existe", false); return; }
+						campo.Text = texto;
+						campo.EmitSignal(LineEdit.SignalName.TextChanged, texto);
+						await Quadros(4);
+					}
+					await Buscar("RETRA");
+					List<string> soRetratada = Nomes(), vistaComRetra = DeVista();
+					await Guardar("pedido96-busca", await Foto());
+					await Buscar("vista");
+					List<string> soVista = Nomes(), vistaComVista = DeVista();
+					await Buscar("zzz");
+					bool ninguem = Nomes().Count == 0 && DeVista().Count == 0 && menu.PaginaDeTeste("People") is { } pz && CartaoComTitulo(pz, "Busca") != null;
+					await Buscar("");
+					List<string> todos = Nomes();
+					Checa("**A BUSCA DE CONHECIDOS** (o dono, 2026-10-26): \"RETRA\" deixa so a Retratada (e nenhum 'Só de vista'); \"vista\" deixa a NuncaVista e a SoDeVista; \"zzz\" nao deixa ninguem e diz que ninguem casa; vazia, volta tudo",
+						  soRetratada.SequenceEqual(["Retratada"]) && vistaComRetra.Count == 0 && soVista.SequenceEqual(["NuncaVista"])
+						  && vistaComVista.SequenceEqual(["SoDeVista"]) && ninguem && todos.Count == 2,
+						  $"RETRA [{string.Join(",", soRetratada)}|{string.Join(",", vistaComRetra)}]; vista [{string.Join(",", soVista)}|{string.Join(",", vistaComVista)}]; zzz {ninguem}; vazia {todos.Count}");
+					MenuJogo.BuscaDeGenteCegaDeTeste = true;
+					await Buscar("RETRA");
+					Injeta("(defeito injetado: a busca nao filtra) \"RETRA\" deixa os dois cartoes -- a regua de cima REPROVA", Nomes().Count == 2);
+					MenuJogo.BuscaDeGenteCegaDeTeste = false;
+					await Buscar("");
+				}
+
+				// A BUSCA REDESENHOU A PAGINA (seis vezes): o `boneco` de cima e de um cartao que ja saiu da arvore, parado na fase em que
+				// saiu -- medir o relogio por ele daria a piscada "adiantada" pelo tempo da busca. O relogio de baixo mede o retrato de AGORA.
+				pg = menu.PaginaDeTeste("People");
+				cartoes = pg != null ? [.. CartoesDeSecao(pg, "pessoa")] : [];
+				boneco = cartoes.Select(c => Todos(c).OfType<CharacterVisual>().FirstOrDefault(v => !v.IsQueuedForDeletion())).FirstOrDefault(v => v != null);
+
 				// O RELOGIO DO RETRATO E O DO MUNDO: remontar a aba nao reinicia a piscada (dono, 2026-09-05).
 				double fase1 = boneco?.FaseDoCorpoDeTeste ?? -1, ciclo = boneco?.CicloDoCorpoDeTeste ?? 0;
 				ulong t1 = Time.GetTicksMsec();

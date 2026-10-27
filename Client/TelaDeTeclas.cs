@@ -293,7 +293,7 @@ public partial class TelaDeTeclas : CanvasLayer
 
 		// ---------------------------------------------------------- transformacoes
 		FormaDef[] formas = [.. FormasDespertas.Minhas()];
-		var visiveis = formas.Where(d => Casa(Catalogo.NomeDe(d, new Maestrias()), busca)).ToArray();
+		var visiveis = formas.Where(d => Casa(Catalogo.NomeDe(d, new Maestrias(), GameClient.Instance?.Atributos.Raca), busca)).ToArray();
 
 		Secao("Transformacoes");
 		if (formas.Length == 0)
@@ -310,7 +310,7 @@ public partial class TelaDeTeclas : CanvasLayer
 		{
 			foreach (FormaDef d in visiveis)
 			{
-				string nome = Catalogo.NomeDe(d, new Maestrias());
+				string nome = Catalogo.NomeDe(d, new Maestrias(), GameClient.Instance?.Atributos.Raca);
 				Key tem = Teclas.TeclaDo("forma", d.Id);
 				Linha(new Alvo("", "forma", d.Id, nome), tem == Key.None ? "-- sem tecla --" : Teclas.Nome(tem), false);
 			}

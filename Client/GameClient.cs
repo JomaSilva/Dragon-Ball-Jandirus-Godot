@@ -660,6 +660,19 @@ public partial class GameClient : Node
 	/// <summary>Chegou um retrato novo de pecas (ver <see cref="PecasDaZona"/>).</summary>
 	public event Action? PecasChegaram;
 
+	/// <summary>(2026-10-26) Uma marca de destruicao no chao (cratera ou trilha), como o retrato da zona a descreve. Ver <see cref="MarcasDaZona"/>.</summary>
+	public readonly record struct MarcaNoChaoInfo(Protocol.Decal Tipo, Vec2 Onde, Facing Dir, int RestanteMs);
+
+	/// <summary>
+	/// (2026-10-26) O RETRATO DAS MARCAS DE DESTRUICAO NO CHAO (`S2C.Marcas`) -- as crateras e as trilhas que ficam um dia do jogo. O
+	/// irmao do <see cref="PecasDaZona"/>, guardado pelo mesmo motivo: no login ele chega antes de o `World` existir, e na troca de zona
+	/// antes de o mapa novo montar. Quem planta e o `World.Decalques`, quando a zona dele bater com a do retrato.
+	/// </summary>
+	public (ulong Zona, List<MarcaNoChaoInfo> Marcas) MarcasDaZona { get; private set; } = (0, []);
+
+	/// <summary>Chegou um retrato novo de marcas (ver <see cref="MarcasDaZona"/>).</summary>
+	public event Action? MarcasChegaram;
+
 	/// <summary>
 	/// O QUE EU APRENDI e quantos marcos tenho. Chega quando muda, como o corpo e os atributos.
 	/// </summary>
@@ -2693,6 +2706,20 @@ public partial class GameClient : Node
 					l.Add(new PecaNoChaoInfo((PecaDeCorpo)reader.GetByte(), reader.GetVec(), reader.GetInt()));
 				PecasDaZona = (zona, l);
 				PecasChegaram?.Invoke();
+				break;
+			}
+
+			// (2026-10-26) O RETRATO DAS MARCAS DE DESTRUICAO de uma zona -- o mesmo escritor do servidor (`GameServer.PacoteDeMarcas`),
+			// lido na mesma ordem. Ver `MarcasDaZona`.
+			case Protocol.S2C.Marcas:
+			{
+				ulong zona = reader.GetULong();
+				int n = reader.GetUShort();
+				var l = new List<MarcaNoChaoInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new MarcaNoChaoInfo((Protocol.Decal)reader.GetByte(), reader.GetVec(), (Facing)reader.GetByte(), reader.GetInt()));
+				MarcasDaZona = (zona, l);
+				MarcasChegaram?.Invoke();
 				break;
 			}
 

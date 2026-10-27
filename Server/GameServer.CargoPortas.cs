@@ -47,21 +47,23 @@ public partial class GameServer
 			foreach (ServerPlayer o in _players.Values)
 				Mandar(o, Protocol.Fala.Sistema, "", via, falante: null);
 
-		string vagaVelha = VagaDaConta(pl.Conta);
+		string vagaVelha = VagaDe(pl);
 		string largou = CargoDaVaga(vagaVelha);
-		if (vagaVelha.Length > 0) _tronos.Remove(vagaVelha);
+		if (vagaVelha.Length > 0) Desocupar(vagaVelha);
+		// (2026-10-26) o OUTRO personagem da mesma conta neste cargo sai dele -- o cargo nao se repete na conta (ver `Outorgar`)
+		foreach (string v in VagasDe(r).ToList())
+			if (_tronos.TryGetValue(v, out string? c) && string.Equals(c, pl.Conta, StringComparison.OrdinalIgnoreCase)) Desocupar(v);
 
 		// (2026-10-16) A VAGA LIVRE, se o cargo tiver (o Kaioshin, `RankDef.Vagas`); senao a primeira, e o dono dela sai.
 		string vaga = VagaLivre(r) ?? r.Chave;
-		string antigo = _tronos.TryGetValue(vaga, out string? d) ? d : "";
+		ServerPlayer? velho = OnlineDoTrono(vaga);   // (2026-10-26) o PERSONAGEM que estava nela, e nao qualquer um da conta
 
-		_tronos[vaga] = pl.Conta;
+		Ocupar(vaga, pl);
 		SalvarCargos();
 
 		// O EX-DONO PERDE O KIT NA HORA. Sem esta linha ele so o perderia no proximo tique de
 		// reconciliacao -- e num duelo pelo titulo isso e uma janela em que dois "Deuses" existem.
-		if (antigo.Length > 0 && !string.Equals(antigo, pl.Conta, StringComparison.OrdinalIgnoreCase)
-			&& OnlinePorConta(antigo) is { } velho)
+		if (velho != null && velho != pl)
 		{
 			Avisar(velho, $"voce nao e mais {r.Nome}.");
 			ReconciliarDadiva(velho);
@@ -89,12 +91,17 @@ public partial class GameServer
 	{
 		RankDef? r = Cargos.Get(chave);
 		if (r == null) return false;
-		string vaga = quem.Length > 0 && string.Equals(CargoDe(quem), r.Chave, StringComparison.OrdinalIgnoreCase)
-			? VagaDaConta(quem)
-			: VagasDe(r).FirstOrDefault(v => _tronos.TryGetValue(v, out string? x) && x.Length > 0) ?? "";
+		// (2026-10-26) A VAGA DESTA CONTA NESTE CARGO, direto: a mesma conta nao tem duas no mesmo cargo, entao ela e uma so -- e o
+		// `CargoDe(conta)` responderia pelo personagem que esta no jogo, que pode ser o irmao de conta.
+		string vaga = (quem.Length > 0
+			? VagasDe(r).FirstOrDefault(v => _tronos.TryGetValue(v, out string? x) && string.Equals(x, quem, StringComparison.OrdinalIgnoreCase))
+			: null)
+			?? VagasDe(r).FirstOrDefault(v => _tronos.TryGetValue(v, out string? x) && x.Length > 0) ?? "";
 		if (vaga.Length == 0 || !_tronos.TryGetValue(vaga, out string? conta) || conta.Length == 0) return false;
+		ServerPlayer? ex = OnlineDoTrono(vaga);   // (2026-10-26) o personagem, antes de a vaga esvaziar
+		string nomeDoEx = NomeDoTrono(vaga);
 
-		_tronos.Remove(vaga);
+		Desocupar(vaga);
 		SalvarCargos();
 
 		// O TITULO EM DISPUTA TEM RELOGIO PROPRIO (carencia, adiamentos, tarefas), e ele nao pode
@@ -102,7 +109,7 @@ public partial class GameServer
 		if (string.Equals(r.Chave, CargoEmDisputa, StringComparison.OrdinalIgnoreCase))
 			LimparEstadoDoTitulo();
 
-		if (OnlinePorConta(conta) is { } ex)
+		if (ex != null)
 		{
 			Avisar(ex, $"voce foi DESTITUIDO de {r.Nome}. ({motivo}) Todo o poder do cargo se esvai.");
 			ReconciliarDadiva(ex);
@@ -112,7 +119,7 @@ public partial class GameServer
 		foreach (ServerPlayer o in _players.Values)
 		{
 			Mandar(o, Protocol.Fala.Sistema, "",
-				$"{NomeDoDono(conta)} perdeu o cargo de {r.Nome}. ({motivo}) O trono esta VAGO.", falante: null);
+				$"{nomeDoEx} perdeu o cargo de {r.Nome}. ({motivo}) O trono esta VAGO.", falante: null);
 			MandarCargos(o);
 		}
 		return true;
@@ -175,7 +182,7 @@ public partial class GameServer
 		// pelo mesmo argumento do cabecalho deste metodo.
 		ReconciliarOKitDoDeus(pl);
 
-		string[] kit = DadivaDeCargo.De(CargoDe(pl.Conta));
+		string[] kit = DadivaDeCargo.De(CargoDe(pl));
 		bool mudou = false;
 		// (2026-10-19) O APRENDIZ DE KAIOSHIN COMPRA na arvore dele duas skills que sao de cargo (a Cura e o Ver Mortos): com o vinculo de
 		// pe, o passo 1 nao as toca. Quando ele cai, quem as tira -- devolvendo os Marcos -- e o `DesfazerOAprendizado`.
@@ -463,8 +470,8 @@ public partial class GameServer
 			return;
 		}
 
-		string? nao = Nomeacao.PorQueNao(CargoDe(pl.Conta), assento, alvo.Race,
-										 alvo.Ficha.Genoma?.MajorityRace ?? alvo.Race, CargoDe(alvo.Conta));
+		string? nao = Nomeacao.PorQueNao(CargoDe(pl), assento, alvo.Race,
+										 alvo.Ficha.Genoma?.MajorityRace ?? alvo.Race, CargoDe(alvo));
 		if (nao != null) { Avisar(pl, $"nao da: {nao}."); return; }
 
 		_convitesDeAnciao[alvo.Conta] = (assento, pl.Conta);
@@ -498,7 +505,7 @@ public partial class GameServer
 		}
 
 		string? nao = Nomeacao.PorQueNao(CargoDe(c.Nomeador), c.Assento, pl.Race,
-										 pl.Ficha.Genoma?.MajorityRace ?? pl.Race, CargoDe(pl.Conta));
+										 pl.Ficha.Genoma?.MajorityRace ?? pl.Race, CargoDe(pl));
 		if (nao != null) { Avisar(pl, $"o assento se fechou: {nao}."); return; }
 
 		RankDef? r = Cargos.Get(c.Assento);
@@ -558,7 +565,7 @@ public partial class GameServer
 	/// </summary>
 	private void VerboHerdeiro(ServerPlayer pl, string arg, bool nomear)
 	{
-		if (!string.Equals(CargoDe(pl.Conta), Sucessao.ReiDeVegeta, StringComparison.OrdinalIgnoreCase))
+		if (!string.Equals(CargoDe(pl), Sucessao.ReiDeVegeta, StringComparison.OrdinalIgnoreCase))
 		{
 			Avisar(pl, "so o Rei de Vegeta decide quem herda o trono.");
 			return;
@@ -616,7 +623,7 @@ public partial class GameServer
 		if (!EhPessoa(vitima) || !EhPessoa(algoz)) return;
 		if (string.Equals(vitima.Conta, algoz.Conta, StringComparison.OrdinalIgnoreCase)) return;
 
-		string cargo = CargoDe(vitima.Conta);
+		string cargo = CargoDe(vitima);
 		if (cargo.Length == 0 || !Sucessao.TemSucessao(cargo)) return;
 		RankDef? r = Cargos.Get(cargo);
 		if (r == null) return;
@@ -656,7 +663,7 @@ public partial class GameServer
 	/// </summary>
 	private void VerboFalarAosCargos(ServerPlayer pl, string texto)
 	{
-		if (CargoDe(pl.Conta).Length == 0) { Avisar(pl, "esse canal e de quem carrega um cargo."); return; }
+		if (CargoDe(pl).Length == 0) { Avisar(pl, "esse canal e de quem carrega um cargo."); return; }
 
 		// E UMA FALA, E PASSA PELO QUE TODA FALA PASSA (`Falar`, `GameServer.Chat.cs`): o calado nao fala, o texto
 		// perde as quebras de linha (o `html_encode(msg)` do `RankChat`, `RankTree.dm:148-152` -- com "\n" dava
@@ -676,11 +683,11 @@ public partial class GameServer
 		}
 		EscutaDeFalas?.Add((pl.Id, Protocol.Fala.Sistema, texto));   // o gancho de bancada de toda fala (nulo em jogo)
 
-		string meu = Cargos.Get(CargoDe(pl.Conta))?.Nome ?? "";
+		string meu = Cargos.Get(CargoDe(pl))?.Nome ?? "";
 		int ouviram = 0;
 		foreach (ServerPlayer o in _players.Values)
 		{
-			if (o.Peer == null || !EhPessoa(o) || CargoDe(o.Conta).Length == 0) continue;
+			if (o.Peer == null || !EhPessoa(o) || CargoDe(o).Length == 0) continue;
 			Mandar(o, Protocol.Fala.Sistema, "", $"[cargos] {pl.Name} ({meu}): {texto}", falante: null);
 			ouviram++;
 		}

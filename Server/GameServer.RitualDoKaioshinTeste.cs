@@ -283,12 +283,18 @@ public sealed partial class GameServer
 			Responder(a, sim: false);
 			RemoverNpc(grand);
 
-			// QUEM JA TEM TUDO nao recebe convite nenhum: dez minutos parado a toa nao e ritual.
+			// (2026-10-26) O RITUAL E UMA VEZ POR PERSONAGEM (o dono): quem ja tem o potencial desperto e a forma POR OUTRO CAMINHO ainda o
+			// recebe (ele solta o banco 2x) -- e quem ja o recebeu nao recebe o convite de novo.
 			a.Ficha.unlockPotential = 1;
 			a.Forma.Liberar(Catalogo.IdMistico);
+			List<string> comTudo = Apertar(k);
+			AfirmarRk("D8. QUEM JA TEM O POTENCIAL DESPERTO E A FORMA (por outro caminho) ainda recebe o convite: o ritual solta o banco 2x",
+					  Oferecido(a), Ultimos(comTudo));
+			Responder(a, sim: false);
+			a.Ficha.ritualDoKaioshinRecebido = true;
 			List<string> semNada = Apertar(k);
-			AfirmarRk("D8. QUEM JA TEM O POTENCIAL DESPERTO E A FORMA nao recebe o convite: o Kaioshin ouve que o ritual nao tem o que dar",
-					  !Oferecido(a) && Disse(semNada, "não tem o que dar"), Ultimos(semNada));
+			AfirmarRk("D8b. **QUEM JA RECEBEU O RITUAL nao recebe o convite** (o dono: \"o ritual do kaioshin so pode ser feito 1 vez por personagem\"): o Kaioshin ouve por que",
+					  !Oferecido(a) && Disse(semNada, "uma vez só por personagem"), Ultimos(semNada));
 		}
 
 		// ============================================================ E. O RITUAL
@@ -326,14 +332,16 @@ public sealed partial class GameServer
 					  Disse(tres, "3 de 10 minutos") && tres.Count(f => f.Contains("3 de 10 minutos")) == 2 && EmRitual(a) && a.Ficha.unlockPotential < 1,
 					  Ultimos(tres));
 
+			a.Ficha.hiddenpotential = 1000;   // (2026-10-26) o banco do potencial, que o fim solta 2x
 			double bpAntes = a.Ficha.BP;
 			efeitos.Clear();
 			long agora0 = NowMs();
 			Andar(RitualDoKaioshin.DuracaoMs);
 			List<string> fim = Tique();
-			AfirmarRk("E6. **NO FIM O POTENCIAL OCULTO DESPERTA** (o `DespertarPotencialG11`: uma vez na vida, o BP base sobe) **E A FORMA ABRE**",
-					  a.Ficha.unlockPotential >= 1 && a.Ficha.BP > bpAntes && TemAForma(a) && Disse(fim, "o Potential Unleashed é seu"),
-					  $"potencial {a.Ficha.unlockPotential}, BP {bpAntes:0} -> {a.Ficha.BP:0}, forma {TemAForma(a)} | {Ultimos(fim)}");
+			AfirmarRk("E6. **NO FIM O BANCO DO POTENCIAL SAI 2x** (o dono, 2026-10-25: mil guardados, +2.000 de BP base, o banco zera e o ritual fica gasto pra este personagem) **E A FORMA ABRE**",
+					  a.Ficha.unlockPotential >= 1 && Math.Abs(a.Ficha.BP - (bpAntes + 2000)) < 1e-6 && a.Ficha.hiddenpotential == 0
+					  && a.Ficha.ritualDoKaioshinRecebido && TemAForma(a) && Disse(fim, "o Potential Unleashed é seu"),
+					  $"potencial {a.Ficha.unlockPotential}, BP {bpAntes:0} -> {a.Ficha.BP:0}, banco {a.Ficha.hiddenpotential:0}, forma {TemAForma(a)} | {Ultimos(fim)}");
 			AfirmarRk("E7. ...os dois se soltam (andam de novo, o efeito apaga, o fato apaga), e o Kaioshin ouve quando pode fazer outro",
 					  !EmRitual(k) && !EmRitual(a) && PodeMexerOCorpo(k) && PodeMexerOCorpo(a)
 					  && efeitos.Any(e => e.Quem == a.Id && e.Id == RitualDoKaioshin.EfeitoDaTrava && e.Ms == 0)
@@ -475,12 +483,13 @@ public sealed partial class GameServer
 		{
 			(ServerPlayer k, ServerPlayer a) = Par();
 			a.Ficha.unlockPotential = 1;
+			a.Ficha.hiddenpotential = 500;
 			double bp = a.Ficha.BP;
 			Comecar(k, a);
 			Andar(RitualDoKaioshin.DuracaoMs + 1_000);
 			Tique();
-			AfirmarRk("H1. QUEM JA DESPERTOU O POTENCIAL ganha SO a forma (o dono): o BP base nao sobe de novo",
-					  TemAForma(a) && Math.Abs(a.Ficha.BP - bp) < 1e-6, $"BP {bp:0} -> {a.Ficha.BP:0}, forma {TemAForma(a)}");
+			AfirmarRk("H1. QUEM JA DESPERTOU O POTENCIAL POR OUTRO CAMINHO ainda tira do ritual o banco 2x e a forma (2026-10-26; era so a forma): +1.000",
+					  TemAForma(a) && Math.Abs(a.Ficha.BP - (bp + 1000)) < 1e-6, $"BP {bp:0} -> {a.Ficha.BP:0}, forma {TemAForma(a)}");
 
 			(ServerPlayer kA, ServerPlayer kB) = Par(racaDoAlvo: "Kai");
 			_tronos[RitualDoKaioshin.Cargo + "#2"] = kB.Conta;   // os dois sao Kaioshin (cinco vagas)

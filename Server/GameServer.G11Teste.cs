@@ -945,8 +945,9 @@ public sealed partial class GameServer
 		aprendiz.Conta = "g11_aprendiz";
 		kai.AlvoId = aprendiz.Id;
 
+		// (2026-10-26) O BANCO DO POTENCIAL (o pedido 95): o Unlock de um jogador em outro solta o banco 1x
+		aprendiz.Ficha.hiddenpotential = 800;
 		double bpAntes = aprendiz.Ficha.BP, kiskillAntes = aprendiz.Ficha.kiskill;
-		double ganhoBaseMinimo = aprendiz.Ficha.CapCheck(aprendiz.Ficha.BP * 0.25 * Math.Max(aprendiz.Ficha.UPMod, 1));
 		aprendiz.Ficha.BPBuffer = 0;
 
 		falas = ApertarEOuvir(kai, "Unlock_Potential");
@@ -955,26 +956,36 @@ public sealed partial class GameServer
 				   && Disse(falas, "oferece"));
 
 		ComandoDeCargo(aprendiz, "potencial_aceitar", "");
-		AfirmarG11("ao aceitar, o potencial desperta: BP += pelo menos capcheck(BP*0,25*Potencial), kiskill +0,4, flag gravada",
-				   aprendiz.Ficha.unlockPotential >= 1
-				   && aprendiz.Ficha.BP - bpAntes >= ganhoBaseMinimo - 1e-6
+		AfirmarG11("**AO ACEITAR, O BANCO SAI 1x** (o dono, 2026-10-25: \"player pra player 1x\"): os 800 guardados viram 800 de BP base, o banco zera -- e a primeira liberacao da vida ainda da +0,4 de kiskill e grava a flag",
+				   aprendiz.Ficha.unlockPotential >= 1 && Math.Abs(aprendiz.Ficha.BP - (bpAntes + 800)) < 1e-6 && aprendiz.Ficha.hiddenpotential == 0
 				   && Math.Abs(aprendiz.Ficha.kiskill - kiskillAntes - 0.4) < 1e-9,
-				   $"BP {bpAntes:0.##} -> {aprendiz.Ficha.BP:0.##} (min +{ganhoBaseMinimo:0.##})");
+				   $"BP {bpAntes:0.##} -> {aprendiz.Ficha.BP:0.##}, banco {aprendiz.Ficha.hiddenpotential:0.##}");
 		AfirmarG11("...e o marco 'potential' (1,5x) foi alcancado", aprendiz.Ficha.bp_milestones_done.Contains("potential"));
 
 		double bpUmaVez = aprendiz.Ficha.BP;
+		aprendiz.Ficha.hiddenpotential = 300;
 		falas = ApertarEOuvir(kai, "Unlock_Potential");
-		AfirmarG11("a SEGUNDA vez e recusada ('ja foi despertado') e nao ha oferta nova",
-				   Disse(falas, "ja foi despertado") && !_ofertasDePotencialG11.ContainsKey(aprendiz.Conta));
+		AfirmarG11("a SEGUNDA vez DENTRO DA HORA e recusada (o potencial 'ainda se assenta') e nao ha oferta nova",
+				   Disse(falas, "ainda se assenta") && !_ofertasDePotencialG11.ContainsKey(aprendiz.Conta), Ultimos(falas));
 		ComandoDeCargo(aprendiz, "potencial_aceitar", "");
-		AfirmarG11("...e aceitar sem oferta nao desperta nada de novo (UMA vez por vida)",
-				   Math.Abs(aprendiz.Ficha.BP - bpUmaVez) < 1e-12);
+		AfirmarG11("...e aceitar sem oferta nao solta nada", Math.Abs(aprendiz.Ficha.BP - bpUmaVez) < 1e-12 && aprendiz.Ficha.hiddenpotential == 300);
+		AdiantoDoRelogioDeTeste += Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs;
+		try
+		{
+			ApertarEOuvir(kai, "Unlock_Potential");
+			ComandoDeCargo(aprendiz, "potencial_aceitar", "");
+		}
+		finally { AdiantoDoRelogioDeTeste -= Jandirus.Core.Stats.GainKnobs.RecargaDaLiberacaoMs; }
+		AfirmarG11("**...E PASSADA A HORA, DE NOVO** (era uma vez por vida): o banco novo (300) sai 1x",
+				   Math.Abs(aprendiz.Ficha.BP - (bpUmaVez + 300)) < 1e-6 && aprendiz.Ficha.hiddenpotential == 0,
+				   $"BP {bpUmaVez:0.##} -> {aprendiz.Ficha.BP:0.##}");
 
 		kai.AlvoId = 0;
+		kai.Ficha.hiddenpotential = 500;
 		double bpKai = kai.Ficha.BP;
-		UsarHabilidade(kai, "Unlock_Potential");
-		AfirmarG11("sem marcado, o Anciao desperta o PROPRIO potencial na hora (o `view(1)` do DM inclui ele)",
-				   kai.Ficha.unlockPotential >= 1 && kai.Ficha.BP > bpKai);
+		falas = ApertarEOuvir(kai, "Unlock_Potential");
+		AfirmarG11("**SEM MARCADO, O UNLOCK NAO SE USA EM SI** (o DU: `if(!A || A == usr) return`; o dono: \"player pra player\"): ele ouve por que, e o banco dele fica",
+				   kai.Ficha.unlockPotential < 1 && kai.Ficha.BP == bpKai && kai.Ficha.hiddenpotential == 500 && Disse(falas, "OUTRA pessoa"), Ultimos(falas));
 
 		LimparG11();
 	}

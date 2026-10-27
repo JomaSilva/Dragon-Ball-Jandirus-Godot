@@ -507,6 +507,8 @@ public sealed partial class GameServer
 			case "admin_vilao": AdminVilao(pl, arg); break;
 			// (2026-10-16) chama um vilao de saga no Inferno AGORA -- ver `GameServer.ViloesDoInferno.cs`
 			case "admin_inferno": AdminVilaoDoInferno(pl); break;
+			// (2026-10-26) o campeao do mundo anterior desperta na Terra AGORA -- ver `GameServer.CampeaoDoWipe.cs`
+			case "admin_campeao": AdminCampeaoDoWipe(pl); break;
 			// (2026-10-18) as sagas: a lista pro painel e o reset de uma -- ver `GameServer.SagaAdmin.cs`
 			case "admin_sagas": AdminSagas(pl); break;
 			case "admin_saga_resetar": AdminResetarSaga(pl, arg); break;

@@ -723,15 +723,19 @@ public sealed partial class GameServer
 			presoAPe && pousadaParada && livreAoLeme && !PodeMexerOCorpo(piloto),
 			$"a pe preso={presoAPe}, pousada parada={pousadaParada}, ao leme livre={livreAoLeme}");
 
-		// O ZENKAI DE QUEM FOI DESPEDACADO: `if(lopcount >= 2) return TRUE` (`Injuries.dm:191`).
+		// (2026-10-26) A MAIORIA DO CORPO EM ESTADO CRITICO -- o Zenkai em dobro sem morrer (o dono). Era o "extremamente ferido" do DM
+		// (`Injuries.dm:191`), que so servia ao Zenkai antigo.
 		ServerPlayer saiyajin = MbCorpo("mbZenkai");
-		bool inteiro = saiyajin.Combate.Corpo.MuitoFerido();
+		Body corpoZ = saiyajin.Combate.Corpo;
+		bool inteiro = corpoZ.MaioriaEmEstadoCritico();
 		MbArrancar(saiyajin, "Braco direito");
-		bool comUm = saiyajin.Combate.Corpo.MuitoFerido();
-		MbArrancar(saiyajin, "Perna esquerda");
-		bool comDois = saiyajin.Combate.Corpo.MuitoFerido();
-		AfirmarMb("\"extremamente ferido\" (o gatilho do Zenkai maior): UM braco arrancado -- a mao de carona nao conta -- ainda nao; DOIS membros arrancados, sim",
-			!inteiro && !comUm && comDois, $"inteiro={inteiro}, um={comUm}, dois={comDois}");
+		bool comUm = corpoZ.MaioriaEmEstadoCritico();
+		int metadeZ = corpoZ.Partes.Count / 2 + 1, postosZ = 0;
+		foreach (BodyPart p in corpoZ.Partes)
+			if (!p.Decepado && postosZ < metadeZ) { p.Vida = p.VidaMax * 0.3; postosZ++; }
+		bool maioria = corpoZ.MaioriaEmEstadoCritico();
+		AfirmarMb("**A MAIORIA DO CORPO EM ESTADO CRITICO** (o Zenkai em dobro sem morrer, o dono 2026-10-26): inteiro, nao; um braco arrancado (a mao de carona), nao; mais da metade dos membros abaixo de 40% da vida (o \"Critico\" da aba Corpo), sim",
+			!inteiro && !comUm && maioria, $"inteiro={inteiro}, um={comUm}, maioria={maioria}");
 
 		// O BICHO: `MembrosFirmes` -- o membro zera e nao sai, entao nao ha o que cobrar.
 		ServerPlayer bicho = MbCorpo("mbBicho");

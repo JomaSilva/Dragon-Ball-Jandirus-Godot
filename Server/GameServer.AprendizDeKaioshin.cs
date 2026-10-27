@@ -76,17 +76,27 @@ public partial class GameServer
 	// AS PERGUNTAS
 	// =====================================================================
 
-	private bool EKaioshin(string conta) =>
-		string.Equals(CargoDe(conta), AprendizDeKaioshin.CargoDoMestre, StringComparison.OrdinalIgnoreCase);
+	/// <summary>
+	/// (2026-10-26) A CONTA tem um personagem Kaioshin. O mestre do vinculo e guardado pela conta, e a mesma conta nao tem dois Kaioshins
+	/// (o cargo nao se repete na conta), entao "a conta do mestre e Kaioshin" e "o mestre e Kaioshin" sao a mesma pergunta -- com ele no
+	/// jogo ou fora, e com o irmao de conta jogando.
+	/// </summary>
+	private bool EKaioshin(string conta) => ContaTemOCargo(conta, AprendizDeKaioshin.CargoDoMestre);
 
-	private string? MotivoDaQuedaDe(VinculoDeAprendiz v) =>
+	/// <summary>(2026-10-26) ESTE PERSONAGEM e Kaioshin -- quem nomeia e quem dispensa e o personagem no jogo, e nao o irmao de conta.</summary>
+	private bool EKaioshin(ServerPlayer pl) =>
+		string.Equals(CargoDe(pl), AprendizDeKaioshin.CargoDoMestre, StringComparison.OrdinalIgnoreCase);
+
+	/// <param name="sig">(2026-10-26) A assinatura do APRENDIZ (a chave do `_aprendizes`): o cargo que derruba o vinculo e o DELE, e nao o
+	/// do irmao de conta que estiver jogando.</param>
+	private string? MotivoDaQuedaDe(string sig, VinculoDeAprendiz v) =>
 		AprendizDeKaioshin.MotivoDaQueda(EKaioshin(v.ContaDoMestre),
-			Cargos.Get(AprendizDeKaioshin.CargoDoMestre) is { } k && DonosDe(k).Count > 0, CargoDe(v.ContaDoAprendiz).Length > 0);
+			Cargos.Get(AprendizDeKaioshin.CargoDoMestre) is { } k && DonosDe(k).Count > 0, CargoDaAssinatura(v.ContaDoAprendiz, sig).Length > 0);
 
 	/// <summary>O vinculo DE PE deste corpo -- ou nulo (sem vinculo, ou caido).</summary>
 	private VinculoDeAprendiz? VinculoDePe(ServerPlayer pl) =>
 		pl.Assinatura.Length > 0 && _aprendizes.TryGetValue(pl.Assinatura, out VinculoDeAprendiz? v) && v.Caiu.Length == 0
-		&& MotivoDaQuedaDe(v) == null ? v : null;
+		&& MotivoDaQuedaDe(pl.Assinatura, v) == null ? v : null;
 
 	/// <summary>Este corpo e Aprendiz de Kaioshin agora? (A arvore, o kit e o titulo perguntam isto.)</summary>
 	private bool EAprendizDeKaioshin(ServerPlayer pl) => VinculoDePe(pl) != null;
@@ -109,7 +119,7 @@ public partial class GameServer
 	private void VerboNomearAprendiz(ServerPlayer pl, string arg)
 	{
 		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "não dá: você precisa estar vivo e de pé."); return; }
-		if (AprendizDeKaioshin.PorQueNaoNomeia(EKaioshin(pl.Conta), QuantosGuia(pl.Conta), true, true, false, false) is { } geral)
+		if (AprendizDeKaioshin.PorQueNaoNomeia(EKaioshin(pl), QuantosGuia(pl.Conta), true, true, false, false) is { } geral)
 		{
 			Avisar(pl, $"não dá: {geral}.");
 			return;
@@ -144,8 +154,8 @@ public partial class GameServer
 	}
 
 	private string? PorQueNaoNomeiaEste(ServerPlayer mestre, ServerPlayer alvo) =>
-		AprendizDeKaioshin.PorQueNaoNomeia(EKaioshin(mestre.Conta), QuantosGuia(mestre.Conta), EhJogador(alvo) && alvo.Assinatura.Length > 0,
-			!alvo.Ficha.dead && !alvo.Ficha.KO, CargoDe(alvo.Conta).Length > 0, _aprendizes.ContainsKey(alvo.Assinatura));
+		AprendizDeKaioshin.PorQueNaoNomeia(EKaioshin(mestre), QuantosGuia(mestre.Conta), EhJogador(alvo) && alvo.Assinatura.Length > 0,
+			!alvo.Ficha.dead && !alvo.Ficha.KO, CargoDe(alvo).Length > 0, _aprendizes.ContainsKey(alvo.Assinatura));
 
 	/// <summary>
 	/// A RESPOSTA DO CONVIDADO -- o `alert()` do DM (`:337-339`), que aqui e o cartao de pedido. TUDO e conferido de novo
@@ -199,7 +209,7 @@ public partial class GameServer
 	/// </summary>
 	private void VerboDispensarAprendiz(ServerPlayer pl, string arg)
 	{
-		if (!EKaioshin(pl.Conta)) { Avisar(pl, "não dá: só o Kaioshin no trono guia discípulos."); return; }
+		if (!EKaioshin(pl)) { Avisar(pl, "não dá: só o Kaioshin no trono guia discípulos."); return; }
 		List<(string Sig, VinculoDeAprendiz V)> meus = [.. _aprendizes
 			.Where(kv => kv.Value.Caiu.Length == 0 && string.Equals(kv.Value.ContaDoMestre, pl.Conta, StringComparison.OrdinalIgnoreCase))
 			.Select(kv => (kv.Key, kv.Value))];
@@ -262,7 +272,7 @@ public partial class GameServer
 	private void AplicarAQuedaDoAprendiz(ServerPlayer pl)
 	{
 		if (_aprendizes.Count == 0 || pl.Assinatura.Length == 0 || !_aprendizes.TryGetValue(pl.Assinatura, out VinculoDeAprendiz? v)) return;
-		if (v.Caiu.Length == 0 && MotivoDaQuedaDe(v) is { } motivo) v.Caiu = motivo;
+		if (v.Caiu.Length == 0 && MotivoDaQuedaDe(pl.Assinatura, v) is { } motivo) v.Caiu = motivo;
 		if (v.Caiu.Length == 0 || !EhJogador(pl)) return;
 		DesfazerOAprendizado(pl, v);
 		_aprendizes.Remove(pl.Assinatura);
@@ -279,8 +289,8 @@ public partial class GameServer
 		if (_aprendizes.Count > 0)
 		{
 			bool mexeu = false;
-			foreach (VinculoDeAprendiz v in _aprendizes.Values)
-				if (v.Caiu.Length == 0 && MotivoDaQuedaDe(v) is { } motivo) { v.Caiu = motivo; mexeu = true; }
+			foreach ((string sig, VinculoDeAprendiz v) in _aprendizes)
+				if (v.Caiu.Length == 0 && MotivoDaQuedaDe(sig, v) is { } motivo) { v.Caiu = motivo; mexeu = true; }
 			if (mexeu) SalvarAprendizes();
 		}
 		if (_ofertasDeAprendiz.Count > 0)
@@ -329,7 +339,7 @@ public partial class GameServer
 			Avisar(adm, "não há Kaioshin no trono -- dê o cargo kaioshin a alguém antes de nomear aprendizes.");
 			return;
 		}
-		if (OnlinePorConta(kaioshins[0]) is not { } mestre)
+		if (OnlineDoTrono(PrimeiraVagaOcupada(Cargos.Get(AprendizDeKaioshin.CargoDoMestre)!)) is not { } mestre)   // (2026-10-26) o personagem
 		{
 			Avisar(adm, "o Kaioshin da primeira vaga precisa estar no jogo pra amarrar o vínculo.");
 			return;

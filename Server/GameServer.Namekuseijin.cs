@@ -128,7 +128,7 @@ public sealed partial class GameServer
 		double bpAntes = dono.Ficha.BP;
 		double bpDele = absorvido.Ficha.BP;
 
-		// ---- 2. O PODER -- `AbsorcaoNamekuseijin.BpDepoisDeAbsorver` -------------------------------
+		// ---- 2. O PODER -- o do JOGADOR e o `AbsorcaoNamekuseijin.BpDepoisDeAbsorverJogador`; o do NPC sai do BANCO do potencial ----
 		// ============================ ELE VAI NO `BP` E NAO NO `FuseBuff` ============================
 		// O `FuseBuff` e o canal da fusao TEMPORARIA: ele soma na base e o `Separar` o devolve. Aqui
 		// nao ha separacao e nao ha o que devolver, entao o numero vai pro BP de verdade -- que e
@@ -139,7 +139,17 @@ public sealed partial class GameServer
 		// unico do ganho por esforco, `Fighter.Training.cs:16`), e isto nao e treino: e o mesmo tipo de
 		// concessao que o desejo de poder e o Zenkai fazem -- recompensa, e nao ganho por hora.
 		// =========================================================================================
-		dono.Ficha.BP = AbsorcaoNamekuseijin.BpDepoisDeAbsorver(bpAntes, bpDele, ehJogador);
+		//
+		// (2026-10-26) COM NPC A FUSAO E UM ZENKAI DO POTENCIAL: de 20% a 80% do banco de quem absorve vai pro BP (o mesmo sorteio do
+		// Zenkai, 1x), e o BP do NPC nao conta mais -- ver `AbsorcaoNamekuseijin.PotencialQueONpcSolta`. Com JOGADOR, o de sempre.
+		double soltou = 0;
+		if (ehJogador) dono.Ficha.BP = AbsorcaoNamekuseijin.BpDepoisDeAbsorverJogador(bpAntes, bpDele);
+		else
+		{
+			soltou = AbsorcaoNamekuseijin.PotencialQueONpcSolta(dono.Ficha.hiddenpotential, Jandirus.Core.Stats.GainKnobs.SorteioDoBanco.NextDouble());
+			dono.Ficha.hiddenpotential -= soltou;
+			dono.Ficha.BP += soltou;
+		}
 
 		// ---- 3. OS OUTROS BONUS (so quando o absorvido e JOGADOR -- regra N4) ----------------------
 		if (AbsorcaoNamekuseijin.HerdaOsStats(ehJogador))
@@ -193,7 +203,9 @@ public sealed partial class GameServer
 		// (2026-10-24) E ELA E PROPORCIONAL AO MULTIPLICADOR, como a do Zenkai (dono: *"o mesmo pra fusao namek"*): 2,5 h por "x" do BP de
 		// agora sobre o de antes -- absorver um Namekuseijin do mesmo poder (4x) deixa 10 h, e um NPC (ate +5%) pouco mais de 2,5 h. Era
 		// a hora fixa de toda fusao (`Fusao.RecargaSegundos`). Ver `GainKnobs.RecargaProporcionalMs`.
-		CobrarARecargaDeFusao(dono, NowMs(), Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste
+		//
+		// (2026-10-26) ...E COM NPC NAO HA RECARGA (o dono: *"Sem recarga"*): quem limita e o banco, que esvazia a cada absorcao.
+		if (ehJogador) CobrarARecargaDeFusao(dono, NowMs(), Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste
 			? Fusao.RecargaSegundos
 			: Jandirus.Core.Stats.GainKnobs.RecargaProporcionalMs(bpAntes, dono.Ficha.BP) / 1000.0);
 
@@ -218,11 +230,13 @@ public sealed partial class GameServer
 			+ $"({cresceu}"
 			+ (skillsGanhas > 0 ? $", {skillsGanhas} habilidade(s) dele" : "")
 			+ (ganhouAForma ? ", e o Super Namekuseijin despertou em voce" : "") + ")."
-			: $"voce absorveu {nomeDele}, que nao era ninguem: o corpo dele mal tinha o que dar "
-			+ $"({cresceu}). Fundir com os seus e outra coisa.");
+			: soltou > 0
+				? $"voce absorveu {nomeDele}, e a fusao soltou parte do potencial que voce guardava ({cresceu}). Fundir com os seus "
+				  + "e outra coisa."
+				: $"voce absorveu {nomeDele}, mas nao havia potencial guardado pra soltar -- ele se acumula treinando, meditando e lutando.");
 
 		GD.Print($"[server] ABSORCAO NAMEK ({(ehJogador ? "JOGADOR" : "NPC")}): {dono.Name} + {nomeDele} "
-			   + $"| BP {bpAntes:N0} -> {dono.Ficha.BP:N0} (dele {bpDele:N0}) "
+			   + $"| BP {bpAntes:N0} -> {dono.Ficha.BP:N0} (dele {bpDele:N0}; do banco {soltou:N0}) "
 			   + $"| {skillsGanhas} skills | super namek: {(ganhouAForma ? "sim" : "nao")}");
 	}
 

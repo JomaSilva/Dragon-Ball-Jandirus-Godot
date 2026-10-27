@@ -556,8 +556,23 @@ public partial class RoboDeNebulosa : Node
 			case 62: EsperarANuvem(true, "a cena do Ultra Ego terminar e a nuvem roxa acender"); break;
 			case 63: ANuvemRoxaChegaNoPixel(); break;
 
-			case 64: Forcar(Jandirus.Core.Forms.Catalogo.IdBase, "voltando pra base"); break;
-			case 65: EsperarANuvem(false, "a base apagar a nuvem"); break;
+			// ============================ E A TERCEIRA: A MESMA, EM VERMELHO E SEM PONTINHOS ============================
+			// (2026-10-26) O dono: *"faca o ssj 4 lb ter uma aura igual o UI so q vermelha e sem o efeitos de pontinhos
+			// subindo, e ao apertar C acontece a mesma coisa do UI, a aura so intensifica, sem usar nenhuma aura/carga de
+			// sprite"*. PELA BASE ANTES, e nao direto do Ultra Ego: com a nuvem roxa acesa o `forca` ja valeria 1, e a espera
+			// do Limit Breaker contaria so com o `PresosDeTeste` -- passando pela base, ela mede a nuvem vermelha ACENDENDO.
+			// ==============================================================================================
+			case 64: Forcar(Jandirus.Core.Forms.Catalogo.IdBase, "apagando a nuvem roxa antes do Limit Breaker"); break;
+			case 65: EsperarANuvem(false, "a base apagar a nuvem roxa"); break;
+			case 66: Forcar("ssj4_limit_breaker", "o SSJ4 LIMIT BREAKER: a MESMA nuvem, em vermelho e sem os pontinhos"); break;
+			case 67: EsperarANuvem(true, "a cena do Limit Breaker terminar e a nuvem vermelha acender"); break;
+			case 68: ANuvemVermelhaDoLimitBreaker(); break;
+			case 69: Carregar(true, "segurando C no Limit Breaker -- a nuvem so adensa, nenhuma chama de sprite"); break;
+			case 70: OCDoLimitBreakerSoIntensifica(); break;
+			case 71: Carregar(false, "soltando o C"); break;
+
+			case 72: Forcar(Jandirus.Core.Forms.Catalogo.IdBase, "voltando pra base"); break;
+			case 73: EsperarANuvem(false, "a base apagar a nuvem"); break;
 			default: ABaseApaga(); break;
 		}
 	}
@@ -606,7 +621,12 @@ public partial class RoboDeNebulosa : Node
 			// visual entre as duas formas da disciplina (`UltraEgo.dm:395-396`) -- dar a nuvem as duas
 			// apagaria justamente essa diferenca. Escrever `d.Linha == UltraEgo` aqui seria afrouxar a
 			// afirmacao pra caber no codigo, que e o contrario do que esta bancada existe pra fazer.
-			bool devia = d.Linha == LinhaDeForma.UltraInstinct || d.Id == "ultra_ego";
+			//
+			// (2026-10-26) E A FRASE CRESCEU DE NOVO: *"faca o ssj 4 lb ter uma aura igual o UI so q vermelha"*, e perguntado
+			// se era so o da escada Saiyajin, *"Os dois"*. Sao CINCO formas, e os dois Limit Breaker entram PELO ID pelo mesmo
+			// motivo do `ultra_ego`: o Core os acha por derivacao (pelagem de SSJ4 com ki divino), e a bancada cobra a frase.
+			bool devia = d.Linha == LinhaDeForma.UltraInstinct || d.Id == "ultra_ego"
+					  || d.Id is "ssj4_limit_breaker" or "primal_legendary4_limit_breaker";
 			bool deu = pergunta(d);
 			if (deu != devia) erradas++;
 			if (deu) com++; else sem++;
@@ -665,14 +685,14 @@ public partial class RoboDeNebulosa : Node
 				 $"-- e as duas sao da MESMA linha ({ego?.Linha}) separadas por `Ordem` "
 			   + $"({destr?.Ordem} e {ego?.Ordem}): o corte e por degrau, nao por linha");
 
-		// --- (b) E **SO** NAS TRES ---
+		// --- (b) E **SO** NAS CINCO ---
 		(int erradas, int com, int sem) = Varrer(Jandirus.Core.Forms.Catalogo.TemNebulosa);
 		Conferir(erradas == 0,
-				 $"a nebulosa e SO da linha do Ultra Instinto e do `ultra_ego` ({erradas} forma(s) fora "
-			   + $"do lugar em {todas.Length} varridas)");
-		Conferir(com == 3, $"exatamente TRES formas acendem nebulosa (deu {com})");
-		Conferir(sem == todas.Length - 3,
-				 $"e as outras {todas.Length - 3} NAO ganharam de brinde (deu {sem})");
+				 $"a nebulosa e SO da linha do Ultra Instinto, do `ultra_ego` e dos DOIS Limit Breaker ({erradas} forma(s) "
+			   + $"fora do lugar em {todas.Length} varridas)");
+		Conferir(com == 5, $"exatamente CINCO formas acendem nebulosa (deu {com})");
+		Conferir(sem == todas.Length - 5,
+				 $"e as outras {todas.Length - 5} NAO ganharam de brinde (deu {sem})");
 
 		// --- (c) A MESMA NOS DOIS ESTAGIOS ---
 		// ============================ A LINHA DE BAIXO SO VALE POR CAUSA DESTA ============================
@@ -698,14 +718,14 @@ public partial class RoboDeNebulosa : Node
 
 		// --- (d) A VARREDURA ENXERGA? OS TRES DEFEITOS INJETADOS ---
 		Nota("  --     agora os DEFEITOS INJETADOS: as quatro linhas abaixo tem que dizer que reprovaram");
-		Conferir(Varrer(_ => true).Erradas == todas.Length - 3,
-				 $"[injetado] 'nebulosa pra TODO MUNDO' e pego, e nas {todas.Length - 3} formas certas "
+		Conferir(Varrer(_ => true).Erradas == todas.Length - 5,
+				 $"[injetado] 'nebulosa pra TODO MUNDO' e pego, e nas {todas.Length - 5} formas certas "
 			   + $"(deu {Varrer(_ => true).Erradas})");
-		Conferir(Varrer(_ => false).Erradas == 3,
-				 $"[injetado] 'NINGUEM tem nebulosa' e pego nas tres (deu {Varrer(_ => false).Erradas})");
-		Conferir(Varrer(d => d.Linha == LinhaDeForma.UltraEgo).Erradas == 3,
+		Conferir(Varrer(_ => false).Erradas == 5,
+				 $"[injetado] 'NINGUEM tem nebulosa' e pego nas cinco (deu {Varrer(_ => false).Erradas})");
+		Conferir(Varrer(d => d.Linha == LinhaDeForma.UltraEgo).Erradas == 5,
 				 "[injetado] trocar Ultra Instinto por Ultra EGO e pego dos dois lados -- a `destroyer` "
-			   + "que ganharia e as 2 de UI que perderiam "
+			   + "que ganharia e as 2 de UI e os 2 Limit Breaker que perderiam "
 			   + $"(deu {Varrer(d => d.Linha == LinhaDeForma.UltraEgo).Erradas})");
 
 		// O QUARTO DEFEITO E O DESTE PEDIDO, e ele nao existia antes porque nao havia como erra-lo: "a
@@ -713,9 +733,16 @@ public partial class RoboDeNebulosa : Node
 		// dono, e ele erra em UMA forma so -- a `destroyer`. Um defeito de uma forma so e exatamente o
 		// tipo que uma contagem de "3" nao pega se a regra tambem for por linha.
 		Conferir(Varrer(d => d.Linha == LinhaDeForma.UltraInstinct
-						  || d.Linha == LinhaDeForma.UltraEgo).Erradas == 1,
-				 "[injetado] 'a LINHA do Ultra Ego inteira' e pego na `destroyer`, e so nela (deu "
-			   + $"{Varrer(d => d.Linha == LinhaDeForma.UltraInstinct || d.Linha == LinhaDeForma.UltraEgo).Erradas})");
+						  || d.Linha == LinhaDeForma.UltraEgo).Erradas == 3,
+				 "[injetado] 'a LINHA do Ultra Ego inteira' (e nenhum Limit Breaker) e pego na `destroyer` e nos 2 Limit "
+			   + $"Breaker (deu {Varrer(d => d.Linha == LinhaDeForma.UltraInstinct || d.Linha == LinhaDeForma.UltraEgo).Erradas})");
+
+		// (2026-10-26) O QUINTO DEFEITO E O DESTE PEDIDO: "so o Limit Breaker da escada Saiyajin" e a leitura literal de
+		// *"o ssj 4 lb"*, e o dono respondeu *"Os dois"*. Ele erra em UMA forma so -- o `primal_legendary4_limit_breaker`.
+		Conferir(Varrer(d => Jandirus.Core.Forms.Catalogo.TemNebulosa(d)
+						  && d.Id != "primal_legendary4_limit_breaker").Erradas == 1,
+				 "[injetado] 'so o Limit Breaker da escada Saiyajin' e pego no do Primal, e so nele (deu "
+			   + $"{Varrer(d => Jandirus.Core.Forms.Catalogo.TemNebulosa(d) && d.Id != "primal_legendary4_limit_breaker").Erradas})");
 
 		APaletaDasDuas();
 
@@ -779,7 +806,7 @@ public partial class RoboDeNebulosa : Node
 		int divergem = Jandirus.Core.Forms.Catalogo.Todas.Count(
 			d => (Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(d) is not null)
 				 != Jandirus.Core.Forms.Catalogo.TemNebulosa(d));
-		Conferir(comPaleta == 3 && divergem == 0,
+		Conferir(comPaleta == 5 && divergem == 0,
 				 $"e 'tem paleta' e literalmente 'tem nebulosa' nas {Jandirus.Core.Forms.Catalogo.Todas.Length} "
 			   + $"formas ({comPaleta} com paleta, {divergem} discordam) -- a paleta nao e um segundo predicado");
 
@@ -850,6 +877,48 @@ public partial class RoboDeNebulosa : Node
 				  && Luz(p.Perto) < Luz(p.Pontos),
 					 $"a rampa {nome} SOBE do escuro pra particula, nesta ordem "
 				   + $"({Luz(p.Borda):0.0} < {Luz(p.Meio):0.0} < {Luz(p.Perto):0.0} < {Luz(p.Pontos):0.0})");
+
+		// ============================ A TERCEIRA PALETA: VERMELHA, E SEM OS PONTINHOS ============================
+		// (2026-10-26) *"uma aura igual o UI so q vermelha e sem o efeitos de pontinhos subindo"*, pros DOIS Limit Breaker.
+		// As mesmas perguntas da do Ultra Ego, com o alvo trocado: a matiz e a do `ff2d2f` da aura do Limit Breaker (o
+		// vermelho que ja pinta contorno e raio dele), e os pontinhos sao a metade nova -- `SemPontos` so nele.
+		// ==============================================================================================
+		var lb = Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(Jandirus.Core.Forms.Catalogo.Def("ssj4_limit_breaker"));
+		var lbPrimal = Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(
+			Jandirus.Core.Forms.Catalogo.Def("primal_legendary4_limit_breaker"));
+		Conferir(lb is not null && lbPrimal is not null && lb == lbPrimal,
+				 "a paleta do Limit Breaker EXISTE e e a MESMA nos dois (`ssj4_limit_breaker` e `primal_legendary4_limit_breaker`)");
+		if (lb is not { } pl) return;
+
+		Conferir(pl.SemPontos && !pu.SemPontos && !pe.SemPontos,
+				 "o Limit Breaker sai SEM OS PONTINHOS, e so ele -- o Ultra Instinto e o Ultra Ego continuam com os deles "
+			   + $"(LB {pl.SemPontos}, UI {pu.SemPontos}, UE {pe.SemPontos})");
+		Conferir(pl.Borda != pu.Borda && pl.Meio != pu.Meio && pl.Perto != pu.Perto
+			  && pl.Borda != pe.Borda && pl.Meio != pe.Meio && pl.Perto != pe.Perto,
+				 $"e as cores dela nao sao nem as do UI nem as do UE (LB {pl.Borda}/{pl.Meio}/{pl.Perto})");
+
+		float hLb = new Color("ff2d2f").H * 360f;
+		foreach ((string nome, string hexa) in new[] { ("borda", pl.Borda), ("meio", pl.Meio), ("perto", pl.Perto) })
+		{
+			float h = new Color(hexa).H * 360f;
+			float dist = Mathf.Abs(Mathf.Wrap(h - hLb, -180f, 180f));
+			Conferir(dist <= 12f,
+					 $"a `{nome}` do Limit Breaker (#{hexa}, matiz {h:0.0} graus) esta a {dist:0.0} graus do VERMELHO DO "
+				   + $"LIMIT BREAKER (`ff2d2f`, {hLb:0.0}) -- e o vermelho da FORMA, nao um vermelho qualquer");
+		}
+
+		float escuroLb = Luz(pl.Borda), claroLb = Luz(pl.Perto);
+		Nota($"  --     rampa LB  escuro {escuroLb:0.0} -> meio {Luz(pl.Meio):0.0} -> claro {claroLb:0.0} "
+		   + $"-> particula {Luz(pl.Pontos):0.0} (apagada)");
+		Conferir(Mathf.Abs(escuroLb - escuroUi) <= 3f,
+				 $"a ponta ESCURA do Limit Breaker sai na mesma luminancia da do UI ({escuroLb:0.0} contra {escuroUi:0.0})");
+		float razaoLb = claroLb / claroUi;
+		Conferir(razaoLb is >= 0.80f and <= 0.95f,
+				 $"e a ponta CLARA dele cai pra {razaoLb * 100:0}% ({claroLb:0.0} contra {claroUi:0.0}) -- ainda e o anel de luz, "
+			   + "e ja nao e branca");
+		Conferir(Luz(pl.Borda) < Luz(pl.Meio) && Luz(pl.Meio) < Luz(pl.Perto) && Luz(pl.Perto) < Luz(pl.Pontos),
+				 $"e a rampa LB SOBE do escuro pra particula ({Luz(pl.Borda):0.0} < {Luz(pl.Meio):0.0} < {Luz(pl.Perto):0.0} "
+			   + $"< {Luz(pl.Pontos):0.0})");
 	}
 
 	// =====================================================================
@@ -1525,6 +1594,159 @@ public partial class RoboDeNebulosa : Node
 
 		Fotografar("ultra-ego", corpo);
 		_espera = 0.5;
+	}
+
+	/// <summary>
+	/// ============================ A NUVEM VERMELHA DO LIMIT BREAKER, NO CORPO DE VERDADE ============================
+	/// (2026-10-26) A irma da <see cref="ANuvemRoxaChegaNoPixel"/>, pro terceiro dono da nuvem. O pedido do dono tem QUATRO
+	/// metades, e tres sao lidas aqui no MATERIAL do corpo que vestiu `ssj4_limit_breaker` pelo caminho de producao:
+	///
+	///   * *"uma aura igual o UI"* -- a assinatura inteira do material comparada com a do `ui_sign`;
+	///   * *"so q vermelha"* -- as quatro cores chegaram e sao as do Limit Breaker, nao as do Ultra Instinto;
+	///   * *"sem o efeitos de pontinhos subindo"* -- o `pontos_densidade` esta em ZERO no material. E por isso que a diferenca
+	///     pro `ui_sign` sao CINCO uniforms e nao quatro: os quatro de cor e o dos pontos, e nenhum outro.
+	///
+	/// A quarta, *"sem usar nenhuma aura/carga de sprite"*, e lida nos quatro desenhistas de chama do corpo (o sprite e o
+	/// shader, da aura e da carga) aqui, parado, e de novo com o C na mao no <see cref="OCDoLimitBreakerSoIntensifica"/>.
+	/// ==============================================================================================================
+	/// </summary>
+	private void ANuvemVermelhaDoLimitBreaker()
+	{
+		Nota("== 10. O SSJ4 LIMIT BREAKER: A MESMA NUVEM, EM VERMELHO E SEM OS PONTINHOS ==");
+
+		if (Corpo is not { } corpo
+			|| corpo.GetNodeOrNull<NebulosaDaForma>("Nebulosa") is not { } neb)
+		{
+			Conferir(false, "[limit breaker] o corpo tem o node `Nebulosa` pra medir a nuvem vermelha");
+			return;
+		}
+
+		Conferir(neb.ForcaDeTeste == 1f,
+				 $"[limit breaker] a nuvem do `ssj4_limit_breaker` ACENDEU pelo caminho de producao (forca={neb.ForcaDeTeste:0.##})");
+
+		var pl = Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(Jandirus.Core.Forms.Catalogo.Def("ssj4_limit_breaker"));
+		var pu = Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(Jandirus.Core.Forms.Catalogo.Def("ui_sign"));
+		if (pl is not { } vermelha || pu is not { } indigo)
+		{
+			Conferir(false, "[limit breaker] as duas paletas existem (a do Limit Breaker e a do Ultra Instinto)");
+			return;
+		}
+
+		// --- (a) AS QUATRO CORES CHEGARAM, E SAO AS DO LIMIT BREAKER ---
+		const float UmPasso = 1f / 255f;
+		foreach ((string uniform, string doLb, string doInstinto) in new[]
+				 {
+					 ("cor_borda", vermelha.Borda, indigo.Borda),
+					 ("cor_meio", vermelha.Meio, indigo.Meio),
+					 ("cor_perto", vermelha.Perto, indigo.Perto),
+					 ("cor_dos_pontos", vermelha.Pontos, indigo.Pontos),
+				 })
+		{
+			Color? noMaterial = neb.CorDeTeste(uniform);
+			var alvo = new Color(doLb);
+			Conferir(noMaterial is { } c
+				  && Mathf.Abs(c.R - alvo.R) <= UmPasso
+				  && Mathf.Abs(c.G - alvo.G) <= UmPasso
+				  && Mathf.Abs(c.B - alvo.B) <= UmPasso,
+					 $"[limit breaker] `{uniform}` CHEGA no shader em #{doLb}, o VERMELHO DO LIMIT BREAKER (deu "
+				   + $"{(noMaterial is { } c2 ? "#" + c2.ToHtml(false) : "uniform inexistente")})");
+			Conferir(noMaterial is { } c3 && !c3.IsEqualApprox(new Color(doInstinto)),
+					 $"[limit breaker] -- e nao e o #{doInstinto} do Ultra Instinto (a paleta foi REESCRITA na troca de forma)");
+		}
+
+		// --- (b) SEM OS PONTINHOS ---
+		// O ZERO E LIDO DO MATERIAL, e nao do Core: a paleta pode dizer `SemPontos` e o `Definir` nao obedecer -- e e esse o
+		// buraco que esta linha fecha. Do outro lado, no Ultra Instinto o material NAO tem valor proprio (nulo = o padrao do
+		// ARQUIVO, que o dono afina no `.gdshader`), e e isso que a assinatura de baixo cobra sem dizer.
+		float? densidade = neb.NumeroDeTeste("pontos_densidade");
+		Conferir(densidade == 0f,
+				 "[limit breaker] SEM OS PONTINHOS subindo: `pontos_densidade` = 0 no material "
+			   + $"(deu {densidade?.ToString("0.##") ?? "o padrao do arquivo"})");
+
+		// --- (c) E O RESTO E O ULTRA INSTINTO ---
+		// O `carga` fica fora pelo motivo escrito na do Ultra Ego (e o estado do INSTANTE, nao o desenho).
+		if (_assinaturaDoSign is not { } doSign)
+		{
+			Conferir(false, "[limit breaker] a assinatura do `ui_sign` foi guardada la atras (sem ela nao ha com o que comparar)");
+		}
+		else
+		{
+			Dictionary<string, string> doLb = PartirAssinatura(neb.AssinaturaDeTeste()), sign = PartirAssinatura(doSign);
+			const string DoInstante = "carga";
+			List<string> diferentes = [.. doLb.Where(p => p.Key != DoInstante)
+										  .Where(p => !sign.TryGetValue(p.Key, out string? v) || v != p.Value)
+										  .Select(p => p.Key).OrderBy(k => k, StringComparer.Ordinal)];
+			string[] esperadas = [.. UniformsDaPaleta.Append("pontos_densidade").OrderBy(k => k, StringComparer.Ordinal)];
+			Nota($"  --     [limit breaker] uniforms que diferem do `ui_sign`: {string.Join(", ", diferentes)}");
+			Conferir(doLb.Count > 0 && doLb.Count == sign.Count && diferentes.SequenceEqual(esperadas),
+					 "[limit breaker] e a UNICA diferenca pro `ui_sign` sao as quatro CORES e os PONTINHOS -- *\"uma aura igual "
+				   + $"o UI\"* medido no material inteiro (esperado: {string.Join(", ", esperadas)})");
+		}
+
+		// --- (d) E NENHUMA CHAMA DE SPRITE, PARADO ---
+		var aura = corpo.GetNodeOrNull<Aura>("Aura");
+		var carga = corpo.GetNodeOrNull<CargaVisual>("Carga");
+		Conferir(SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(
+					 Jandirus.Core.Forms.Catalogo.Def("ssj4_limit_breaker"))) == null,
+				 "[limit breaker] o `ssj4_limit_breaker` nao tem ARQUIVO de chama -- a folha dourada do SSJ saiu dele");
+		Conferir(aura?.DesenhoDeTeste.SemFolha == true && carga?.DesenhoDeTeste.SemFolha == true
+			  && aura.ChamaDeTeste.EstiloDeTeste == null && carga.ChamaDeTeste.EstiloDeTeste == null,
+				 "[limit breaker] e os quatro desenhistas de chama do corpo estao SEM FOLHA (o sprite e o shader, da aura e da carga)");
+
+		Fotografar("lb", corpo);
+		_espera = 0.5;
+	}
+
+	/// <summary>
+	/// ============================ O C NO LIMIT BREAKER: A NUVEM SO ADENSA ============================
+	/// (2026-10-26) *"e ao apertar C acontece a mesma coisa do UI, a aura so intensifica, sem usar nenhuma aura/carga de
+	/// sprite"*. Os tres fatos da <see cref="ASobrecargaNaoEmpilhaChama"/>, no Limit Breaker e com o C SEGURADO (quem chama
+	/// e o roteiro, 7 s depois do `Carregar`): nenhuma das chamas acende, a nuvem continua acesa, e ela ADENSA. E os
+	/// pontinhos continuam apagados -- no shader a densidade deles SOBE com a carga, e zero vezes qualquer ganho e zero.
+	/// ==========================================================================================
+	/// </summary>
+	private void OCDoLimitBreakerSoIntensifica()
+	{
+		if (Corpo is not { } corpo
+			|| corpo.GetNodeOrNull<NebulosaDaForma>("Nebulosa") is not { } neb)
+		{
+			Conferir(false, "[limit breaker] o corpo tem o node `Nebulosa` pra medir o C");
+			return;
+		}
+		var aura = corpo.GetNodeOrNull<Aura>("Aura");
+		var carga = corpo.GetNodeOrNull<CargaVisual>("Carga");
+
+		bool chamaDaCarga = carga?.DesenhoDeTeste.Visible == true;
+		bool chamaDaForma = aura?.DesenhoDeTeste.Visible == true;
+		bool chamaPorShader = carga?.ChamaDeTeste.EstiloDeTeste != null || aura?.ChamaDeTeste.EstiloDeTeste != null;
+		float adensou = neb.CargaDeTeste;
+
+		Nota($"  --     [limit breaker] [C] Ki em {RazaoDeKi * 100:0}% do tanque (chama da carga={chamaDaCarga}, "
+		   + $"chama da forma={chamaDaForma}, chama por shader={chamaPorShader}, carga da nuvem={adensou:0.##})");
+
+		Conferir(!chamaDaCarga && !chamaDaForma && !chamaPorShader,
+				 "[limit breaker] com o C SEGURADO nenhuma chama acende -- nem a aura nem a carga de sprite, nem a por shader");
+		Conferir(neb.ForcaDeTeste == 1f,
+				 $"[limit breaker] e a nuvem continua acesa (forca={neb.ForcaDeTeste:0.##})");
+		Conferir(adensou > 0.5f && adensou <= 2.0f,
+				 $"[limit breaker] e ela ADENSA com o C (carga={adensou:0.##}) -- *\"a aura so intensifica\"*");
+		Conferir(neb.NumeroDeTeste("pontos_densidade") == 0f,
+				 "[limit breaker] e os pontinhos continuam SEM OS PONTINHOS com o C na mao (`pontos_densidade` ainda 0)");
+
+		Fotografar("lb-carga", corpo);
+		_espera = 0.4;
+	}
+
+	/// <summary>A assinatura do material em pares uniform -> valor. Ver <see cref="ANuvemVermelhaDoLimitBreaker"/>.</summary>
+	private static Dictionary<string, string> PartirAssinatura(string a)
+	{
+		var m = new Dictionary<string, string>();
+		foreach (string parte in a.Split(';', StringSplitOptions.RemoveEmptyEntries))
+		{
+			int i = parte.IndexOf('=');
+			if (i > 0) m[parte[..i]] = parte[(i + 1)..];
+		}
+		return m;
 	}
 
 	// =====================================================================

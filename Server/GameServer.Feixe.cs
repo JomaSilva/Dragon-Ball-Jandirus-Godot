@@ -77,7 +77,7 @@ public sealed partial class GameServer
 	private void CortarOndeEncostaram(Projetil p, List<ServerPlayer> corpos, List<Projetil> lista, ulong zona)
 	{
 		if (Feixe.SemCorteDeTeste) return;
-		if (!p.Vivo || p.Tipo != TipoDeProjetil.Beam || p.Inerte || p.EmEmbate) return;
+		if (!p.Vivo || p.Tipo != TipoDeProjetil.Beam || p.Inerte || p.EmEmbate || p.DaZonaSegura) return;   // (2026-10-26) ver `NaZonaSegura`
 		float alcance = Feixe.AlcanceDaCabeca(p);
 		if (!Feixe.Tronco(p.Cauda, p.Pos, p.Rumo, alcance, out _)) return;
 

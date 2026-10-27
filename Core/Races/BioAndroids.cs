@@ -17,11 +17,11 @@ namespace Jandirus.Core.Races;
 /// aparencia dele mudou, que e o mesmo caminho de quem troca de roupa.
 /// =========================================================================================================
 ///
-/// ============================ E A SUPER PERFEITA **NAO** ESTA AQUI ============================
-/// Os quatro degraus abaixo sao estado permanente (ver <see cref="Stats.Fighter.bio_stage"/>). A
-/// Super Perfeita e uma TRANSFORMACAO de verdade -- 8x temporario, com dreno, que cai quando o Ki
-/// acaba (`CellFormBuff.dm:1-45`) --, entao ela e uma entrada do
-/// <see cref="Forms.Catalogo"/> e o corpo dela sai de la (`CorpoDeForma.BioSuperPerfeito`).
+/// ============================ E AS FORMAS DO BIO **NAO** ESTAO AQUI ============================
+/// Os quatro degraus abaixo sao estado permanente (ver <see cref="Stats.Fighter.bio_stage"/>). As duas
+/// formas do ki divino (2026-10-26) -- a Golden Perfect e a MAX, no lugar da Super Perfeita do DM, que
+/// saiu do jogo -- sao TRANSFORMACOES de verdade, com dreno, entao elas sao entradas do
+/// <see cref="Forms.Catalogo"/> e o corpo delas sai de la (`CorpoDeForma.BioGolden`, `CorpoDeForma.BioMax`).
 /// =============================================================================================
 /// </summary>
 public static class BioAndroids
@@ -78,16 +78,20 @@ public static class BioAndroids
 	];
 
 	/// <summary>
-	/// O CORPO DA SUPER PERFEITA (`Bio Android 4.dmi`, `body_custom.dm:249`).
+	/// (2026-10-26) O CORPO DA GOLDEN PERFECT -- `Bio Android 6`, a arte que o dono apontou.
 	///
 	/// Separado da lista porque ele NAO e um degrau de <see cref="Stats.Fighter.bio_stage"/>: e a
 	/// camada que a forma veste por cima do corpo perfeito, e quem a pede e o
-	/// `Client.CorposDeForma`. Foi justamente ele que o `dnl_bio_hatch` do original **esquece de
-	/// escrever** (`form4icon` fica nulo e so o fallback do `Stats.dm:210` salva a cara do bicho);
-	/// aqui ele e uma constante e nao ha o que esquecer.
+	/// `Client.CorposDeForma`. Era o lugar do corpo da Super Perfeita (`Bio Android 4`), que saiu do
+	/// jogo -- e que o `dnl_bio_hatch` do original **esquecia de escrever** (`form4icon` nulo); aqui
+	/// ele e uma constante e nao ha o que esquecer.
 	/// </summary>
-	public const string CorpoSuperPerfeito =
-		"res://Assets/Sprites/Character Icons/Bioandroids/Bio Android 4.tres";
+	public const string CorpoGoldenPerfect =
+		"res://Assets/Sprites/Character Icons/Bioandroids/Bio Android 6.tres";
+
+	/// <summary>(2026-10-26) O CORPO DA MAX -- `Bio Android - Form 5`, a outra arte que o dono apontou. Camada, como a de cima.</summary>
+	public const string CorpoMax =
+		"res://Assets/Sprites/Character Icons/Bioandroids/Bio Android - Form 5.tres";
 
 	/// <summary>O sprite do degrau, com o degrau vindo em 1..4. Fora da faixa cai na larva.</summary>
 	public static string Caminho(int estagio) =>

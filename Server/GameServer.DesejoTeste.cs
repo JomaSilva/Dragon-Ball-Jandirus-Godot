@@ -787,35 +787,38 @@ public partial class GameServer
 			// `GainZenkai` DE PRODUCAO, com o BP base no DOBRO do teto e um inimigo muito mais forte: o Kaio ganha, e o molde -- como
 			// Saiyajin comum e depois como Legendary -- se aposenta no mesmo BP.
 			// ===========================================================================================================
-			Jandirus.Core.Stats.Fighter.ZenkaiResult ZenkaiNoDobroDoTeto(ServerPlayer quem, string classe)
+			// (2026-10-26) PELO BANCO DO ZENKAI: com o BP base no dobro do teto e um banco do tamanho do teto, o que o nocaute solta.
+			double ZenkaiNoDobroDoTeto(ServerPlayer quem, string classe)
 			{
 				string classeDaFicha = quem.Ficha.Class;
-				double bpDaFicha = quem.Ficha.BP;
-				long prontoDaFicha = quem.Ficha.zenkaiReady;
+				double bpDaFicha = quem.Ficha.BP, bancoDaFicha = quem.Ficha.zenkaiGuardado;
+				bool mortoDaFicha = quem.Ficha.dead;
 				try
 				{
 					if (classe.Length > 0) quem.Ficha.Class = classe;
 					double tetoDaFicha = quem.Ficha.ZenkaiCeiling();
 					quem.Ficha.BP = tetoDaFicha * 2;
-					quem.Ficha.zenkaiReady = 0;
-					return quem.Ficha.GainZenkai(tetoDaFicha * 400, NowMs());
+					quem.Ficha.zenkaiGuardado = tetoDaFicha;
+					quem.Ficha.dead = false;
+					return quem.Ficha.SoltarOZenkai(morreuAgora: false, maioriaCritica: false, requisitoDoSsj3: 0);
 				}
-				finally { quem.Ficha.Class = classeDaFicha; quem.Ficha.BP = bpDaFicha; quem.Ficha.zenkaiReady = prontoDaFicha; }
+				finally
+				{
+					quem.Ficha.Class = classeDaFicha; quem.Ficha.BP = bpDaFicha; quem.Ficha.zenkaiGuardado = bancoDaFicha; quem.Ficha.dead = mortoDaFicha;
+				}
 			}
-			var zenkaiDoKaio = ZenkaiNoDobroDoTeto(zamasu, "");
-			var zenkaiDoComum = ZenkaiNoDobroDoTeto(molde, "Normal");
-			var zenkaiDoLendario = ZenkaiNoDobroDoTeto(molde, "Legendary");
-			Checa("ZENKAI SEM TETO SO NO KAIO (dono, 2026-10-24): o Kaioshin no corpo Saiyajin ganha Zenkai com o BP base no dobro do teto, e o Saiyajin comum e o Legendary no mesmo BP se aposentam",
-				  zenkaiDoKaio == Jandirus.Core.Stats.Fighter.ZenkaiResult.Concedido
-				  && zenkaiDoComum == Jandirus.Core.Stats.Fighter.ZenkaiResult.Aposentado
-				  && zenkaiDoLendario == Jandirus.Core.Stats.Fighter.ZenkaiResult.Aposentado,
-				  $"Kaio {zenkaiDoKaio}; comum {zenkaiDoComum}; Legendary {zenkaiDoLendario}");
+			double zenkaiDoKaio = ZenkaiNoDobroDoTeto(zamasu, "");
+			double zenkaiDoComum = ZenkaiNoDobroDoTeto(molde, "Normal");
+			double zenkaiDoLendario = ZenkaiNoDobroDoTeto(molde, "Legendary");
+			Checa("ZENKAI SEM TETO SO NO KAIO (dono, 2026-10-24): com o BP base no dobro do teto, o Kaioshin no corpo Saiyajin solta o banco do Zenkai, e o Saiyajin comum e o Legendary no mesmo BP se aposentam (nada sai)",
+				  zenkaiDoKaio > 0 && zenkaiDoComum == 0 && zenkaiDoLendario == 0,
+				  $"Kaio {zenkaiDoKaio:N0}; comum {zenkaiDoComum:N0}; Legendary {zenkaiDoLendario:N0}");
 			Jandirus.Core.Stats.Fighter.KaioSeAposentaDeTeste = true;
 			try
 			{
-				var zenkaiDoKaioComDefeito = ZenkaiNoDobroDoTeto(zamasu, "");
+				double zenkaiDoKaioComDefeito = ZenkaiNoDobroDoTeto(zamasu, "");
 				Checa("   (defeito injetado: `KaioSeAposentaDeTeste`, o jogo de antes) o Kaio se APOSENTA no teto -- a regua de cima REPROVA",
-					  zenkaiDoKaioComDefeito == Jandirus.Core.Stats.Fighter.ZenkaiResult.Aposentado, $"Kaio {zenkaiDoKaioComDefeito}");
+					  zenkaiDoKaioComDefeito == 0, $"Kaio {zenkaiDoKaioComDefeito:N0}");
 			}
 			finally { Jandirus.Core.Stats.Fighter.KaioSeAposentaDeTeste = false; }
 
@@ -839,55 +842,15 @@ public partial class GameServer
 				  $"'{_benefSig}'/'{_pedidoDoBenef}' vs '{sigNoDisco}'/'{pedidoNoDisco}'");
 
 			// =====================================================================
-			// (2026-10-21) "AUMENTAR O MEU POTENCIAL" -- regra do dono, sem par no DM
+			// (2026-10-26) O "AUMENTAR O MEU POTENCIAL" SAIU DO JOGO -- o dono, ao tirar o potencial antigo: ele somava no estoque uma parte
+			// de "um ano de vida", a conta da idade que nao soma mais. O "Liberar o meu potencial" fica (solta o banco 1,5x).
 			// =====================================================================
-			// Soma no estoque escondido uma FRACAO de um ano de vida (`BP * UPMod`), pela forca do set; as Black Star a fracao fixa
-			// delas (1/6, sem os 5x), o Super a maior (1/4). O BP e o UPMod do testador sao cravados pra conta sair limpa; o BP
-			// volta no `finally`, o estoque e o UPMod no fim desta familia.
-			double bpDaConta = 1_000_000, upDaConta = 2, umAno = bpDaConta * upDaConta;
-			double estoqueAntes = pl.Ficha.hiddenpotential, upGuardado = pl.Ficha.UPMod;
-			pl.Ficha.BP = bpDaConta;
-			pl.Ficha.UPMod = upDaConta;
-			double SomaDe(Func<bool> pedir)
-			{
-				double antes = pl.Ficha.hiddenpotential;
-				pedir();
-				return pl.Ficha.hiddenpotential - antes;
-			}
-			var fraco = new SetDeEsferas { Id = 990, Poder = Desejos.PoderDaFracaoMinima, Desejos = 1, NomeDoDragao = "SHENRON" };
-			var forte = new SetDeEsferas { Id = 991, Poder = Desejos.PoderDaFracaoMaxima, Desejos = 1, NomeDoDragao = "SHENRON" };
-			double noFraco = SomaDe(() => DesejoDeAumentarPotencial(pl, fraco));
-			double noForte = SomaDe(() => DesejoDeAumentarPotencial(pl, forte));
-			Checa("AUMENTAR O POTENCIAL: o set mais fraco soma 1/25 de um ano de vida (BP x UPMod), e o mais forte 1/8",
-				  Math.Abs(noFraco - umAno / 25) < 1e-6 && Math.Abs(noForte - umAno / 8) < 1e-6,
-				  $"fraco {noFraco:0.##}, forte {noForte:0.##}, um ano {umAno:0}");
-			Desejos.FracaoSemForcaDoSetDeTeste = true;
-			double forteSemForca;
-			try { forteSemForca = SomaDe(() => DesejoDeAumentarPotencial(pl, forte)); }
-			finally { Desejos.FracaoSemForcaDoSetDeTeste = false; }
-			Checa("   CONTRA-EXEMPLO (defeito injetado: a forca do set nao conta): o set forte soma o do fraco -- a regua de cima REPROVA",
-				  Math.Abs(forteSemForca - umAno / 8) > 1e-6, $"{forteSemForca:0.##}");
-
-			double naNegra = SomaDe(() => DesejoDeAumentarPotencial(pl, _setNegro));
-			Checa("...as Black Star somam 1/6 FIXO de um ano, sem os 5x dos outros desejos delas",
-				  Math.Abs(naNegra - umAno / 6) < 1e-6, $"{naNegra:0.##}");
-			PotencialNegroComOs5xDeTeste = true;
-			double negraCom5x;
-			try { negraCom5x = SomaDe(() => DesejoDeAumentarPotencial(pl, _setNegro)); }
-			finally { PotencialNegroComOs5xDeTeste = false; }
-			Checa("   CONTRA-EXEMPLO (defeito injetado: as Black Star com os 5x): cinco sextos de um ano -- a regua de cima REPROVA",
-				  Math.Abs(negraCom5x - umAno / 6) > 1e-6, $"{negraCom5x:0.##}");
-
-			DesejoDef superPotencial = Desejos.DoSuper.First(d => d.Id == "sdb_aumentar_potencial");
-			double noSuper = SomaDe(() => ConcederDoSuper(pl, pl, superPotencial, ""));
-			Checa("...e o SUPER SHENLONG soma a maior parte de todas: 1/4 de um ano",
-				  Math.Abs(noSuper - umAno / 4) < 1e-6 && noSuper > naNegra && naNegra > noForte, $"{noSuper:0.##}");
-			Checa("o desejo esta no menu do Shenron e no do Super, ao lado do 'Liberar o meu potencial' (que continua la)",
-				  Desejos.Menu(Esferas.PoderDoEterno, 1, false, false, 0).Any(d => d.Id == "aumentar_potencial")
-				  && Desejos.MenuDoSuper(false, false).Any(d => d.Id == "sdb_aumentar_potencial")
-				  && Desejos.Todos.Any(d => d.Id == "potencial"));
-			pl.Ficha.hiddenpotential = estoqueAntes;
-			pl.Ficha.UPMod = upGuardado;
+			Checa("**O 'AUMENTAR O MEU POTENCIAL' SAIU DO JOGO** (o dono, 2026-10-26): nem na tabela do Shenron, nem na do Super Shenlong -- e o 'Liberar o meu potencial' fica",
+				  !Desejos.Todos.Any(d => d.Id == "aumentar_potencial") && !Desejos.DoSuper.Any(d => d.Id == "sdb_aumentar_potencial")
+				  && Desejos.Todos.Any(d => d.Id == "potencial") && !Desejos.Menu(Esferas.PoderDoEterno, 1, false, false, 0).Any(d => d.Id.Contains("aumentar")),
+				  string.Join(",", Desejos.Todos.Select(d => d.Id).Concat(Desejos.DoSuper.Select(d => d.Id)).Where(i => i.Contains("potencial"))));
+			// o set FRACO das reguas do Super, logo abaixo (o poder do set mais fraco de um Shenron de jogador)
+			var fraco = new SetDeEsferas { Id = 990, Poder = 1e4, Desejos = 1, NomeDoDragao = "SHENRON" };
 
 			// =====================================================================
 			// (2026-10-21) O SUPER SHENLONG: A LISTA INTEIRA DAS BLACK STAR, A 4x -- regra do dono
@@ -896,7 +859,7 @@ public partial class GameServer
 			// e *"ele daria 15 marcos pra n ficar muito broken"*. Medido pelo `ConcederDoSuper` de producao, com o testador de pedinte.
 			string[] doSuper = [.. Desejos.MenuDoSuper(false, false, 0).Select(d => d.Id)];
 			string[] precisaTer = ["sdb_riqueza", "marcos", "tecnologia", "juventude", "poder", "inteligencia", "juventude_alheia",
-								   "curar_planeta", "potencial", "reviver_todos", "matar", "sdb_reviver", "sdb_aumentar_potencial", "sdb_supremo"];
+								   "curar_planeta", "potencial", "reviver_todos", "matar", "sdb_reviver", "sdb_supremo"];
 			bool listaInteira(string[] ids) => precisaTer.All(ids.Contains) && !ids.Contains("dinheiro") && !ids.Contains("reviver")
 											   && !ids.Contains("supremo") && !ids.Contains("aumentar_potencial") && !ids.Contains("nada")
 											   && !ids.Contains("cancelar");
@@ -977,6 +940,7 @@ public partial class GameServer
 			forjados.Add(doGuru);
 			doGuru.Race = "Namekian"; doGuru.Ficha.Race = "Namekian";
 			doGuru.Ficha.unlockPotential = 1;                    // o Guru ja o despertou
+			doGuru.Ficha.hiddenpotential = 0;                    // (2026-10-26) e o banco esta vazio: o desejo da so as formas
 			doGuru.Ficha.BP = Math.Max(doGuru.Ficha.BP, RequisitoDeGodKi(doGuru) * 2);
 			doGuru.Ficha.Statify();
 			double bpDoGuru = doGuru.Ficha.BP;
@@ -990,6 +954,14 @@ public partial class GameServer
 				  $"podia {podiaPedir}, liberou {liberou}, potencial {doGuru.Ficha.unlockPotential}, BP {bpDoGuru:N0} -> {doGuru.Ficha.BP:N0}");
 			Checa("...e com os tres na mao o dragao nao tem mais o que dar: a linha apaga, e o pedido nao gasta",
 				  PorQueNaoLiberaOPotencial(doGuru) != null && !DesejoDePotencial(doGuru, set));
+			// (2026-10-26) O DESEJO SOLTA O BANCO 1,5x, quantas vezes houver banco (o dono, o pedido 95) -- sem a hora de recarga do Guru
+			doGuru.Ficha.hiddenpotential = 1000;
+			double bpComBanco = doGuru.Ficha.BP;
+			bool podiaComBanco = PorQueNaoLiberaOPotencial(doGuru) == null;
+			bool soltou = DesejoDePotencial(doGuru, set);
+			Checa("**COM POTENCIAL GUARDADO O DESEJO SOLTA O BANCO 1,5x** (o dono: \"desejo libera 1.5x\"): mil guardados, +1.500 de BP base, o banco zera -- e a linha acende de novo pra quem ja tem tudo",
+				  podiaComBanco && soltou && Math.Abs(doGuru.Ficha.BP - (bpComBanco + 1500)) < 1e-6 && doGuru.Ficha.hiddenpotential == 0,
+				  $"podia {podiaComBanco}, soltou {soltou}, BP {bpComBanco:N0} -> {doGuru.Ficha.BP:N0}");
 
 			// =====================================================================
 			// (2026-10-22) O MENU DA ESTATUA -- regra do dono

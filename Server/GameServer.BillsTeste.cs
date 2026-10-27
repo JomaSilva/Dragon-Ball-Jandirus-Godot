@@ -211,7 +211,7 @@ public partial class GameServer
 		string origemGuardada = pl.PlanetaDeOrigem;
 		double bpGuardado = f.BP, kiGuardado = f.Ki, vigorGuardado = f.stamina, gravidadeGuardada = f.GravMastered;
 		GodKiState? godkiGuardado = f.godki;
-		long zenkaiGuardado = f.zenkaiReady;
+		double zenkaiGuardado = f.zenkaiGuardado;
 		bool trajeGuardado = f.TrajeDoDeusRecebido, letalGuardado = pl.Combate.Letal, knockbackGuardado = pl.Knockback;
 		ulong casaOuvidaGuardada = f.CasaDeBillsOuvida;
 		bool mortoGuardado = f.dead, koGuardado = f.KO;
@@ -356,7 +356,7 @@ public partial class GameServer
 				f.BP = bpGuardado;
 				f.GravMastered = gravidadeGuardada;
 				f.godki = godkiGuardado;
-				f.zenkaiReady = zenkaiGuardado;
+				f.zenkaiGuardado = zenkaiGuardado;
 				f.TrajeDoDeusRecebido = trajeGuardado;
 				f.CasaDeBillsOuvida = casaOuvidaGuardada;
 				f.dead = mortoGuardado;
@@ -416,8 +416,13 @@ public partial class GameServer
 		AfirmarBw("23W1. o Whis em repouso tem CEM TRILHOES (dono, 2026-10-23: antes dividia o trilhao do Bills) -- e o repouso do Bills continua o trilhao",
 				  BillsEWhis.PoderDoWhis == 100e12 && BillsEWhis.PoderDeRepouso(QuemFala.Whis) == 100e12 && BillsEWhis.PoderDeRepouso(QuemFala.Bills) == 1e12,
 				  $"Whis {BillsEWhis.PoderDeRepouso(QuemFala.Whis):N0}, Bills {BillsEWhis.PoderDeRepouso(QuemFala.Bills):N0}");
-		AfirmarBw("o adversario de treino tem o TRIPLO do poder de quem treina",
-				  Math.Abs(BillsEWhis.PoderDoTreino(1000) - 3000) < 1e-9);
+		AfirmarBw("o Whis de treino tem o TRIPLO do poder expresso de quem treina, sem teto -- e o Bills, o DOBRO, ate os 100 tri (o dono, 2026-10-25)",
+				  Math.Abs(BillsEWhis.PoderDoTreino(1000) - 3000) < 1e-9 && Math.Abs(BillsEWhis.PoderDoBillsNoTreino(1000) - 2000) < 1e-9
+				  && BillsEWhis.PoderDoBillsNoTreino(80e12) == 100e12 && BillsEWhis.PoderDoTreino(80e12) == 240e12);
+		// (a familia do ensino le as constantes: e aqui que os numeros do dono ficam cravados)
+		AfirmarBw("o ensino e pelo TEMPO de treino (o dono, 2026-10-25): MEIA HORA pra o mestre comecar a ensinar, UMA HORA pra tecnica ser do aluno",
+				  BillsEWhis.SegundosPraComecarAEnsinar == 30 * 60 && BillsEWhis.SegundosPraLiberar == 60 * 60,
+				  $"{BillsEWhis.SegundosPraComecarAEnsinar:0} s e {BillsEWhis.SegundosPraLiberar:0} s");
 		AfirmarBw("o mes in-game tem 28 dias (WorldClock.dm:19), e a espera e de UM mes",
 				  BillsEWhis.DiasPorMes == 28 && BillsEWhis.DiasAteAVisita == 28);
 		AfirmarBw("existe <=> cargo vago (a funcao pura): vago = existe, ocupado = nao existe",
@@ -544,6 +549,7 @@ public partial class GameServer
 			BillsEWhis.BillsOcupado, BillsEWhis.AvisoDoDesafio, BillsEWhis.BillsVenceuODesafio, BillsEWhis.BillsAcabouOPrazo,
 			BillsEWhis.BillsDesafianteSumiu, BillsEWhis.BillsDesafioAnulado, BillsEWhis.AvisoDoDesafioAnulado,
 			BillsEWhis.AvisoDoTituloDefendido, BillsEWhis.BillsSemKiDivino, BillsEWhis.BillsDesafioCedo, BillsEWhis.BillsFundido,
+			BillsEWhis.WhisSemKiDivino, BillsEWhis.BillsSemKiDivinoNoTreino, BillsEWhis.AvisoDoTreinoSemKiDivino,
 			BillsEWhis.ViaDoTitulo, BillsEWhis.RumoNaTerra, BillsEWhis.RumoDosDois, BillsEWhis.RumoDoBills, BillsEWhis.RumoDoWhis,
 		};
 		todas.Add(BillsEWhis.BillsApagouODesafiante);
@@ -2222,6 +2228,10 @@ public partial class GameServer
 		List<string> Pedir(string verbo) => Ouvir(() => ComandoDeInteracao(pl, verbo, ""));
 		bool SemLuta() => _whis.Sessao == null && _bills.Sessao == null && _whis.Modo == ModoDivino.Parado && _bills.Modo == ModoDivino.Parado;
 
+		// (2026-10-25) o treino pede o ki divino desperto: o aluno o tem aqui, e cada recusa abaixo e pela razao DELA (a do ki divino vem no fim)
+		GodKiState? kiDivinoDoAluno = pl.Ficha.godki;
+		pl.Ficha.godki = new GodKiState { awakened = true };
+
 		List<string> longe = Pedir(BillsEWhis.VerboTreinarComWhis);
 		AfirmarBw("LONGE (dez tiles): o pedido de treino e recusado, com a frase",
 				  SemLuta() && Disse(longe, "longe demais"), Ultimos(longe));
@@ -2267,6 +2277,33 @@ public partial class GameServer
 		pl.Ficha.GravMastered = 500;
 		AplicarGravidade(pl);
 
+		// ---- (2026-10-25) SEM O KI DIVINO DESPERTO, NADA DE TREINO (o dono: "so de pra treinar com bills e whis caso vc tenha god ki despertado") ----
+		pl.Ficha.godki = new GodKiState { awakened = false, mastery = 0 };
+		EscutaDeFalas!.Clear();
+		BwLevar(pl, zona, new Vec2(w.Pos.X, w.Pos.Y + 40));
+		List<string> semKiComOWhis = Pedir(BillsEWhis.VerboTreinarComWhis);
+		BwLevar(pl, zona, new Vec2(b.Pos.X, b.Pos.Y + 40));
+		List<string> semKiComOBills = Pedir(BillsEWhis.VerboTreinarComBills);
+		AfirmarBw("**SEM O KI DIVINO DESPERTO, O TREINO NAO ABRE** (o dono, 2026-10-25): de perto, de pe e no lugar certo, o Whis e o Bills recusam a aula -- cada um com a fala dele, e o aviso",
+				  SemLuta() && Disse(semKiComOWhis, "ki divino") && Disse(semKiComOBills, "ki divino")
+				  && EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisSemKiDivino)
+				  && EscutaDeFalas.Any(e => e.Quem == b.Id && e.Texto == BillsEWhis.BillsSemKiDivinoNoTreino),
+				  Ultimos(semKiComOWhis) + " | " + Ultimos(semKiComOBills));
+		BillsEWhis.TreinoSemKiDivinoDeTeste = true;
+		try
+		{
+			Pedir(BillsEWhis.VerboTreinarComBills);
+			AfirmarBw("(defeito injetado: o treino nao pede o ki divino) o MESMO pedido abre a aula -- e a regua de cima reprova", _bills.Sessao != null);
+		}
+		finally
+		{
+			BillsEWhis.TreinoSemKiDivinoDeTeste = false;
+			if (_bills.Sessao != null) EncerrarASessao(_bills, FimDaSessao.ParceiroParou);
+		}
+		pl.Ficha.godki = kiDivinoDoAluno ?? new GodKiState();
+		pl.Ficha.godki.awakened = true;   // daqui em diante o aluno tem o ki divino desperto: o treino pede
+		BwLevar(pl, zona, new Vec2(w.Pos.X, w.Pos.Y + 40));
+
 		AfirmarBw("verbo que nao e deste sistema nao e engolido por ele", !ComandoDeBills(pl, "abrir_tech", ""));
 	}
 
@@ -2298,40 +2335,41 @@ public partial class GameServer
 				  EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisComecaOTreino) && _bills.Modo == ModoDivino.Parado && b.Combate.Intocavel);
 		AfirmarBw("...e o golpe LETAL de quem treina foi desligado (treino nao mata nem aleija)", !pl.Combate.Letal);
 
-		// ---- (2026-10-24) o triplo do PICO, no BASE, e o Instinto Perfeito por cima -- e ele ACOMPANHA, e nao desce ----
+		// ---- (2026-10-25) SEMPRE 3x o EXPRESSO de agora, no Instinto Perfeito que nao aumenta o poder dele -- ele ACOMPANHA, nas duas direcoes ----
+		double Vezes() => w.Ficha.expressedBP / Math.Max(pl.Ficha.expressedBP, 1);
 		BwPassar(0.3);
 		double pico = pl.Ficha.expressedBP;
-		AfirmarBw("o BP BASE do Whis e o TRIPLO do maior poder expresso que o parceiro mostrou na aula (o dono, 2026-10-24) -- e o expresso dele passa muito disso: o Instinto Perfeito por cima",
-				  Math.Abs(w.Ficha.BP / pico - 3) <= 0.01 && w.Ficha.expressedBP > w.Ficha.BP * 10,
-				  $"base {w.Ficha.BP:N0} = {w.Ficha.BP / pico:0.000}x o pico {pico:N0}; expresso {w.Ficha.expressedBP:N0}");
+		AfirmarBw("**O WHIS TEM 3x O PODER EXPRESSO DE QUEM TREINA** (o dono, 2026-10-25: 'whis vai ter 3x o bp expresso do jogador e e considerado q esta usando UI mas sem aumentar o bp'): no Instinto Perfeito, e o numero da luta e o triplo",
+				  Math.Abs(Vezes() - 3) <= 0.03 && w.Forma.Atual == BillsEWhis.FormaDoWhis,
+				  $"Whis {w.Ficha.expressedBP:N0} = {Vezes():0.000}x o aluno {pico:N0}; forma '{w.Forma.Atual}'");
 
 		pl.Ficha.BP *= 7;                       // o jogador "se transforma": o expresso dele sobe sete vezes
 		pl.Ficha.Statify();
 		pl.Ficha.PowerLevel();
 		BwPassar(0.3);
 		double picoNovo = pl.Ficha.expressedBP;
-		AfirmarBw("o jogador fica sete vezes mais forte no meio da luta: o Whis ACOMPANHA -- o base no triplo do pico novo",
-				  Math.Abs(w.Ficha.BP / picoNovo - 3) <= 0.01, $"base {w.Ficha.BP / picoNovo:0.000}x o pico {picoNovo:N0}");
+		AfirmarBw("o jogador fica sete vezes mais forte no meio da luta: o Whis ACOMPANHA -- 3x o expresso novo",
+				  Math.Abs(Vezes() - 3) <= 0.03, $"{Vezes():0.000}x o aluno {picoNovo:N0}");
 		pl.Ficha.BP /= 7;
 		pl.Ficha.Statify();
 		pl.Ficha.PowerLevel();
 		BwPassar(0.3);
-		AfirmarBw("...e quando o jogador volta a ser fraco, o Whis NAO desce: o base fica no triplo do PICO da aula",
-				  Math.Abs(w.Ficha.BP / picoNovo - 3) <= 0.01, $"base {w.Ficha.BP / picoNovo:0.000}x o pico; o jogador agora {pl.Ficha.expressedBP:N0}");
+		AfirmarBw("...e quando o jogador volta a ser fraco, o Whis DESCE junto: sempre 3x o expresso de AGORA (era o pico da aula ate 2026-10-25)",
+				  Math.Abs(Vezes() - 3) <= 0.03, $"{Vezes():0.000}x o aluno {pl.Ficha.expressedBP:N0} (o pico era {picoNovo:N0})");
 
 		foreach (BodyPart p in w.Combate.Corpo.Partes) if (p.Papel == Vitalidade.Membro) p.Vida = p.VidaMax * 0.6;
 		w.Combate.SincronizarVida();
 		w.Ficha.PowerLevel();
 		BwPassar(0.3);
-		AfirmarBw("FERIDO, o base do Whis continua no triplo do pico (o pino e no BASE: a ferida nao o mexe)",
-				  Math.Abs(w.Ficha.BP / picoNovo - 3) <= 0.01, $"base {w.Ficha.BP / picoNovo:0.000}x com HP {w.Ficha.HP:0}");
+		AfirmarBw("FERIDO (60% de cada membro), o Whis continua 3x o expresso de quem treina",
+				  Math.Abs(Vezes() - 3) <= 0.03, $"{Vezes():0.000}x com HP {w.Ficha.HP:0}");
 
 		BillsEWhis.TreinoSemMultiploDeTeste = true;
 		try
 		{
 			BwPassar(0.3);
-			AfirmarBw("(defeito injetado: sem o multiplo) o base do Whis fica no pico SEM o triplo -- e a afirmacao do triplo reprova",
-					  Math.Abs(w.Ficha.BP / picoNovo - 3) > 0.5, $"{w.Ficha.BP / picoNovo:0.000}x");
+			AfirmarBw("(defeito injetado: sem o multiplo) o Whis fica com o MESMO expresso de quem treina -- e a afirmacao do triplo reprova",
+					  Math.Abs(Vezes() - 3) > 0.5, $"{Vezes():0.000}x");
 		}
 		finally { BillsEWhis.TreinoSemMultiploDeTeste = false; }
 		BwPassar(0.3);
@@ -2394,7 +2432,7 @@ public partial class GameServer
 		pl.Ficha.Statify();
 		pl.Ficha.PowerLevel();
 		BwPassar(0.3);
-		pl.Ficha.zenkaiReady = 0;
+		pl.Ficha.zenkaiGuardado = 1000;   // (2026-10-26) um banco do Zenkai -- e cair no treino nao o solta
 		double bpAntes = pl.Ficha.BP;
 		AoPerderALuta(pl, w, morreu: false);
 		AfirmarBw("cair no treino NAO e derrota: nenhum Zenkai (o adversario tem sempre o triplo -- seria uma fabrica)",
@@ -2402,7 +2440,7 @@ public partial class GameServer
 		BillsEWhis.TreinoEhDerrotaDeTeste = true;
 		try
 		{
-			pl.Ficha.zenkaiReady = 0;
+			pl.Ficha.zenkaiGuardado = 1000;   // (2026-10-26) um banco do Zenkai -- e cair no treino nao o solta
 			AoPerderALuta(pl, w, morreu: false);
 			AfirmarBw($"(defeito injetado: o treino conta como derrota) o Saiyajin ganha Zenkai por apanhar do Whis ({pl.Race})",
 					  pl.Ficha.BP > bpAntes || !pl.Ficha.HasZenkai(), $"{bpAntes:N0} -> {pl.Ficha.BP:N0}");
@@ -2416,6 +2454,7 @@ public partial class GameServer
 		// ---- ocupado: um de cada vez -- mas o Bills esta livre ----
 		ServerPlayer outro = BwForjar("Segundo", "Human", zona, new Vec2(w.Pos.X + 20, w.Pos.Y + 40), 3e9, forjados);
 		outro.Ficha.GravMastered = 500;
+		outro.Ficha.godki = new GodKiState { awakened = true };   // (2026-10-25) o treino pede o ki divino desperto
 		AplicarGravidade(outro);
 		EscutaDeFalas.Clear();
 		outro.Pos = new Vec2(w.Pos.X + 20, w.Pos.Y + 40);
@@ -2602,7 +2641,7 @@ public partial class GameServer
 		}
 
 		double semTreino = Ganho(TipoDeDisciplina.UltraInstinct);
-		AfirmarBw("FORA do treino, dez segundos de luta com o Instinto ligado rendem o de sempre (0,04 por segundo)",
+		AfirmarBw("FORA do treino, dez segundos de luta com o Instinto ligado rendem o de sempre (a taxa da escada -- 3 h pra dominar, 2026-10-25)",
 				  Math.Abs(semTreino - Disciplinas.UltraInstinct.RealPorSegundo * 10) < 0.01, $"+{semTreino:0.000}");
 
 		pl.Pos = new Vec2(w.Pos.X, w.Pos.Y + 40);
@@ -2663,27 +2702,31 @@ public partial class GameServer
 		EscutaDeAnuncios = [];
 		ComandoDeInteracao(pl, BillsEWhis.VerboTreinarComBills, "");
 		BwPassar(0.3);
-		AfirmarBw("o BP BASE do Bills de treino IGUALA o base de quem o chamou (o dono, 2026-10-24), e o expresso passa muito disso: o Ultra Ego por cima",
-				  _bills.Sessao != null && Math.Abs(b.Ficha.BP - pl.Ficha.BP) <= pl.Ficha.BP * 0.001 && b.Ficha.expressedBP > b.Ficha.BP * 10,
-				  $"base {b.Ficha.BP:N0} contra o do aluno {pl.Ficha.BP:N0}; expresso {b.Ficha.expressedBP:N0}");
-		double baseDoAluno = pl.Ficha.BP;
-		pl.Ficha.BP = BillsEWhis.PoderTotal * 4;
-		pl.Ficha.Statify();
-		pl.Ficha.PowerLevel();
-		BwPassar(0.3);
-		AfirmarBw("...e com o aluno ACIMA do trilhao, o base do Bills para no trilhao (o 100% dele)",
-				  Math.Abs(b.Ficha.BP - BillsEWhis.PoderTotal) < 1, $"base {b.Ficha.BP:N0}");
-		pl.Ficha.BP = baseDoAluno;
-		pl.Ficha.Statify();
-		pl.Ficha.PowerLevel();
-		BwPassar(0.3);
+		// (2026-10-25) o base igual ao do aluno e o teto no trilhao (2026-10-24) sairam: o poder dele e o dobro do EXPRESSO, ate os 100 tri --
+		// as reguas estao logo abaixo, depois da Fury
+		AfirmarBw("o pedido de perto ABRE o treino com o Bills (o aluno tem o ki divino desperto)", _bills.Sessao is { Desafio: false });
 		AfirmarBw("...com o Poder da Destruicao dele ligado a 100%: a reducao de dano da aura esta no corpo",
 				  b.PoderDaDestruicao is { Aprendida: true, Ligada: true, Real: 100, Atual: 100 }
 				  && Math.Abs(b.Combate.ReducaoDeDano - Disciplinas.ReducaoDeDano(100)) < 1e-9, $"reducao {b.Combate.ReducaoDeDano:0.0}%");
-		AfirmarBw("...NO ULTRA EGO, com o visual (a forma e o anuncio dela -- e nao a Fury, que e do desafio), e ele fala ao comecar",
-				  b.Forma.Atual == BillsEWhis.FormaDoBillsNoTreino && !b.FormaSemVisual
-				  && EscutaDeAnuncios.Any(e => e.Quem == b.Id && e.Para == BillsEWhis.FormaDoBillsNoTreino)
+		AfirmarBw("...NA FURY (o dono, 2026-10-25: 'o bills vai usar fury'), com o visual (a forma e o anuncio dela -- sem o kit do Deus), e ele fala ao comecar",
+				  b.Forma.Atual == BillsEWhis.IdDaFury && !b.FormaSemVisual
+				  && EscutaDeAnuncios.Any(e => e.Quem == b.Id && e.Para == BillsEWhis.IdDaFury)
 				  && EscutaDeFalas.Any(e => e.Quem == b.Id && e.Texto == BillsEWhis.BillsComecaOTreino), $"forma '{b.Forma.Atual}'");
+		AfirmarBw("**O BILLS DE TREINO TEM O DOBRO DO PODER EXPRESSO DE QUEM TREINA** (o dono, 2026-10-25): a Fury vale, e o numero da luta e o pedido",
+				  Math.Abs(b.Ficha.expressedBP / Math.Max(pl.Ficha.expressedBP, 1) - 2) <= 0.03,
+				  $"Bills {b.Ficha.expressedBP:N0}, aluno {pl.Ficha.expressedBP:N0} ({b.Ficha.expressedBP / Math.Max(pl.Ficha.expressedBP, 1):0.000}x)");
+		double baseAntesDoTeto = pl.Ficha.BP;
+		pl.Ficha.BP = 80e12;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		BwPassar(0.3);
+		AfirmarBw("...ATE OS 100 TRI DELE: com quem treina a ~80 tri de expresso, o Bills fica nos 100 tri (e nao nos 160)",
+				  BwPerto(b.Ficha.expressedBP, BillsEWhis.TetoDoBillsNoTreino, 0.03) && pl.Ficha.expressedBP > 55e12,
+				  $"Bills {b.Ficha.expressedBP:N0}, aluno {pl.Ficha.expressedBP:N0}");
+		pl.Ficha.BP = baseAntesDoTeto;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		BwPassar(0.3);
 
 		for (int i = 0; i < 30 * 60; i++) { b.Combate.EntrarEmCombate(); TickDasDisciplinas(b, Protocol.TickSeconds); TickDeBills(Protocol.TickSeconds); _bills.Sessao!.Acaba += 1; }
 		AfirmarBw("um minuto de luta: a energia da aura dele nao caiu", b.PoderDaDestruicao.Atual == 100 && _bills.Sessao != null);
@@ -2818,16 +2861,20 @@ public partial class GameServer
 			}
 
 			EscutaDeFalas!.Clear();
-			List<string> duasEMeia = Aula(_whis, 2.5 * BillsEWhis.SegundosDeTreino);
-			AfirmarBw("duas aulas e meia de luta com o Whis: o tempo vai pra ficha do aluno, e ele ainda nao ensina",
-					  Math.Abs(pl.Ficha.aulaComWhis - 2.5 * BillsEWhis.SegundosDeTreino) < 1 && !Disse(duasEMeia, "começou a te ensinar")
+			double quaseMeiaHora = BillsEWhis.SegundosPraComecarAEnsinar - BillsEWhis.SegundosDeTreino / 2;
+			List<string> duasEMeia = Aula(_whis, quaseMeiaHora);
+			AfirmarBw("vinte e sete minutos e meio de luta com o Whis: o tempo vai pra ficha do aluno, e ele ainda nao ensina",
+					  Math.Abs(pl.Ficha.aulaComWhis - quaseMeiaHora) < 1 && !Disse(duasEMeia, "começou a te ensinar")
 					  && !EscutaDeFalas.Any(e => e.Texto == BillsEWhis.WhisComecaAEnsinar), $"{pl.Ficha.aulaComWhis:0} s");
 			List<string> terceira = Aula(_whis, BillsEWhis.SegundosDeTreino);
-			AfirmarBw("**NA TERCEIRA AULA O WHIS COMECA A ENSINAR** os principios do Ultra Instinto (o dono): a fala dele e o aviso ao aluno -- e a tecnica ainda nao e dele",
+			AfirmarBw("**PASSADA MEIA HORA DE TREINO O WHIS COMECA A ENSINAR** os principios do Ultra Instinto (o dono): a fala dele e o aviso ao aluno -- e a tecnica ainda nao e dele",
 					  Disse(terceira, "começou a te ensinar") && EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisComecaAEnsinar)
 					  && !pl.UltraInstinct.Aprendida, Ultimos(terceira));
-			List<string> sexta = Aula(_whis, 3 * BillsEWhis.SegundosDeTreino);
-			AfirmarBw("**NA SEXTA AULA A TECNICA E DELE**: o Ultra Instinto aprendido (pela porta do `PodeAprender`), com a fala do Whis e o aviso",
+			Aula(_whis, BillsEWhis.SegundosPraLiberar - pl.Ficha.aulaComWhis - 60);
+			AfirmarBw("...e UM MINUTO ANTES DA HORA a tecnica ainda nao e dele (o dono, 2026-10-25: 'pelomenos 1h de treino com whis pra aprender UI')",
+					  !pl.UltraInstinct.Aprendida, $"{pl.Ficha.aulaComWhis:0} s");
+			List<string> sexta = Aula(_whis, 60);
+			AfirmarBw("**COM UMA HORA DE TREINO A TECNICA E DELE**: o Ultra Instinto aprendido (pela porta do `PodeAprender`), com a fala do Whis e o aviso",
 					  pl.UltraInstinct.Aprendida && pl.Disciplina == TipoDeDisciplina.UltraInstinct && Disse(sexta, "aprendeu o Ultra Instinto")
 					  && EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisLiberou), Ultimos(sexta));
 
@@ -2838,8 +2885,8 @@ public partial class GameServer
 
 			double antesDoNocaute = pl.Ficha.aulaComBills;
 			Aula(_bills, 0, FimDaSessao.MestreCaiu);
-			AfirmarBw("DERRUBAR O MESTRE (o 'nada acontece' do dono) vale uma aula inteira a mais no ensino",
-					  Math.Abs(pl.Ficha.aulaComBills - antesDoNocaute - BillsEWhis.SegundosPeloMestreCaido) < 1, $"+{pl.Ficha.aulaComBills - antesDoNocaute:0} s");
+			AfirmarBw("**DERRUBAR O MESTRE NAO ENSINA** (o dono, 2026-10-25: o ensino e o tempo total de treino, e nao aprender vencendo): a aula de zero segundo terminada com o Bills no chao nao soma nada",
+					  Math.Abs(pl.Ficha.aulaComBills - antesDoNocaute) < 1, $"+{pl.Ficha.aulaComBills - antesDoNocaute:0} s");
 
 			pl.UltraInstinct.Aprendida = pl.UltraInstinct.Ligada = false;
 			pl.Disciplina = null;
@@ -2848,8 +2895,8 @@ public partial class GameServer
 			BillsEWhis.TreinoNaoEnsinaDeTeste = true;
 			try
 			{
-				Aula(_whis, 7 * BillsEWhis.SegundosDeTreino);
-				AfirmarBw("(defeito injetado: o tempo de aula nao ensina) sete aulas e nada: nem o tempo na ficha, nem a tecnica -- a regua da sexta aula reprova",
+				Aula(_whis, BillsEWhis.SegundosPraLiberar + BillsEWhis.SegundosDeTreino);
+				AfirmarBw("(defeito injetado: o tempo de aula nao ensina) uma hora e cinco minutos e nada: nem o tempo na ficha, nem a tecnica -- a regua da hora reprova",
 						  !pl.UltraInstinct.Aprendida && pl.Ficha.aulaComWhis == 0);
 			}
 			finally { BillsEWhis.TreinoNaoEnsinaDeTeste = false; }
@@ -2941,9 +2988,9 @@ public partial class GameServer
 			EscutaDeFalas!.Clear();
 			ComandoDeInteracao(pl, BillsEWhis.VerboTreinarComBills, "");
 			BwPassar(0.3);
-			AfirmarBw("O TREINO COM O BILLS: sem kit (o corpo nao e o Deus, o cerebro nao sabe de kit, o arsenal so tem o que ele sabe de livro) e sem Fury -- no Ultra Ego (2026-10-24)",
+			AfirmarBw("O TREINO COM O BILLS: sem kit (o corpo nao e o Deus, o cerebro nao sabe de kit, o arsenal so tem o que ele sabe de livro) -- e NA FURY pela forma, sem o verbo dela (2026-10-25)",
 					  _bills.Sessao is { Desafio: false } && !EhDeusDaDestruicao(b) && !LerCapacidades(b).KitDoDeus && !BwArsenal(b).Contains(KitDoDeus.VerbFuria)
-					  && !BwArsenal(b).Contains(KitDoDeus.VerbEsfera) && b.Forma.Atual == BillsEWhis.FormaDoBillsNoTreino, BwArsenal(b));
+					  && !BwArsenal(b).Contains(KitDoDeus.VerbEsfera) && b.Forma.Atual == BillsEWhis.IdDaFury, BwArsenal(b));
 
 			bool tocavel = false;
 			for (int i = 0; i < 30 * 10; i++) { TickDeBills(Protocol.TickSeconds); tocavel |= !w.Combate.Intocavel; }

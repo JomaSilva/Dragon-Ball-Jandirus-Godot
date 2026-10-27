@@ -57,9 +57,9 @@ namespace Jandirus.Server;
 ///   N. O SR. KAIOH E O KORIN -- no lugar do DM (o Sr. Kaioh na ilha do norte), com a conversa e as licoes dele (item 18).
 ///   J. O PASSE DO ENMA -- 100.000 zeni, sete dias do jogo entre os vivos: morto, de aureola e DE PE; de volta a mesa do Enma
 ///      no fim (item 11).
-///   L. A REENCARNACAO -- o personagem acaba pra sempre, a conta guarda o eco, e o proximo nasce com o BP da raca e o BP do anterior
-///      como potencial oculto (item 7; 2026-10-22, antes 10% do BP). E o potencial no Ki (2026-10-22): engorda o Ki maximo, que nao
-///      cai quando o BP o alcanca; nao mexe na regen nem no teto seguro da carga; a raiva maxima continua lendo.
+///   L. A REENCARNACAO -- o personagem acaba pra sempre, a conta guarda o eco, e o proximo nasce com o BP da raca mais 10% do BP
+///      do anterior e com o banco do potencial dele (item 7; 2026-10-26, como no DU). E o banco que nao mexe no Ki nem na raiva
+///      (2026-10-26: o "modo Uub" do potencial antigo saiu).
 ///   T. O TRONO DE VEGETA -- o Rei Vegeta e o Principe nascem so com o trono vago; matar o Rei sendo Saiyajin o toma
 ///      (item 17).
 ///   D. O DESEJO DE LIBERAR O POTENCIAL -- de toda raca (so o potencial); o Namekuseijin com o poder do ki divino ganha
@@ -102,7 +102,7 @@ public sealed partial class GameServer
 			ONpcAbsorvidoSomeV30();
 			OSomDeVegetaV30();
 			OsAvisosComCorV30();
-			ORecargaEOTetoDoZenkaiV30();
+			OZenkaiEmBancoV30();
 			ORaboQueNaoVoltaCicatrizaV30();
 			ARaivaNoRetratoV30();
 			OsPesosAteOLimiteEComArteV30();
@@ -184,9 +184,6 @@ public sealed partial class GameServer
 		VoltaNaFaixaDoDmDeTeste = false;
 		ZoneCollision.QuemVoaSaiDoMapaDeTeste = false;
 		EcoDaReencarnacaoIgnoradoDeTeste = false;
-		EcoDeDezPorCentoDeTeste = false;
-		Fighter.PotencialNoKiCaiDeTeste = false;
-		Fighter.PotencialNaRegenENaCargaDeTeste = false;
 		PasseDeitaDeTeste = false;
 		PasseSemVoltaDeTeste = false;
 		Povoamento.TronoIgnoradoDeTeste = false;
@@ -744,7 +741,7 @@ public sealed partial class GameServer
 	// =====================================================================
 	private void AReencarnacaoV30()
 	{
-		GD.Print("[v030] --- L) a reencarnacao pelo Enma: o personagem acaba, e o proximo da conta nasce com o BP da raca e o poder dele como potencial oculto (item 7; 2026-10-22) ---");
+		GD.Print("[v030] --- L) a reencarnacao pelo Enma: o personagem acaba, e o proximo da conta nasce com o BP da raca mais 10% do dele, e com o banco dele (item 7; 2026-10-26, como no DU) ---");
 		LimparTudoDaBancada();
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		Obra? enma = _noChao.Find(o => o.Tipo == Alem.TipoDoEnma && o.Zona.Equals(alem));
@@ -778,53 +775,48 @@ public sealed partial class GameServer
 				   Disse(vivo, "vivos") && Disse(errado, "escreva o nome") && noInferno && acc.Slots[pl.Slot] != null && acc.Reencarnacao == null && !pl.PersonagemConsumido,
 				   $"{Ultimos(vivo)} / {Ultimos(errado)} / inferno {noInferno}");
 
-		// O NOME CERTO (caixa e espacos nao importam): o personagem acaba, e a conta guarda o eco -- no disco tambem
-		double bpAntigo = pl.Ficha.BP;
+		// O NOME CERTO (caixa e espacos nao importam): o personagem acaba, e a conta guarda o eco -- no disco tambem. Com 777 no banco.
+		double bpAntigo = pl.Ficha.BP, bancoAntigo = 777;
+		pl.Ficha.hiddenpotential = bancoAntigo;
 		List<string> certo = Ouvir(() => EnmaReencarnar(pl, "  renascente "));
 		Reencarnacao? noDisco = _store?.Carregar(pl.Conta)?.Reencarnacao;
-		AfirmarV30("**REENCARNAR APAGA O PERSONAGEM PARA SEMPRE**: o slot vaga, o corpo nao se grava mais, e a conta guarda o ECO -- o BP base inteiro --, gravado no MESMO arquivo que perdeu o slot",
-				   acc.Slots[pl.Slot] == null && pl.PersonagemConsumido && acc.Reencarnacao?.BPAntigo == bpAntigo && noDisco?.BPAntigo == bpAntigo,
-				   $"slot {(acc.Slots[pl.Slot] == null ? "vazio" : "cheio")}; consumido {pl.PersonagemConsumido}; eco {acc.Reencarnacao?.BPAntigo} (disco {noDisco?.BPAntigo}), esperado {bpAntigo}");
+		AfirmarV30("**REENCARNAR APAGA O PERSONAGEM PARA SEMPRE**: o slot vaga, o corpo nao se grava mais, e a conta guarda o ECO -- o BP base inteiro e o banco do potencial --, gravado no MESMO arquivo que perdeu o slot",
+				   acc.Slots[pl.Slot] == null && pl.PersonagemConsumido && acc.Reencarnacao?.BPAntigo == bpAntigo && noDisco?.BPAntigo == bpAntigo
+				   && acc.Reencarnacao?.BancoAntigo == bancoAntigo && noDisco?.BancoAntigo == bancoAntigo,
+				   $"slot {(acc.Slots[pl.Slot] == null ? "vazio" : "cheio")}; consumido {pl.PersonagemConsumido}; eco {acc.Reencarnacao?.BPAntigo}/{acc.Reencarnacao?.BancoAntigo} (disco {noDisco?.BPAntigo}/{noDisco?.BancoAntigo}), esperado {bpAntigo}/{bancoAntigo}");
 		AfirmarV30("**...E O ENMA PROMETE UM POTENCIAL MUITO MAIOR** (dono, 2026-10-22: *\"n faça o enma dizer em detalhes q o hidden dele vai ser o bp\"*): a frase do DM (\"Uma alma que escolhe recomecar...\"), sem numero de poder e sem a regra por extenso",
 				   Disse(certo, "recomeçar") && Disse(certo, "potencial muito maior") && Disse(errado, "potencial muito maior")
 				   && !certo.Exists(l => l.Contains($"{bpAntigo:0}") || l.Contains("10%")),
 				   $"{Ultimos(certo)} / {Ultimos(errado)}");
 
-		// O PROXIMO NASCE COM O ECO, UMA VEZ SO -- e a REGUA da regra nova e uma so, pra ela reprovar nos dois defeitos de baixo
-		bool NasceuPelaRegra(Fighter f, double bpNoNascimento, double potencialNoNascimento) =>
-			f.BP == bpNoNascimento && f.hiddenpotential == potencialNoNascimento + bpAntigo;
+		// O PROXIMO NASCE COM O ECO, UMA VEZ SO -- como no DU (o dono, 2026-10-26): 10% do BP base antigo SOMA no da raca, e o banco vem
+		// junto. A REGUA e uma so, pra ela reprovar no defeito de baixo e nos mutantes das duas linhas (`ciclo.py` do ag/potencialfora).
+		double dezPorCento = DmMath.Round(bpAntigo * Alem.FracaoDaReencarnacao);
+		bool NasceuPelaRegra(Fighter f, double bpNoNascimento, double bancoNoNascimento) =>
+			f.BP == bpNoNascimento + dezPorCento && f.hiddenpotential == bancoNoNascimento + bancoAntigo;
 		Fighter novo = Nascer(ficha, "Renascido");
-		double bpDoNovo = novo.BP, potencialDoNovo = novo.hiddenpotential, kiDoNovo = novo.MaxKi;
+		double bpDoNovo = novo.BP, bancoDoNovo = novo.hiddenpotential;
 		Reencarnacao? aplicado = AplicarOEcoDaReencarnacao(acc, novo);
 		Fighter segundo = Nascer(ficha, "Segundo");
-		double potencialDoSegundo = segundo.hiddenpotential;
+		double bpDoSegundo = segundo.BP, bancoDoSegundo = segundo.hiddenpotential;
 		Reencarnacao? deNovo = AplicarOEcoDaReencarnacao(acc, segundo);
-		AfirmarV30("**O PROXIMO PERSONAGEM NASCE COM O BP DA RACA E O PODER DO ANTERIOR COMO POTENCIAL OCULTO** (dono, 2026-10-22: *\"o bp inicial é o da raça normal\"*, *\"todo bp da vida anterior vira potencial\"*) -- e o eco e consumido: o segundo a nascer nasce sem ele",
-				   aplicado != null && NasceuPelaRegra(novo, bpDoNovo, potencialDoNovo)
-				   && deNovo == null && acc.Reencarnacao == null && segundo.hiddenpotential == potencialDoSegundo,
-				   $"BP {bpDoNovo} -> {novo.BP}; potencial {potencialDoNovo} -> {novo.hiddenpotential} (esperado +{bpAntigo}); segundo {potencialDoSegundo} -> {segundo.hiddenpotential}");
-		AfirmarV30("**...E NASCE DESCANSADO**: o potencial engorda o Ki maximo, e o renascido entra com o tanque novo cheio",
-				   novo.MaxKi > kiDoNovo * 2 && novo.Ki == novo.MaxKi, $"Ki maximo {kiDoNovo:0} -> {novo.MaxKi:0}; Ki {novo.Ki:0}");
+		AfirmarV30("**O PROXIMO PERSONAGEM NASCE COM O BP DA RACA MAIS 10% DO ANTERIOR, E COM O BANCO DO POTENCIAL DELE** (o dono, 2026-10-26: \"como no DU\") -- e o eco e consumido: o segundo a nascer nasce sem ele",
+				   aplicado != null && dezPorCento > 0 && NasceuPelaRegra(novo, bpDoNovo, bancoDoNovo)
+				   && deNovo == null && acc.Reencarnacao == null && segundo.BP == bpDoSegundo && segundo.hiddenpotential == bancoDoSegundo,
+				   $"BP {bpDoNovo} -> {novo.BP} (esperado +{dezPorCento}); banco {bancoDoNovo} -> {novo.hiddenpotential} (esperado +{bancoAntigo}); segundo {bpDoSegundo}/{bancoDoSegundo} -> {segundo.BP}/{segundo.hiddenpotential}");
+		AfirmarV30("**...E NASCE DESCANSADO**: o renascido entra com o tanque de Ki cheio", novo.Ki == novo.MaxKi, $"Ki {novo.Ki:0} de {novo.MaxKi:0}");
+		bool marcado = novo.potencialAntigoZerado, zerouNoLogin = novo.ZerarOPotencialAntigo();
+		AfirmarV30("**...E O BANCO QUE O ECO TROUXE NAO SE ZERA NO LOGIN**: quem nasce depois do banco ja vem marcado, e o zerar do estoque antigo (o do primeiro login de um save de antes) nao o toca",
+				   marcado && !zerouNoLogin && novo.hiddenpotential == bancoDoNovo + bancoAntigo, $"marcado {marcado}; zerou {zerouNoLogin}; banco {novo.hiddenpotential}");
 
-		acc.Reencarnacao = new Reencarnacao { De = "Renascente", BPAntigo = bpAntigo, Fracao = Alem.FracaoDaReencarnacao };
+		acc.Reencarnacao = new Reencarnacao { De = "Renascente", BPAntigo = bpAntigo, Fracao = Alem.FracaoDaReencarnacao, BancoAntigo = bancoAntigo };
 		EcoDaReencarnacaoIgnoradoDeTeste = true;
 		Fighter semEco = Nascer(ficha, "SemEco");
-		double bpSemEco = semEco.BP, potencialSemEco = semEco.hiddenpotential;
+		double bpSemEco = semEco.BP, bancoSemEco = semEco.hiddenpotential;
 		try { AplicarOEcoDaReencarnacao(acc, semEco); }
 		finally { EcoDaReencarnacaoIgnoradoDeTeste = false; }
 		AfirmarV30("   DEFEITO INJETADO (o eco ignorado, o jogo de antes da v0.3.0): o novo nasceria sem nada -- a regua de cima REPROVA (defeito injetado: o eco que nao nasce)",
-				   !NasceuPelaRegra(semEco, bpSemEco, potencialSemEco) && semEco.hiddenpotential == potencialSemEco, $"potencial {semEco.hiddenpotential}");
-
-		acc.Reencarnacao = new Reencarnacao { De = "Renascente", BPAntigo = bpAntigo, Fracao = Alem.FracaoDaReencarnacao };
-		EcoDeDezPorCentoDeTeste = true;
-		Fighter deAntes = Nascer(ficha, "DeAntes");
-		double bpDeAntes = deAntes.BP, potencialDeAntes = deAntes.hiddenpotential;
-		try { AplicarOEcoDaReencarnacao(acc, deAntes); }
-		finally { EcoDeDezPorCentoDeTeste = false; }
-		AfirmarV30("(defeito injetado: a regra de 2026-10-15) o novo nasceria com 10% do BP e SEM potencial -- a regua de cima REPROVA",
-				   !NasceuPelaRegra(deAntes, bpDeAntes, potencialDeAntes) && deAntes.BP == Math.Max(bpDeAntes, DmMath.Round(bpAntigo * 0.1))
-				   && deAntes.hiddenpotential == potencialDeAntes,
-				   $"BP {bpDeAntes} -> {deAntes.BP}; potencial {deAntes.hiddenpotential}");
+				   !NasceuPelaRegra(semEco, bpSemEco, bancoSemEco) && semEco.BP == bpSemEco && semEco.hiddenpotential == bancoSemEco, $"BP {semEco.BP}, banco {semEco.hiddenpotential}");
 
 		// A DESPEDIDA NO FIO: o cliente le o motivo, a vaga e a frase -- e carga que nao e despedida le nulo
 		byte[] carga = FioDaDespedida.Escrever(FioDaDespedida.Motivo.Reencarnou, 2, FraseDaReencarnacao("Renascente"));
@@ -835,53 +827,21 @@ public sealed partial class GameServer
 				   lida is { Motivo: FioDaDespedida.Motivo.Reencarnou, Slot: 2 } d && d.Texto == FraseDaReencarnacao("Renascente") && lixo && carga.Length < 1000,
 				   $"{lida}; {carga.Length} bytes");
 
-		// ---- O POTENCIAL NO KI (dono, 2026-10-22) ----
-		// *"caso o novo teto esteja abaixo do teto anterior por conta do potencial, o teto n cai"* e *"potencial n deveria afetar regen,
-		// carga do ki, a raiva pode manter"*. Um recem-nascido com o potencial de quem renasceu de 1B, posto a MAO (e nao pelo eco: estas
-		// reguas tem os mutantes delas e nao podem depender da linha da reencarnacao), com as pericias de circulacao e de reuniao em 100 --
-		// sem elas o log8 do teto seguro fica abaixo do piso de 130% com ou sem o potencial, e a regua da carga nao veria nada.
+		// ---- O BANCO NAO MEXE NO KI NEM NA RAIVA (dono, 2026-10-26) ----
+		// O "modo Uub" do potencial antigo saiu: a razao potencial/BP engordava o Ki maximo e a raiva maxima (e o Ki nao caia mais quando o
+		// BP a alcancava). Um recem-nascido com um banco de 1B, posto a MAO, e com as pericias de circulacao e de reuniao em 100 (o teto
+		// seguro sai do piso de 130%), tem o MESMO Ki maximo, a mesma regen, o mesmo teto seguro e a mesma raiva -- a regua que os mutantes
+		// da volta do modo Uub reprovam (`ciclo.py` do ag/potencialfora).
 		Fighter potente = Nascer(ficha, "Potente");
 		potente.kicirculationskill = potente.kigatheringskill = 100;
 		potente.Statify();
-		double bpDoPotente = potente.BP, kiSemPotencial = potente.MaxKi, regenSemPotencial = potente.KIregen / potente.MaxKi,
-			   cargaSemPotencial = potente.kicapacity / potente.MaxKi, raivaSemPotencial = potente.MaxAnger;
+		double kiSem = potente.MaxKi, regenSem = potente.KIregen, cargaSem = potente.kicapacity, raivaSem = potente.MaxAnger;
 		potente.hiddenpotential += 1e9;
 		potente.Statify();
-		double multiplicador = Math.Max(DmMath.Log(4, potente.hdnptltoBP), 1);
-		AfirmarV30("**O POTENCIAL ENGORDA O KI MAXIMO** (dono: *\"todo bp da vida anterior vira potencial e q afeta o ki max\"*): `log4(potencial / BP)` vezes o de antes",
-				   multiplicador > 5 && Math.Abs(potente.MaxKi / kiSemPotencial / multiplicador - 1) < 1e-6,
-				   $"multiplicador {multiplicador:0.##}; Ki maximo {kiSemPotencial:0} -> {potente.MaxKi:0}");
-		AfirmarV30("**...MAS NAO A REGEN DE KI**: o tanque maior enche no MESMO ritmo, em %, de quem nao tem potencial",
-				   multiplicador > 5 && Math.Abs(potente.KIregen / potente.MaxKi / regenSemPotencial - 1) < 1e-6,
-				   $"regen {regenSemPotencial * 100:0.######}% -> {potente.KIregen / potente.MaxKi * 100:0.######}% do tanque");
-		AfirmarV30("**...NEM O TETO SEGURO DA CARGA**: em % do Ki maximo, o mesmo de antes",
-				   multiplicador > 5 && Math.Abs(potente.kicapacity / potente.MaxKi / cargaSemPotencial - 1) < 1e-6,
-				   $"{cargaSemPotencial * 100:0.#}% -> {potente.kicapacity / potente.MaxKi * 100:0.#}%");
-		AfirmarV30("...e a RAIVA MAXIMA continua lendo o potencial (dono: *\"a raiva pode manter\"*)",
-				   potente.MaxAnger > raivaSemPotencial * 2, $"{raivaSemPotencial:0} -> {potente.MaxAnger:0}");
-
-		// O BP ALCANCA O POTENCIAL: o multiplicador volta a 1, e o Ki maximo fica no tamanho do auge
-		double kiNoAuge = potente.MaxKi;
-		potente.BP = potente.hiddenpotential;
-		potente.Statify();
-		AfirmarV30("**O KI MAXIMO NAO CAI QUANDO O BP ALCANCA O POTENCIAL** (dono: *\"o teto n cai, pq n faz sentido o cara perder ki max pq ele atingiu o potencial\"*): com o multiplicador de volta a 1, o tanque fica do tamanho do auge",
-				   potente.hdnptltoBP <= 1 + 1e-9 && Math.Abs(potente.MaxKi / kiNoAuge - 1) < 1e-6,
-				   $"razao {potente.hdnptltoBP:0.####}; Ki maximo {kiNoAuge:0} -> {potente.MaxKi:0}");
-		Fighter.PotencialNoKiCaiDeTeste = true;
-		try { potente.Statify(); }
-		finally { Fighter.PotencialNoKiCaiDeTeste = false; }
-		AfirmarV30("(defeito injetado: o Ki maximo do DM) com o BP no potencial ele cairia ao de quem nunca teve potencial -- a regua de cima REPROVA",
-				   Math.Abs(potente.MaxKi / kiSemPotencial - 1) < 1e-6, $"cairia a {potente.MaxKi:0} (sem potencial {kiSemPotencial:0}; no auge {kiNoAuge:0})");
-
-		// E A REGEN E A CARGA DO DM: o mesmo corpo de volta ao BP de recem-nascido (o multiplicador alto de novo), com o potencial nas duas
-		potente.BP = bpDoPotente;
-		Fighter.PotencialNaRegenENaCargaDeTeste = true;
-		try { potente.Statify(); }
-		finally { Fighter.PotencialNaRegenENaCargaDeTeste = false; }
-		double regenComoNoDm = potente.KIregen / potente.MaxKi, cargaComoNoDm = potente.kicapacity / potente.MaxKi;
-		AfirmarV30("(defeito injetado: a regen e a carga do DM) com o potencial a regen em % sairia multiplicada por ele e o teto seguro maior -- as duas reguas de cima REPROVAM",
-				   regenComoNoDm > regenSemPotencial * 5 && cargaComoNoDm > cargaSemPotencial * 1.1,
-				   $"regen {regenComoNoDm * 100:0.######}%; carga {cargaComoNoDm * 100:0.#}%");
+		static bool Igual(double a, double b) => Math.Abs(a - b) <= 1e-9 * Math.Max(Math.Abs(b), 1);
+		AfirmarV30("**O BANCO DO POTENCIAL NAO MEXE NO KI NEM NA RAIVA** (o dono, 2026-10-26: o modo Uub saiu junto com o potencial antigo): com 1B guardado, o Ki maximo, a regen, o teto seguro da carga e a raiva maxima sao os de antes",
+				   Igual(potente.MaxKi, kiSem) && Igual(potente.KIregen, regenSem) && Igual(potente.kicapacity, cargaSem) && Igual(potente.MaxAnger, raivaSem),
+				   $"Ki {kiSem:0} -> {potente.MaxKi:0}; regen {regenSem:0.####} -> {potente.KIregen:0.####}; carga {cargaSem:0} -> {potente.kicapacity:0}; raiva {raivaSem:0} -> {potente.MaxAnger:0}");
 	}
 
 	// =====================================================================
@@ -1699,8 +1659,8 @@ public sealed partial class GameServer
 		try
 		{
 			AmigoAbatido(enlutado, "o amigo da bancada", NivelDeRaiva.Comum);
-			saiyajin.Ficha.zenkaiReady = 0;
-			ZenkaiPorDerrota(saiyajin, forte);
+			saiyajin.Ficha.zenkaiGuardado = 1_000;   // (2026-10-26) o banco do Zenkai que a derrota solta
+			ZenkaiPorDerrota(saiyajin, forte, morreu: false);
 		}
 		finally { EscutaDeTons = null; }
 
@@ -1723,81 +1683,103 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
-	// Z) A RECARGA DO ZENKAI PROPORCIONAL E O TETO QUE MINGUA (2026-10-24)
+	// ZB) O ZENKAI EM BANCO (o pedido 95b do dono, 2026-10-26)
 	// =====================================================================
 	/// <summary>
-	/// O dono: *"coloque o cooldown do zenkai maximo (2x bp) pra 5 horas, ta mt op 1 hora"* -- e na pergunta de qual: *"e proporcional ao
-	/// 2x, 3x seriam 7,5 horas de cooldown"* --; e *"faca o zenkai tb ir perdendo forca (o teto de 3x e 2x vao caindo) lentamente ao se
-	/// aproximar do requisito do ssj3, ate zerar"* ("linha reta desde o zero"). Pelo `GainZenkai` de producao, e o requisito pelo
-	/// `ZenkaiPorDerrota` (o funil que o combate chama), com o limiar pessoal posto no corpo.
+	/// O dono escolheu a "mistura" do DU com o de hoje: o treino guarda de 5 a 15% de cada ganho de quem tem sangue Saiyajin num banco do
+	/// Zenkai; todo nocaute (sem recarga) solta de 20 a 80% dele PRA SEMPRE no BP base -- em dobro na morte e com a maioria do corpo em
+	/// estado critico --; o teto e o requisito pessoal do SSJ3 (o que sai mingua ate ele, e la se aposenta); e uma frase so. Pelos funis de
+	/// producao: o ganho pelo `GanhoDeAtividade`, a derrota pelo `ZenkaiPorDerrota` (o que o combate chama). Os contra-exemplos sao os
+	/// mutantes do `ciclo.py` do ag/zenkaibanco. (Era "a recarga proporcional e o teto que mingua", de 2026-10-24.)
 	/// </summary>
-	private void ORecargaEOTetoDoZenkaiV30()
+	private void OZenkaiEmBancoV30()
 	{
-		GD.Print("[v030] --- Z) a recarga do Zenkai proporcional ao multiplicador e o teto que mingua ate o SSJ3 (dono, 2026-10-24) ---");
+		GD.Print("[v030] --- ZB) o Zenkai em banco: o treino guarda, o nocaute solta, a morte e o corpo em frangalhos dobram (dono, 2026-10-26) ---");
 		LimparTudoDaBancada();
 		Vec2 c = TerraFirmeG12(4);
-		ServerPlayer s = ForjarV2("Recarga", c, 1_000_000, raca: "Saiyan");
-		const double Hora = 3_600_000;
-
-		// ---- 1. A RECARGA: 2,5 h por "x" ----
-		// Tres tamanhos, sem requisito (o teto cheio): +20% (um inimigo de 2 mi da 10% dele), o que dobra (um de 1 bi, no teto de 2x) e
-		// o do corpo em farrapos (o mesmo de 1 bi, no teto de 3x).
-		double Recarga(double inimigo, bool ferido)
-		{
-			s.Ficha.BP = 1_000_000;
-			s.Ficha.zenkaiReady = 0;
-			long agora = NowMs();
-			Fighter.ZenkaiResult z = s.Ficha.GainZenkai(inimigo, agora, ferido);
-			return z == Fighter.ZenkaiResult.Concedido ? (s.Ficha.zenkaiReady - agora) / Hora : -1;
-		}
-		double vinte = Recarga(2_000_000, false), dobro = Recarga(1e9, false), triplo = Recarga(1e9, true);
-		AfirmarV30("**A RECARGA DO ZENKAI E PROPORCIONAL AO MULTIPLICADOR** (o dono: \"e proporcional ao 2x, 3x seriam 7,5 horas de "
-				   + "cooldown\"): o que dobra o BP deixa 5 h, o do corpo em farrapos (3x) 7,5 h, e um de +20% 3 h -- 2,5 h por x",
-				   Math.Abs(dobro - 5) < 0.01 && Math.Abs(triplo - 7.5) < 0.01 && Math.Abs(vinte - 3) < 0.01,
-				   $"+20%: {vinte:0.00} h; 2x: {dobro:0.00} h; 3x: {triplo:0.00} h");
-		Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = true;
-		double dobroComDefeito;
-		try { dobroComDefeito = Recarga(1e9, false); }
-		finally { Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = false; }
-		AfirmarV30("(defeito injetado: a hora fixa de antes) o Zenkai que dobra deixa so 1 h -- a regua de cima REPROVA",
-				   Math.Abs(dobroComDefeito - 1) < 0.01, $"2x: {dobroComDefeito:0.00} h");
-
-		// ---- 2. O TETO MINGUA ATE O REQUISITO DO SSJ3 ----
-		// O limiar pessoal posto no corpo: `ssj3at` de 10 bi, entao o SSJ3 pede 1 bi de base (`LimiaresPessoais.Porta`). Um vencedor
-		// de mil bi -- muito acima de qualquer teto -- e a derrota pelo funil de producao, com o corpo inteiro e depois em farrapos.
+		ServerPlayer s = ForjarV2("Zenkai", c, 1_000_000, raca: "Saiyan");
+		ServerPlayer h = ForjarV2("Humano", c + new Vec2(0, ZoneCollision.TileSize), 1_000_000);
+		ServerPlayer algoz = ForjarV2("Algoz", c + new Vec2(ZoneCollision.TileSize, 0), 1e6);
+		// o limiar pessoal: o SSJ3 pede 1 bi de base (`ssj3at` de 10 bi) -- longe do BP de 1 mi, o que sai e quase inteiro
 		s.Forma.Limiares = new Jandirus.Core.Forms.LimiaresPessoais { ssj3at = 1e10 };
-		ServerPlayer algoz = ForjarV2("Algoz", c + new Vec2(ZoneCollision.TileSize, 0), 1e12);
-		double requisito = Jandirus.Core.Forms.Catalogo.Def("ssj3") is { } ssj3 ? s.Forma.Limiares.Porta(ssj3) : 0;
-		double Multiplicador(double bp, bool ferido)
+		double requisito = RequisitoDoSsj3De(s);
+		static bool Entre(double x, double lo, double hi) => x >= lo - 1e-6 && x <= hi + 1e-6;
+
+		// ---- 1. O TREINO GUARDA ----
+		s.Ficha.zenkaiGuardado = h.Ficha.zenkaiGuardado = 0;
+		s.Ficha.GanhoDeAtividade(10_000);
+		h.Ficha.GanhoDeAtividade(10_000);
+		AfirmarV30("**O TREINO GUARDA NO BANCO DO ZENKAI** (o dono, 2026-10-26): um ganho de 10.000 do Saiyajin guarda de 500 a 1.500 (5 a 15%, sem bonus) -- e o do Humano, nada",
+				   Entre(s.Ficha.zenkaiGuardado, 500, 1500) && h.Ficha.zenkaiGuardado == 0,
+				   $"Saiyajin {s.Ficha.zenkaiGuardado:0.##}; Humano {h.Ficha.zenkaiGuardado:0.##}");
+
+		// ---- 2. TODO NOCAUTE SOLTA, PRA SEMPRE E SEM RECARGA ----
+		(double Ganho, double Saiu) Derrota(bool morreu, double banco, double bp)
 		{
 			s.Ficha.BP = bp;
-			s.Ficha.zenkaiReady = 0;
-			Fighter.ZenkaiResult z = s.Ficha.GainZenkai(Math.Max(algoz.Ficha.expressedBP, algoz.Ficha.BP), NowMs(), ferido, RequisitoDoSsj3De(s));
-			return z == Fighter.ZenkaiResult.Concedido ? s.Ficha.BP / bp : z == Fighter.ZenkaiResult.Aposentado ? 0 : -1;
+			s.Ficha.dead = false;
+			s.Ficha.zenkaiGuardado = banco;
+			ZenkaiPorDerrota(s, algoz, morreu);
+			return (s.Ficha.BP - bp, banco - s.Ficha.zenkaiGuardado);
 		}
-		double longe = Multiplicador(1_000_000, false), metade = Multiplicador(5e8, false), metadeFerido = Multiplicador(5e8, true),
-			   noRequisito = Multiplicador(1e9, false);
-		AfirmarV30("**O TETO DO ZENKAI MINGUA ATE O REQUISITO DO SSJ3** (o dono: \"o teto de 3x e 2x vao caindo lentamente ao se aproximar "
-				   + "do requisito do ssj3, ate zerar\"): longe dele o Zenkai ainda quase dobra, na metade do requisito o teto e 1,5x (2x com o "
-				   + "corpo em farrapos), e no requisito nao vem nada",
-				   requisito > 0 && Math.Abs(RequisitoDoSsj3De(s) - requisito) < 1 && longe > 1.99 && Math.Abs(metade - 1.5) < 0.001
-				   && Math.Abs(metadeFerido - 2) < 0.001 && noRequisito == 0,
-				   $"requisito {requisito:N0}; longe {longe:0.000}x; metade {metade:0.000}x; metade ferido {metadeFerido:0.000}x; "
-				   + $"no requisito {noRequisito:0.000}x");
-		Fighter.ZenkaiSemMinguaDeTeste = true;
-		double metadeComDefeito;
-		try { metadeComDefeito = Multiplicador(5e8, false); }
-		finally { Fighter.ZenkaiSemMinguaDeTeste = false; }
-		AfirmarV30("(defeito injetado: o teto cheio ate a aposentadoria, o jogo de antes) na metade do requisito o Zenkai ainda dobra -- a "
-				   + "regua de cima REPROVA", Math.Abs(metadeComDefeito - 2) < 0.001, $"metade {metadeComDefeito:0.000}x");
+		double fator = Fighter.FatorDoTetoDoZenkai(1_000_000, requisito);
+		var um = Derrota(false, 100_000, 1_000_000);
+		double bpDepoisDoUm = s.Ficha.BP, bancoDepoisDoUm = s.Ficha.zenkaiGuardado;
+		ZenkaiPorDerrota(s, algoz, false);
+		double segundo = s.Ficha.BP - bpDepoisDoUm;
+		AfirmarV30("**TODO NOCAUTE SOLTA DE 20 A 80% DO BANCO, PRA SEMPRE E SEM RECARGA** (o dono: *\"todo nocaute sem recarga\"*, *\"oq sair do banco fica pra sempre\"*): de 100.000 guardados o primeiro solta de 20.000 a 80.000 pro BP base (o fator do requisito do SSJ3, longe dali, quase 1), e o segundo nocaute, logo em seguida, solta de novo",
+				   requisito > 0 && fator > 0.99 && Entre(um.Saiu, 20_000, 80_000) && Math.Abs(um.Ganho - um.Saiu * fator) < 1e-3
+				   && segundo > 0 && s.Ficha.zenkaiGuardado < bancoDepoisDoUm,
+				   $"requisito {requisito:N0}; saiu {um.Saiu:N0}, ganhou {um.Ganho:N0} (fator {fator:0.####}); o segundo +{segundo:N0}");
 
-		// ...E PELO FUNIL DO COMBATE (`ZenkaiPorDerrota`), que e quem passa o requisito pessoal em jogo: a mesma derrota, na metade dele.
-		s.Ficha.BP = 5e8;
-		s.Ficha.zenkaiReady = 0;
-		ZenkaiPorDerrota(s, algoz);
-		double peloFunil = s.Ficha.BP / 5e8;
-		AfirmarV30("...e o funil do combate (`ZenkaiPorDerrota`) passa o requisito pessoal: perder pro mesmo algoz na metade dele rende os "
-				   + "mesmos 1,5x", Math.Abs(peloFunil - 1.5) < 0.001, $"{peloFunil:0.000}x");
+		// ---- 3. A MORTE E A MAIORIA DO CORPO EM ESTADO CRITICO, EM DOBRO ----
+		// a morte pelo FUNIL DA DERROTA (`AoPerderALuta`, o que o combate chama), que leva o "morreu" ate o Zenkai
+		s.Ficha.BP = 1_000_000;
+		s.Ficha.dead = false;
+		s.Ficha.zenkaiGuardado = 100_000;
+		AoPerderALuta(s, algoz, morreu: true);
+		var naMorte = (Ganho: s.Ficha.BP - 1_000_000, Saiu: 100_000 - s.Ficha.zenkaiGuardado);
+		Body corpo = s.Combate.Corpo;
+		int metade = corpo.Partes.Count / 2 + 1, postos = 0;
+		foreach (BodyPart p in corpo.Partes)
+			if (!p.Decepado && postos < metade) { p.Vida = p.VidaMax * 0.3; postos++; }
+		bool maioria = corpo.MaioriaEmEstadoCritico();
+		var critico = Derrota(false, 100_000, 1_000_000);
+		foreach (BodyPart p in corpo.Partes) p.Vida = p.VidaMax;
+		AfirmarV30("**NA MORTE, EM DOBRO; E COM A MAIORIA DO CORPO EM ESTADO CRITICO, TAMBEM -- SEM MORRER** (o dono: *\"se a maioria do corpo do saiyajin estiver em estado crtico, ele ganha o boost igual da morte (2x)\"*): o que sai do banco vale 2x no BP",
+				   maioria && naMorte.Saiu > 0 && Math.Abs(naMorte.Ganho - 2 * naMorte.Saiu * fator) < 1e-3
+				   && critico.Saiu > 0 && Math.Abs(critico.Ganho - 2 * critico.Saiu * fator) < 1e-3,
+				   $"morte: saiu {naMorte.Saiu:N0}, ganhou {naMorte.Ganho:N0}; maioria critica={maioria}: saiu {critico.Saiu:N0}, ganhou {critico.Ganho:N0}");
+
+		// ---- 4. QUEM JA ESTAVA MORTO NAO GANHA ----
+		s.Ficha.BP = 1_000_000;
+		s.Ficha.dead = true;
+		s.Ficha.zenkaiGuardado = 100_000;
+		ZenkaiPorDerrota(s, algoz, morreu: false);
+		bool almaNaoGanha = s.Ficha.BP == 1_000_000 && s.Ficha.zenkaiGuardado == 100_000;
+		s.Ficha.dead = false;
+		AfirmarV30("...e QUEM JA ESTAVA MORTO nao ganha (o nocaute de uma alma, o torneio do Ceu): o BP fica e o banco tambem", almaNaoGanha,
+				   $"BP {s.Ficha.BP:N0}, banco {s.Ficha.zenkaiGuardado:N0}");
+
+		// ---- 5. O TETO: O REQUISITO DO SSJ3, COMO HOJE ----
+		var naMetade = Derrota(false, 100_000, requisito / 2);
+		var colado = Derrota(false, 1e15, requisito * 0.999);
+		var noRequisito = Derrota(false, 100_000, requisito);
+		AfirmarV30("**O TETO E O REQUISITO PESSOAL DO SSJ3, COMO HOJE** (o dono: *\"o limite dele é no req do ssj3 como é hoje\"*): na metade dele o que sai vale a metade; um banco enorme a um passo dele nao o passa; e no requisito nada sai (o banco fica)",
+				   naMetade.Saiu > 0 && Math.Abs(naMetade.Ganho - naMetade.Saiu * 0.5) < 1e-3
+				   && colado.Ganho > 0 && requisito * 0.999 + colado.Ganho <= requisito + 1e-3
+				   && noRequisito.Ganho == 0 && noRequisito.Saiu == 0,
+				   $"metade: saiu {naMetade.Saiu:N0}, ganhou {naMetade.Ganho:N0}; colado +{colado.Ganho:N0}; no requisito {noRequisito.Ganho:N0}/{noRequisito.Saiu:N0}");
+
+		// ---- 6. UMA FRASE SO ----
+		var tons = new List<(Protocol.Fala Tom, string Texto)>();
+		EscutaDeTons = tons;
+		try { Derrota(false, 100_000, 1_000_000); }
+		finally { EscutaDeTons = null; }
+		var doZenkai = tons.Where(x => x.Tom == Protocol.Fala.AvisoDeZenkai).ToList();
+		AfirmarV30("**UMA FRASE SO** (o dono: *\"pode ser apenas uma mensagem algo como 'seu corpo se torna mais forte apos sofrer'\"*): o nocaute que solta o Zenkai diz so isso, no tom do Zenkai, sem numero",
+				   doZenkai.Count == 1 && doZenkai[0].Texto == FraseDoZenkai && !doZenkai[0].Texto.Any(char.IsDigit),
+				   string.Join(" | ", tons.Select(x => $"{x.Tom}: {x.Texto}")));
 		LimparTudoDaBancada();
 	}
 

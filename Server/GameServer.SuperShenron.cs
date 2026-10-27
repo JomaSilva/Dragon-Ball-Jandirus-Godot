@@ -296,14 +296,6 @@ public sealed partial class GameServer
 				if (alvo != pl) Avisar(pl, $"a riqueza foi para {alvo.Name} -- você apenas pronunciou.");
 				return true;
 
-			// -------------------------------------------------- (2026-10-21, regra do dono) o potencial, a MAIOR fracao de um ano
-			case "sdb_aumentar_potencial":
-				AnunciarInvocacaoDoSuper(pl);
-				SomarPotencialDoDesejo(alvo, Desejos.FracaoDoAnoNoSuper);
-				AnunciarSupers($"SUPER SHENLONG aumentou o potencial de {alvo.Name}!");
-				if (alvo != pl) Avisar(pl, $"o potencial foi para {alvo.Name} -- você apenas pronunciou.");
-				return true;
-
 			// -------------------------------------------------- reviver (:1606-1618)
 			case "sdb_reviver":
 			{

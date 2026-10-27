@@ -628,19 +628,19 @@ public sealed class Reencarnacao
     /// <summary>Quem reencarnou -- so pro log.</summary>
     public string De = "";
 
-    /// <summary>O BP BASE de quem reencarnou (o `oldBP`). Desde 2026-10-22 ele INTEIRO vira o potencial oculto do novo.</summary>
+    /// <summary>O BP BASE de quem reencarnou (o `oldBP`). (2026-10-26) Uma fracao dele SOMA no BP do novo (<see cref="BPDoNovo"/>).</summary>
     public double BPAntigo;
 
-    /// <summary>
-    /// A fracao que o novo levava em BP (o `startBPMult`: 0,1 pelo Enma) -- a regra de 2026-10-15 a 2026-10-22, que hoje so o
-    /// defeito injetado `GameServer.EcoDeDezPorCentoDeTeste` le.
-    /// </summary>
+    /// <summary>A fracao do BP antigo que o novo leva (o `startBPMult`: 0,1 pelo Enma -- o `Reincarnation BP Limit Multiplier` do DU).</summary>
     public double Fracao;
 
     /// <summary>
-    /// O BP base com que o novo nascia, no minimo: `round(oldBP * startBPMult)` -- o `round` de um argumento do DM e o chao. So o
-    /// defeito injetado o le (ver <see cref="Fracao"/>).
+    /// (2026-10-26) O BANCO DO POTENCIAL de quem reencarnou: vem inteiro com o novo -- no DU a reencarnacao e da MESMA pessoa e o banco
+    /// dela (o `unusedPotential`) fica. Zero num eco gravado antes deste campo.
     /// </summary>
+    public double BancoAntigo;
+
+    /// <summary>O BP base que o novo GANHA por cima do da raca: `round(oldBP * startBPMult)` -- o `round` de um argumento do DM e o chao.</summary>
     public double BPDoNovo() => DmMath.Round(BPAntigo * Fracao);
 }
 
@@ -1205,6 +1205,15 @@ public sealed class AccountStore(string pasta)
 
         pl.Ficha = s.Ficha;
         pl.Class = s.Ficha.Class;
+
+        // (2026-10-26) O POTENCIAL OCULTO DO SISTEMA ANTIGO SAI DO SAVE, uma vez: o banco do potencial (o do DU) comeca do zero pra quem vem
+        // de antes -- o dono escolheu zerar o estoque velho (o 1 de nascenca, os anos, a heranca, as compras, o eco de quem reencarnou). Ver
+        // `Fighter.ZerarOPotencialAntigo`.
+        pl.Ficha.ZerarOPotencialAntigo();
+
+        // (2026-10-26) E O LSD DE QUEM SALVOU SOB EFEITO: o sintetizador saiu do jogo (o pedido 98 do dono), e com ele o relogio que tirava o
+        // reforco. Ver `Fighter.TirarOLsdAntigo`.
+        pl.Ficha.TirarOLsdAntigo();
 
         // (2026-10-18) OS PESOS DE ANTES: o maximo e a arte moravam na ficha (`Fighter.pesoMaximoKg`/`pesoArte`) -- agora moram no id de cada
         // peso (`PesoDeTreino`). Os pesos de fabrica da mochila levam o que a ficha tinha (o que o jogador pagou continua dele), e quem estava

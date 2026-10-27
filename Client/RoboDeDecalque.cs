@@ -203,9 +203,13 @@ public partial class RoboDeDecalque : Node
 				// ---------- O TETO DISPARA ----------
 				// Regra da casa: teto que nunca e atingido e indistinguivel de teto nenhum. A
 				// bancada estoura de proposito.
+				//
+				// (2026-10-26) COM POEIRA, e nao mais com sulco: o sulco virou MARCA DE UM DIA e mora na fila
+				// propria delas (`Decalques.MaxMarcas`) -- estourar os 120 com ele deixaria a fila geral vazia
+				// e esta linha verde sem medir nada. A fila das marcas tem o teto dela medido no passo 16.
 				int pedidosAntes = Decalques.PedidosDeTeste;
 				for (int i = 0; i < Decalques.MaxVivos * 2; i++)
-					dec.Plantar(Protocol.Decal.Sulco, new Vector2(i * 8, 0), Facing.East);
+					dec.Plantar(Protocol.Decal.Fumaca, new Vector2(i * 8, 0), Facing.East);
 
 				Conferir(Decalques.PedidosDeTeste - pedidosAntes > Decalques.MaxVivos,
 					$"a bancada ESTOUROU o teto de proposito: {Decalques.PedidosDeTeste - pedidosAntes}"
@@ -337,7 +341,17 @@ public partial class RoboDeDecalque : Node
 				OTetoDaAgua(dec);
 				break;
 
+			// (2026-10-26) AS CRATERAS E AS TRILHAS DE UM DIA: o prazo, a fila propria, o teto e o retrato -- em dois passos, porque o
+			// retrato entregue no primeiro so nasce no tique do World.
 			case 16:
+				AsMarcasFicamUmDia(dec);
+				break;
+
+			case 17:
+				ORetratoDasMarcasEntra(dec);
+				break;
+
+			case 18:
 				// ============================ A VOLTA AO LOBBY, QUE NINGUEM TINHA ANDADO ============================
 				// Tudo acima mede o primeiro mundo do processo. O dono nao joga assim: ele hospeda, volta ao
 				// lobby, cria outro personagem, entra de novo -- e foi nesse segundo mundo que a trilha do
@@ -696,9 +710,10 @@ public partial class RoboDeDecalque : Node
 		// ---------- E A POEIRA NAO VARRE AS PECAS ----------
 		// Estourar o teto GERAL com marcas que nao sao peca: na fila crua o mais velho sai, e o mais
 		// velho e sempre a peca. Este e o defeito que o despejo por criterio existe pra impedir.
+		// (2026-10-26) A POEIRA E A FUMACA: o sulco que estava aqui virou marca de um dia, com fila propria.
 		int pecasAntes = dec.PecasVivasDeTeste;
 		for (int i = 0; i < Decalques.MaxVivos * 2; i++)
-			dec.Plantar(Protocol.Decal.Sulco, new Vector2(i * 8, 600), Facing.East);
+			dec.Plantar(Protocol.Decal.Fumaca, new Vector2(i * 8, 600), Facing.East);
 
 		Conferir(dec.PecasVivasDeTeste == pecasAntes,
 			$"e {Decalques.MaxVivos * 2} marcas de poeira depois, as {pecasAntes} pecas continuam no chao"
@@ -811,6 +826,97 @@ public partial class RoboDeDecalque : Node
 		=> a.Length > 0 && b.Length > 0 && a != b;
 
 	// =====================================================================
+	// (2026-10-26) AS MARCAS DE DESTRUICAO FICAM UM DIA DO JOGO
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia ingame"*. O lado do CLIENTE,
+	/// em tres perguntas: a cratera e a trilha plantadas agora ficam UM DIA DO JOGO na tela (24 min, escritos aqui por extenso); a poeira
+	/// de uma briga nao as despeja (a fila delas e outra); e a fila delas tem teto. A quarta -- o retrato de quem chega -- precisa de um
+	/// tique do World no meio: ela e ENTREGUE aqui, pelo mesmo tratador de rede do jogo, e conferida no passo seguinte
+	/// (<see cref="ORetratoDasMarcasEntra"/>).
+	/// </summary>
+	private void AsMarcasFicamUmDia(Decalques dec)
+	{
+		dec.Limpar();
+		const double UmDiaDoJogo = 24 * 60;
+
+		Node2D? cratera = dec.Plantar(Protocol.Decal.Cratera, new Vector2(0, 1500), Facing.South);
+		Node2D? trilha = dec.Plantar(Protocol.Decal.Sulco, new Vector2(64, 1500), Facing.East);
+		double? rc = cratera != null ? dec.RestaDeTeste(cratera) : null;
+		double? rt = trilha != null ? dec.RestaDeTeste(trilha) : null;
+		Conferir(rc is { } a && Math.Abs(a - UmDiaDoJogo) < 1 && rt is { } b && Math.Abs(b - UmDiaDoJogo) < 1,
+			$"A CRATERA E A TRILHA FICAM UM DIA DO JOGO na tela (24 min; eram 18 s e 20 s): faltam {rc:0}s e {rt:0}s");
+
+		// A POEIRA DE UMA BRIGA NAO AS VARRE: o dobro do teto geral em fumaca, que e o que nasce aos montes de cada queda.
+		for (int i = 0; i < Decalques.MaxVivos * 2; i++)
+			dec.Plantar(Protocol.Decal.Fumaca, new Vector2(i * 8, 1600), Facing.South);
+		Conferir(cratera != null && dec.RestaDeTeste(cratera) != null && trilha != null && dec.RestaDeTeste(trilha) != null,
+			$"...e a POEIRA de uma briga ({Decalques.MaxVivos * 2} nuvens, o dobro do teto geral) NAO DESPEJA a cratera nem a trilha"
+			+ " -- a fila delas e outra");
+
+		// O TETO DA FILA DELAS: estourado de proposito, e a primeira a sair e a mais velha (a cratera do comeco).
+		for (int i = 0; i < Decalques.MaxMarcas + 5; i++)
+			dec.Plantar(Protocol.Decal.Sulco, new Vector2(i % 60 * 16, 1700 + i / 60 * 16), Facing.East);
+		Conferir(Decalques.MarcasVivasDeTeste == Decalques.MaxMarcas && cratera != null && dec.RestaDeTeste(cratera) == null,
+			$"...e a fila das marcas tem TETO: {Decalques.MaxMarcas + 7} pedidas, {Decalques.MarcasVivasDeTeste} no chao"
+			+ $" (teto {Decalques.MaxMarcas}), e a mais velha -- a cratera do comeco -- saiu");
+
+		dec.Limpar();
+
+		// O RETRATO: o MESMO pacote que o servidor manda (`GameServer.PacoteDeMarcas`), entregue ao MESMO tratador
+		// (`GameClient.Handle`) -- so o fio e sintetico. Uma cratera grande a 5 min do fim e uma trilha a 20 min.
+		if (GameClient.Instance is not { } cli) { Conferir(false, "sem `GameClient` pra entregar o retrato das marcas"); return; }
+		_crescimentosAntes = Decalques.CrescimentosDeTeste;
+		var w = Protocol.Begin(Protocol.S2C.Marcas);
+		w.Put(cli.Zone.Hash);
+		w.Put((ushort)2);
+		w.Put((byte)Protocol.Decal.CrateraGrande);
+		w.PutVec(new Vec2(OndeDaGrandeDoRetrato.X, OndeDaGrandeDoRetrato.Y));
+		w.Put((byte)Facing.South);
+		w.Put(300_000);
+		w.Put((byte)Protocol.Decal.Sulco);
+		w.PutVec(new Vec2(OndeDaTrilhaDoRetrato.X, OndeDaTrilhaDoRetrato.Y));
+		w.Put((byte)Facing.East);
+		w.Put(1_200_000);
+		cli.EntregarDeTeste(w);
+	}
+
+	private static readonly Vector2 OndeDaGrandeDoRetrato = new(200, 1500), OndeDaTrilhaDoRetrato = new(264, 1500);
+	private int _crescimentosAntes;
+
+	/// <summary>
+	/// (2026-10-26) O RETRATO ENTREGUE NO PASSO DE CIMA ja passou pelo tique do World: o que nasceu? As duas marcas, cada uma com O QUE
+	/// FALTAVA (e nao o dia cheio), esmaecidas pela IDADE, e a cratera ABERTA -- ela ja estava no chao, e nao cresce de novo pra quem
+	/// chega. Procuradas pelo PONTO: uma cratera de verdade do mundo, aberta no meio da bancada, nao pode passar por uma do retrato.
+	/// </summary>
+	private void ORetratoDasMarcasEntra(Decalques dec)
+	{
+		List<(Protocol.Decal Tipo, Vector2 Onde, double Resta, float Alfa)> marcas = dec.MarcasDeTeste();
+		var grande = marcas.Where(m => m.Tipo == Protocol.Decal.CrateraGrande && m.Onde.DistanceTo(OndeDaGrandeDoRetrato) < 1).ToList();
+		var trilha = marcas.Where(m => m.Tipo == Protocol.Decal.Sulco && m.Onde.DistanceTo(OndeDaTrilhaDoRetrato) < 1).ToList();
+		Conferir(grande.Count == 1 && trilha.Count == 1,
+			$"O RETRATO DAS MARCAS (`S2C.Marcas`) ENTRA NO CHAO de quem chega: a cratera e a trilha da zona ({marcas.Count} marca(s) no"
+			+ $" chao: {string.Join(", ", marcas.Select(m => m.Tipo))})");
+		if (grande.Count == 1 && trilha.Count == 1)
+		{
+			Conferir(Math.Abs(grande[0].Resta - 300) < 3 && Math.Abs(trilha[0].Resta - 1200) < 3,
+				$"...com O QUE FALTA de cada uma, e nao o dia cheio (cratera {grande[0].Resta:0}s de 300, trilha {trilha[0].Resta:0}s de 1200)");
+			Conferir(Math.Abs(grande[0].Alfa - 300 / (24 * 60 * 0.3)) < 0.06 && trilha[0].Alfa > 0.99f,
+				$"...e ESMAECIDA PELA IDADE: a de 5 min restantes ja chega apagando ({grande[0].Alfa:0.00}), a de 20 min inteira"
+				+ $" ({trilha[0].Alfa:0.00})");
+		}
+		Conferir(Decalques.CrescimentosDeTeste == _crescimentosAntes,
+			"...e a cratera do retrato NASCE ABERTA: ela ja estava no chao, e nao abre de novo na frente de quem chega"
+			+ $" ({Decalques.CrescimentosDeTeste - _crescimentosAntes} crescimento(s))");
+
+		// (controle) a cratera do INSTANTE continua crescendo -- sem esta linha, a de cima ficaria verde com o tween apagado de vez
+		int antes = Decalques.CrescimentosDeTeste;
+		dec.Plantar(Protocol.Decal.Cratera, new Vector2(0, 1500), Facing.South);
+		Conferir(Decalques.CrescimentosDeTeste == antes + 1, "(controle) a cratera do INSTANTE cresce (o tween de abrir), como sempre");
+		dec.Limpar();
+	}
+
+	// =====================================================================
 	// A COTA DA AGUA
 	// =====================================================================
 	/// <summary>
@@ -851,6 +957,10 @@ public partial class RoboDeDecalque : Node
 	/// <summary>
 	/// UM RAIO LONGO CARIMBA UMA MARCA POR TILE, E O CHAO TEM 120 LUGARES.
 	///
+	/// (2026-10-26) E O SULCO GANHOU FILA PROPRIA: o dono pediu crateras e trilhas por um dia do jogo, e o rastro do raio e trilha. O
+	/// bloco abaixo e a historia de por que ele nao tinha cota; hoje o que se mede e o lado novo -- o rastro inteiro cabe na fila das
+	/// marcas, e a fila geral (com os membros dentro) nem sente a enxurrada.
+	///
 	/// ============================ POR QUE O SULCO NAO GANHOU COTA PROPRIA ============================
 	/// A agua ganhou (`MaxAgua`) porque ela e BARATA de refazer -- dura 2 s e o proximo tiro que passar
 	/// a repinta. O sulco do raio nao: ele e a marca do que aconteceu, e cortar a cota dele faria o
@@ -881,13 +991,17 @@ public partial class RoboDeDecalque : Node
 			dec.Plantar(Protocol.Decal.Sulco, new Vector2(i * ZoneCollision.TileSize, 1300), Facing.East);
 
 		Conferir(Decalques.PedidosDeTeste - pedidosAntes > Decalques.MaxVivos,
-			$"(controle) o raio longo pediu MAIS marcas que o teto ({Decalques.PedidosDeTeste - pedidosAntes}"
+			$"(controle) o raio longo pediu MAIS marcas que o teto geral ({Decalques.PedidosDeTeste - pedidosAntes}"
 			+ $" pedidas, teto {Decalques.MaxVivos}) -- houve enxurrada de verdade");
 		Conferir(Decalques.VivosDeTeste <= Decalques.MaxVivos,
 			$"...e o teto do chao segurou ({Decalques.VivosDeTeste} de {Decalques.MaxVivos})");
 		Conferir(dec.PecasVivasDeTeste == pecasAntes && pecasAntes == Membros,
 			$"...e o rastro do raio NAO varreu o que estava protegido: os {Membros} membros continuam"
 			+ $" na tela ({dec.PecasVivasDeTeste} de {pecasAntes})");
+		// (2026-10-26) E O RASTRO INTEIRO FICOU: ele e trilha, e trilha e marca de um dia -- na fila propria, que cabe mil.
+		Conferir(Decalques.MarcasVivasDeTeste == Decalques.MaxVivos * 2,
+			$"...e o rastro INTEIRO continua no chao, na fila das marcas ({Decalques.MarcasVivasDeTeste} de {Decalques.MaxVivos * 2})"
+			+ " -- uma trilha de um dia nao some pelo meio");
 
 		dec.Limpar();
 	}

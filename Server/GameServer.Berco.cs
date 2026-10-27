@@ -169,6 +169,81 @@ public partial class GameServer
 		return MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(desejado) ?? desejado;
 	}
 
+	// =====================================================================
+	// (2026-10-26) A ZONA SEGURA DO BERCO
+	// =====================================================================
+	/// <summary>
+	/// A ZONA SEGURA -- o pedido 82 do dono: *"adicionar safe zones nos spawn points dos planetas"*, e nas perguntas: dez tiles, e "toda luta".
+	/// Num raio de dez tiles do berco de cada PLANETA (o `/obj/SpawnPoint` do mapa, o ponto de nascimento: a Terra, Namek, Vegeta, Icer, Arconia, o
+	/// Deserto, a Big Gete Star e Arlia; o Outro Mundo e as estacoes ficam de fora -- nao sao planetas), ninguem luta:
+	///   * quem esta dentro e INTOCAVEL (a oitava razao do `CombatState.Intocavel`): o golpe, o tiro, a tecnica e o agarrao de fora nao o pegam;
+	///   * quem esta dentro NAO FERE ninguem: o soco e o agarrao sao recusados (com a frase), o tiro nasce sem pegar em corpo
+	///     (`Projetil.DaZonaSegura`, a explosao dele tambem) e o dano de tecnica dele nao encosta (`EspalharDanoG3`, `FerirUmMembroG10`).
+	/// Vale pra jogador, habitante, vilao e chefe -- ninguem e excecao.
+	/// </summary>
+	internal const float TilesDaZonaSegura = 10;
+
+	/// <summary>Os planetas pre-feitos que tem berco, pelo nome da zona (`ZoneKey.Premade`).</summary>
+	private static readonly HashSet<string> PlanetasComZonaSegura = new(StringComparer.Ordinal)
+		{ "Earth", "Namek", "Vegeta", "Icer", "Arconia", "Desert", "Big_Geti_Star", "Arlia" };
+
+	/// <summary>O centro da zona segura de cada planeta: o ponto de nascimento, calculado uma vez por zona (o `PontoLivrePerto` custa um laco).</summary>
+	private readonly Dictionary<ulong, Vec2> _centroDaZonaSegura = [];
+
+	/// <summary>A frase de quem tenta lutar de dentro.</summary>
+	internal const string FraseDaZonaSegura = "aqui é zona segura, perto do ponto de chegada do planeta: ninguém luta.";
+
+	/// <summary>DEFEITO INJETADO (`--naoletalteste`): sem zona segura nenhuma -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool ZonaSeguraDesligadaDeTeste;
+
+	/// <summary>
+	/// (`--naoletalteste`) A ZONA SEGURA VALE NESTE PROCESSO DE BANCADA -- a familia dela a pede. Fora dela, num processo de bancada a zona
+	/// nao existe (ver <see cref="ProcessoDeBancada"/>). Falso fora da familia; o jogo de verdade nao le isto.
+	/// </summary>
+	internal static bool ZonaSeguraNaBancadaDeTeste;
+
+	/// <summary>
+	/// ESTE PROCESSO RODA UMA BANCADA OU UM ROBO? As cenas que ja existiam lutam em volta do berco -- e onde o corpo chega, e onde o palco
+	/// do robo forja quem apanha -- e a zona segura as desmancharia sem provar nada delas: nesses processos ela so vale enquanto a familia
+	/// dela pede (<see cref="ZonaSeguraNaBancadaDeTeste"/>). O jogo de verdade (o servidor da VPS, o DBJ.exe, o "Hospedar partida") nao passa
+	/// nenhuma bandeira de bancada. Lido uma vez.
+	/// </summary>
+	private static readonly Lazy<bool> ProcessoDeBancada = new(() => EhLinhaDeBancada(Godot.OS.GetCmdlineArgs()));
+
+	/// <summary>As bancadas de nome proprio -- sem o `teste` no fim e sem o `--diag` na frente --, pelo lote (`vizinhas_dos_blocos.sh`).</summary>
+	private static readonly HashSet<string> BancadasDeNomeProprio = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"--radiovivo", "--mundoprova", "--mestrevivo", "--menteskills", "--kideponta", "--fotovegeta", "--fotoprocedural",
+		"--fotoplanetasarg", "--fotoplanetas", "--curaviva", "--cargoportas", "--cargomissoes", "--bercovivo", "--bercoprova",
+	};
+
+	/// <summary>
+	/// A LINHA DE COMANDO E DE BANCADA: uma bandeira `--...teste`, um robo `--diag...`, uma bancada de nome proprio, ou a conta `bancada...`
+	/// que todo robo do lote usa. Separada do `OS` pra a bancada conferir as duas pontas (o jogo de verdade e a bancada).
+	/// </summary>
+	internal static bool EhLinhaDeBancada(string[] args)
+	{
+		for (int i = 0; i < args.Length; i++)
+		{
+			string a = args[i];
+			if (!a.StartsWith("--", StringComparison.Ordinal)) continue;
+			if (a.EndsWith("teste", StringComparison.OrdinalIgnoreCase) || a.StartsWith("--diag", StringComparison.OrdinalIgnoreCase)
+				|| BancadasDeNomeProprio.Contains(a)) return true;
+			if (a == "--conta" && i + 1 < args.Length && args[i + 1].StartsWith("bancada", StringComparison.OrdinalIgnoreCase)) return true;
+		}
+		return false;
+	}
+
+	/// <summary>Este corpo esta na zona segura de um planeta? Ver <see cref="TilesDaZonaSegura"/>.</summary>
+	private bool NaZonaSegura(ServerPlayer pl)
+	{
+		if (ZonaSeguraDesligadaDeTeste || (ProcessoDeBancada.Value && !ZonaSeguraNaBancadaDeTeste)) return false;
+		if (pl.Zone.Kind != ZoneKey.KindPremade || !PlanetasComZonaSegura.Contains(pl.Zone.Name)) return false;
+		if (!_centroDaZonaSegura.TryGetValue(pl.Zone.Hash, out Vec2 centro))
+			_centroDaZonaSegura[pl.Zone.Hash] = centro = PontoDeNascimento(pl.Zone);
+		return Vec2.Distance(pl.Pos, centro) <= TilesDaZonaSegura * Jandirus.Core.World.ZoneCollision.TileSize;
+	}
+
 	/// <summary>
 	/// O DEFEITO INJETADO da `--diagberco` (familia 2b): ignorar o marco do mapa e voltar ao ponto unico.
 	/// **Falso em jogo, sempre.** Existe pra provar que a familia fica vermelha quando o marco e ignorado

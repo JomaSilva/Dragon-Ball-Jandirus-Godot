@@ -1376,6 +1376,9 @@ public partial class GameServer
 		npc.Livro.Dar(SkillDele);
 
 		dono.Ficha.physoff = 30;
+		// (2026-10-26) O BANCO DO POTENCIAL de quem absorve: e dele que o NPC solta agora (ver `AbsorcaoNamekuseijin.PotencialQueONpcSolta`)
+		const double BancoDoDono = 1_000_000;
+		dono.Ficha.hiddenpotential = BancoDoDono;
 		double bpDono = dono.Ficha.BP, bpNpc = npc.Ficha.BP;
 
 		// ---- O CAMINHO DO NPC NAO PASSA POR CONVITE ----
@@ -1416,22 +1419,30 @@ public partial class GameServer
 			TickDaCenaDeFusao();
 		}
 
-		// ---- N4: BEM MENOS BP ----
+		// ---- N4 (2026-10-26): O NPC SOLTA O BANCO DO POTENCIAL, como o Zenkai ----
+		// O dono: *"faca com q fusao namek com npc seja o mesmo q o zenkai, libera seu potencial (mesmo valor de liberacao do zenkai)"* --
+		// e, perguntado, *"20% a 80%, como o Zenkai"*, *"Sai, fica so o potencial"* e *"Sem recarga"*.
 		double ganho = dono.Ficha.BP - bpDono;
-		double ganhoSeFosseJogador = Fusao.BpDaFusao(bpDono, bpNpc) - bpDono;
-		AfirmarFd("J26 o NPC rende o previsto pela conta do Core (fracao do BP dele, com teto no meu)",
-				  Math.Abs(dono.Ficha.BP - AbsorcaoNamekuseijin.BpDepoisDeAbsorverNpc(bpDono, bpNpc)) < 1.0,
-				  $"{dono.Ficha.BP:N0}");
-		AfirmarFd("J27 ...e isso e BEM menos que o mesmo alvo renderia como JOGADOR "
-				+ $"({ganho:N0} contra {ganhoSeFosseJogador:N0})",
-				  ganho < ganhoSeFosseJogador / 10);
+		double saiuDoBanco = BancoDoDono - dono.Ficha.hiddenpotential;
+		AfirmarFd("J26 **COM NPC A FUSAO SOLTA O POTENCIAL** (*\"mesmo valor de liberacao do zenkai\"*): de 20% a 80% do banco de quem absorve vai "
+				+ "pro BP, e o banco perde o mesmo tanto",
+				  ganho >= 0.2 * BancoDoDono - 1 && ganho <= 0.8 * BancoDoDono + 1 && Math.Abs(ganho - saiuDoBanco) < 1,
+				  $"+{ganho:N0} de BP, {saiuDoBanco:N0} saiu do banco de {BancoDoDono:N0}");
 
-		// ---- E A RECARGA DO NPC TAMBEM E PROPORCIONAL (2026-10-24): rendeu pouco, recarga pouco acima da do "1x" ----
-		double horasDoNpc = (dono.Ficha.fusion_cooldown_until - NowMs()) / 3_600_000.0;
-		double horasEsperadasDoNpc = Jandirus.Core.Stats.GainKnobs.RecargaProporcionalMs(bpDono, dono.Ficha.BP) / 3_600_000.0;
-		AfirmarFd("J27b ...e a recarga tambem e proporcional: o NPC rende pouco, e ela fica em pouco mais de 2,5 h (e nao nas 5 h de quem dobra)",
-				  Math.Abs(horasDoNpc - horasEsperadasDoNpc) < 0.01 && horasDoNpc < 3,
-				  $"{horasDoNpc:0.00} h (esperado {horasEsperadasDoNpc:0.00} h; {dono.Ficha.BP / bpDono:0.000}x)");
+		// ...e o BP do NPC NAO conta mais: com o banco vazio, um NPC cem vezes mais forte nao da nada
+		ServerPlayer forte = ForjarNaFusaoDupla("AnciaoNamek", "Namekian", 200_000_000, sabeDancar: false, 1);
+		forte.Papel = new Jandirus.Core.Npc.PapelDeNpc(new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "anciao" }, 0);
+		dono.Ficha.hiddenpotential = 0;
+		double bpAntesDoForte = dono.Ficha.BP;
+		AbsorverNamekuseijin(dono, forte);
+		AfirmarFd("J27 **...E O BP DO NPC NAO CONTA MAIS** (*\"Sai, fica so o potencial\"*): com o banco vazio, absorver um NPC de 200 milhoes nao "
+				+ "da BP nenhum (os 10% de antes dariam o teto, 5% do proprio BP)",
+				  Math.Abs(dono.Ficha.BP - bpAntesDoForte) < 1, $"{bpAntesDoForte:N0} -> {dono.Ficha.BP:N0}");
+
+		// ---- E SEM RECARGA (2026-10-26): quem limita e o banco ----
+		AfirmarFd("J27b **E SEM RECARGA** (*\"Sem recarga\"*): absorver um NPC nao cobra a recarga da fusao -- pode absorver de novo na hora",
+				  dono.Ficha.fusion_cooldown_until <= NowMs(),
+				  $"recarga ate {dono.Ficha.fusion_cooldown_until}, agora {NowMs()}");
 
 		// ---- N4: E MENOS BONUS ----
 		AfirmarFd("J28 o NPC NAO passa stat nenhum (30 continua 30)",
@@ -1449,6 +1460,7 @@ public partial class GameServer
 		// quanto cresceram (`PoderNaFrase`). Tres aldeoes novos, absorvidos pelo `AbsorverNamekuseijin` de
 		// producao -- cada rodada anota o antes e o depois DELA, porque cada absorcao mexe no poder de novo.
 		var rodadas = new List<(double Antes, double Depois)>();
+		dono.Ficha.hiddenpotential = BancoDoDono;   // (2026-10-26) o crescimento sai do banco agora -- sem ele, a frase nao teria o que dizer
 		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(dono, () =>
 		{
 			ServerPlayer outro = ForjarNaFusaoDupla($"Aldeao{rodadas.Count + 2}", "Namekian", 400_000, sabeDancar: false, 1);
@@ -1467,16 +1479,8 @@ public partial class GameServer
 		AfirmarFd("J31d (defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
 				  rodadas.Count == 3 && TrazOPoder(comDefeito, rodadas[2].Depois), Ultimos(comDefeito));
 
-		// ---- J31e: O CONTRA-EXEMPLO DA RECARGA (a hora fixa de antes de 2026-10-24) ----
-		ServerPlayer maisUm = ForjarNaFusaoDupla("Aldeao9", "Namekian", 400_000, sabeDancar: false, 1);
-		maisUm.Papel = new Jandirus.Core.Npc.PapelDeNpc(
-			new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "aldeao" }, 0);
-		Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = true;
-		try { AbsorverNamekuseijin(dono, maisUm); }
-		finally { Jandirus.Core.Stats.GainKnobs.RecargaFixaDeTeste = false; }
-		double horasComDefeito = (dono.Ficha.fusion_cooldown_until - NowMs()) / 3_600_000.0;
-		AfirmarFd("J31e (defeito injetado: a hora fixa de antes) a absorcao volta a deixar 1 h, de qualquer tamanho -- a regua J27b reprovaria",
-				  Math.Abs(horasComDefeito - 1) < 0.01, $"{horasComDefeito:0.00} h");
+		// (2026-10-26) A J31e -- o contra-exemplo da recarga de hora fixa na absorcao de NPC -- saiu: com NPC nao ha recarga nenhuma agora
+		// (a J27b), e a hora fixa so existe na de jogador.
 
 		// ---- O CONTRA-EXEMPLO DO PORTAO: clone e boneco NAO sao absorviveis ----
 		// `EhNamekNpcAbsorvivel` e estreito de proposito: o terceiro grupo do `Gente` (clone da mente,
@@ -2184,6 +2188,7 @@ public partial class GameServer
 		{
 			p.Ficha.physoff = 30;
 			p.Ficha.GravMastered = 10;
+			p.Ficha.hiddenpotential = 100_000;   // (2026-10-26) o banco: e dele que o NPC solta, e o jogador nem o toca
 		}
 
 		// E DOIS ALVOS IDENTICOS -- so que um e gente e o outro nao.
@@ -2237,9 +2242,8 @@ public partial class GameServer
 				+ $"+{ganhoDeNpc:N0} pelo MESMO alvo (razao {(ganhoDeNpc > 0 ? ganhoDeGente / ganhoDeNpc : 0):N0}x)",
 				  ganhoDeNpc > 0 && ganhoDeGente > ganhoDeNpc * 20);
 
-		AfirmarFd("J74 ...e o NPC rende alguma coisa (o \"bem menos\" nao virou \"nada\", que seria "
-				+ "outra regra)",
-				  ganhoDeNpc > 0, $"+{ganhoDeNpc:N0}");
+		AfirmarFd("J74 ...e o NPC rende o que solta do BANCO de quem absorve (2026-10-26): de 20% a 80% dos 100.000 guardados",
+				  ganhoDeNpc >= 20_000 - 1 && ganhoDeNpc <= 80_000 + 1, $"+{ganhoDeNpc:N0}");
 
 		// ---- E AS **DUAS METADES** DO SUPER NAMEKUSEIJIN, MEDIDAS JUNTAS ----
 		bool formaPeloJogador = comeGente.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin);

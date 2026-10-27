@@ -671,14 +671,10 @@ public sealed partial class GameServer
 
 	/// <summary>Esta conta ocupa o trono do Guardiao da Terra?</summary>
 	private bool EhGuardiao(ServerPlayer pl) =>
-		string.Equals(CargoDe(pl.Conta), "guardian", StringComparison.OrdinalIgnoreCase);
+		string.Equals(CargoDe(pl), "guardian", StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>O nome de quem ocupa um cargo, ou "" se o trono esta vago.</summary>
-	private string DonoDoCargo(string chave)
-	{
-		if (!_tronos.TryGetValue(chave, out string? conta) || conta.Length == 0) return "";
-		foreach (ServerPlayer p in _players.Values)
-			if (string.Equals(p.Conta, conta, StringComparison.OrdinalIgnoreCase)) return p.Name;
-		return conta;
-	}
+	private string DonoDoCargo(string chave) =>
+		// (2026-10-26) o PERSONAGEM que sentou no trono -- no jogo ou fora --, e nao "alguem da conta"
+		_tronos.TryGetValue(chave, out string? conta) && conta.Length > 0 ? NomeDoTrono(chave) : "";
 }

@@ -117,3 +117,48 @@ public static class PecasNoChao
 	/// </summary>
 	public static long RestanteMs(PecaNoChao p, long agora) => Math.Max(0, p.CaiuEm + MsNoChao - agora);
 }
+
+/// <summary>
+/// (2026-10-26) UMA MARCA DE DESTRUICAO NO CHAO -- cratera ou pedaco de trilha --, como o SERVIDOR a guarda. A irma da
+/// <see cref="PecaNoChao"/>, e pelo mesmo motivo: o dono pediu *"Faca destruicao de cenario como crateras e trilhas de destruicao permanecerem por mt mais tempo, podendo ser 1 dia ingame"*, e uma marca que dura um dia do jogo nao pode viver
+/// so na tela de quem estava la no instante -- quem chega, reloga ou volta de outro planeta tem que ve-la.
+///
+/// O TIPO E A DIRECAO SAO BYTES porque o Core nao conhece o fio: sao o `Protocol.Decal` e o `Facing` que o `S2C.Decalque` levou.
+/// </summary>
+public sealed class MarcaNoChao
+{
+	public byte Tipo;
+
+	/// <summary>Onde ela caiu. E o que o cliente desenha.</summary>
+	public Vec2 Onde;
+
+	public byte Dir;
+
+	/// <summary>Quando caiu (relogio do servidor, ms). E dele que sai o prazo -- ver <see cref="MarcasNoChao.Venceu"/>.</summary>
+	public long CaiuEm;
+}
+
+/// <summary>(2026-10-26) As regras da marca de destruicao no chao: o prazo (um dia do jogo) e o teto por zona.</summary>
+public static class MarcasNoChao
+{
+	/// <summary>
+	/// QUANTO TEMPO A MARCA FICA NO CHAO: UM DIA DO JOGO (<see cref="Ceu.SegundosPorDia"/>, 24 minutos reais) -- o pedido do dono. Era
+	/// 18 s a cratera pequena, 20 s a trilha, 40 s a grande e 90 s a da Genkidama e a do pod, e todas so na tela de quem viu. **O mesmo
+	/// numero nas duas pontas**, como o da peca: o cliente o le pro prazo do decalque (`Decalques.Prazo`) e o servidor pra expirar a lista.
+	/// </summary>
+	public const long MsNoChao = (long)(Ceu.SegundosPorDia * 1000);
+
+	/// <summary>
+	/// QUANTAS MARCAS UMA ZONA LEMBRA. Um dia inteiro de briga numa zona deixa MILHARES (cada arremesso risca uma trilha de um decalque
+	/// por tile), e lembrar sem teto seria o retrato e o chao crescendo pra sempre. Mil cobrem o dia de uma briga comum; acima disso a
+	/// mais VELHA sai, que e a que ja estaria mais apagada. O cliente segura a mesma quantidade na fila propria delas
+	/// (`Decalques.MaxMarcas`): lembrar mais do que a tela desenha seria mandar um retrato que ela nao honra.
+	/// </summary>
+	public const int TetoPorZona = 1000;
+
+	/// <summary>Esta marca ja passou do dia dela?</summary>
+	public static bool Venceu(MarcaNoChao m, long agora) => agora - m.CaiuEm >= MsNoChao;
+
+	/// <summary>QUANTO FALTA PRA ELA SUMIR, em ms -- o que viaja no retrato (ver <see cref="PecasNoChao.RestanteMs"/>).</summary>
+	public static long RestanteMs(MarcaNoChao m, long agora) => Math.Max(0, m.CaiuEm + MsNoChao - agora);
+}

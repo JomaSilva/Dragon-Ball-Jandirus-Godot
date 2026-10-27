@@ -23,20 +23,23 @@ namespace Jandirus.Server;
 /// producao e entra nas duas formas pelo `TransformarPara` de producao. O unico atalho e o RELOGIO: os
 /// degraus vem de oito em oito segundos em vez de doze horas e dez jogadores.
 ///
-/// ============================ OITO POSES, E A PRIMEIRA E O CONTROLE ============================
+/// ============================ NOVE POSES, E A PRIMEIRA E O CONTROLE ============================
 ///   0  HUMANO         -- o corpo antes de tudo. Sem ele, "os quatro degraus sao diferentes" nao diz
 ///                        que a criatura deixou de parecer gente;
 ///   1  LARVA          -- `Cell Larva.tres`
 ///   2  IMPERFEITO     -- `Bio Android 1.tres`
 ///   3  SEMI-PERFEITO  -- `Bio Android 2.tres`
 ///   4  PERFEITO       -- `Bio Android 3.tres`
-///   5  SUPER PERFEITA -- `Bio Android 4.tres`, e esta e CAMADA DE FORMA e nao corpo de repouso
+///   5  GOLDEN PERFECT CARREGANDO -- `Bio Android 6.tres`, CAMADA DE FORMA e nao corpo de repouso, com o tanque acima de
+///                        100%: e assim que a chama DOURADA do fogo do Deus aparece na tela de quem olha (2026-10-26, no lugar
+///                        da Super Perfeita, que saiu do jogo);
 ///   6  SUPER SAIYAJIN -- o mesmo corpo perfeito, PARADO. E a unica pose em que o sprite **nao** muda:
 ///                        o bio nao ganha cabelo em forma nenhuma (`HairObject.dm:168`), o SSJ1 nao
 ///                        tem raios, e a aura deste port so acende acima de 100% de Ki. Ela sai IGUAL
 ///                        a pose 4, e isso e a regra e nao um buraco;
 ///   7  SUPER SAIYAJIN CARREGANDO -- o tanque acima de 100%, a aura dourada acesa. **Esta** e a unica
-///                        imagem desta escada em que o DNA Saiyajin do doador aparece na tela.
+///                        imagem desta escada em que o DNA Saiyajin do doador aparece na tela;
+///   8  MAX CARREGANDO -- (2026-10-26) `Bio Android - Form 5.tres`, a camada da MAX, e a chama do Blue VERMELHA.
 /// ==========================================================================================================================
 /// </summary>
 public partial class GameServer
@@ -108,9 +111,9 @@ public partial class GameServer
 	};
 
 	/// <summary>
-	/// O BP DO DOADOR DE MENTIRA. A Super Perfeita pede `PortaSuperPerfeito` (750 milhoes) de BP
-	/// BASE, e o bio nasce com METADE do doador mais forte -- entao o doador precisa de quatro
-	/// bilhoes pra a criatura nascer com dois e a forma abrir sem ninguem empurrar nada.
+	/// O BP DO DOADOR DE MENTIRA. A Super Perfeita pedia 750 milhoes de BP BASE, e o bio nasce com METADE do doador mais forte --
+	/// entao o doador tinha quatro bilhoes pra a criatura nascer com dois e a forma abrir sem ninguem empurrar nada. (2026-10-26: as
+	/// divinas que a substituiram nao tem porta de BP -- a porta delas e o ki divino --, e o numero ficou, sem atrapalhar ninguem.)
 	/// </summary>
 	private const double BpDoDoadorDoPalco = 4e9;
 
@@ -247,7 +250,7 @@ public partial class GameServer
 		//
 		//   * a pose 6 (Super Saiyajin parado) veste EXATAMENTE as mesmas folhas da pose 4, porque o bio
 		//     nao ganha cabelo em forma nenhuma. Pra quem olha so a folha, ela nunca aconteceu;
-		//   * a pose 5 (Super Perfeita) tem RAIOS, e o bit de emissao pisca -- o carimbo nunca ficava
+		//   * a pose 5 (era a Super Perfeita) tinha RAIOS, e o bit de emissao pisca -- o carimbo nunca ficava
 		//     parado o bastante pra o disparo acontecer.
 		//
 		// O anuncio inverte a responsabilidade: quem sabe que a pose mudou e quem a EXECUTOU. Ele sai
@@ -264,17 +267,22 @@ public partial class GameServer
 			case 3: SubirDegrauDoBio(s, BioAndroids.SemiPerfeito); break;
 			case 4: SubirDegrauDoBio(s, BioAndroids.Perfeito); break;
 
+			// ============================ (2026-10-26) A GOLDEN PERFECT, CARREGANDO ============================
+			// No lugar da Super Perfeita, que saiu do jogo. O ki divino ja maduro (os 50% da MAX, que vem na pose 8), e o tanque acima de
+			// 100% como na pose 7: a chama das formas divinas e a da CARGA, e e assim que ela aparece na tela de quem olha.
+			// ==================================================================================================
 			case 5:
+				s.Ficha.godki = new GodKiState { awakened = true, mastery = Jandirus.Core.Forms.Catalogo.GodkiRoyalePct };
 				s.Ficha.Ki = s.Ficha.MaxKi;
-				TransformarPara(s, "super_perfect");
-				GD.Print($"[biovivo] passo 5: SUPER PERFEITA -- forma '{s.Forma.Atual}', "
-					   + $"buff {s.Ficha.ssjBuff:0.##}x");
+				TransformarPara(s, "golden_perfect");
+				s.Ficha.Ki = s.Ficha.MaxKi * 1.6;
+				TickDaCarga(s, 0.1);
+				GD.Print($"[biovivo] passo 5: GOLDEN PERFECT **CARREGANDO** -- forma '{s.Forma.Atual}', "
+					   + $"buff {s.Ficha.ssjBuff:0.##}x, aura de carga={s.AuraDeCarga}");
 				break;
 
 			case 6:
-				// DE VOLTA A BASE PRIMEIRO: a Super Perfeita proibe a escada Saiyajin inteira nos DOIS
-				// sentidos (`ProibidoComFormaAtual`), que e o conserto do bug em que o SSJ2 do DM
-				// atropelava a forma de 8x calado.
+				// DE VOLTA A BASE PRIMEIRO, e com o tanque no limite: a pose 6 e o Super Saiyajin PARADO.
 				TransformarPara(s, Jandirus.Core.Forms.Catalogo.IdBase);
 				s.Ficha.Ki = s.Ficha.MaxKi;
 				TransformarPara(s, "ssj1");
@@ -302,9 +310,20 @@ public partial class GameServer
 					   + $"aura de carga={s.AuraDeCarga}");
 				break;
 
+			// (2026-10-26) A MAX, CARREGANDO: da base (ela entra da base ou da Golden), o ki divino nos 50% desde a pose 5.
+			case 8:
+				TransformarPara(s, Jandirus.Core.Forms.Catalogo.IdBase);
+				s.Ficha.Ki = s.Ficha.MaxKi;
+				TransformarPara(s, "bio_max");
+				s.Ficha.Ki = s.Ficha.MaxKi * 1.6;
+				TickDaCarga(s, 0.1);
+				GD.Print($"[biovivo] passo 8: MAX **CARREGANDO** -- forma '{s.Forma.Atual}', "
+					   + $"buff {s.Ficha.ssjBuff:0.##}x, aura de carga={s.AuraDeCarga}");
+				break;
+
 			default:
 				_bioVivoProximo = 0;
-				GD.Print("[biovivo] a escada terminou. As oito poses passaram pela tela.");
+				GD.Print("[biovivo] a escada terminou. As nove poses passaram pela tela.");
 				return;
 		}
 
@@ -354,7 +373,8 @@ public partial class GameServer
 		// nelas. E e a mesma manivela que o `--dois` usa pra fotografar corpo transformado.
 		// ==============================================================================================================
 		s.Forma.Maestria.Por("ssj1", 100);
-		s.Forma.Maestria.Por("super_perfect", 100);
+		s.Forma.Maestria.Por("golden_perfect", 100);
+		s.Forma.Maestria.Por("bio_max", 100);
 
 		// ============================ E A ESTREIA JA CONTA COMO VISTA, PELO MESMO MOTIVO ============================
 		// Maestria cheia encurta a cena das vezes SEGUINTES; a ESTREIA roda a cena inteira de qualquer
@@ -362,7 +382,8 @@ public partial class GameServer
 		// piscando. Marcar as duas formas como ja estreadas e a mesma manivela que o jogo usa pra quem
 		// ja se transformou uma vez -- nao inventa estado, so pula um filme que ninguem esta medindo.
 		// ========================================================================================================
-		s.Forma.EstreiaVista.Add(Jandirus.Core.Forms.Catalogo.Rede("super_perfect"));
+		s.Forma.EstreiaVista.Add(Jandirus.Core.Forms.Catalogo.Rede("golden_perfect"));
+		s.Forma.EstreiaVista.Add(Jandirus.Core.Forms.Catalogo.Rede("bio_max"));
 		s.Forma.EstreiaVista.Add(Jandirus.Core.Forms.Catalogo.Rede("ssj1"));
 		GD.Print($"[biovivo] passo 1: nasceu -- raca '{s.Race}', degrau {s.Ficha.bio_stage} "
 			   + $"(larva), corpo {s.Visual.Corpo}, BP {s.Ficha.BP:N0}, canSSJ={s.Ficha.canSSJ}");
