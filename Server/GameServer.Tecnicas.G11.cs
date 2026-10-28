@@ -1011,6 +1011,9 @@ public sealed partial class GameServer
 	private bool LiberarOPotencial(ServerPlayer alvo, ServerPlayer quem, double vezes, string? autor = null, bool comRecarga = true,
 								   bool exigeBanco = true, bool upgradeDeAndroide = false)
 	{
+		// (2026-10-27) O POTENCIAL NAO SE LIBERA ENTRE PERSONAGENS DO MESMO IP (o pedido 110 -- o dono tirou ate as coisas de profissao). Ver
+		// `GameServer.MesmoIp.cs`.
+		if (alvo != quem && MesmoIp(alvo, quem)) { Avisar(quem, FraseDoMesmoIp); return false; }
 		if (PorQueNaoLibera(alvo, comRecarga, proprio: alvo == quem, exigeBanco, upgradeDeAndroide) is { } recusa)
 		{
 			Avisar(quem, recusa);
@@ -1594,7 +1597,7 @@ public sealed partial class GameServer
 		if (Marcado(pl) is not { } alvo) return null;
 		float dist = Vec2.Distance(alvo.Pos, pl.Pos);
 		if (dist < 3 * ZoneCollision.TileSize || dist > RaioDaVista) return null;
-		if (alvo.AgarradoPorId != 0 || alvo.Combate.Intocavel) return null;
+		if (alvo.AgarradoPorId != 0 || alvo.Combate.IntocavelPara(pl.Combate)) return null;   // (2026-10-27, o pedido 129) `IntocavelPara`
 		return alvo;
 	}
 

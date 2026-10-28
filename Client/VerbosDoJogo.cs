@@ -115,6 +115,11 @@ public static class VerbosDoJogo
 			"Quanto de poder voce ganhou desde que a sessao comecou.",
 			() => C?.SendVerbo("sessao_ver")));
 
+		// (2026-10-27, o pedido 124d) MORRER DE PROPOSITO: abre a confirmacao (`TelaDeMorrer`), e so o botao dela manda o `morrer`
+		Verbos.Registrar(new Verbo("Morrer", Verbos.Outros,
+			"Mata o seu personagem: uma morte comum (o Outro Mundo, sem Zenkai e sem mexer no karma). Pede confirmacao.",
+			() => TelaDeMorrer.Instancia?.Abrir()));
+
 		// O `knockbackon` do original. Existe pra treinar com alguem sem arremessa-lo a cada golpe.
 		// OS TORNEIOS (Terra e Outro Mundo): o painel do canto responde ao convite, e estes tres verbos
 		// sao o mesmo gesto por outro caminho -- e o unico caminho pra ver a situacao.
@@ -125,6 +130,11 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Recusar o torneio", Verbos.Outros,
 			"Recusa o convite do torneio, ou desiste da inscricao enquanto elas estao abertas.",
 			() => C?.SendVerbo("trn_recusar")));
+
+		// (2026-10-27, o pedido 124e) SAIR DO TORNEIO com a chave montada: livre da espera, e a vez conta como W.O.
+		Verbos.Registrar(new Verbo("Sair do torneio", Verbos.Outros,
+			"Sai do torneio em andamento: voce fica livre da area de espera, e a sua vez (a de agora ou a que viria) conta como W.O.",
+			() => C?.SendVerbo("trn_sair")));
 
 		Verbos.Registrar(new Verbo("Situacao do torneio", Verbos.Outros,
 			"Em que pe esta o torneio: inscricoes, chave, a luta de agora -- ou quando e o proximo.",

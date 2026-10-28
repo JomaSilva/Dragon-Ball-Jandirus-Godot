@@ -96,11 +96,12 @@ public partial class MenuJogo
 		if (partes.Count == 0) { Aviso("O corpo ainda não chegou do servidor."); return; }
 		SheetState f = GameClient.Instance?.Sheet ?? default;
 
-		// A FAIXA: a vida inteira (a media dos membros, que e o que o HUD chama de VIDA) e o resumo do
-		// que a lista de baixo detalha -- quantos membros nao estao inteiros, quantos nao existem mais.
+		// A FAIXA: a vida (a mesma que o HUD chama de VIDA) e o resumo do que a lista de baixo detalha -- quantos membros nao estao
+		// inteiros, quantos nao existem mais. (2026-10-27, o pedido 127) A vida e a pior parte que derruba (`Hud.VidaNaTela`), como no HUD.
 		int feridos = partes.Count(p => !p.Decepado && p.Vida < 100);
 		int decepados = partes.Count(p => p.Decepado);
-		Faixa("Vida", $"{f.HP:0}%", $"{feridos} membros feridos · {decepados} decepados", CorDaRazao(f.HP / 100));
+		double vida = Hud.VidaNaTela(f);
+		Faixa("Vida", $"{vida:0}%", $"{feridos} membros feridos · {decepados} decepados", CorDaRazao(vida / 100));
 
 		// O QUE ISSO CUSTA, antes da lista: a pontaria sem braco, a recarga sem os dois, a corrida sem perna, o chao
 		// sem as duas, a guarda que cede, o passo e o poder do corpo ferido -- uma frase por pena EM VIGOR, vinda do

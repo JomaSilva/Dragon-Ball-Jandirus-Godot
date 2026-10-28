@@ -237,6 +237,33 @@ public sealed class CombatState
 	public static bool DesmaioHerdaAMarcaDeTeste;
 
 	/// <summary>
+	/// ============================ O DESMAIO PELA CABECA (dono, 2026-10-27, o pedido 119) ============================
+	/// *"se vc for nocauteado por dano na cabeça, vc desmaia e n ve nada alem do seu personagem (fundo preto) e vc demora o dobro do
+	/// tempo pra levantar naturalmente, torso mantem igual o atual"* -- e o adendo: *"Se vc desmaiar pelo tronco mas o cara ir la e
+	/// socar sua cabeça vc tb pode desmaiar igual quando é derrubado pela cabeça"*.
+	///
+	/// LIGADO quando, CAIDO, a cabeca esta abaixo da linha do nocaute (<see cref="CabecaAbaixoDaLinha"/>) -- na queda, ou depois dela
+	/// (o soco na cabeca de quem caiu pelo tronco). Uma vez ligado fica ate o corpo levantar: a cabeca que sara no chao nao acorda
+	/// ninguem mais cedo. O DOBRO e do levantar SOZINHO (a cura do nucleo ou o relogio, no <see cref="Tick"/>): quem levanta o corpo
+	/// por fora (o <see cref="Levantar"/> chamado por uma cura, uma Senzu, um revive) continua levantando na hora. O cliente desenha o
+	/// mesmo estado pelo que ja recebe -- o nocaute na ficha e a cabeca no `S2C.Corpo` (ver `CabecaNaTela`). Nao vai pro save.
+	/// ================================================================================================================
+	/// </summary>
+	public bool DesmaioPelaCabeca;
+
+	/// <summary>Os segundos deste desmaio, no relogio do nocaute (o ritmo racial incluso) -- o tanto que o <see cref="DesmaioPelaCabeca"/> soma.</summary>
+	public double TempoDesmaiado;
+
+	/// <summary>O dobro deste desmaio ja foi dado (e uma vez so): ver o <see cref="Tick"/>.</summary>
+	public bool DesmaioDobrado;
+
+	/// <summary>
+	/// A CABECA DESTE CORPO ESTA ABAIXO DA LINHA DO NOCAUTE? A cabeca PERDIDA nao conta: sem ela o corpo morre, ou entra no coma de quem
+	/// refaz membro (<see cref="QuandoONucleoCede"/>) -- e isso nao e um desmaio.
+	/// </summary>
+	public bool CabecaAbaixoDaLinha() => Corpo.Achar("Cabeca") is { Decepado: false } c && c.Fracao < Regras.LimiarQuebra;
+
+	/// <summary>
 	/// ============================ O MAJIN DESFEITO EM PEDACOS (dono, 2026-10-15) ============================
 	/// *"majin "morto" por soco n morre de verdade ele so fica em um KO mais longo e começa uma animaçao q tinha no DM
 	/// representando ele regenerando e voltando a vida, morrer pra ki é oq mata definitivamente"*.
@@ -326,9 +353,20 @@ public sealed class CombatState
 	/// do projetil, o cone das tecnicas, o embate de ki, o dano em area). Uma segunda propriedade pra
 	/// a imunidade de cinematica significaria visitar os dezoito e acertar todos -- e o que sobrasse
 	/// seria o "as vezes" que ninguem consegue reproduzir.
+	///
+	/// (2026-10-27) E O ESCUDO CONTRA OUTRO CORPO: as razoes do <see cref="Blindado"/> mais a zona segura, que so barra golpe.
 	/// </summary>
-	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || Possuido || EmCinematica?.Invoke() == true
-							 || AoLeme?.Invoke() == true || NaZonaSegura?.Invoke() == true;
+	public bool Intocavel => Blindado || NaZonaSegura?.Invoke() == true;
+
+	/// <summary>
+	/// (2026-10-27) BLINDADO: nem o mundo nem o proprio corpo o ferem -- as razoes do <see cref="Intocavel"/> MENOS a zona segura. O pedido
+	/// 113 do dono: *"safe zone deveria so proteger de npc e pvp nada mais"* (os jogadores: la dentro a gravidade nao esmagava e o Kaio-ken
+	/// nao drenava). Quem pergunta por aqui e o dano SEM ALGOZ -- o esmagamento, o Kaio-ken, a sobrecarga, o transbordar, o preco que uma
+	/// tecnica cobra de quem a soltou (`EspalharDanoG3` com autor = vitima) e o sorteio da Final Explosion -- e o <see cref="Ferir"/> com
+	/// `doMundo`; o golpe de outro corpo continua no <see cref="Intocavel"/>.
+	/// </summary>
+	public bool Blindado => Carencia > 0 || Desfeito || Invulneravel || Enterrado || Possuido || EmCinematica?.Invoke() == true
+							|| AoLeme?.Invoke() == true;
 
 	/// <summary>
 	/// (2026-10-19) AO LEME DE UMA NAVE: o casco blinda quem pilota -- a setima razao do <see cref="Intocavel"/> (o dono: *"faça com q
@@ -347,9 +385,24 @@ public sealed class CombatState
 	/// <summary>
 	/// (2026-10-26) NA ZONA SEGURA DO BERCO DE UM PLANETA -- a oitava razao do <see cref="Intocavel"/> (o pedido 82 do dono: dez tiles em volta do
 	/// ponto de chegada, e la ninguem luta). **GANCHO E NAO CAMPO**, como o <see cref="AoLeme"/>: quem sabe onde fica o berco e o servidor
-	/// (`GameServer.NaZonaSegura`), e o escudo cai no passo em que o corpo sai do raio, sem bit pra apagar.
+	/// (`GameServer.NaZonaSegura`), e o escudo cai no passo em que o corpo sai do raio, sem bit pra apagar. (2026-10-27) So contra golpe de
+	/// outro corpo: ela nao entra no <see cref="Blindado"/> (o pedido 113).
 	/// </summary>
 	public Func<bool>? NaZonaSegura;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 129) ESTE CORPO NAO APANHA DAQUELE: a escolha de QUEM pode bater, que o <see cref="Intocavel"/> (contra todos) nao diz.
+	/// O dono: *"n permita jogadores de fora entrarem na arena ou conseguir bater nos participantes da luta"* -- o lutador da vez no torneio so
+	/// apanha do adversario (`GameServer.ForaDaLutaDoTorneio`). **GANCHO E NAO CAMPO**, como os de cima: quem sabe da luta e o servidor, e a
+	/// protecao cai no mesmo gesto em que a luta acaba. Recebe o estado de quem bate; nulo = qualquer um bate.
+	/// </summary>
+	public Func<CombatState, bool>? BarraQuemBate;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 129) NAO PODE SER ATINGIDO POR ESTE ATACANTE: o <see cref="Intocavel"/> de sempre, ou o <see cref="BarraQuemBate"/>.
+	/// Quem sabe quem bate pergunta por aqui (o soco, o tiro, o feixe, as tecnicas); sem atacante (o dano do mundo), vale o de sempre.
+	/// </summary>
+	public bool IntocavelPara(CombatState? atacante) => Intocavel || (atacante != null && BarraQuemBate?.Invoke(atacante) == true);
 
 	/// <summary>
 	/// (2026-10-17) A LARVA ENTERRADA (`GameServer.Larva.cs`): debaixo da terra ninguem a alcanca -- a quinta razao do <see cref="Intocavel"/>.
@@ -479,9 +532,10 @@ public sealed class CombatState
 	/// =========================================================================================================
 	/// </summary>
 	/// <param name="soNosAninhados">(2026-10-24) o repique so nos aninhados -- ver `Body.Ferir`.</param>
-	public bool Ferir(BodyPart membro, double dano, bool letal, bool soNosAninhados = false)
+	/// <param name="doMundo">(2026-10-27) o dano e SEM ALGOZ (do mundo ou do proprio corpo): so o <see cref="Blindado"/> o barra, a zona segura nao.</param>
+	public bool Ferir(BodyPart membro, double dano, bool letal, bool soNosAninhados = false, bool doMundo = false)
 	{
-		if (Intocavel || dano <= 0) return false;
+		if ((doMundo ? Blindado : Intocavel) || dano <= 0) return false;
 		Corpo.Ferir(membro, dano, letal, soNosAninhados);
 		GolpesQueFeriram++;
 
@@ -605,6 +659,10 @@ public sealed class CombatState
 		if (armado) NocauteRestante = Math.Max(0, NocauteRestante - dtDoNocaute);
 		// O PISO DO DESMAIO anda junto -- ver `SegundosMinimosDoDesmaio`.
 		if (DesmaioMinimo > 0) DesmaioMinimo = Math.Max(0, DesmaioMinimo - dtDoNocaute);
+		// (2026-10-27) O DESMAIO PELA CABECA (o pedido 119): o relogio deste desmaio anda, e a cabeca que cai abaixo da linha com o corpo
+		// ja no chao -- o soco na cabeca de quem caiu pelo tronco -- liga a marca. Ver `DesmaioPelaCabeca`.
+		TempoDesmaiado += dtDoNocaute;
+		if (!DesmaioPelaCabeca && !Desfeito && CabecaAbaixoDaLinha()) DesmaioPelaCabeca = true;
 
 		// ============================ QUEM ACORDA O CORPO E A CURA, E DEPOIS O TETO ============================
 		// A ordem e a de `Injuries.dm:277-289`, e ela e ESTA e nao a inversa: o coma por nucleo acaba
@@ -614,8 +672,23 @@ public sealed class CombatState
 		// `DeveMorrer()` entra junto porque um nucleo DECEPADO nao satisfaz `DeveNocautear()` -- ele
 		// nao esta "abaixo do limiar", ele nao esta. E o coma do Majin sem cabeca, e ele nao pode
 		// terminar pela primeira pergunta.
-		if (NocautePorVital && DesmaioMinimo <= 0 && !Corpo.DeveNocautear() && !Corpo.DeveMorrer()) Levantar();
-		else if (armado && NocauteRestante == 0) Levantar();
+		bool pelaCura = NocautePorVital && DesmaioMinimo <= 0 && !Corpo.DeveNocautear() && !Corpo.DeveMorrer();
+		bool peloRelogio = armado && NocauteRestante == 0;
+		if (!pelaCura && !peloRelogio) return;
+
+		// ============================ O DOBRO DO DESMAIO PELA CABECA (dono, 2026-10-27) ============================
+		// Na hora em que o corpo levantaria SOZINHO, quem desmaiou pela cabeca espera mais o tanto que ja passou no chao: o piso do
+		// desmaio (o caminho da cura) e o relogio do nocaute (o caminho cronometrado, e o teto de quem nao sara) re-armados com ele -- o
+		// que vier primeiro levanta, no dobro. Uma vez por desmaio. O Majin desfeito fica de fora: os 30 s dele sao outra regra.
+		// ============================================================================================================
+		if (DesmaioPelaCabeca && !DesmaioDobrado && !Desfeito)
+		{
+			DesmaioDobrado = true;
+			if (NocautePorVital) DesmaioMinimo = Math.Max(DesmaioMinimo, TempoDesmaiado);
+			if (armado) NocauteRestante = Math.Max(NocauteRestante, TempoDesmaiado);
+			return;
+		}
+		Levantar();
 	}
 
 	/// <summary>
@@ -709,6 +782,14 @@ public sealed class CombatState
 		// (2026-10-23) TODO DESMAIO NOVO NASCE SEM A MARCA DA GRAVIDADE -- ver `DesmaioDaGravidade`. So o de um corpo DE PE: quem cai de
 		// novo ja no chao continua desmaiado pelo mesmo motivo.
 		if (!F.KO && !DesmaioHerdaAMarcaDeTeste) DesmaioDaGravidade = false;
+		// (2026-10-27) O DESMAIO PELA CABECA (o pedido 119) tambem nasce do zero no corpo DE PE; cair de novo ja no chao continua o mesmo
+		// desmaio -- o mesmo relogio e o mesmo dobro. Ver `DesmaioPelaCabeca`.
+		if (!F.KO)
+		{
+			DesmaioPelaCabeca = false;
+			DesmaioDobrado = false;
+			TempoDesmaiado = 0;
+		}
 		F.KO = true;
 		F.train = false;   // `KO.dm:57-58`: o nocaute desliga o treino e a meditacao
 		F.med = false;
@@ -717,6 +798,7 @@ public sealed class CombatState
 		TempoDeGuarda = 0;
 		NocauteRestante = segundos;
 		NocautePorVital = porVital;
+		if (!Desfeito && CabecaAbaixoDaLinha()) DesmaioPelaCabeca = true;
 		// (2026-10-15) O PISO DO DESMAIO, so no nocaute por nucleo -- o unico que a cura encerra (ver `SegundosMinimosDoDesmaio`).
 		DesmaioMinimo = porVital && !DesmaioSemMinimoDeTeste ? SegundosMinimosDoDesmaio : 0;
 		// (2026-10-21) O funil unico do desmaio: a trava da maquina de gravidade ouve aqui, seja soco ou esmagamento.
@@ -751,6 +833,9 @@ public sealed class CombatState
 		NocauteRestante = 0;
 		NocautePorVital = false;
 		DesmaioMinimo = 0;
+		DesmaioPelaCabeca = false;
+		DesmaioDobrado = false;
+		TempoDesmaiado = 0;
 
 		// (2026-10-15) O MAJIN QUE SE REFAZ volta INTEIRO: `SpreadHeal(100,1,0)` e todo membro decepado refeito
 		// (`DeathRegen.dm:58` e `:71-73`) -- e nao os 25 pontos do `Un_KO` de quem so desmaiou.

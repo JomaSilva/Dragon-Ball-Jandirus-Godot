@@ -21,6 +21,11 @@ namespace Jandirus.Server;
 ///   C. O COLO DE QUEM VOA LEVA (dono): a pe no espaco ninguem agarra ninguem, e quem voa leva no colo quem ficou parado -- o resgate.
 ///   G. O GOLPE QUE ARREMESSA LEVA (dono): o arremesso nao e passo do corpo, e atravessa o vazio com ele parado.
 ///   A. QUEM ROMPE A ATMOSFERA VOANDO CHEGA VOANDO (dono), na altura de pairar, e anda.
+///   N. O NPC DO MUNDO NAO SAI DO PLANETA VOANDO (dono, 2026-10-27): pelo mesmo caminho do A, ele para no teto e fica no ar.
+///   T. TIRO DE NPC NO ESPACO NAO FERE PLANETA (dono, 2026-10-27): o mesmo tiro, do NPC que chegou ao espaco de carona nao tira nada da
+///      Terra; do jogador, tira. (O caso: o Freeza seguiu um jogador ate a orbita e derrubou Namek com um tiro.)
+///   SG. O NPC DE SAGA NAO SAI DO PLANETA DA SAGA (dono, 2026-10-27, o pedido 132): o chefe e o soldado da tropa nao viajam pelo `MoveToZone`
+///       (a rede de toda porta) e quem os levaria junto ouve por que (`PorQueNaoSaiDaqui`); o habitante comum continua viajando.
 /// Os dois defeitos injetados -- `APeNoEspacoAndaDeTeste` (o corpo a pe anda no espaco) e `ChegaSemVooNoEspacoDeTeste` (chega parado) --
 /// reprovam as reguas que dependem deles.
 ///
@@ -38,6 +43,7 @@ public sealed partial class GameServer
 	private bool _evRodando, _evJaRodou;
 	private int _evOk, _evFalhou, _evProximoId;
 	private readonly List<ServerPlayer> _evForjados = [];
+	private readonly List<ServerPlayer> _evNascidos = [];   // os NPCs do mundo (N, T): saem pelo `RemoverNpc`
 
 	private void AfirmarEv(string nome, bool cond, string detalhe = "")
 	{
@@ -75,6 +81,9 @@ public sealed partial class GameServer
 			OColoDeQuemVoaLevaEv();
 			OGolpeQueArremessaLevaEv();
 			QuemRompeAAtmosferaChegaVoandoEv(pl);
+			ONpcNaoSaiDoPlanetaVoandoEv();
+			OTiroDoNpcNaoFereOMundoEv(pl);
+			ONpcDeSagaNaoSaiDoPlanetaEv();   // (2026-10-27, o pedido 132)
 		}
 		catch (Exception e)
 		{
@@ -94,6 +103,8 @@ public sealed partial class GameServer
 				ZoneList(f.Zone.Hash).Remove(f);
 			}
 			_evForjados.Clear();
+			foreach (ServerPlayer n in _evNascidos) if (_players.ContainsKey(n.Id)) RemoverNpc(n);
+			_evNascidos.Clear();
 			mesa.Fecha();
 			if (_store != null)
 				try
@@ -436,5 +447,93 @@ public sealed partial class GameServer
 				$"subiu {subiuDeNovo}; voando {pl.Voando}; andou {comDefeito:0.00} px");
 		}
 		finally { ChegaSemVooNoEspacoDeTeste = false; }
+	}
+
+	// =====================================================================
+	// N. O NPC DO MUNDO NAO SAI DO PLANETA VOANDO (dono, 2026-10-27)
+	// =====================================================================
+	/// <summary>Um habitante da Terra pelo funil de nascimento de producao (`NascerNpc`): NPC do mundo, com molde.</summary>
+	private ServerPlayer? HabitanteDaTerraEv()
+	{
+		Jandirus.Core.Npc.MoldeDeNpc? molde = _moldes?.Todos.FirstOrDefault(m => m.Tipo == Jandirus.Core.Npc.TipoDeNpc.Cidadao && !m.EhChefe);
+		ServerPlayer? npc = molde != null
+			? NascerNpc(molde.Id, TerraDaBancadaDoEspacoVoo, PontoDeNascimento(TerraDaBancadaDoEspacoVoo), 988_900 + (ulong)_evNascidos.Count)
+			: null;
+		if (npc != null) _evNascidos.Add(npc);
+		return npc;
+	}
+
+	// =====================================================================
+	// SG. O NPC DE SAGA NAO SAI DO PLANETA DA SAGA (dono, 2026-10-27, o pedido 132)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"n deixe nenhum npc de saga pode sair do planeta q a saga acontece pq isso causa bugs"*. O chefe (o papel com `DaSaga`, o que
+	/// o nascimento do chefe de saga escreve) e o soldado da tropa (o molde `soldado`), nascidos na Terra pelo funil de producao: a viagem pro
+	/// espaco pelo `MoveToZone` -- a rede de toda porta, e o caminho de quem os levaria de carona -- e recusada, e o `PorQueNaoSaiDaqui` (que
+	/// o teleporte e a carona perguntam sobre quem vai junto) responde. O habitante comum, pelo mesmo caminho, viaja.
+	/// </summary>
+	private void ONpcDeSagaNaoSaiDoPlanetaEv()
+	{
+		GD.Print("[espacovoo] -- SG. o NPC de saga nao sai do planeta da saga (dono, 2026-10-27, o pedido 132) --");
+		ZoneKey terra = TerraDaBancadaDoEspacoVoo;
+		ServerPlayer? chefe = HabitanteDaTerraEv(), povo = HabitanteDaTerraEv();
+		Jandirus.Core.Npc.MoldeDeNpc? daTropa = _moldes?.Todos.FirstOrDefault(m => m.Tipo == Jandirus.Core.Npc.TipoDeNpc.Soldado);
+		ServerPlayer? soldado = daTropa != null ? NascerNpc(daTropa.Id, terra, PontoDeNascimento(terra), 988_990) : null;
+		if (soldado != null) _evNascidos.Add(soldado);
+		if (chefe?.Papel == null || povo == null || soldado == null)
+		{
+			AfirmarEv("(montagem) dois habitantes e um soldado da tropa na Terra", false, $"{chefe?.Name} / {povo?.Name} / {soldado?.Name}");
+			return;
+		}
+		chefe.Papel.DaSaga = true;
+
+		MoveToZone(chefe.Id, ZonaDoEspaco, AcimaDaTerraEv());
+		MoveToZone(soldado.Id, ZonaDoEspaco, AcimaDaTerraEv());
+		MoveToZone(povo.Id, ZonaDoEspaco, AcimaDaTerraEv());
+		string doChefe = PorQueNaoSaiDaqui(chefe), doSoldado = PorQueNaoSaiDaqui(soldado), doPovo = PorQueNaoSaiDaqui(povo);
+		AfirmarEv("SG1. **O NPC DE SAGA NAO SAI DO PLANETA DA SAGA**: o chefe e o soldado da tropa ficam na Terra (o `MoveToZone` recusa) e o `PorQueNaoSaiDaqui` diz por que -- o habitante comum viaja",
+			chefe.Zone.Equals(terra) && soldado.Zone.Equals(terra) && doChefe.Length > 0 && doSoldado.Length > 0
+			&& povo.Zone.Equals(ZonaDoEspaco) && doPovo.Length == 0,
+			$"chefe em {chefe.Zone.Name} (\"{doChefe}\"); soldado em {soldado.Zone.Name} (\"{doSoldado}\"); habitante em {povo.Zone.Name} (\"{doPovo}\")");
+	}
+
+	private void ONpcNaoSaiDoPlanetaVoandoEv()
+	{
+		GD.Print("[espacovoo] -- N. o NPC do mundo nao sai do planeta voando (dono, 2026-10-27) --");
+		ServerPlayer? npc = HabitanteDaTerraEv();
+		AfirmarEv("(montagem) nasce um habitante na Terra, NPC do mundo", npc != null && EhNpcDoMundo(npc), $"{npc?.Name}");
+		if (npc == null) return;
+		npc.Ficha.BP = Math.Max(npc.Ficha.BP, 50_000);   // ele voa pelo PODER (`VoaPeloPoder`, de 2 mil pra cima), como o Freeza
+		bool subiu = SubirAteOEspacoEv(npc);
+		AfirmarEv("N. **O NPC DO MUNDO NAO SAI DO PLANETA VOANDO**: pelo mesmo caminho que leva o jogador ao espaco (A), com os tres portoes, ele para no teto da Terra e fica no ar",
+			!subiu && npc.Zone.Equals(TerraDaBancadaDoEspacoVoo) && npc.Voando && npc.Altitude >= Voo.AlturaMaxima - 0.01f,
+			$"subiu {subiu}; zona {npc.Zone.Name}; voando {npc.Voando}; altura {npc.Altitude:0.0} (teto {Voo.AlturaMaxima:0})");
+	}
+
+	// =====================================================================
+	// T. TIRO DE NPC NO ESPACO NAO FERE PLANETA (dono, 2026-10-27)
+	// =====================================================================
+	private void OTiroDoNpcNaoFereOMundoEv(ServerPlayer pl)
+	{
+		GD.Print("[espacovoo] -- T. tiro de NPC no espaco nao fere planeta (dono, 2026-10-27) --");
+		ZoneKey terra = TerraDaBancadaDoEspacoVoo;
+		ServerPlayer? npc = HabitanteDaTerraEv();
+		if (npc == null || DiscoDe(terra) is not { } disco) { AfirmarEv("(montagem) um habitante e o disco da Terra na carta estelar", false); return; }
+
+		// O NPC QUE CHEGOU AO ESPACO DE CARONA -- voando ele nao chega mais (N). A troca de zona e a de quem viaja por outro corpo.
+		MoveToZone(npc.Id, ZonaDoEspaco, AcimaDaTerraEv() + new Vec2(ZoneCollision.TileSize * 4, 0));
+		(_, double g) = MedidasDoPlaneta(terra);
+		double portao = MortePlanetaria.BpExigido(g);
+		double antes = FeridaDoMundo(terra);
+		AtingirMundoComKi(disco, TiroDeProva(portao * 100, 1), npc);
+		double depoisDoNpc = FeridaDoMundo(terra);
+		AtingirMundoComKi(disco, TiroDeProva(portao * 100, 1), pl);
+		double depoisDoJogador = FeridaDoMundo(terra);
+		AfirmarEv("T. **TIRO DE NPC NO ESPACO NAO FERE PLANETA**: o mesmo tiro (cem vezes o limiar da Terra) do NPC do mundo nao tira nada dela; do jogador, tira",
+			Espaco.EhEspaco(npc.Zone) && EhNpcDoMundo(npc) && depoisDoNpc == antes && depoisDoJogador > depoisDoNpc && !ZonaCondenada(terra),
+			$"npc no espaco {Espaco.EhEspaco(npc.Zone)}; ferida {antes:0.###} -> {depoisDoNpc:0.###} (npc) -> {depoisDoJogador:0.###} (jogador)");
+
+		// a ferida que a bancada abriu nao fica na Terra
+		if (ChaveDePlaneta.Da(terra) is { } chave) _feridasDeMundo.Remove(chave.Texto);
 	}
 }

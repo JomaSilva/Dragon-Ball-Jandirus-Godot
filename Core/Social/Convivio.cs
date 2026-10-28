@@ -113,6 +113,13 @@ public sealed class Conhecido
 	/// </summary>
 	public long DesdeMs;
 
+	/// <summary>
+	/// (2026-10-27, o pedido 124c) O PODER E A CARA DE QUANDO EU O VI -- tirados com a foto (o mesmo prazo de um minuto). A lembranca dele
+	/// na MINHA mente nasce com eles (`GameServer.CriarClone`). Zero/nulo em ficha de antes: a lembranca usa os meus.
+	/// </summary>
+	public double PoderVisto;
+	public Jandirus.Core.Appearance.Appearance? AparenciaVista;
+
 	// =====================================================================
 	// OS DETALHES -- o que se aprende de alguem CONVIVENDO com ele. So sao escritos depois que o
 	// convivio passa do `Convivio.ConvivioParaDetalhes`, e so quando eu estou com a pessoa (sao parte

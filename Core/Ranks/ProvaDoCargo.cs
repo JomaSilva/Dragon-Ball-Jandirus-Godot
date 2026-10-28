@@ -41,9 +41,6 @@ public static class ProvaDoCargo
 	/// <summary>`RQ_CLAIM_CD 18000`: 30 minutos de "vergonha" depois de perder.</summary>
 	public const long MsDaVergonha = 30 * 60_000;
 
-	/// <summary>`get_dist(M, S) > 25`: mais longe que isto do espirito e fugir da prova.</summary>
-	public const double TilesDaFuga = 25;
-
 	/// <summary>`rand(-2, 2)`: o espirito se ergue a ate 2 tiles de quem o invocou.</summary>
 	public const int TilesDoNascimento = 2;
 
@@ -118,7 +115,10 @@ public static class ProvaDoCargo
 		/// <summary>Quem reivindica trocou de mapa.</summary>
 		SaiuDoLugar,
 
-		/// <summary>Quem reivindica se afastou mais de 25 tiles do espirito.</summary>
+		/// <summary>
+		/// Quem reivindica se afastou mais de 25 tiles do espirito (o `get_dist(M, S) > 25` do DM). (2026-10-27, o pedido 133) NAO SAI MAIS do
+		/// juiz -- ver o <see cref="Julgar"/>; fica o nome, pra a frase e o log de quem ainda o tiver.
+		/// </summary>
 		Fugiu,
 
 		/// <summary>Os 5 minutos passaram.</summary>
@@ -130,7 +130,11 @@ public static class ProvaDoCargo
 
 	/// <summary>
 	/// O JUIZ, na ordem do DM (`:358`, `:361`): o espirito caido decide primeiro; depois quem reivindica -- no jogo, de pe, vivo (ou
-	/// morto num cargo do Outro Mundo, `RQ_SKY`), no mesmo mapa, perto, e dentro do prazo. Nulo = a prova continua.
+	/// morto num cargo do Outro Mundo, `RQ_SKY`), no mesmo mapa, e dentro do prazo. Nulo = a prova continua.
+	///
+	/// (2026-10-27, o pedido 133) SEM A DISTANCIA: o DM encerrava a prova com quem reivindica a mais de 25 tiles do espirito, e o
+	/// knockback de uma luta de verdade separa os dois mais que isso o tempo todo -- o dono: *"vamos tirar o limite de distancia q os npcs de
+	/// rank (os q vc enfrenta) tem, pq o knock back toda hora faz eles despawnarem"*. A prova so acaba por quem cai, pelo mapa e pelo prazo.
 	/// </summary>
 	public static FimDaProva? Julgar(QuadroDaProva q)
 	{
@@ -140,7 +144,6 @@ public static class ProvaDoCargo
 		if (q.DesafianteKo) return FimDaProva.Caiu;
 		if (q.DesafianteMorto && !q.CargoDoAlem) return FimDaProva.Morreu;
 		if (!q.MesmaZona) return FimDaProva.SaiuDoLugar;
-		if (q.DistanciaEmTiles > TilesDaFuga) return FimDaProva.Fugiu;
 		if (q.AgoraMs > q.AcabaEm) return FimDaProva.Tempo;
 		return null;
 	}

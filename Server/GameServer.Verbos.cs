@@ -187,6 +187,7 @@ public sealed partial class GameServer
 			case "sessao_nova": VerboSessao(pl, nova: true); break;
 			case "sessao_ver": VerboSessao(pl, nova: false); break;
 			case "quem": VerboQuem(pl); break;
+			case "morrer": MorrerDeProposito(pl); break;   // (2026-10-27) o pedido 124d: o botao Morrer do menu P > Other -- ver GameServer.SnakeWay.cs
 
 			// ACORDAR DA MEDITACAO PROFUNDA -- o botao do HUD e a tecla de meditar dentro da mente. Por AQUI
 			// e nao pelo canal de habilidades: aquele e barrado pro corpo possuido e pra espera do torneio,

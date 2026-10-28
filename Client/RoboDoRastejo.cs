@@ -137,13 +137,15 @@ public partial class RoboDoRastejo : Node
 	// ---------------------------------------------------------------- A
 	private async Tarefa OPresoDePe(GameClient cli, Jandirus.Server.GameServer srv, LocalPlayer corpo, int id, int maq, float semGravidade)
 	{
-		Nota("--- A: o preso de pe (a camara a 7x: razao 8) ---");
+		Nota("--- A: o preso de pe (a camara a 7x: razao 8), blindado pela carencia ---");
+		// (2026-10-28, o pedido 143) acima de 5x a maestria o nocaute e na hora: sem a carencia o corpo cairia no primeiro segundo da cena
+		srv.CarenciaNaCenaDoRastejo(id, 60);
 		bool ligou = srv.CampoDoRastejo(id, maq, 7, 4);
 		bool soube = await Ate(() => cli.Sheet.SoRasteja && !cli.Sheet.KO, 4);
 		var s = srv.RastejoNaFoto(id);
 		Checa("A0. **A FICHA DIZ QUE SO A GRAVIDADE ME SEGURA**: no campo de razao 8 o corpo de pe esta preso, e o bit da ficha chega",
 			ligou && soube && s.Razao >= 4, $"campo {s.Campo:0.#}x; razao {s.Razao:0.##}; bit {cli.Sheet.SoRasteja}");
-		Checa("A0b. o passo da ficha e mais ou menos um quarto do de fora do campo (a conta exata e a da `--rastejoteste`; aqui a vida ja comecou a cair)",
+		Checa("A0b. o passo da ficha e mais ou menos um quarto do de fora do campo (a conta exata e a da `--rastejoteste`)",
 			cli.Sheet.SpeedStat > 0.18f * semGravidade && cli.Sheet.SpeedStat <= 0.2501f * semGravidade,
 			$"fora {semGravidade:0.###}; preso {cli.Sheet.SpeedStat:0.###}; razao {cli.Sheet.SpeedStat / semGravidade:0.###}");
 		// o aviso do esmagamento sai no tique de 1 Hz -- e a foto espera ele estar no chat
@@ -180,6 +182,7 @@ public partial class RoboDoRastejo : Node
 		Injeta("(quem se arrasta pede a corrida) a regua A4 REPROVA -- o cliente sai no passo de corrida, alem do que a ficha da",
 			correu.Andou > 1.5f * correu.Esperado, correu.ToString());
 		await Segundos(0.5);   // as correcoes desse contra-exemplo nao contam pra frente
+		srv.CarenciaNaCenaDoRastejo(id, 0);   // a cena B precisa do tique que derruba
 	}
 
 	// ---------------------------------------------------------------- B

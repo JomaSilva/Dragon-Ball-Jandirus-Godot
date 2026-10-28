@@ -581,6 +581,28 @@ public sealed partial class GameServer
 		int vagasDaTerra = _naSala.Count;
 		double gravLaFora = pl.Ficha.Planetgrav;
 
+		// (2026-10-27) A SALA FECHADA NO COMECO DO MUNDO vale aqui tambem (o pedido 112): num mundo nascido agora a porta deste mundo recusa
+		long nascimentoGuardado = _nascimentoDoMundo;
+		string abertaGuardada = _salaAbertaPor;
+		List<string> fechada;
+		bool ficou;
+		SalaFechadaNaBancadaDeTeste = true;
+		try
+		{
+			_nascimentoDoMundo = NowMs();
+			_salaAbertaPor = "";
+			fechada = Ouvir(() => ComandoDaSalaDoTempo(pl, "sala_entrar", ""));
+			ficou = pl.Zone.Equals(mundo);
+		}
+		finally
+		{
+			SalaFechadaNaBancadaDeTeste = false;
+			_nascimentoDoMundo = nascimentoGuardado;
+			_salaAbertaPor = abertaGuardada;
+		}
+		AfirmarSl("**A SALA FECHADA NO COMECO DO MUNDO** (o pedido 112): num mundo nascido agora a porta DESTE mundo tambem recusa, com a frase",
+				  ficou && fechada.Any(s => s.Contains("ainda está fechada neste mundo")), string.Join(" / ", fechada));
+
 		List<string> falas = Ouvir(() => ComandoDaSalaDoTempo(pl, "sala_entrar", ""));
 		AfirmarSl("**ENTRAR PELA PORTA**: o corpo vai pro interior da sala DESTE mundo (o mapa da Sala, instancia do mundo)",
 				  pl.Zone.Equals(sala) && SalaDoTempo.EhDePlaneta(pl.Zone) && pl.SalaPlaneta == mundo.Name && pl.SalaDilatacao == d,

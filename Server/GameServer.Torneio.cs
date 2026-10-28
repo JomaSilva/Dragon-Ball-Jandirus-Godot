@@ -119,6 +119,11 @@ public sealed partial class GameServer
 		public int Contagem;
 		public bool AlguemVoa;
 		public int LutasDisputadas;
+
+		// (2026-10-27, o pedido 124e) QUEM SAIU DO TORNEIO com a chave montada -- pelo "Sair do torneio" ou por sair do jogo e nao voltar no
+		// prazo do W.O. A vez dele e W.O. na hora (`ProximaLuta`), e ninguem o poe de volta na espera (`TerminarLuta`, `AoEntrarNoTorneio`).
+		public readonly HashSet<string> Sairam = new();
+		public readonly Dictionary<string, long> ForaDoJogoDesde = new();   // assinatura -> ms em que o corpo sumiu do mundo
 	}
 
 	// =====================================================================
@@ -303,6 +308,9 @@ public sealed partial class GameServer
 	{
 		// (2026-10-19) O TORNEIO DO CELL, o outro torneio da arena da Terra -- ver `GameServer.TorneioDoCell.cs`.
 		TickDoTorneioDoCell(dt);
+		// (2026-10-27, os pedidos 128 e 129) os dois da vez e a trava da contagem -- antes do `return` de baixo: o torneio que acaba solta quem
+		// estava travado
+		AtualizarOsDaVez();
 		if (_torneio == null)
 		{
 			long agora = NowMs();
@@ -312,6 +320,8 @@ public sealed partial class GameServer
 		}
 		TorneioVivo t = _torneio;
 		if (t.Fase != FaseDoTorneio.Inscricao) SegurarPresos(t);
+		if (t.Fase != FaseDoTorneio.Inscricao) ConferirQuemSaiuDoJogo(t);   // (2026-10-27, o pedido 124e)
+		if (t.Fase is FaseDoTorneio.Contagem or FaseDoTorneio.Luta) FecharAArena(t);   // (2026-10-27, o pedido 129)
 		switch (t.Fase)
 		{
 			case FaseDoTorneio.Inscricao:
@@ -447,6 +457,7 @@ public sealed partial class GameServer
 		{
 			case "trn_participar": Inscrever(pl); return true;
 			case "trn_recusar": Recusar(pl); return true;
+			case "trn_sair": SairDoTorneio(pl); return true;   // (2026-10-27, o pedido 124e)
 			case "trn_status": Avisar(pl, SituacaoDoTorneio()); return true;
 			case "trn_iniciar":
 				if (!EhAdmin(pl)) { Avisar(pl, "isso e coisa de administrador."); return true; }
@@ -599,6 +610,77 @@ public sealed partial class GameServer
 		t.Recusaram.Add(chave);
 		MandarAvisoDoTorneio(pl, 2, t.Tipo, 0, "");
 		Avisar(pl, "voce fica de fora do torneio desta vez.");
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124e) O "SAIR DO TORNEIO" (`trn_sair`, menu P > Other). O documento de um jogador: *"Please let me leave
+	/// tournaments please I tried leaving the game and everything and those bastards kept me hostage for 30 minutes"* -- e a escolha do
+	/// dono, "Botao + sair do jogo". Nas inscricoes e a recusa de sempre; com a chave montada, quem esta nela sai LIVRE da espera, e a vez
+	/// dele (a luta de agora, ou a que viria) e W.O. O eliminado, que esperava preso o fim do torneio, tambem sai por aqui.
+	/// </summary>
+	private void SairDoTorneio(ServerPlayer pl)
+	{
+		if (_torneio is not { } t) { Avisar(pl, "nao ha torneio rolando."); return; }
+		if (t.Fase == FaseDoTorneio.Inscricao) { Recusar(pl); return; }
+		string chave = pl.Assinatura;
+		if (chave.Length == 0 || t.Chave.Quem(chave) == null) { Avisar(pl, "voce nao esta neste torneio."); return; }
+		if (t.Sairam.Contains(chave)) { Avisar(pl, "voce ja saiu deste torneio."); return; }
+		bool naDisputa = !t.Chave.Eliminado(chave);
+		TirarDoTorneio(t, chave, naDisputa ? $"{pl.Name} saiu do torneio: a vez dele e W.O." : null);
+		Soltar(t, pl);
+		Avisar(pl, naDisputa ? "voce saiu do torneio: esta livre, e a sua vez conta como W.O." : "voce saiu do torneio: esta livre.");
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124e) TIRA ALGUEM DO TORNEIO com a chave montada: a luta de agora, se for dele, acaba em W.O. pro outro; a vez
+	/// que ainda viria vira W.O. na hora (`ProximaLuta`); e o corpo, se esta no mundo, sai livre da espera. `anuncio` nulo = sem anuncio
+	/// (o eliminado que vai embora nao mexe na chave de ninguem).
+	/// </summary>
+	private void TirarDoTorneio(TorneioVivo t, string chave, string? anuncio)
+	{
+		if (!t.Sairam.Add(chave)) return;
+		t.ForaDoJogoDesde.Remove(chave);
+		if (anuncio != null) AnunciarTorneio(t, anuncio);
+		if (t.Fase is FaseDoTorneio.Contagem or FaseDoTorneio.Luta && (chave == t.ChaveA || chave == t.ChaveB))
+			TerminarLuta(t, chave == t.ChaveA ? t.ChaveB : t.ChaveA, "W.O.");
+		if (CorpoDaChave(chave) is { } corpo) Soltar(t, corpo);
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124e) QUEM SAI DO JOGO E NAO VOLTA NO PRAZO DO W.O. ESTA FORA DO TORNEIO DE VEZ. Antes o corpo que voltava,
+	/// mesmo meia hora depois, era posto de novo na espera (`AoEntrarNoTorneio`). Quem volta dentro do prazo segue como antes; e os dois da
+	/// luta de agora ficam com o W.O. dela (`ConferirAusencias`) -- depois dela, se ainda nao voltaram, caem aqui.
+	/// </summary>
+	private void ConferirQuemSaiuDoJogo(TorneioVivo t)
+	{
+		long agora = NowMs();
+		long limite = (long)(_torneioCfg.WoSegundos * 1000);
+		bool emLuta = t.Fase is FaseDoTorneio.Contagem or FaseDoTorneio.Luta;
+		foreach (Competidor c in t.Chave.Competidores)
+		{
+			if (c.Npc || t.Sairam.Contains(c.Chave)) continue;
+			if (emLuta && (c.Chave == t.ChaveA || c.Chave == t.ChaveB)) continue;
+			if (CorpoDaChave(c.Chave) != null) { t.ForaDoJogoDesde.Remove(c.Chave); continue; }
+			if (!t.ForaDoJogoDesde.TryGetValue(c.Chave, out long desde)) { t.ForaDoJogoDesde[c.Chave] = agora; continue; }
+			if (agora - desde >= limite)
+				TirarDoTorneio(t, c.Chave, t.Chave.Eliminado(c.Chave) ? null
+					: $"{c.Nome} saiu do jogo e nao voltou a tempo: esta fora do torneio (a vez dele e W.O.).");
+		}
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124e) A VIDA COM QUE DOIS NPCs ENTRAM NUMA LUTA DO TORNEIO: um quarto. O documento de um jogador: *"add a check
+	/// for if the fight is between two npc characters and set their health to like 1/4th"* -- a chave de 32 andava meia hora com quem
+	/// espera preso. A luta com alguem de fora dos NPCs (o `Competidor.Npc` da chave) segue com a vida cheia.
+	/// </summary>
+	private const double VidaDaLutaEntreNpcs = 0.25;
+
+	private void PorAVidaEm(ServerPlayer c, double fracao)
+	{
+		foreach (BodyPart membro in c.Combate.Corpo.Partes)
+			if (!membro.Decepado) membro.Vida = membro.VidaMax * fracao;
+		c.Combate.SincronizarVida();
+		MandarFicha(c);
 	}
 
 	private string SituacaoDoTorneio()
@@ -862,7 +944,7 @@ public sealed partial class GameServer
 			// cliente previa o passo, o servidor recusava, e o dono via o boneco "teleportando de volta".
 			// Sempre, e nao so no `novo`: quem reloga chega com o cliente limpo.
 			MandarEfeito(corpo, "torneio_espera", -1);
-			if (novo) Avisar(corpo, "voce esta na AREA DE ESPERA do torneio: imovel e intocavel ate a sua vez. Use Assistir torneio (canto inferior esquerdo).");
+			if (novo) Avisar(corpo, "voce esta na AREA DE ESPERA do torneio: imovel e intocavel ate a sua vez. Use Assistir torneio (canto inferior esquerdo) -- e, pra ir embora, Sair do torneio (menu P > Other).");
 		}
 	}
 
@@ -1016,6 +1098,124 @@ public sealed partial class GameServer
 		|| CellForaDaVez(npc);   // (2026-10-19) e o Cell do torneio dele, entre as lutas -- ver `GameServer.TorneioDoCell.cs`
 
 	// =====================================================================
+	// (2026-10-27) OS PEDIDOS 128 E 129 -- a contagem trava o jogador da vez, e a arena e so dos dois
+	// =====================================================================
+
+	/// <summary>
+	/// OS DOIS DA VEZ, da contagem ao fim da luta (0 = ninguem): os corpos de `ChaveA` e `ChaveB`, achados uma vez por tique (o
+	/// `CorpoDaChave` varre o mundo) e em toda troca de fase. Quem le: a trava da contagem, a arena fechada e o gancho de quem bate.
+	/// </summary>
+	private int _lutadorDaVezA, _lutadorDaVezB;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 128) OS JOGADORES TRAVADOS PELA CONTAGEM agora -- o espelho do efeito `torneio_contagem` que cada um recebeu
+	/// (<see cref="AtualizarOsDaVez"/> manda e tira).
+	/// </summary>
+	private readonly HashSet<int> _travadosNaContagem = [];
+
+	/// <summary>
+	/// (2026-10-27, o pedido 128) ESTE JOGADOR ESTA NA CONTAGEM DA LUTA DELE? O dono: *"faça com q player tb n consiga se mover nem nada quando
+	/// tiver na contagem do torneio no inicio da luta"*. O NPC da vez ja ficava parado ate o "COMECEM!" (<see cref="ForaDaVezNoTorneio"/>); o
+	/// jogador andava, batia e atirava -- o DM solta os dois ANTES da contagem (`Tournament.dm:495-496`). Agora o jogador da vez fica como quem
+	/// espera a vez: o passo e recusado no funil de vetor (`PodeMexerOCorpo`), os comandos de corpo morrem no despacho (soco, guarda, carga,
+	/// tecnica, transformacao, Zanzoken, atividade -- `ComandoDeCorpo`), nem sobe nem desce (`AplicarInput`), e o cliente, avisado pelo efeito
+	/// `torneio_contagem`, nem tenta (`LocalPlayer.PorQueNaoAnda`). Os verbos passam: a chave, o "Sair do torneio".
+	/// </summary>
+	internal bool NaContagemDoTorneio(ServerPlayer pl) => _travadosNaContagem.Contains(pl.Id);
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secoes 4c e 4d): a contagem volta a nao travar o jogador da vez -- o jogo de antes do pedido 128.</summary>
+	internal static bool ContagemDoJogadorSoltaDeTeste;
+
+	/// <summary>
+	/// OS DOIS DA VEZ, e quem deve estar travado pela contagem agora -- com o efeito pro cliente de quem entrou e de quem saiu. A cada tique e em
+	/// toda troca de fase: qualquer saida da contagem (o "COMECEM!", um W.O., o torneio cancelado ou premiado) solta, sem linha pra lembrar.
+	/// </summary>
+	private void AtualizarOsDaVez()
+	{
+		bool emLuta = _torneio is { Fase: FaseDoTorneio.Contagem or FaseDoTorneio.Luta };
+		if (!emLuta && _lutadorDaVezA == 0 && _lutadorDaVezB == 0 && _travadosNaContagem.Count == 0) return;   // quase todo tique: nada
+		_lutadorDaVezA = emLuta ? CorpoDaChave(_torneio!.ChaveA)?.Id ?? 0 : 0;
+		_lutadorDaVezB = emLuta ? CorpoDaChave(_torneio!.ChaveB)?.Id ?? 0 : 0;
+
+		bool contagem = !ContagemDoJogadorSoltaDeTeste && _torneio is { Fase: FaseDoTorneio.Contagem };
+		bool Trava(int id) => contagem && id != 0 && _players.TryGetValue(id, out ServerPlayer? c) && EhJogador(c);
+		foreach (int id in _travadosNaContagem.ToList())
+			if (!(id == _lutadorDaVezA && Trava(id)) && !(id == _lutadorDaVezB && Trava(id)))
+			{
+				_travadosNaContagem.Remove(id);
+				if (_players.TryGetValue(id, out ServerPlayer? solto)) MandarEfeito(solto, "torneio_contagem", 0);
+			}
+		foreach (int id in new[] { _lutadorDaVezA, _lutadorDaVezB })
+			if (Trava(id) && _travadosNaContagem.Add(id) && _players.TryGetValue(id, out ServerPlayer? preso))
+			{
+				MandarEfeito(preso, "torneio_contagem", -1);
+				preso.Moving = false;
+				preso.QuerSubir = preso.QuerDescer = false;
+			}
+	}
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4d): a arena volta a ser de todo mundo durante a luta -- o jogo de antes do pedido 129.</summary>
+	internal static bool ArenaAbertaDeTeste;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 129) A ARENA E SO DOS DOIS DA VEZ, da contagem ao fim da luta -- o dono: *"n permita jogadores de fora entrarem na
+	/// arena ou conseguir bater nos participantes da luta"*. O JOGADOR de fora que esta nela (andou, voou, saltou ou teleportou pra dentro) e posto
+	/// pra fora pelo lado mais perto, avisado: o `EsvaziarAArena` do torneio do Cell, no torneio de artes marciais. O preso da espera fica na
+	/// cadeira dele; o cadaver fica onde caiu.
+	/// </summary>
+	private void FecharAArena(TorneioVivo t)
+	{
+		if (ArenaAbertaDeTeste) return;
+		List<ServerPlayer>? fora = null;
+		foreach (ServerPlayer p in ZoneList(t.Zona.Hash))
+			if (p.Id != _lutadorDaVezA && p.Id != _lutadorDaVezB && EhJogador(p) && !EhCadaver(p) && !t.Presos.Contains(p.Id) && t.Arena.ContemEm(p.Pos))
+				(fora ??= []).Add(p);
+		if (fora == null) return;
+		foreach (ServerPlayer p in fora)
+		{
+			Avisar(p, "A arena é só dos dois que lutam agora.");
+			Transportar(p, t.Zona, PontoForaDaArena(t, p.Pos));
+		}
+	}
+
+	/// <summary>
+	/// PRA FORA DA ARENA, pelo lado mais perto de onde o corpo esta: tres celulas alem da beirada, na mesma linha (ou coluna), num chao que serve.
+	/// Sem chao ali, o ponto livre mais perto. (A conta do `PontoForaDaArena` do torneio do Cell.)
+	/// </summary>
+	private Vec2 PontoForaDaArena(TorneioVivo t, Vec2 de)
+	{
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(t.Zona);
+		Arena a = t.Arena;
+		int cx = Math.Clamp((int)MathF.Floor(de.X / ZoneCollision.TileSize), a.X1, a.X2);
+		int cy = Math.Clamp((int)MathF.Floor(de.Y / ZoneCollision.TileSize), a.Y1, a.Y2);
+		var lados = new List<(int Dist, int X, int Y)>
+		{
+			(cx - a.X1, a.X1 - 3, cy), (a.X2 - cx, a.X2 + 3, cy), (cy - a.Y1, cx, a.Y1 - 3), (a.Y2 - cy, cx, a.Y2 + 3),
+		};
+		lados.Sort((p, q) => p.Dist.CompareTo(q.Dist));
+		foreach ((_, int x, int y) in lados)
+			if (mapa == null || mapa.ServeDeChao(x, y)) return new Vec2(x + 0.5f, y + 0.5f) * ZoneCollision.TileSize;
+		Vec2 alvo = new Vec2(lados[0].X + 0.5f, lados[0].Y + 0.5f) * ZoneCollision.TileSize;
+		return mapa?.PontoLivrePerto(alvo) ?? alvo;
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 129) QUEM BATE E UM JOGADOR DE FORA DA LUTA, E O ALVO E UM DOS DOIS DA VEZ? Da contagem ao fim da luta o lutador da vez
+	/// so apanha do adversario: o soco, o tiro, o feixe e a tecnica de um jogador de fora passam sem efeito. Quem pergunta e o gancho
+	/// `CombatState.BarraQuemBate` de todo corpo (`PrepararCombate`), lido pelo `IntocavelPara` de quem sabe quem bate. "Jogadores de fora" e a
+	/// letra do dono: o NPC de fora (o companheiro, o clone, um monstro) nao entra.
+	/// </summary>
+	internal bool ForaDaLutaDoTorneio(ServerPlayer alvo, CombatState atacante)
+	{
+		if (ArenaAbertaDeTeste || alvo.Id == 0 || (alvo.Id != _lutadorDaVezA && alvo.Id != _lutadorDaVezB)) return false;
+		int adversario = alvo.Id == _lutadorDaVezA ? _lutadorDaVezB : _lutadorDaVezA;
+		if (_players.TryGetValue(adversario, out ServerPlayer? ele) && ReferenceEquals(ele.Combate, atacante)) return false;
+		foreach (ServerPlayer p in ZoneList(alvo.Zone.Hash))
+			if (ReferenceEquals(p.Combate, atacante)) return EhJogador(p);
+		return false;
+	}
+
+	// =====================================================================
 	// AS LUTAS (`run_match`)
 	// =====================================================================
 
@@ -1048,6 +1248,17 @@ public sealed partial class GameServer
 			ProximaLuta(t);
 			return;
 		}
+		// (2026-10-27, o pedido 124e) A VEZ DE QUEM SAIU DO TORNEIO e W.O. na hora, sem contagem nem prazo de ausencia. Os dois sairam: o
+		// primeiro da chave avanca, como na dupla ausencia (`ConferirAusencias`).
+		if (t.Sairam.Contains(l.A) || t.Sairam.Contains(l.B))
+		{
+			string vencedor = t.Sairam.Contains(l.A) && !t.Sairam.Contains(l.B) ? l.B : l.A;
+			string perdedor = vencedor == l.A ? l.B : l.A;
+			t.Chave.Registrar(vencedor, "W.O.");
+			AnunciarTorneio(t, $"{t.Chave.NomeDe(vencedor)} vence {t.Chave.NomeDe(perdedor)} por W.O.: o adversario saiu do torneio.");
+			ProximaLuta(t);
+			return;
+		}
 		t.ChaveA = l.A; t.ChaveB = l.B;
 		t.AusenteDesdeA = 0; t.AusenteDesdeB = 0;
 		t.LutaSegundos = 0;
@@ -1062,9 +1273,14 @@ public sealed partial class GameServer
 			if (EhJogador(c)) { t.LetalAntes[c.Id] = c.Combate.Letal; c.Combate.Letal = false; }
 			if (c.Arena == null && !EhJogador(c)) c.Arena = t.Arena;
 		}
+		// (2026-10-27, o pedido 124e) NPC CONTRA NPC entra com 1/4 da vida -- ver `VidaDaLutaEntreNpcs`
+		if (t.Chave.Quem(l.A) is { Npc: true } && t.Chave.Quem(l.B) is { Npc: true })
+			foreach (ServerPlayer? c in new[] { a, b })
+				if (c != null) PorAVidaEm(c, VidaDaLutaEntreNpcs);
 		AnunciarTorneio(t, $"{t.Chave.RodadaDeAgora?.Nome} - luta {t.LutasDisputadas + 1}: {t.Chave.NomeDe(l.A)} VS {t.Chave.NomeDe(l.B)}!");
 		t.Contagem = (int)Math.Ceiling(_torneioCfg.ContagemSegundos);
 		t.Fase = FaseDoTorneio.Contagem;
+		AtualizarOsDaVez();   // (2026-10-27, o pedido 128) a trava da contagem ja neste tique
 		MandarChaveATodos(t);   // quem luta agora (`CorpoA`/`CorpoB`) mudou: o canto e a camera precisam saber
 		if (t.Contagem <= 0) { ComecarALuta(t); return; }
 		DizerAosPresentes(t, $"{t.Contagem}...");
@@ -1074,6 +1290,7 @@ public sealed partial class GameServer
 	private void ComecarALuta(TorneioVivo t)
 	{
 		t.Fase = FaseDoTorneio.Luta;
+		AtualizarOsDaVez();   // (2026-10-27, o pedido 128) o "COMECEM!" solta a trava da contagem na hora
 		MandarChaveATodos(t);
 		t.LutaSegundos = 0;
 		t.ReengajarEm = 0;
@@ -1174,11 +1391,12 @@ public sealed partial class GameServer
 			Desengajar(c);
 			if (!EhJogador(c) && c.Voando) AlternarVoo(c);   // `tourney_standdown`: pousa, o voo era ferramenta da luta
 			if (EhJogador(c) && t.LetalAntes.Remove(c.Id, out bool letal)) c.Combate.Letal = letal;
+			if (t.Sairam.Contains(chave)) { Soltar(t, c); continue; }   // (2026-10-27, o pedido 124e) quem saiu do torneio nao volta pra espera
 			if (!LutadorOk(t, c)) continue;
 			CurarPraLuta(c);
 			Segurar(t, c);
 			if (chave == perdedor && EhJogador(c))
-				Avisar(c, "voce foi ELIMINADO! Aguarde o encerramento na area de espera (imovel e intocavel).");
+				Avisar(c, "voce foi ELIMINADO! Aguarde o encerramento na area de espera (imovel e intocavel) -- ou use Sair do torneio (menu P > Other) pra ir embora.");
 		}
 		t.ChaveA = ""; t.ChaveB = "";
 		t.Fase = FaseDoTorneio.Intervalo;
@@ -1259,6 +1477,8 @@ public sealed partial class GameServer
 		}
 		MandarChave(t, pl, 1);   // quem chega (participante ou plateia) ve a chave como esta
 		if (t.Chave.Quem(chave) == null) return;
+		// (2026-10-27, o pedido 124e) QUEM SAIU DO TORNEIO ve a chave, mas nao volta pra espera -- era o "refem" do documento de um jogador
+		if (t.Sairam.Contains(chave)) return;
 		if (chave == t.ChaveA || chave == t.ChaveB)
 		{
 			Transportar(pl, t.Zona, PontoDoLutador(t, chave == t.ChaveA ? 1 : 2));

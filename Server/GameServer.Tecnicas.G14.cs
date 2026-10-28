@@ -108,6 +108,9 @@ public sealed partial class GameServer
 			while (agora >= v.ProximoEm && v.ProximoEm <= v.Ate && !EhCadaver(alvo))
 			{
 				v.ProximoEm += MsEntreTiquesDoVenenoG14;
+				// (2026-10-27) O VENENO DE OUTRO CORPO E GOLPE DELE, ate com ele fora do jogo: a zona segura o barra. Sem esta linha o tique
+				// cairia no autor = vitima, que a zona segura nao barra mais (o pedido 113 -- ver `CombatState.Blindado`).
+				if (v.Dono != id && NaZonaSegura(alvo)) continue;
 				EspalharDanoG3(alvo, _players.GetValueOrDefault(v.Dono) ?? alvo, DanoDoVenenoPorTiqueG14, letal: false);
 			}
 			if (agora >= v.Ate) _venenoG14.Remove(id);

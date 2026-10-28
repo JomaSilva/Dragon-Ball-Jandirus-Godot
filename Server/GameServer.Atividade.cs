@@ -78,7 +78,8 @@ public sealed partial class GameServer
 			atirando: BlastingG12(pl.Id),
 			emBriga: pl.Combate is { LutandoDeVerdade: > 0, EmBrigaComAlguem: true },
 			saiuDoLugar: saiuDoLugar,
-			pesoDemais: pl.Ficha.PesoDemaisPraTreinar());   // (2026-10-23) acima de 8x o limite do corpo nao se treina (dono)
+			pesoDemais: pl.Ficha.PesoDemaisPraTreinar(),    // (2026-10-23) acima de 8x o limite do corpo nao se treina (dono)
+			gravidadeDemais: pl.Ficha.GravidadeDemaisPraTreinar());   // (2026-10-27) nem acima de 4x a maestria de gravidade (o pedido 117)
 
 	/// <summary>
 	/// O PEDIDO DE TREINAR OU MEDITAR PASSA? Recusado, o dono le por que e o cliente larga a pose. Andar NAO e

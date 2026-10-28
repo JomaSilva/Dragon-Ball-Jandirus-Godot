@@ -188,6 +188,9 @@ public sealed partial class GameServer
 	{
 		GravidadeDaObra? g = MaquinaPerto(pl, out Obra? obra);
 		if (g == null || obra == null) { Avisar(pl, "não há máquina de gravidade por perto."); return; }
+		// (2026-10-27, o pedido 136) A MAQUINA QUE JA ESTAVA NUMA SALA DO TEMPO nao liga mais (o dono: "Param de ligar"). Ela acorda
+		// desligada de todo reinicio (o `Grav` nao vai pro disco), entao recusar o ligar basta. Ver `LugarDeObra.AumentamOGanho`.
+		if (LugarDeObra.NaoRendeAqui(obra.Zona, obra.Tipo)) { Avisar(pl, LugarDeObra.NaoRendeNaSala); return; }
 
 		if (g.Energia <= 0) { Avisar(pl, "a máquina está sem bateria."); return; }
 		if (!obra.Aparafusada) { Avisar(pl, "aparafuse a máquina antes de usá-la."); return; }
@@ -439,6 +442,9 @@ public sealed partial class GameServer
 				Encher(o, g, agora);
 			_camposLigados.Add(o);
 		}
+
+		// (1b) (2026-10-27, o pedido 139) o regenerador que um campo ligado alcanca explode -- ver `ExplodirOsRegeneradoresNoCampo`
+		if (_camposLigados.Count > 0) ExplodirOsRegeneradoresNoCampo();
 
 		// (2) cada corpo, lido de onde esta
 		foreach (ServerPlayer pl in _players.Values)

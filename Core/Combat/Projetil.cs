@@ -221,6 +221,9 @@ public sealed class ReceitaDeProjetil
 	/// <summary>
 	/// A ESCALA DO DESENHO PEDIDA PELA TECNICA (0 = a regra de sempre: `MultDeOnda` no raio, 1 na bola).
 	///
+	/// (2026-10-27) E E POR AQUI QUE O RAIO GROSSO DIZ O TAMANHO: nenhum raio multiplica mais o BP de quem atira (o pedido 115 do dono),
+	/// entao o Massive Beam e o Enkumei pedem o `wavemult` deles so no desenho, e o Final Flash pede o tronco 4x o de um raio comum.
+	///
 	/// Existe pelas bolas que CRESCEM enquanto sao formadas -- a Death Ball (`DeathBall.dm:81`,
 	/// `nA.Scale(1+movestrength/4, ...)`) e a Genkidama (`SpiritBomb.dm:119-121`, `prevscale += 0.1`).
 	/// La a `transform` e reescrita na bola viva; aqui a escala viaja UMA vez, no `Nasceu`, entao a bola
@@ -393,7 +396,10 @@ public sealed class Projetil
 
 	/// <summary>
 	/// `wavemultipl`: por quanto esta tecnica multiplica o BP de quem atira (`N.wavemultipl = wavemult`,
-	/// `beams.dm:139`). 1 em quase tudo; 4 no Final Flash, 2 no Massive Beam, 1,2 no Tiro Carregado.
+	/// `beams.dm:139`). 1 em quase tudo; 1,2 no Tiro Carregado. (2026-10-27) Nos RAIOS e sempre 1: o 4 do Final Flash, o 2 do Massive
+	/// Beam e o do Enkumei sairam (o pedido 115 do dono, *"N permita nenhum beam aumentar o bp do usuario"*) -- o tamanho deles foi pra
+	/// <see cref="ReceitaDeProjetil.EscalaVisual"/>. O que ainda o multiplica num raio sao as passivas do disparo (o Shattering the Limit,
+	/// o Hidden Talent, a Sycophantic Rage).
 	///
 	/// VIAJA COM O TIRO porque o <see cref="Bp"/> deixou de ser escrito uma vez so: pra reler o poder
 	/// do dono no meio de uma disputa e preciso refazer a conta do disparo, e sem este campo o Final
@@ -882,7 +888,7 @@ public sealed class Projetil
 
 	/// <summary>
 	/// O UNICO RAIO QUE NAO CRESCE, pelo VERBO (dono, 2026-10-08: *"o final flash e o unico q isso n acontece"*)
-	/// -- ele ja nasce um muro de quatro vezes. E pelo verbo, e nao por um campo da receita, de proposito: as
+	/// -- ele ja nasce grosso (desde 2026-10-27, o tronco 4x o de um raio comum, `GameServer.EscalaDoFinalFlashG5`). E pelo verbo, e nao por um campo da receita, de proposito: as
 	/// cenas do trailer e as bancadas de foto disparam "Final_Flash" com a receita de bancada, e uma regra
 	/// escrita na receita de producao nao valeria pra elas. O verbo e o que todos os caminhos tem em comum.
 	/// </summary>

@@ -75,6 +75,15 @@ public partial class GameServer
 	/// </summary>
 	private bool _sementeNoDisco;
 
+	/// <summary>
+	/// (2026-10-27) QUANDO ESTE MUNDO NASCEU (Unix ms) -- o `Nascido` do `universo.json`, na memoria. E o relogio da Sala do Tempo fechada
+	/// (o pedido 112, `SalaDoTempoAberta`): zero = o mundo ainda nao foi gravado (a limpeza no meio), que conta como "agora".
+	/// </summary>
+	private long _nascimentoDoMundo;
+
+	/// <summary>(2026-10-27) Quem abriu a Sala do Tempo pelo poder (o primeiro com 20M de BP base); vazio = ninguem. Mora no `universo.json`.</summary>
+	private string _salaAbertaPor = "";
+
 	private string CaminhoDaSemente =>
 		System.IO.Path.Combine(_store?.Pasta ?? ".", "universo.json");
 
@@ -99,8 +108,14 @@ public partial class GameServer
 		/// </summary>
 		public string Semente = "";
 
-		/// <summary>Quando este mundo nasceu (Unix ms). So pro dono saber a idade do universo dele.</summary>
+		/// <summary>
+		/// Quando este mundo nasceu (Unix ms). So pro dono saber a idade do universo dele -- e, desde 2026-10-27, o relogio da Sala do Tempo
+		/// fechada (ela abre dois dias reais depois disto, o pedido 112). Por isso ele nao muda mais a cada gravacao: e o do nascimento.
+		/// </summary>
 		public long Nascido;
+
+		/// <summary>(2026-10-27) Quem abriu a Sala do Tempo pelo poder (o primeiro jogador com 20M de BP base); vazio = ninguem ainda.</summary>
+		public string SalaAbertaPor = "";
 	}
 
 	// =====================================================================
@@ -159,6 +174,7 @@ public partial class GameServer
 			// rodar todo mundo no mesmo universo, e diz em voz alta que aquilo nao persiste.
 			_semente = SortearSemente();
 			_sementeNoDisco = false;
+			_nascimentoDoMundo = NowMs();
 			GD.Print($"[universo] sem pasta de saves -- semente de sessao {Hexa(_semente)} (nao persiste)");
 			return;
 		}
@@ -176,6 +192,9 @@ public partial class GameServer
 				{
 					_semente = lida;
 					_sementeNoDisco = true;
+					// (2026-10-27) a idade do mundo e quem abriu a Sala do Tempo vem junto -- ver `SalaDoTempoAberta`
+					_nascimentoDoMundo = f.Nascido > 0 ? f.Nascido : NowMs();
+					_salaAbertaPor = f.SalaAbertaPor ?? "";
 					GD.Print($"[universo] semente {Hexa(_semente)} ({_semente}) lida do universo.json "
 						   + "-- reiniciar NAO muda o mundo");
 					return;
@@ -236,7 +255,9 @@ public partial class GameServer
 		if (_store == null) return;
 		try
 		{
-			var f = new FichaDoUniverso { Semente = Hexa(_semente), Nascido = NowMs() };
+			// (2026-10-27) O NASCIMENTO E O DO MUNDO, e nao o desta gravacao: gravar quem abriu a Sala nao pode rejuvenescer o mundo
+			if (_nascimentoDoMundo <= 0) _nascimentoDoMundo = NowMs();
+			var f = new FichaDoUniverso { Semente = Hexa(_semente), Nascido = _nascimentoDoMundo, SalaAbertaPor = _salaAbertaPor };
 			string tmp = CaminhoDaSemente + ".tmp";
 			System.IO.Directory.CreateDirectory(_store.Pasta);
 			System.IO.File.WriteAllText(tmp, JsonSerializer.Serialize(f,
@@ -263,6 +284,9 @@ public partial class GameServer
 	{
 		_semente = SortearSemente();
 		_sementeNoDisco = false;
+		// (2026-10-27) o mundo novo nasce quando a limpeza o gravar, com a Sala do Tempo fechada de novo (o pedido 112)
+		_nascimentoDoMundo = 0;
+		_salaAbertaPor = "";
 		GD.Print($"[universo] wipe: mundo novo, semente {Hexa(_semente)} ({_semente})");
 	}
 

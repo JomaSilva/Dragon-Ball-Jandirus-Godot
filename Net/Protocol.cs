@@ -849,6 +849,22 @@ public static class Protocol
         MinhasCopias = 181,
 
         /// <summary>
+        /// (2026-10-27) O MINIJOGO DE ESTUDO (o pedido 120): `byte tipo` (`Core.Tech.TipoDeMinijogo`; zero = a janela fecha) + `int indice`
+        /// (o numero atomico, a posicao da molecula) + `string expressao` (a conta) + `byte forma` (a frase) + `byte segundos` + `byte
+        /// resultado` (no fechar: 1 certo, 2 errado, 3 tempo) + `byte bonus` (os acertos valendo, 0-6). A resposta nunca vai. Ver
+        /// `GameServer.Estudo.cs`.
+        /// </summary>
+        Estudo = 184,
+
+        /// <summary>
+        /// (2026-10-27) A LISTA DE QUEM ENFRENTAR NA MENTE (o pedido 124c): `bool abrir` (falso = a tela fecha: a luta comecou) + `ushort n`
+        /// + por linha `byte tipo` (`Core.Npc.MenteOponentes.Tipo`) + `string id` (o do pedido) + `string nome` + `string raca` + `string
+        /// genero` + `bool temFoto` [+ a aparencia]. A foto vai pros habitantes, os chefes e os jogadores vistos desde a lista (a cara de
+        /// quando foram vistos); o reflexo e o jogador de ficha antiga o cliente ja guarda. Ver `GameServer.MenteLista.cs`.
+        /// </summary>
+        MenteOponentes = 185,
+
+        /// <summary>
         /// O QUE DA PRA LEVAR DE QUEM ESTA NOCAUTEADO AO MEU ALCANCE -- a resposta do verbo `saquear` (item 9b do
         /// playtest de 2026-10-10; a regra esta em `Core/Items/Saque.cs`). So pra quem perguntou: id do caido
         /// (int), nome dele (string) e a lista (byte n; n x (id do item, ushort quantidade)). Vazia quer dizer
@@ -1685,6 +1701,12 @@ public static class Protocol
         /// <c>byte pausado</c>, <c>double bonus</c>. O bonus e o que o servidor esta pagando.
         /// </summary>
         Foco = 157,
+
+        /// <summary>
+        /// (2026-10-27) AS LINGUAS DO CORPO (o pedido 118): <c>string</c> a lingua do say, <c>byte n</c> e, por lingua, <c>string id</c>,
+        /// <c>float maestria</c> (0..1) e <c>bool ensinada</c>. Sai quando muda (a escolha, o ensino, o aprendizado ouvindo).
+        /// </summary>
+        Linguas = 183,
     }
 
     /// <summary>

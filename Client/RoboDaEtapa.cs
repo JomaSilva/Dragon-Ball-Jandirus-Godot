@@ -85,6 +85,11 @@ public partial class RoboDaEtapa : Node
 		await Segundos(0.8);
 		Fotografar("user://etapa-3-cell-perfeito.png");
 
+		// (2026-10-27, o pedido 124c) A LUTA NAO SE ENCERRA NO MEIO: com o Cell de pe, outra lembranca e recusada. Ele cai (o funil comum do
+		// nocaute) -- e a vitoria o desfaz e devolve a lista.
+		srv.DerrubarALembrancaDeTeste(cli.LocalId);
+		Conferir(await Ate(() => srv.MenteDeTeste(cli.LocalId).Lembranca == 0, 5), "R3b. derrubado, o Cell se desfaz (a vitoria da lista)");
+
 		if (!menu.Visible) menu.Abrir();
 		menu.IrPara("Learning");
 		await Quadros(6);
@@ -101,6 +106,11 @@ public partial class RoboDaEtapa : Node
 		menu.Fechar();
 		await Segundos(0.8);
 		Fotografar("user://etapa-5-freeza-100.png");
+
+		// (2026-10-27, o pedido 124c) e o Freeza tambem cai antes do defeito injetado: com ele de pe a convocacao seria recusada antes da
+		// pergunta da forma, e a regua do defeito passaria pelo motivo errado
+		srv.DerrubarALembrancaDeTeste(cli.LocalId);
+		Conferir(await Ate(() => srv.MenteDeTeste(cli.LocalId).Lembranca == 0, 5), "R5b. derrubado, o Freeza se desfaz (a vitoria da lista)");
 
 		MenuJogo.EtapasSemCartaoDeTeste = true;
 		try

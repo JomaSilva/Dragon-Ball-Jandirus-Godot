@@ -294,9 +294,10 @@ public sealed partial class GameServer
 		// ele nao pode interromper e o "morri transformando e nao entendi por que" em pessoa.
 		//
 		// Antes do laco, e nao so no `Ferir`: o `DeveNocautear` la embaixo le o ESTADO do corpo.
-		if (pl.Combate is not { Intocavel: false }) return;
+		// (2026-10-27) Pelo `Blindado`: na zona segura a sobrecarga tambem machuca (o pedido 113 do dono).
+		if (pl.Combate is not { Blindado: false }) return;
 		foreach (Jandirus.Core.Combat.BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false);
+			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false, doMundo: true);
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !EhCadaver(pl) && pl.Combate.Corpo.DeveNocautear())

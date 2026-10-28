@@ -181,6 +181,14 @@ public partial class GameClient : Node
 	public List<Protocol.ParteState> Corpo { get; private set; } = [];
 
 	/// <summary>
+	/// (2026-10-27) O MINIJOGO DE ESTUDO (o pedido 120) -- o `S2C.Estudo`: o aberto (tipo diferente de zero) ou o fechamento com o
+	/// resultado, e os bonus valendo. Quem desenha e a `TelaDoEstudo`.
+	/// </summary>
+	public (Jandirus.Core.Tech.TipoDeMinijogo Tipo, int Indice, string Expressao, byte Forma, byte Segundos, byte Resultado, byte Bonus) Estudo
+	{ get; private set; }
+	public event Action? EstudoMudou;
+
+	/// <summary>
 	/// A FICHA LENTA: atributos e o que o personagem sabe fazer. Chega quando muda, nao por
 	/// tick -- e o que decide quais abas o menu (tecla P) mostra.
 	/// </summary>
@@ -911,6 +919,18 @@ public partial class GameClient : Node
 	public event Action? ChefesVistosMudaram;
 
 	/// <summary>
+	/// (2026-10-27, o pedido 124c) Uma linha da LISTA DA MENTE: a categoria (`Core.Npc.MenteOponentes.Tipo`), o id do pedido, o nome e a
+	/// foto quando o servidor a manda (os habitantes e os chefes; o jogador e o reflexo saem da memoria deste cliente). Ver `TelaDaMente`.
+	/// </summary>
+	public readonly record struct OponenteDaMente(byte Tipo, string Id, string Nome, string Raca, string Genero,
+												  Jandirus.Core.Appearance.Appearance? Foto);
+
+	public List<OponenteDaMente> OponentesDaMente { get; private set; } = [];
+
+	/// <summary>A lista chegou: verdadeiro = a tela abre agora; falso = fecha (a luta comecou).</summary>
+	public event Action<bool>? OponentesDaMenteMudaram;
+
+	/// <summary>
 	/// ALGUEM QUE ESTA DENTRO DE MIM (so um Majin recebe isto). O NUMERO e o que o botao de expelir manda
 	/// de volta; DEVORADO e o NPC que virou so poder emprestado. Ver `Protocol.S2C.AbsorvidosDoMajin`.
 	/// </summary>
@@ -951,6 +971,22 @@ public partial class GameClient : Node
 	public List<Jandirus.Core.Skills.TecnicaCustomizada> Customizadas { get; private set; } = [];
 	public Jandirus.Core.Skills.TecnicaCustomizada? Mesa { get; private set; }
 	public event Action? CustomizadasMudaram;
+
+	/// <summary>(2026-10-27) A LINGUA DO MEU SAY (o pedido 118) -- o `S2C.Linguas`. Ver `Core/Races/Linguas.cs`.</summary>
+	public string LinguaDaFala { get; private set; } = Jandirus.Core.Races.Linguas.Galactica;
+
+	/// <summary>(2026-10-27) As linguas que o meu corpo conhece: as que ele fala inteiras e as que esta aprendendo (maestria 0..1, e se foi ensinado).</summary>
+	public List<(string Id, float Maestria, bool Ensinada)> LinguasConhecidas { get; private set; } = [];
+	public event Action? LinguasMudaram;
+
+	/// <summary>
+	/// (2026-10-27) O DRENO DE KI DO CORPO AGORA (`Fighter.BaseDrain`), no fim do pacote da mesa: a tela diz quanto Ki o tiro gasta (o pedido
+	/// 116). Zero = um servidor velho, que nao o manda.
+	/// </summary>
+	public float DrenoDeKiDaMesa { get; private set; }
+
+	/// <summary>(2026-10-27) Os segundos de carga de UM segundo da mesa, com as pericias de agora (`Projetil.SegundosDeCarga`). Zero = servidor velho.</summary>
+	public float CargaDaMesa { get; private set; }
 
 	/// <summary>Assume (ou solta, com "-") uma postura de luta.</summary>
 	public void SendEstilo(string id)
@@ -2365,6 +2401,24 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// (2026-10-27, o pedido 124c) A LISTA DE QUEM ENFRENTAR NA MENTE -- ver `S2C.MenteOponentes`.
+			case Protocol.S2C.MenteOponentes:
+			{
+				bool abrir = reader.GetBool();
+				int n = reader.GetUShort();
+				var l = new List<OponenteDaMente>(n);
+				for (int i = 0; i < n; i++)
+				{
+					byte tipo = reader.GetByte();
+					string pedido = reader.GetString(96), nome = reader.GetString(96), raca = reader.GetString(32), genero = reader.GetString(16);
+					Jandirus.Core.Appearance.Appearance? foto = reader.GetBool() ? reader.GetAppearance() : null;
+					l.Add(new OponenteDaMente(tipo, pedido, nome, raca, genero, foto));
+				}
+				if (abrir) OponentesDaMente = l;
+				OponentesDaMenteMudaram?.Invoke(abrir);
+				break;
+			}
+
 			// OS CHEFES QUE EU JA VI. Lista inteira, como os estilos -- ver `S2C.MenteChefes`.
 			case Protocol.S2C.MenteChefes:
 			{
@@ -2389,6 +2443,18 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// (2026-10-27) AS LINGUAS DO MEU CORPO -- a do say e a maestria de cada uma (o pedido 118). Ver `S2C.Linguas`.
+			case Protocol.S2C.Linguas:
+			{
+				LinguaDaFala = reader.GetString(64);
+				int n = reader.GetByte();
+				var l = new List<(string, float, bool)>(n);
+				for (int i = 0; i < n; i++) l.Add((reader.GetString(64), reader.GetFloat(), reader.GetBool()));
+				LinguasConhecidas = l;
+				LinguasMudaram?.Invoke();
+				break;
+			}
+
 			case Protocol.S2C.Customizadas:
 			{
 				int n = reader.GetByte();
@@ -2398,6 +2464,9 @@ public partial class GameClient : Node
 				// A MESA VEM NO MESMO PACOTE, e o `bool` na frente e o que separa "nao ha rascunho"
 				// de "o rascunho e o primeiro da lista". Ver `S2C.Customizadas`.
 				Mesa = reader.GetBool() ? Jandirus.Net.CustomWire.Ler(reader) : null;
+				// (2026-10-27) o dreno de Ki e a carga de agora, no fim -- um servidor velho nao os manda (o pedido 116)
+				DrenoDeKiDaMesa = reader.AvailableBytes >= 4 ? reader.GetFloat() : 0;
+				CargaDaMesa = reader.AvailableBytes >= 4 ? reader.GetFloat() : 0;
 				CustomizadasMudaram?.Invoke();
 				break;
 			}
@@ -3119,6 +3188,13 @@ public partial class GameClient : Node
 			case Protocol.S2C.Atributos:
 				Atributos = Protocol.AtributosState.Read(reader);
 				AtributosRecebidos?.Invoke(Atributos);
+				break;
+
+			// (2026-10-27) o minijogo de estudo -- ver `Estudo`
+			case Protocol.S2C.Estudo:
+				Estudo = ((Jandirus.Core.Tech.TipoDeMinijogo)reader.GetByte(), reader.GetInt(), reader.GetString(64), reader.GetByte(),
+						  reader.GetByte(), reader.GetByte(), reader.GetByte());
+				EstudoMudou?.Invoke();
 				break;
 
 			case Protocol.S2C.Corpo:

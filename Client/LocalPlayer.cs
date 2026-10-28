@@ -871,6 +871,15 @@ public partial class LocalPlayer : Node2D
 	private static bool PresoNoTorneio => GameClient.Instance?.EfeitosAtivos.Contains("torneio_espera") == true;
 
 	/// <summary>
+	/// (2026-10-27, o pedido 128) NA CONTAGEM DA MINHA LUTA NO TORNEIO -- o efeito `torneio_contagem` que o servidor manda aos dois da vez do
+	/// "5..." ao "COMECEM!" (`GameServer.NaContagemDoTorneio`). O corpo fica como o da espera: nem anda, nem voa, nem bate.
+	/// </summary>
+	private static bool NaContagemDoTorneio => GameClient.Instance?.EfeitosAtivos.Contains("torneio_contagem") == true;
+
+	/// <summary>O torneio prende o teclado: a espera da vez, ou a contagem da luta.</summary>
+	private static bool TravadoPeloTorneio => PresoNoTorneio || NaContagemDoTorneio;
+
+	/// <summary>
 	/// (v0.3.0) PRESO POR UMA TECNICA -- o efeito `tecnica_preso` que o servidor manda enquanto a Genkidama, a Death Ball ou uma
 	/// rajada seguram o corpo (`GameServer.AvisarAsTravasG12`). O dono via o boneco andar e ser puxado de volta ("fica te
 	/// teleportando pra posicao q vc tava quando jogou a genkidama"): este cliente previa o passo que o servidor recusava.
@@ -1000,6 +1009,7 @@ public partial class LocalPlayer : Node2D
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
 		: Prensado && !SoRasteja                  ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
+		: NaContagemDoTorneio                     ? "na contagem do torneio (a luta comeca no COMECEM!)"
 		: PresoPelaTecnica                        ? "preso pela tecnica (a Genkidama, a Death Ball, uma rajada)"
 		: PresoNoRitual                           ? "no Ritual Mistico do Velho Kaiohshin (o botao do ritual o interrompe)"
 		: NaveSemCombustivel                      ? "a nave esta sem combustivel (E > Abastecer)"
@@ -1490,19 +1500,19 @@ public partial class LocalPlayer : Node2D
 		// quem segura um feixe com as maos -- calar a leitura seria PERDER a disputa de ki pelo portao)
 		// e o SOCO (o espaco nao e letra, e o corpo ja esta preso pelo `Stun`).
 		// ==================================================================================================================
-		bool subir = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("subir"));
-		bool descer = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("descer"));
+		bool subir = !Foco.AtalhosMudos && !TravadoPeloTorneio &&Godot.Input.IsActionPressed(Teclas.NomeNoMotor("subir"));
+		bool descer = !Foco.AtalhosMudos && !TravadoPeloTorneio &&Godot.Input.IsActionPressed(Teclas.NomeNoMotor("descer"));
 		// (v0.2.1) O PILOTO QUE DECOLA SEGURA A SUBIDA: o mesmo bit da tecla, e quem responde e o servidor.
 		if (PilotoSegurandoASubida()) { subir = true; descer = false; }
 
 		// V ALTERNA O VOO. Vai pelo canal de habilidade -- e o MESMO caminho do verb do menu, pra
 		// que a tecla e o botao nao virem duas regras que precisam concordar.
-		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("voar")))
+		if (!Foco.AtalhosMudos && !TravadoPeloTorneio &&Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("voar")))
 			GameClient.Instance?.SendHabilidade("voar");
 
 		// N ALTERNA O NADO, pelo MESMO canal do voo e do botao do menu. Quem decide se liga (tem agua
 		// aqui? esta de pe?) e o servidor -- o cliente so pede, e recebe a resposta na ficha.
-		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("nadar")))
+		if (!Foco.AtalhosMudos && !TravadoPeloTorneio &&Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("nadar")))
 			GameClient.Instance?.SendHabilidade("nadar");
 
 		// Q CICLA O AGARRAO -- pegar, levantar no colo, soltar. Pelo MESMO canal do voo e do nado, e
@@ -1706,7 +1716,8 @@ public partial class LocalPlayer : Node2D
 		// `apply_hold`, `Tournament.dm:331-332`): sem soco, sem guarda, sem carga, sem tecnica. O
 		// servidor recusa tudo isso de qualquer jeito; aqui e pra que o corpo nem TENTE -- o dono via o
 		// boneco andar e ser "teleportado de volta" (2026-09-07). Ver `PorQueNaoAnda`, que zera o passo.
-		if (PresoNoTorneio)
+		// (2026-10-27, o pedido 128) E A CONTAGEM DA MINHA LUTA, do mesmo jeito.
+		if (TravadoPeloTorneio)
 		{
 			if (_guarda) { _guarda = false; GameClient.Instance?.SendGuard(false); }
 			if (_carregando) { _carregando = false; GameClient.Instance?.SendCarregar(false); }

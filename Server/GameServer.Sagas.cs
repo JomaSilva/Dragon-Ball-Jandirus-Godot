@@ -494,6 +494,9 @@ public partial class GameServer
 		// `GameServer.TorneioDoCell.cs`. As frases e a cena da chegada sao as do torneio.
 		if (ec.NoTorneio && AbrirOTorneioDoCell(elo, ec, npc, como == ComoChegou.Ressurgindo, como == ComoChegou.Retomando)) return;
 
+		// (2026-10-28) QUEM VOLTA DO ALEM chega pela Transmissao, ao lado de quem o matou (o pedido 147) -- ver `ChegarAoLadoDoMatador`.
+		if (como == ComoChegou.Ressurgindo) ChegarAoLadoDoMatador(npc, ec, zona);
+
 		ChefeDaSaga? ficha = Array.Find(elo.Chefes, c => c.Molde == ec.Molde);
 		string frase = como switch
 		{
@@ -518,6 +521,40 @@ public partial class GameServer
 		GD.Print($"[server] SAGA '{elo.Id}': '{npc.Name}' chegou em {elo.Planeta} | degrau "
 			   + $"{npc.Papel.Estagio + 1}/{npc.Papel.Molde.Estagios.Length} | BP PINADO "
 			   + $"{npc.Ficha.BP:N0} (a ficha do arquivo diz {npc.Papel.Molde.Estagios[npc.Papel.Estagio].Bp:N0})");
+	}
+
+	/// <summary>
+	/// (2026-10-28) QUEM MATOU O CHEFE NO DEGRAU DE ONDE ELE VOLTA DO ALEM: anotado na morte (`MorreuOChefe`), gasto na volta
+	/// (`ChegarAoLadoDoMatador`). Fica so na memoria, pela REFERENCIA do corpo (id se reusa): depois de um reinicio ele volta no lugar de sempre.
+	/// </summary>
+	private readonly Dictionary<EstadoDoChefe, ServerPlayer> _matadorDoDegrau = [];
+
+	/// <summary>
+	/// ============================ A VOLTA PELA TRANSMISSAO INSTANTANEA ============================
+	/// (2026-10-28) O dono, pedido 147: *"quando cell voltar como super perfeito, faz ele spawnar com o mesmo efeito e mensagem no chat do
+	/// instant transmission proximo ao player q matou ele na forma perfeita"*. E a chegada do `SaltarPelaTransmissaoG11`, peca por peca: o
+	/// tile ao lado do alvo (`PontoAoLadoG11`), a frase pro alvo, e o clarao da chegada 0,1 s depois, com o corpo ja no retrato da zona de
+	/// quem esta la (a viagem em curso na fase `Chegando` -- ver `GameServer.SaidaDaTransmissao.cs`). Hoje so o Cell volta do alem; a regra
+	/// vale pra todo chefe que voltar.
+	///
+	/// SEM O MATADOR A ALCANCE, a volta de sempre (devolve falso): ele saiu do jogo, virou cadaver ou nao esta no planeta da saga -- e o
+	/// chefe de saga nao sai do planeta dele (pedido 132).
+	/// ==============================================================================================
+	/// </summary>
+	private bool ChegarAoLadoDoMatador(ServerPlayer chefe, EstadoDoChefe ec, ZoneKey zona)
+	{
+		if (!_matadorDoDegrau.Remove(ec, out ServerPlayer? matador)) return false;
+		if (!_players.TryGetValue(matador.Id, out ServerPlayer? agora) || !ReferenceEquals(agora, matador)
+			|| matador.ECadaver || EhCadaver(matador) || matador.Zone.Hash != zona.Hash) return false;
+
+		Transportar(chefe, zona, PontoAoLadoG11(matador));
+		_transmissoesEmCurso[chefe.Id] = new TransmissaoEmCurso
+		{
+			Quem = chefe, Pedido = new TransmissaoG11 { Alvo = matador.Id }, Fase = FaseDaTransmissao.Chegando, Desde = NowMs(),
+		};
+		Avisar(matador, $"{chefe.Name} aparece num instante ao seu lado!");
+		GD.Print($"[server] {chefe.Name} voltou pela Transmissao, ao lado de {matador.Name}");
+		return true;
 	}
 
 	/// <summary>
@@ -940,6 +977,10 @@ public partial class GameServer
 		{
 			ec.Degrau++;
 			ec.RessurgeEm = _relogioDoMundo + ficha.RessurgeEmSegundos;
+			// (2026-10-28) E QUEM O MATOU AQUI fica anotado: ele volta ao lado dessa pessoa, pela Transmissao (o pedido 147) -- ver
+			// `ChegarAoLadoDoMatador`. So jogador: quem morre de queda ou pelas maos de outro NPC volta no lugar de sempre.
+			if (_players.TryGetValue(corpo.UltimoAgressor, out ServerPlayer? matador) && EhJogador(matador)) _matadorDoDegrau[ec] = matador;
+			else _matadorDoDegrau.Remove(ec);
 			AnunciarNoMundo($"{corpo.Name} foi morto... mas algo está errado. "
 						  + "Uma única célula sobreviveu à explosão...");
 			GD.Print($"[server] SAGA '{elo.Id}': {corpo.Name} caiu no degrau {ec.Degrau} e volta em "

@@ -267,6 +267,15 @@ public sealed partial class GameServer
 			LadoALado(baby, vegeta);
 			Vec2 ondeOVegetaCaiu = vegeta.Pos;
 			Jandirus.Core.Stats.Fighter fichaDoBaby = baby.Ficha;
+			// (2026-10-28, o pedido 144) o resto do corpo do Baby, que tem de ficar guardado enquanto ele usa o do Vegeta -- e o botao de sair, apagado aqui fora
+			Jandirus.Core.Skills.SkillBook livroDoBaby = baby.Livro;
+			Jandirus.Core.Forms.EstadoDeForma formaDoBaby = baby.Forma;
+			bool viaOSairAntes = VeOVerb(baby, "hab:tuffle_sair");
+			// ...e um corpo com o que mostrar: o Vegeta sabe a Afterimage e despertou o Super Saiyajin, e o Baby nao
+			vegeta.Livro.Dar(PathDoZanzoken);
+			int redeDoSsj1 = Jandirus.Core.Forms.Catalogo.Rede(Jandirus.Core.Forms.Catalogo.IdSsj1);
+			vegeta.Forma.Liberadas.Add(redeDoSsj1);
+			bool babySabiaAntes = livroDoBaby.Sabe(PathDoZanzoken) || formaDoBaby.Liberadas.Contains(redeDoSsj1);
 			double bpDoDisco = mesa.NoDisco(ContasDaBancadaDoTuffle[0])?.Ficha.BP ?? -1;
 			ServerPlayer? hospede = Possuir(baby, out List<string> entrou);
 			AfirmarTf("A POSSE: o Neo Tuffle entra no Vegeta nocauteado e ouve que o corpo e dele ate cair",
@@ -279,6 +288,26 @@ public sealed partial class GameServer
 			AfirmarTf("...O CORPO LEVANTADO, no lugar do Vegeta: o nocaute sai, a vida volta, o Ki enche -- e o Baby esta onde o Vegeta caiu",
 				!baby.Ficha.KO && baby.Ficha.HP >= 99 && baby.Ficha.Ki >= baby.Ficha.MaxKi - 0.5 && Vec2.Distance(baby.Pos, ondeOVegetaCaiu) < 1,
 				$"KO {baby.Ficha.KO}, vida {baby.Ficha.HP:0.#}, Ki {baby.Ficha.Ki:N0}/{baby.Ficha.MaxKi:N0}, a {Vec2.Distance(baby.Pos, ondeOVegetaCaiu):0.#} px");
+
+			// ---- (2026-10-28, o pedido 144) O CORPO DO HOSPEDE POR INTEIRO ----
+			AfirmarTf("...E O RESTO DO CORPO DELE (o pedido 144: *\"poder usar todas as skills e formas desse corpo\"*): a raca e a classe sao as do "
+				+ "Vegeta (Saiyajin), e o livro de tecnicas e as formas sao COPIAS dos dele -- as mesmas tecnicas, as mesmas formas despertadas -- e nao "
+				+ "os do Baby",
+				baby.Race == "Saiyan" && baby.Class == vegeta.Class && Perfil(baby).Raca == "Saiyan"
+				&& !ReferenceEquals(baby.Livro, vegeta.Livro) && !ReferenceEquals(baby.Livro, livroDoBaby)
+				&& baby.Livro.Aprendidas.Count == vegeta.Livro.Aprendidas.Count && vegeta.Livro.Aprendidas.All(baby.Livro.Sabe)
+				&& !ReferenceEquals(baby.Forma, vegeta.Forma) && !ReferenceEquals(baby.Forma, formaDoBaby)
+				&& baby.Forma.Liberadas.SetEquals(vegeta.Forma.Liberadas)
+				&& !babySabiaAntes && baby.Livro.Sabe(PathDoZanzoken) && baby.Forma.Liberadas.Contains(redeDoSsj1),
+				$"raca {baby.Race}; classe {baby.Class} (Vegeta {vegeta.Class}); tecnicas {baby.Livro.Aprendidas.Count} (Vegeta {vegeta.Livro.Aprendidas.Count}, "
+				+ $"Baby {livroDoBaby.Aprendidas.Count}); a Afterimage {baby.Livro.Sabe(PathDoZanzoken)}; formas despertadas {baby.Forma.Liberadas.Count} "
+				+ $"(Vegeta {vegeta.Forma.Liberadas.Count}), o SSJ {baby.Forma.Liberadas.Contains(redeDoSsj1)}; o Baby ja tinha {babySabiaAntes}");
+			AfirmarAAscensao(baby);
+			AfirmarTf("...E SEM A ASCENSAO DO TSUFURUJIN (*\"ele n vai ter ascencion bonus nem nada ... e se a raça do hospedeiro n tiver ascencion ele tb n "
+				+ "vai ter\"*): no corpo do Saiyajin -- que tem escada de formas e nao ascende -- o bonus e 1x, com os 5.000.000 do Vegeta",
+				baby.Ficha.BPBoost == 1, $"bonus {baby.Ficha.BPBoost:0.###}x");
+			AfirmarTf("...E O BOTAO DE SAIR (o pedido 144): dentro do Vegeta o Baby ve \"Sair do corpo\" na aba Other -- e no proprio corpo, nao",
+				VeOVerb(baby, "hab:tuffle_sair") && !viaOSairAntes, $"dentro {VeOVerb(baby, "hab:tuffle_sair")}; antes de entrar {viaOSairAntes}");
 
 			var visto = Look(baby);
 			AfirmarTf("O QUE O MUNDO VE: o corpo do Baby vai pro mundo como o Vegeta -- o nome, a raca, o corpo (sem a folha do Baby) -- e com o CABELO "
@@ -421,6 +450,43 @@ public sealed partial class GameServer
 			var deVolta = Look(baby);
 			AfirmarTf("...e o mundo volta a ver o Baby: o nome dele, a raca dele, sem o cabelo branco -- e de novo no corpo do Neo Tuffle",
 				deVolta is { Nome: "Baby", Raca: "Tsujin", CabeloBranco: false, CorpoDoBaby: true, Sobra: 0 }, $"{deVolta}");
+			// (2026-10-28, o pedido 144) ...e o Vegeta, no pacote dele: *"ao sair do corpo n faz o cabelo do personagem invadido voltar a cor original"*
+			var pacoteDoVegeta = Look(vegeta);
+			AfirmarTf("...E O VEGETA COM O CABELO DE SEMPRE: o pacote dele sai com o nome e a raca dele e sem o branco do Tuffle",
+				pacoteDoVegeta is { Nome: "Vegeta", Raca: "Saiyan", CabeloBranco: false, CorpoDoBaby: false, Sobra: 0 }, $"{pacoteDoVegeta}");
+
+			// ============================================================ V) SAIR QUANDO QUISER (2026-10-28, o pedido 144)
+			GD.Print("[tuffle] -- V) o Tuffle sai do corpo quando quer, e devolve o corpo inteiro --");
+			LadoALado(baby, vegeta);
+			Vec2 ondeOVegetaEsta = vegeta.Pos;
+			ServerPlayer? possuidoDeNovo = Possuir(baby, out _);
+			bool dentroComOBotao = possuidoDeNovo == vegeta && VeOVerb(baby, "hab:tuffle_sair");
+			List<string> saiuPeloBotao = Ouvir(() => UsarHabilidade(baby, "tuffle_sair"));
+			AfirmarTf("O BOTAO \"SAIR DO CORPO\" (o pedido 144: *\"permita o neotuffle ter uma opçao de sair do corpo de quem ele invadiu quando quiser\"*): "
+				+ "dentro do Vegeta, de pe, o aperto devolve o Baby ao proprio corpo -- a ficha, a raca, as tecnicas e as formas dele -- e o Vegeta fica "
+				+ "caido onde estava; o botao some",
+				dentroComOBotao && PosseDoTuffleDe(baby.Id) == null && ReferenceEquals(baby.Ficha, fichaDoBaby) && baby.Race == "Tsujin"
+				&& ReferenceEquals(baby.Livro, livroDoBaby) && ReferenceEquals(baby.Forma, formaDoBaby) && baby.CorpoDaPosse == null
+				&& vegeta.PossuidoPor == 0 && !EstaOculto(vegeta.Id) && vegeta.Ficha.KO && Vec2.Distance(vegeta.Pos, ondeOVegetaEsta) < 1
+				&& saiuPeloBotao.Any(x => x.Contains("você sai do corpo de Vegeta")) && !VeOVerb(baby, "hab:tuffle_sair"),
+				$"dentro com o botao {dentroComOBotao}; raca {baby.Race}; ficha propria {ReferenceEquals(baby.Ficha, fichaDoBaby)}; livro proprio "
+				+ $"{ReferenceEquals(baby.Livro, livroDoBaby)}; Vegeta caido {vegeta.Ficha.KO} a {Vec2.Distance(vegeta.Pos, ondeOVegetaEsta):0.#} px | {Ultimos(saiuPeloBotao)}");
+			AfirmarTf("...e la fora o aperto cru so diz que ele nao esta dentro de corpo nenhum",
+				Ouvir(() => UsarHabilidade(baby, "tuffle_sair")).Any(x => x.Contains("você não está dentro de outro corpo")));
+
+			// O CONTRA-EXEMPLO: a mente do Tuffle dentro do corpo (o jogo de antes do pedido 144)
+			TuffleComAMenteDeTeste = true;
+			try
+			{
+				LadoALado(baby, vegeta);
+				Possuir(baby, out _);
+				AfirmarAAscensao(baby);
+				AfirmarTf("CONTRA-EXEMPLO (defeito injetado: a mente do Tuffle, o jogo de antes): dentro do Vegeta o Baby segue Tsufurujin, com as tecnicas "
+					+ "dele, e a Ascensao do Tsufurujin sobe no poder do Vegeta -- as reguas do corpo inteiro REPROVAM",
+					baby.Race == "Tsujin" && ReferenceEquals(baby.Livro, livroDoBaby) && baby.Ficha.BPBoost > 1, $"raca {baby.Race}; bonus {baby.Ficha.BPBoost:0.###}x");
+				UsarHabilidade(baby, "tuffle_sair");
+			}
+			finally { TuffleComAMenteDeTeste = false; }
 
 			// ============================================================ S) A SAIDA DO JOGO NO MEIO
 			GD.Print("[tuffle] -- S) a saida do jogo no meio da posse --");
@@ -462,7 +528,7 @@ public sealed partial class GameServer
 		finally
 		{
 			PosseSemAMaquinaDeTeste = HospedeAVistaDeTeste = HospedeComAsRedeasDeTeste = TuffleSemCabeloBrancoDeTeste = PosseNaoAcabaNoNocauteDeTeste = false;
-			TuffleSemCorpoDoBabyDeTeste = false;
+			TuffleSemCorpoDoBabyDeTeste = TuffleComAMenteDeTeste = false;
 			Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = false;
 			foreach (PosseDoTuffle p in _posses.Values.Distinct().ToList()) Expulsar(p, "");
 			_noChao.RemoveAll(o => o.Id >= IdDoPalcoDoTuffle && o.Id < IdDoPalcoDoTuffle + 100);

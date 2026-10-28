@@ -109,10 +109,14 @@ public partial class MenuJogo
 		double teto = Jandirus.Core.Stats.GainKnobs.WeightGainMax;
 		// (2026-10-23) PESO DEMAIS: a linha diz 0x e o porque, e nao o `weight` (que continua 8: ele ainda divide o poder) -- ver `PesoDemaisNaFicha`
 		bool pesoDemais = PesoDemaisNaFicha;
+		// (2026-10-27) ...e a GRAVIDADE DEMAIS (o pedido 117): nela o peso vestido nao rende nada -- a linha diz 0x e o porque
+		bool gravidadeDemais = GravidadeDemaisNaFicha;
 		LinhaComBarra("Ganho no treino",
-			pesoDemais ? $"0x -- passa de {Jandirus.Core.Stats.GainKnobs.RazaoQueImpedeOTreino:0.#}x o limite do corpo" : $"{mult:0.##}x",
-			pesoDemais ? 0 : (mult - 1) / Math.Max(teto - 1, 1e-9),
-			Tema.Destaque, c, pesoDemais ? Tema.Perigo : vestidos ? Tema.Bom : Tema.Texto);
+			pesoDemais ? $"0x -- passa de {Jandirus.Core.Stats.GainKnobs.RazaoQueImpedeOTreino:0.#}x o limite do corpo"
+			: gravidadeDemais ? $"0x -- a gravidade passa de {Jandirus.Core.Stats.GainKnobs.RazaoDaGravidadeQueImpedeOTreino:0.#}x a sua maestria"
+			: $"{mult:0.##}x",
+			pesoDemais || gravidadeDemais ? 0 : (mult - 1) / Math.Max(teto - 1, 1e-9),
+			Tema.Destaque, c, pesoDemais || gravidadeDemais ? Tema.Perigo : vestidos ? Tema.Bom : Tema.Texto);
 		if (vestidos) Linha("Vestindo", $"{_atributos.PesoKg:N0} kg", null, c);
 
 		// sem peso nenhum, o icone dos pesos e o nome SEM o maximo -- "Pesos (50 kg)" ao lado de "não tem" diria de um peso que nao existe

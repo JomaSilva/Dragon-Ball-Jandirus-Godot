@@ -864,6 +864,13 @@ public partial class GameServer
 			Avisar(pl, aquiNao);
 			return;
 		}
+		// (2026-10-27, o pedido 136) NA SALA DO TEMPO SO ENTRA O QUE NAO AUMENTA O GANHO: a gravidade, o saco e a maquina de socos ficam de
+		// fora (o tipo que ASSENTA, `c.Id`: a maquina recolhida com as melhorias tambem e a gravidade). Ver `LugarDeObra.AumentamOGanho`.
+		if (LugarDeObra.NaoRendeAqui(pl.Zone, c.Id))
+		{
+			Avisar(pl, LugarDeObra.NaoEntraNaSala);
+			return;
+		}
 
 		// UMA NAVE NAO CABE DENTRO DE OUTRA (2026-10-18). Ela tem casco, piloto e decolagem proprios, e um interior nao e planeta de onde
 		// se suba; o que a nave grande aceita sao as maquinas.
@@ -1157,7 +1164,13 @@ public partial class GameServer
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (!pl.Estudando || pl.Ficha.KO || CaidoPelaMorte(pl)) continue;
+			if (!pl.Estudando || pl.Ficha.KO || CaidoPelaMorte(pl))
+			{
+				// (2026-10-27) o minijogo que ficou aberto de quem parou de estudar ainda vence no prazo -- ver `GameServer.Estudo.cs`
+				if (_minijogoDoEstudo.TryGetValue(pl.Id, out Jandirus.Core.Tech.Minijogo? largado) && NowMs() >= largado.Prazo)
+					FecharMinijogo(pl, MinijogoTempo);
+				continue;
+			}
 
 			Obra? est = BancadaDeEstudoPerto(pl);
 			bool meditando = pl.Ficha.med && !EstudoSoNaMesaDeTeste;
@@ -1168,8 +1181,11 @@ public partial class GameServer
 				continue;
 			}
 
-			// (2026-10-25) sem a mesa, meditando: um quarto -- ver o cabecalho
-			int subiu = pl.Ficha.Estudar(est != null ? XpDeEstudoPorSegundo : XpDeEstudoPorSegundo * FracaoDoEstudoMeditando);
+			// (2026-10-25) sem a mesa, meditando: um quarto -- ver o cabecalho. (2026-10-27) E os BONUS DOS MINIJOGOS por cima, na mesa e
+			// meditando (+25% por acerto valendo, ate +150%); o minuto NA MESA abre o proximo minijogo. Ver `GameServer.Estudo.cs`.
+			double bonus = Jandirus.Core.Tech.Minijogos.Multiplicador(BonusDoEstudoAtivos(pl.Id));
+			int subiu = pl.Ficha.Estudar((est != null ? XpDeEstudoPorSegundo : XpDeEstudoPorSegundo * FracaoDoEstudoMeditando) * bonus);
+			MinijogoNoSegundo(pl, naBancada: est != null);
 
 			// O PAINEL TEM QUE ANDAR ENQUANTO SE ESTUDA. Um nivel leva mais de vinte minutos no
 			// topo da curva; sem a barra de XP mexendo, quem estuda nao tem NENHUM sinal de que a
@@ -2241,6 +2257,8 @@ public partial class GameServer
 				break;
 			// (2026-10-25) o estudo de cabeca, da telinha da tecla M -- ver `ComecarAEstudarMeditando`
 			case "estudar_meditando": ComecarAEstudarMeditando(pl); break;
+			// (2026-10-27) a resposta do minijogo de estudo (o pedido 120) -- ver `GameServer.Estudo.cs`
+			case "estudo_resposta": ResponderAoEstudo(pl, arg); break;
 			// A MOEDA E O ARGUMENTO (vazio = zeni, o de sempre; "recursos" = o dobro em recursos).
 			case "androide_absorcao": VirarAndroide(pl, infinito: false, Recurso.LerPedidoPago(arg).Moeda); break;
 			case "androide_infinito": VirarAndroide(pl, infinito: true, Recurso.LerPedidoPago(arg).Moeda); break;

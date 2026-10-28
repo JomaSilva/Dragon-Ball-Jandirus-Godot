@@ -69,4 +69,40 @@ public static class LugarDeObra
 
 	/// <summary>Aqui se constroi?</summary>
 	public static bool Aceita(ZoneKey z) => PorQueNaoSeConstroi(z) == null;
+
+	/// <summary>
+	/// ============================ NA SALA DO TEMPO SO ENTRA O QUE NAO AUMENTA O GANHO (dono, 2026-10-27, o pedido 136) ============================
+	/// *"faça com q n de pra colocar gravidade dentro da sala do tempo, é mt broken , no maximo regenerador"* -- e, perguntado o que mais
+	/// fica de fora: *"saco de pancada tb nao kkkk, so coisas q nao aumenta os ganhos, entao regenerador, simulador , macieira etc"*. O tempo
+	/// da Sala ja rende anos de treino num dia; a maquina de gravidade (o campo), o saco de pancada e a maquina de socos (o treino dobrado ao
+	/// lado, e o soco do saco do DU) multiplicavam por cima. Essas tres nao se assentam numa Sala -- a da Terra e a de qualquer mundo; o resto
+	/// (regenerador, simulador, macieira, pesquisa, bau...) continua entrando.
+	/// AS QUE JA ESTAVAM LA (postas antes desta regra) ficam onde estao, mas NAO RENDEM: a gravidade nao liga, e o saco nao dobra o treino
+	/// nem paga o soco (o dono: "Param de ligar").
+	/// QUEM PERGUNTA: o `Posicionar` (assentar), o `DefinirGravidade` (ligar), o `TreinarNoSaco`, o `BonusDeTreinoPerto` e o `SocarOSaco`.
+	/// ====================================================================================================================================
+	/// </summary>
+	public static readonly string[] AumentamOGanho = ["Gravity", "Punching_Bag", "Punching_Machine"];
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --interioresteste, familia 1c): a Sala volta a aceitar e a fazer render o que aumenta o ganho -- o jogo
+	/// de antes do pedido 136. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SalaRendeOQueAumentaOGanhoDeTeste;
+
+	/// <summary>Esta obra aumenta o ganho do treino (a gravidade, o saco, a maquina de socos)?</summary>
+	public static bool AumentaOGanho(string tipo) =>
+		Array.Exists(AumentamOGanho, t => string.Equals(t, tipo, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>Esta obra fica sem render nesta zona -- uma Sala do Tempo, e uma obra que aumenta o ganho?</summary>
+	public static bool NaoRendeAqui(ZoneKey z, string tipo) =>
+		!SalaRendeOQueAumentaOGanhoDeTeste && SalaDoTempo.EhUmaSala(z) && AumentaOGanho(tipo);
+
+	/// <summary>A frase de quem tenta ASSENTAR uma delas numa Sala.</summary>
+	public const string NaoEntraNaSala =
+		"isso não entra na Sala do Tempo: lá dentro só vale o que não aumenta o ganho do treino (regenerador, simulador, macieira...).";
+
+	/// <summary>A frase de quem tenta LIGAR (ou treinar com) uma delas que ja estava numa Sala.</summary>
+	public const string NaoRendeNaSala =
+		"isso não funciona na Sala do Tempo: lá dentro só vale o que não aumenta o ganho do treino.";
 }

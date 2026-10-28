@@ -65,6 +65,7 @@ public sealed partial class GameServer
 		// ---- o que o corpo e ----
 		if (ficha.AndroideAbsorcao) f |= Fatos.AndroideDeAbsorcao;          // `AlternarPosturaDeKi`, Androide.cs:96
 		if (ficha.NeoTuffle && pl.CorpoDaPosse == null) f |= Fatos.NeoTuffle;   // `Possuir`, NeoTuffle.cs (2026-10-18): dentro de outro corpo, nao
+		if (pl.CorpoDaPosse != null) f |= Fatos.DentroDeOutroCorpo;         // `SairDoCorpo`, NeoTuffle.cs (2026-10-28, o pedido 144)
 		if (ficha.godki?.awakened == true) f |= Fatos.GodKiDesperto;        // `VerboDesafiar`, CargoDuelo.cs:206
 		if (ficha.splitformCount > 0) f |= Fatos.TemCopias;                 // `OrdenarSplitformsG12`, Tecnicas.G12.cs:1603
 		if (ficha.canSSJ) f |= Fatos.EscadaSuperSaiyajin;                   // `PerfilDeFormas.CanSsj`, Formas.cs:88

@@ -185,7 +185,8 @@ public partial class TelaDoKaiKai : CanvasLayer
 		Label titulo = Texto("KAI KAI", 22, Tema.Destaque);
 		titulo.HorizontalAlignment = HorizontalAlignment.Center;
 		tudo.AddChild(titulo);
-		Label sub = Texto("Escolha o planeta: você aparece lá na hora, com quem estiver colado em você. Leva todo o seu Ki.", 13, Tema.TextoFraco);
+		// (2026-10-27, o pedido 135) o salto custa pouco Ki (10% do Ki de um Kai recem-nascido), e nao mais o tanque inteiro
+		Label sub = Texto("Escolha o planeta: você aparece lá na hora, com quem estiver colado em você. Gasta só um pouco de Ki.", 13, Tema.TextoFraco);
 		sub.HorizontalAlignment = HorizontalAlignment.Center;
 		sub.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		tudo.AddChild(sub);

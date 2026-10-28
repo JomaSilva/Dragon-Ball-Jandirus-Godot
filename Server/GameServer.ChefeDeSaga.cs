@@ -136,6 +136,11 @@ public partial class GameServer
 	/// QUANDO: no nascimento (`NascerNpc`) e a cada segundo (`TickDoRoteiro`) -- o mais forte transforma, sobe ou entra no meio da luta. Sem
 	/// ninguem jogando, o chefe fica como esta. QUEM: o molde de um chefe que alguma saga poe no mundo (<see cref="EhMoldeDeChefeDeSaga"/>, como
 	/// na cena) e o Bills, pelo nome; o Whis, o guardiao Saiyajin e os NPCs comuns seguem como eram.
+	///
+	/// (2026-10-27, o pedido 138) DE DUAS VEZES PRA 1,25 -- o dono: *"faça os stats dos viloes serem 25% acima do player mais forte e nao 2x, ta
+	/// mt op 2x"*. So o fator mudou (<see cref="VezesOMaisForte"/>); a pericia no maximo, o BP pinado e o "quando/quem" ficam. Os nomes "dobro"
+	/// daqui sao do tempo do 2x. A defesa de ki entra ao cubo no dano (`Ekidef^2 x tecnica`), entao o chefe de 1,25x leva uns 4x o dano de raio
+	/// que levava com 2x.
 	/// </summary>
 	private void DarODobroAoChefe(ServerPlayer npc)
 	{
@@ -162,8 +167,8 @@ public partial class GameServer
 		npc.Papel is { EhChefe: true } papel
 		&& (EhMoldeDeChefeDeSaga(papel.Molde.Id) || string.Equals(papel.Molde.Id, "bills", StringComparison.OrdinalIgnoreCase));
 
-	/// <summary>Quantas vezes os atributos do jogador mais forte o chefe tem.</summary>
-	private const double VezesOMaisForte = 2;
+	/// <summary>Quantas vezes os atributos do jogador mais forte o chefe tem: 25% acima (o pedido 138; era 2 desde 2026-10-20).</summary>
+	private const double VezesOMaisForte = 1.25;
 
 	/// <summary>A pericia de luta do chefe: o teto da escala do DM (o ultimo degrau dos raios, `beamskill` 100).</summary>
 	private const double PericiaDoChefe = 100;

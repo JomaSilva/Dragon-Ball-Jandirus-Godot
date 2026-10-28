@@ -139,6 +139,15 @@ public readonly struct SistemaSolar
 	/// <summary>O pre-feito deste sistema (so vale quando <see cref="Ancorado"/>).</summary>
 	public PlanetaNoEspaco PreFeito { get; init; }
 
+	/// <summary>(2026-10-27) A orbita do planeta YARDRAT neste sistema (so no de Namek), ou -1 -- o pedido 109. Ver <see cref="Yardrat"/>.</summary>
+	public int OrbitaDoYardrat => Yardrat.OrbitaEm(this);
+
+	/// <summary>
+	/// (2026-10-27) ESTE PLANETA APARECE NA CARTA ESTELAR E NA TELA DO SISTEMA? Todos, menos o Yardrat -- o planeta secreto do pedido 109,
+	/// que so se acha voando pelo sistema de Namek e lendo os nomes. Ver <see cref="Yardrat"/>.
+	/// </summary>
+	public bool NaCarta(int k) => k != OrbitaDoYardrat;
+
 	/// <summary>Semieixo maior da orbita k, em pixels.</summary>
 	public double Semieixo(int k) => A0 + k * Passo;
 
@@ -206,7 +215,7 @@ public readonly struct SistemaSolar
 		double t = (g - MundoProcedural.GravidadeMinima)
 				   / (MundoProcedural.GravidadeMaxima - MundoProcedural.GravidadeMinima);
 
-		return new PlanetaNoEspaco
+		var p = new PlanetaNoEspaco
 		{
 			Nome = $"{Sistemas.NomeDeBioma(seed)}-{Math.Abs(Id.Sx) % 1000}{Math.Abs(Id.Sy) % 1000}{k}",
 			Pos = new Vec2((float)(Estrela.Pos.X + dx * a), (float)(Estrela.Pos.Y + dy * a)),
@@ -214,6 +223,9 @@ public readonly struct SistemaSolar
 			Seed = seed,
 			Premade = false,
 		};
+		// (2026-10-27) O YARDRAT (o pedido 109): o planeta da orbita vizinha a de Namek leva o nome -- o disco e a zona da superficie. O chao
+		// e o de sempre (a mesma semente). Ver `Yardrat`.
+		return k == OrbitaDoYardrat ? p with { Nome = Yardrat.Nome } : p;
 	}
 
 	/// <summary>Todos os planetas, da orbita interna pra externa. Pra carta e pra bancada.</summary>

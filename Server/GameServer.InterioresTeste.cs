@@ -78,8 +78,11 @@ public sealed partial class GameServer
 
 	private const int IdBaseDaVigia = 987_000;
 
-	/// <summary>O id da MAQUINA DE GRAVIDADE no catalogo de construcoes (`construcoes.json`).</summary>
-	private const string MaquinaDeGravidadeDaVigia = "Gravity";
+	/// <summary>
+	/// A MAQUINA DENSA que a familia 1b assenta na Sala do Tempo (`construcoes.json`). Era a de GRAVIDADE ate 2026-10-27, quando ela deixou de
+	/// entrar na Sala (o pedido 136, `LugarDeObra.AumentamOGanho`); o simulador tambem barra a celula, e o dono o quer la dentro.
+	/// </summary>
+	private const string MaquinaDensaDaVigia = Simulador.Tipo;
 
 	public void RodarAVigiaDosInteriores()
 	{
@@ -90,6 +93,7 @@ public sealed partial class GameServer
 			IntrDosTipos();
 			IntrDasPortas();
 			IntrDaObraDaSala();
+			IntrDoGanhoNaSala();
 			IntrDosHomonimos();
 			IntrDaFonte();
 			IntrDaMemoria();
@@ -102,6 +106,7 @@ public sealed partial class GameServer
 		{
 			EstadoDeZonaPorNomeDeTeste = false;
 			LugarDeObra.InterioresDeSessaoAceitamDeTeste = false;
+			LugarDeObra.SalaRendeOQueAumentaOGanhoDeTeste = false;
 			_tiposDeInterior = null;
 			SoltarInterioresVazios();
 			GD.Print($"[interiores] ================ {_intrOk} OK, {_intrFalhou} FALHA(S) ================   "
@@ -444,8 +449,9 @@ public sealed partial class GameServer
 		ZoneKey terra = ZoneKey.Premade(SalaDoTempo.Zona), mente = DimensaoMental.De(5);
 		ZoneCollision? planta = _catalogo?.Get(terra)?.Mapa;
 		(int X, int Y)? chao = planta == null ? null : IntrChaoLivre(planta, null);
-		AfirmarIntr("(montagem) o mapa da Sala esta no catalogo, tem chao livre, e o catalogo tem a maquina de gravidade e o regenerador",
-					planta != null && chao != null && _obras?.Get(MaquinaDeGravidadeDaVigia) != null && _obras?.Get(Regenerador.Tipo) != null);
+		AfirmarIntr("(montagem) o mapa da Sala esta no catalogo, tem chao livre, e o catalogo tem o simulador, o regenerador e as tres que aumentam o ganho",
+					planta != null && chao != null && _obras?.Get(MaquinaDensaDaVigia) != null && _obras?.Get(Regenerador.Tipo) != null
+					&& Array.TrueForAll(LugarDeObra.AumentamOGanho, t => _obras?.Get(t) != null));
 		if (planta == null || chao is not { } c || _obras == null) return;
 
 		int ObrasEm(ZoneKey z) => _noChao.Count(o => !o.DoMapa && o.Zona.Equals(z));
@@ -468,10 +474,18 @@ public sealed partial class GameServer
 			}
 			GD.Print($"[interiores]   NA SALA DO TEMPO DA PRA ASSENTAR {aceitos.Count} coisa(s): {string.Join(", ", aceitos)}");
 			if (recusados.Count > 0) GD.Print($"[interiores]   ...e {recusados.Count} o `Posicionar` recusou la: {string.Join("; ", recusados)}");
-			AfirmarIntr("**O QUE SE ASSENTA NUMA SALA DO TEMPO**: a maquina de gravidade e o regenerador estao na lista do que o `Posicionar` aceita la",
-						aceitos.Contains(MaquinaDeGravidadeDaVigia) && aceitos.Contains(Regenerador.Tipo), $"{aceitos.Count} aceito(s), {recusados.Count} recusado(s)");
+			AfirmarIntr("**O QUE SE ASSENTA NUMA SALA DO TEMPO**: o simulador e o regenerador estao na lista do que o `Posicionar` aceita la",
+						aceitos.Contains(MaquinaDensaDaVigia) && aceitos.Contains(Regenerador.Tipo), $"{aceitos.Count} aceito(s), {recusados.Count} recusado(s)");
+			// (2026-10-27, o pedido 136) O QUE AUMENTA O GANHO NAO ENTRA: a gravidade, o saco e a maquina de socos estao entre os RECUSADOS, com
+			// a frase da Sala -- e sao so eles (o resto da lista, que ja entrava, continua entrando).
+			List<string> pelaRegraDoGanho = [.. recusados.Where(r => r.Contains(LugarDeObra.NaoEntraNaSala))];
+			AfirmarIntr("(o pedido 136) **O QUE AUMENTA O GANHO NAO ENTRA NA SALA**: a maquina de gravidade, o saco de pancada e a maquina de socos sao "
+						+ "recusados pelo `Posicionar` com a frase da Sala -- e so eles",
+						pelaRegraDoGanho.Count == recusados.Count && pelaRegraDoGanho.Count == LugarDeObra.AumentamOGanho.Length
+						&& Array.TrueForAll(LugarDeObra.AumentamOGanho, t => pelaRegraDoGanho.Exists(r => r.StartsWith(t + " (")))
+						&& !aceitos.Exists(LugarDeObra.AumentaOGanho), string.Join("; ", recusados));
 
-			foreach (string maquina in new[] { MaquinaDeGravidadeDaVigia, Regenerador.Tipo })
+			foreach (string maquina in new[] { MaquinaDensaDaVigia, Regenerador.Tipo })
 			{
 				bool densa = _obras.Get(maquina) is { Densa: true };
 				string m = $"[{maquina}]";
@@ -578,6 +592,116 @@ public sealed partial class GameServer
 			GravarMundo();
 			SoltarInterioresVazios();
 			AplicarColisaoDasObras(terra);
+		}
+	}
+
+	/// <summary>
+	/// 1c) (2026-10-27, o pedido 136) O QUE AUMENTA O GANHO E JA ESTAVA NUMA SALA DO TEMPO NAO RENDE (o dono: "Param de ligar"). As obras de
+	/// ANTES da regra entram direto na lista, como voltam do `mundo.json` (o `Posicionar` ja as recusa): a gravidade nao liga, o saco e a
+	/// maquina de socos nao dobram o treino de quem esta ao lado, o "Treinar aqui" avisa, e o soco no saco nao cobra o Ki nem paga. O
+	/// CONTRA-EXEMPLO e a mesma obra na Terra, que rende. Com `SalaRendeOQueAumentaOGanhoDeTeste` (o jogo de antes) as reguas reprovam.
+	/// </summary>
+	private void IntrDoGanhoNaSala()
+	{
+		GD.Print("[interiores] -- 1c) (o pedido 136) o que aumenta o ganho e ja estava numa Sala do Tempo nao rende; na Terra, rende --");
+		ZoneKey sala = SalaDePlaneta.Interior((ulong)(IdBaseDaVigia + 603)), terra = ZoneKey.Premade("Earth");
+		ZoneCollision? planta = _catalogo?.Get(ZoneKey.Premade(SalaDoTempo.Zona))?.Mapa;
+		(int X, int Y)? chao = planta == null ? null : IntrChaoLivre(planta, null);
+		AfirmarIntr("(montagem, 1c) a Sala tem chao livre pra obra de antes", chao != null);
+		if (chao is not { } c) return;
+
+		const float T = ZoneCollision.TileSize;
+		float ox = c.X * T + T / 2f, oy = c.Y * T + T / 2f;
+		List<Obra> noChaoDeAntes = [.. _noChao];
+		int idDeAntes = _proximaObraId;
+
+		// a obra de ANTES da regra, aparafusada, e quem a usa um tile a oeste dela, olhando pra ela
+		(Obra Obra, ServerPlayer Quem) DeAntes(string tipo, ZoneKey z)
+		{
+			var o = new Obra { Id = _proximaObraId++, Tipo = tipo, X = ox, Y = oy, DonoConta = "bancada_interiores", DonoNome = "bancada: o de antes", Aparafusada = true };
+			o.PorZona(z);
+			_noChao.Add(o);
+			var quem = new ServerPlayer
+			{
+				Id = IdBaseDaVigia + 961, Name = "bancada: o treinador", Conta = "bancada_interiores", Zone = z, Pos = new Vec2(ox - T, oy),
+				Facing = Facing.East, Ficha = new Fighter(),
+			};
+			return (o, quem);
+		}
+
+		// a gravidade pede 5x; "ligou" = a mudanca ficou armada
+		(bool Ligou, string Disse) Ligar(ZoneKey z)
+		{
+			(Obra m, ServerPlayer quem) = DeAntes("Gravity", z);
+			string disse = string.Join(" | ", Ouvir(() => DefinirGravidade(quem, "5")));
+			bool ligou = m.Gravidade is { MudaEm: > 0, Pedida: > 0 };
+			_noChao.Remove(m);
+			return (ligou, disse);
+		}
+
+		// o saco: o bonus de quem treina ao lado, o "Treinar aqui", e o soco (Ki 100 antes; o soco que paga cobra os 15)
+		(double Bonus, string Treinar, double KiDepois) Saco(ZoneKey z)
+		{
+			(Obra s, ServerPlayer quem) = DeAntes("Punching_Bag", z);
+			double bonus = BonusDeTreinoPerto(quem);
+			string treinar = string.Join(" | ", Ouvir(() => TreinarNoSaco(quem)));
+			quem.Ficha.Ki = 100;
+			SocarOSaco(quem);
+			_noChao.Remove(s);
+			return (bonus, treinar, quem.Ficha.Ki);
+		}
+
+		// a maquina de socos: so o bonus de quem treina ao lado (ela nao leva soco)
+		double BonusDaMaquina(ZoneKey z)
+		{
+			(Obra mq, ServerPlayer quem) = DeAntes("Punching_Machine", z);
+			double bonus = BonusDeTreinoPerto(quem);
+			_noChao.Remove(mq);
+			return bonus;
+		}
+
+		try
+		{
+			(bool ligouNaSala, string disseNaSala) = Ligar(sala);
+			(bool ligouNaTerra, string disseNaTerra) = Ligar(terra);
+			AfirmarIntr("(o pedido 136) **A GRAVIDADE QUE JA ESTAVA NA SALA NAO LIGA**: o `DefinirGravidade` recusa com a frase da Sala e nada fica "
+						+ "armado -- e a MESMA maquina na Terra liga (o contra-exemplo)",
+						!ligouNaSala && disseNaSala.Contains(LugarDeObra.NaoRendeNaSala) && ligouNaTerra && !disseNaTerra.Contains(LugarDeObra.NaoRendeNaSala),
+						$"Sala: {disseNaSala} || Terra: {disseNaTerra}");
+
+			(double bonusSala, string treinarSala, double kiSala) = Saco(sala);
+			(double bonusTerra, string treinarTerra, double kiTerra) = Saco(terra);
+			double maquinaSala = BonusDaMaquina(sala), maquinaTerra = BonusDaMaquina(terra);
+			AfirmarIntr("(o pedido 136) **O SACO QUE JA ESTAVA NA SALA NAO DOBRA O TREINO**: o bonus de quem esta ao lado e 1 la dentro -- e o dobro com "
+						+ "o mesmo saco na Terra; a maquina de socos idem",
+						bonusSala == 1 && bonusTerra == DobraDoSaco && maquinaSala == 1 && maquinaTerra == DobraDoSaco,
+						$"saco: Sala {bonusSala}, Terra {bonusTerra}; maquina de socos: Sala {maquinaSala}, Terra {maquinaTerra}");
+			AfirmarIntr("(o pedido 136) ...o \"Treinar aqui\" no saco da Sala avisa que la nao funciona (na Terra ele comeca o treino)",
+						treinarSala.Contains(LugarDeObra.NaoRendeNaSala) && treinarTerra.Contains("você começa a bater no saco"),
+						$"Sala: {treinarSala} || Terra: {treinarTerra}");
+			AfirmarIntr("(o pedido 136) ...e o SOCO no saco da Sala nao cobra o Ki nem paga (Ki 100 -> 100); na Terra cobra os 15 e paga",
+						kiSala == 100 && kiTerra == 100 - KiDoSocoNoSaco, $"Ki depois: Sala {kiSala}, Terra {kiTerra}");
+
+			// ---- o jogo de antes: a Sala aceita a gravidade, ela liga, e o saco rende
+			LugarDeObra.SalaRendeOQueAumentaOGanhoDeTeste = true;
+			(Obra? posta, string disse) = IntrAssentar(sala, c, "Gravity");
+			if (posta != null) _noChao.Remove(posta);
+			(bool ligouAntes, _) = Ligar(sala);
+			(double bonusAntes, _, double kiAntes) = Saco(sala);
+			LugarDeObra.SalaRendeOQueAumentaOGanhoDeTeste = false;
+			DefeitoIntr("a Sala rende o que aumenta o ganho (o jogo de antes do pedido 136): o `Posicionar` assenta a gravidade la dentro, ela liga, o "
+						+ "saco dobra o treino e o soco paga",
+						posta != null && ligouAntes && bonusAntes == DobraDoSaco && kiAntes == 100 - KiDoSocoNoSaco,
+						$"assentou {posta != null} ({disse}); ligou {ligouAntes}; bonus {bonusAntes}; Ki {kiAntes}");
+		}
+		finally
+		{
+			LugarDeObra.SalaRendeOQueAumentaOGanhoDeTeste = false;
+			_noChao.Clear();
+			_noChao.AddRange(noChaoDeAntes);
+			_proximaObraId = idDeAntes;
+			GravarMundo();
+			SoltarInterioresVazios();
 		}
 	}
 

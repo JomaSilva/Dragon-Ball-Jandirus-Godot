@@ -19,11 +19,20 @@ namespace Jandirus.Server;
 ///      penalidade intacta. Contra: `StatCurves.AclimatacaoDoDmDeTeste` (a do DM, +96,6% a 500x).
 ///   P. PESO DEMAIS NAO TREINA: acima de 8x o limite do corpo o T, a meditacao, a luta e o ki nao rendem; o pedido de treinar (e o de
 ///      meditar) e recusado com o aviso, e o treino em curso cai; o painel diz 0x; o resto do peso fica (o `weight`, a prisao, o
-///      esmagamento); gravidade sem peso continua sendo treino. Contra: `GainKnobs.PesoDemaisTreinaDeTeste`.
+///      esmagamento); a regra do peso so conta o peso (a gravidade tem a dela, a familia G). Contra: `GainKnobs.PesoDemaisTreinaDeTeste`.
+///   G. (2026-10-27) GRAVIDADE DEMAIS NAO TREINA (o pedido 117: *"faça com q a gravidade assim como o peso, se ela for mt acima da sua
+///      maestria (4x) vc n consegue nem treinar nela"*): sem peso, a 4x da maestria tudo rende e a 5x nada (o T, a meditacao, a luta, o
+///      ki); o painel diz 0x, o pedido e recusado com o aviso da gravidade, o treino em curso cai, e a maestria do chao continua subindo.
+///      Contra: os binarios do ciclo (`ag/gravtreino`).
 ///   M. O MORTO SENTE O CHAO: o fantasma no Inferno (10x), numa ilha do Outro Mundo (10x), o do passe entre os vivos (Vegeta, 10x) e o
 ///      morto com peso sao prensados e feridos, com o aviso; o corpo em farrapos se desfaz e acorda na mesa do Enma; o cadaver dos 2 s
 ///      fica de fora, e quem ficou com o corpo continua como no DM; e a maestria sobe no Inferno (a saida). Contra:
 ///      `MortoSemPesoDeTeste` (o `!dead || KeepsBody` do DM).
+///   X. (2026-10-28, o pedido 143) OS DEGRAUS DA GRAVIDADE: a 3x a maestria o corpo cai no quinto segundo e, caido la, morre; acima de 5x o
+///      nocaute e na hora e o corpo morre no quinto segundo; a gravidade MATA quem regenera (o Majin, o Yardrat); a maestria sobe 3x mais
+///      devagar; e o login poda quem tinha mais de 50x pra 50x, uma vez. Contra: `GravidadePoupaQuemRegeneraDeTeste` e os binarios do ciclo.
+///   Y. (2026-10-28, o pedido 146) O TETO DA MAESTRIA: o passe de ficha e o soco param a maestria em 300x num chao de 500x, a maquina
+///      continua indo a 500x, e a 500x quem domina o teto e esmagado (perde vida, de pe). Contra: os binarios do ciclo (`ag/maestria300`).
 /// O ganho x10 (`GainKnobs.BPTick`) e da `--ganhoteste` (familia 5), que mede o soco de producao contra a taxa do DM.
 ///
 ///     Godot --headless --path . --server --port 10910 --gravmetateste
@@ -65,7 +74,10 @@ public sealed partial class GameServer
 
 			AAclimatacaoTemTetoGm(pl);
 			OPesoDemaisNaoTreinaGm(pl);
+			AGravidadeDemaisNaoTreinaGm(pl);   // (2026-10-27) o pedido 117
 			OMortoSenteOChaoGm(pl);
+			OsDegrausDaGravidadeGm(pl);   // (2026-10-28) o pedido 143
+			OTetoDaMaestriaGm(pl);        // (2026-10-28) o pedido 146
 		}
 		catch (Exception e)
 		{
@@ -76,6 +88,7 @@ public sealed partial class GameServer
 			StatCurves.AclimatacaoDoDmDeTeste = false;
 			GainKnobs.PesoDemaisTreinaDeTeste = false;
 			MortoSemPesoDeTeste = false;
+			GravidadePoupaQuemRegeneraDeTeste = false;
 			if (pl != null)
 			{
 				// o corpo volta vivo, inteiro e sem peso pra Terra -- a saida pela porta grava o save, e a bancada apaga a conta logo abaixo
@@ -180,7 +193,7 @@ public sealed partial class GameServer
 				  $"10x {(a10 - 1) * 100:0.###}%; 100x {(a100 - 1) * 100:0.###}%; razao {(a100 - 1) / (a10 - 1):0.######}");
 
 		double a501 = Dominando(501).Bonus, a1000 = Dominando(1000).Bonus, a1000em2 = Dominando(1000, 2).Bonus;
-		AfirmarGm("A3. **ACIMA DO TETO NAO CRESCE**: o planeta mais a maquina chegam a ~501x, e a maestria pela luta nao tem teto -- 501x e 1000x dominados "
+		AfirmarGm("A3. **ACIMA DO TETO NAO CRESCE**: o planeta mais a maquina chegam a ~501x (e o nativo de um mundo pesado nasce dominando-o) -- 501x e 1000x dominados "
 				  + "num chao de 1x dao os mesmos +25%; e 1000x num chao de 2x (a razao 500) tambem",
 				  Math.Abs(a501 - 1.25) < 1e-9 && Math.Abs(a1000 - 1.25) < 1e-9 && Math.Abs(a1000em2 - 1.25) < 1e-9,
 				  $"501x {a501:0.######}; 1000x {a1000:0.######}; 1000x em 2x {a1000em2:0.######}");
@@ -324,13 +337,15 @@ public sealed partial class GameServer
 				  && PrensadoPelaGravidade(pl) && EsmagadoAgora(pl) && Esmagamento.PorPeso(f),
 				  $"razao {f.weight_ratio:0.##}; weight {f.weight}; deBuff {f.deBuff:0.#####}; preso {PrensadoPelaGravidade(pl)}; esmagado {EsmagadoAgora(pl)}");
 
-		// GRAVIDADE SEM PESO CONTINUA SENDO TREINO: 20x de gravidade dominando 1x (a razao 20 pela gravidade, nao pelo peso)
+		// A REGRA DO PESO SO CONTA O PESO: 20x de gravidade dominando 1x (a razao 20 pela gravidade, nao pelo peso). Ate 2026-10-27 isso
+		// continuava sendo treino; desde o pedido 117 quem o barra e a GRAVIDADE (a familia G), e nao o peso.
 		Vestir("0");
 		f.Planetgrav = 20;
 		f.WeightTick();
 		var tNaGravidade = T();
-		AfirmarGm("P9. **SO O PESO CONTA**: 20x de gravidade sem peso nenhum (a razao do esmagamento 20, a do peso zero) continua sendo treino",
-				  !f.PesoDemaisPraTreinar() && Esmagamento.Razao(f) >= 20 && tNaGravidade.Bp > 0,
+		AfirmarGm("P9. **O PESO SO CONTA O PESO**: 20x de gravidade sem peso nenhum nao e PESO demais (a razao do peso e zero) -- quem barra o T "
+				  + "ali e a gravidade (a familia G, desde 2026-10-27)",
+				  !f.PesoDemaisPraTreinar() && f.GravidadeDemaisPraTreinar() && Esmagamento.Razao(f) >= 20 && tNaGravidade.Bp == 0,
 				  $"razao do esmagamento {Esmagamento.Razao(f):0.#}; do peso {f.weight_ratio}; T +{tNaGravidade.Bp:0.###}");
 		f.Planetgrav = 1;
 
@@ -361,6 +376,128 @@ public sealed partial class GameServer
 
 		Vestir("0");
 		pl.Mochila.Tirar(pesos);
+	}
+
+	// =====================================================================
+	// G) GRAVIDADE DEMAIS NAO TREINA (o pedido 117 do dono, 2026-10-27)
+	// =====================================================================
+	/// <summary>
+	/// *"faça com q a gravidade assim como o peso, se ela for mt acima da sua maestria (4x) vc n consegue nem treinar nela"*. Sem peso nenhum,
+	/// a gravidade do chao contra a maestria 1, pelas mesmas portas da familia P:
+	///   G0  a 4x (no limite) o T, a meditacao, a luta e o ki rendem, e o pedido de treinar passa;
+	///   G1-G4  a 5x nada rende -- nem o T, nem a meditacao, nem a luta, nem o ki;
+	///   G5  o painel diz 0x (o `MultiplicadorDeGanho` e a ficha lenta);
+	///   G6  o pedido de treinar e o de meditar sao recusados com o aviso da gravidade;
+	///   G7  o treino em curso a 4x cai quando a gravidade sobe a 5x, sem render nada;
+	///   G8  a maestria do chao continua subindo a 5x (o `GravGain`): e ela que tira o corpo dali.
+	/// </summary>
+	private void AGravidadeDemaisNaoTreinaGm(ServerPlayer pl)
+	{
+		GD.Print("[gravmeta] -- G) gravidade acima de 4x a maestria: o treino nao rende, o pedido e recusado, o painel diz 0x, a maestria do chao sobe --");
+		PalcoGm(pl);
+		Fighter f = pl.Ficha;
+
+		void Gravidade(double g)
+		{
+			f.Planetgrav = g;
+			f.gravmult = 0;
+			f.GravMastered = 1;
+			f.stamina = f.maxstamina;
+			f.Ki = f.MaxKi;
+			f.Statify();
+			f.PowerLevel(agoraMs: NowMs());
+			f.WeightTick();
+		}
+
+		// O QUE CADA ATIVIDADE DO CORE RENDE (BP, Ki base e folego maximo) -- o molde da familia P
+		(double Bp, double Ki, double Folego) Rende(Action atividade)
+		{
+			f.BPBuffer = 0;
+			f.Gaintimer = 0;
+			f.tmp_activ_gains = 0;
+			f.minuteshot = false;
+			double bp0 = f.BP, ki0 = f.baseKi, st0 = f.maxstamina;
+			for (int i = 0; i < 20; i++) atividade();
+			return (f.BP - bp0, f.baseKi - ki0, f.maxstamina - st0);
+		}
+		var treino = new Random(11);
+		(double Bp, double Ki, double Folego) T() => Rende(() => f.TrainGain(treino, 3));
+		(double Bp, double Ki, double Folego) Med() => Rende(() => f.MedGain(treino));
+		(double Bp, double Ki, double Folego) Luta() => Rende(() => f.AttackGain(treino));
+		(double Bp, double Ki, double Folego) Ki() => Rende(() => f.BlastGain(treino, 1, ignoreMinuteshot: true));
+
+		// ---- G0) a 4x, no limite: tudo rende, e o pedido passa
+		Gravidade(4);
+		var t4 = T();
+		var med4 = Med();
+		var luta4 = Luta();
+		var ki4 = Ki();
+		Gravidade(4);
+		DefinirAtividade(pl, Protocol.Activity.Treinando);
+		bool aceito4 = f.train;
+		DefinirAtividade(pl, Protocol.Activity.Parado);
+		AfirmarGm("G0. a 4x a maestria (no limite) o T, a meditacao, a luta e o ki rendem, e o pedido de treinar passa",
+				  t4.Bp > 0 && med4.Bp > 0 && luta4.Bp > 0 && ki4.Bp > 0 && aceito4,
+				  $"T +{t4.Bp:0.###}, med +{med4.Bp:0.###}, luta +{luta4.Bp:0.###}, ki +{ki4.Bp:0.###}; aceito {aceito4}");
+
+		// ---- G1-G4) a 5x, nada rende
+		Gravidade(5);
+		var t5 = T();
+		var med5 = Med();
+		var luta5 = Luta();
+		var ki5 = Ki();
+		AfirmarGm("G1. **A 5x A MAESTRIA O T NAO RENDE NADA** (*\"vc n consegue nem treinar nela\"*): nem BP, nem Ki, nem folego",
+				  t5.Bp == 0 && t5.Ki == 0 && t5.Folego == 0, $"BP +{t5.Bp}, Ki +{t5.Ki}, folego +{t5.Folego}");
+		AfirmarGm("G2. ...nem a MEDITACAO", med5.Bp == 0 && med5.Ki == 0, $"BP +{med5.Bp}, Ki +{med5.Ki}");
+		AfirmarGm("G3. ...nem a LUTA", luta5.Bp == 0 && luta5.Folego == 0, $"BP +{luta5.Bp}, folego +{luta5.Folego}");
+		AfirmarGm("G4. ...nem o KI", ki5.Bp == 0 && ki5.Ki == 0, $"BP +{ki5.Bp}, Ki +{ki5.Ki}");
+
+		// ---- G5) o painel
+		Gravidade(5);
+		double painel5 = f.MultiplicadorDeGanho();
+		var fio = FichaLentaGm(pl);
+		AfirmarGm("G5. **O PAINEL DIZ 0x**: o ganho do treino da ficha lenta e zero a 5x a maestria",
+				  painel5 == 0 && fio is { } lento && lento.GanhoDeTreino == 0, $"painel {painel5}; no fio {fio?.GanhoDeTreino}");
+
+		// ---- G6) o pedido de producao, recusado com o aviso
+		Gravidade(5);
+		List<string> pedidoT = Ouvir(() => DefinirAtividade(pl, Protocol.Activity.Treinando));
+		bool treina = f.train;
+		List<string> pedidoMed = Ouvir(() => DefinirAtividade(pl, Protocol.Activity.Meditando));
+		bool medita = f.med;
+		DefinirAtividade(pl, Protocol.Activity.Parado);
+		AfirmarGm("G6. **O PEDIDO DE TREINAR E RECUSADO, COM O AVISO DA GRAVIDADE** -- e o de meditar tambem",
+				  !treina && !medita
+				  && pedidoT.Any(s => s.Contains("nessa gravidade você não consegue treinar") && s.Contains("4x"))
+				  && pedidoMed.Any(s => s.Contains("nessa gravidade você não consegue meditar")),
+				  $"treina {treina}, medita {medita}; disse \"{string.Join(" | ", pedidoT.Concat(pedidoMed))}\"");
+
+		// ---- G7) o treino em curso: comeca a 4x (aceito, e rende pelo `Treinar` de producao), a gravidade sobe a 5x, e o passe seguinte o derruba
+		Gravidade(4);
+		DefinirAtividade(pl, Protocol.Activity.Treinando);
+		bool comecou = f.train;
+		double bpAntes = f.BP;
+		for (int i = 0; i < 10; i++) { f.stamina = f.maxstamina; Treinar(pl); }
+		double rendeuEmCurso = f.BP - bpAntes;
+		Gravidade(5);
+		bpAntes = f.BP;
+		List<string> caiu = Ouvir(() => Treinar(pl));
+		double rendeuNoPasseQueCaiu = f.BP - bpAntes;
+		DefinirAtividade(pl, Protocol.Activity.Parado);
+		AfirmarGm("G7. **O TREINO EM CURSO CAI QUANDO A GRAVIDADE PASSA DE 4x A MAESTRIA**: a 4x o `Treinar` de producao rende; a 5x o passe seguinte "
+				  + "derruba o treino com o aviso, sem render nada",
+				  comecou && rendeuEmCurso > 0 && !f.train && rendeuNoPasseQueCaiu == 0
+				  && caiu.Any(s => s.Contains("a gravidade daqui passou de 4x a sua maestria") && s.Contains("você para de treinar")),
+				  $"comecou {comecou}, rendeu +{rendeuEmCurso:0.###}; depois treina {f.train}, +{rendeuNoPasseQueCaiu}; disse \"{string.Join(" | ", caiu)}\"");
+
+		// ---- G8) a maestria do chao continua subindo -- e ela que tira o corpo dali
+		Gravidade(5);
+		double maestriaAntes = f.GravMastered;
+		for (int i = 0; i < 5; i++) f.GravGain();
+		AfirmarGm("G8. a 5x a MAESTRIA DO CHAO continua subindo a cada passe (o `GravGain`): o corpo se acostuma e volta a treinar",
+				  f.GravMastered > maestriaAntes, $"maestria {maestriaAntes:0.#####} -> {f.GravMastered:0.#####}");
+
+		Gravidade(1);
 	}
 
 	// =====================================================================
@@ -436,9 +573,12 @@ public sealed partial class GameServer
 		EmFarrapos();
 		var desfeito = UmSegundo();
 		AfirmarGm("M2. **O CORPO EM FARRAPOS SE DESFAZ, E O MORTO ACORDA NA MESA DO ENMA**: a 4% de vida e na razao 10, um segundo de esmagamento o desfaz "
-				  + "(o `Body_Parts` do DM) -- e ele \"morre de novo\" como o morto morre: curado, na mesa do Enma, em coma curto",
+				  + "(desde o pedido 143 e o dano de acima de 5x que o zera, com a frase do `Body_Parts` do DM) -- e ele \"morre de novo\" como o morto morre: "
+				  + "curado, na mesa do Enma, em coma curto",
 				  desfeito.Zona == Alem.ZonaDoOutroMundo && Vec2.Distance(pl.Pos, mesa) < 4 * T && f.dead && desfeito.Ko && f.HP > 99
-				  && Disse(desfeito.Disse, "vence o que restava do seu corpo") && Disse(desfeito.Disse, "acorda de novo na mesa do Enma"),
+				  && Disse(desfeito.Disse, "vence o que restava do seu corpo") && Disse(desfeito.Disse, "acorda de novo na mesa do Enma")
+				  // (2026-10-28, o pedido 143) e o segundo que o desfez para ali: na mesa (1x) ninguem le que a gravidade o esmaga
+				  && !Disse(desfeito.Disse, "ESMAGANDO") && !Disse(desfeito.Disse, "desmaiou esmagado"),
 				  $"zona {desfeito.Zona}; a {Vec2.Distance(pl.Pos, mesa) / T:0.#} tiles da mesa; morto {f.dead}; coma {desfeito.Ko}; vida {f.HP:0.#}; "
 				  + $"disse \"{Falas(desfeito.Disse)}\"");
 
@@ -482,6 +622,7 @@ public sealed partial class GameServer
 		var comCorpo = UmSegundo();
 		AfirmarGm("M7. quem ficou com o corpo (`KeepsBody`) continua como no DM: e esmagado (le o aviso), mas e cadaver -- nao se fere e nao se desfaz",
 				  EsmagadoAgora(pl) && Math.Abs(comCorpo.Hp - comCorpo.HpAntes) < 1e-9 && comCorpo.Zona == "Vegeta" && f.dead
+				  && !comCorpo.Ko   // (2026-10-28, o pedido 143) nem o nocaute na hora dos 10x: cair nao e com o cadaver
 				  && Disse(comCorpo.Disse, "ESMAGANDO") && !Disse(comCorpo.Disse, "vence o que restava"),
 				  $"esmagado {EsmagadoAgora(pl)}; vida {comCorpo.HpAntes:0.#} -> {comCorpo.Hp:0.#}; zona {comCorpo.Zona}; disse \"{Falas(comCorpo.Disse)}\"");
 		f.KeepsBody = false;
@@ -496,7 +637,7 @@ public sealed partial class GameServer
 		double minAte1 = porMinuto > 0 ? (10.0 - maestria0) / porMinuto : double.PositiveInfinity;
 		AfirmarGm("M8. **A SAIDA**: no Inferno a maestria do fantasma sobe a cada passe de ficha (um minuto de `Treinar` de producao, parado) -- o corpo "
 				  + "preso se acostuma e deixa de ser preso (e ferido), entao o laco preso -> mesa do Enma -> portao nao trava ninguem pra sempre",
-				  porMinuto > 0.2,
+				  porMinuto > 0.2 / 3,   // (2026-10-28, o pedido 143) a maestria sobe 3x mais devagar: o limiar de antes (0,2) dividido por 3
 				  $"+{porMinuto:0.###}x por minuto: solta (razao abaixo de 4) em ~{minAte4:0.#} min e sem dano (razao 1) em ~{minAte1:0.#} min");
 
 		// M9. O CONTRA-EXEMPLO: o morto de pe volta a nao sentir o chao (o `!dead || KeepsBody` do DM)
@@ -518,5 +659,251 @@ public sealed partial class GameServer
 
 		AjustarPeso(pl, pesos, "0");
 		pl.Mochila.Tirar(pesos);
+	}
+
+	// =====================================================================
+	// X) OS DEGRAUS DA GRAVIDADE (o pedido 143)
+	// =====================================================================
+	/// <summary>
+	/// *"caso o personagem esteja em uma gravidade 3 vezes acima do cap dele, tome um dano MUITO alto ao ponto de quase morrer na hora uns 5
+	/// segundos ate desmaiar, passou de 5x é insta KO e se ficar la mais tempo morre. permita gravidade matar majin tb"* -- e, perguntado,
+	/// "uma hora morre", "5s", "Todas essas tambem" e "Uma vez so". Pela porta de producao (o `TickDoEsmagamento` de 1 Hz), o vivo na Terra
+	/// dominando 10x e o chao puxando a gravidade escolhida -- os numeros das reguas sao os do pedido, nao os do Core:
+	///   X1  a 3x (30 contra 10) o corpo fica de pe quatro segundos e cai no quinto, quase morto (abaixo de 20% de vida);
+	///   X2  ...e, caido la, morre (em ate 3 segundos), lendo que foi a gravidade;
+	///   X3  logo abaixo de 3x (29) cinco segundos nao derrubam ninguem -- o degrau e a 3x;
+	///   X4  acima de 5x (60 contra 10) o nocaute e no primeiro segundo, e o corpo caido morre no quinto (vivo no quarto);
+	///   X5  a 5x exata (50) o primeiro segundo nao nocauteia -- e o "passou de 5x";
+	///   X6  a gravidade MATA o Majin (que se desfazia) e o Yardrat (que entrava em coma);
+	///   X7  contra-exemplo: `GravidadePoupaQuemRegeneraDeTeste` -- o Majin se desfaz, o Yardrat fica em coma e ninguem morre;
+	///   X8  a maestria sobe 3x mais devagar: o passe do `GravGain` e o soco do `AttackGain` rendem a conta do DM dividida por 3;
+	///   X9  o login poda a maestria acima de 50x pra 50x UMA vez (o save de antes), e quem nasce agora ja vem podado.
+	/// </summary>
+	private void OsDegrausDaGravidadeGm(ServerPlayer pl)
+	{
+		GD.Print("[gravmeta] -- X) os degraus da gravidade (o pedido 143): a 3x o desmaio no quinto segundo, acima de 5x o nocaute na hora e a morte no "
+				 + "quinto, a gravidade mata quem regenera, a maestria 3x mais lenta e a poda de 50x no login --");
+		Fighter f = pl.Ficha;
+		string racaGuardada = pl.Race, racaDaFichaGuardada = f.Race;
+		var regenGuardado = pl.Combate.Corpo.Regen;
+
+		// O VIVO DE PE NA TERRA, inteiro e sem briga, dominando 10x, com o chao puxando `gravidade` -- a razao e gravidade/10. A raca dada
+		// troca o corpo inteiro (o nome e o eixo da cura, como o `PrepararCombate` monta); sem raca, o corpo da bancada.
+		void Por(double gravidade, string raca = "")
+		{
+			PalcoGm(pl, 50_000);
+			pl.Race = raca.Length > 0 ? raca : racaGuardada;
+			f.Race = raca.Length > 0 ? raca : racaDaFichaGuardada;
+			pl.Combate.Corpo.Regen = raca.Length > 0 ? EixoDeRegen(raca, f) : regenGuardado;
+			pl.Combate.Curar();
+			f.Planetgrav = gravidade;
+			f.gravmult = 0;
+			f.GravMastered = 10;
+			f.stamina = f.maxstamina;
+			f.Statify();
+			f.PowerLevel(agoraMs: NowMs());
+			f.WeightTick();
+			_avisoDeEsmagamento.Remove(pl.Id);
+		}
+		// N SEGUNDOS DE PRODUCAO: o estado do corpo depois de cada um, e tudo o que ele ouviu. A VIDA QUE CONTA e a do NUCLEO (a pior entre
+		// a cabeca, o torso e o abdomen -- a barra VIDA do HUD, o pedido 127): o `HP` da ficha e a media do corpo inteiro, e os aninhados so
+		// levam o repique, entao ele cai mais devagar que o nucleo que derruba (a r2 mediu 46 no quinto segundo, com o nucleo a 15).
+		(List<(bool Ko, bool Morto, double Hp, double Nucleo)> Passos, List<string> Disse) Segundos(int n)
+		{
+			var passos = new List<(bool Ko, bool Morto, double Hp, double Nucleo)>();
+			var disse = new List<string>();
+			for (int i = 0; i < n; i++)
+			{
+				disse.AddRange(Ouvir(TickDoEsmagamento));
+				double nucleo = Jandirus.Core.Combat.Body.VidaQueDerruba(
+					pl.Combate.Corpo.Partes.Select(p => (p.Nome, p.Vida, p.Decepado))) ?? -1;
+				passos.Add((f.KO, f.dead, f.HP, nucleo));
+			}
+			return (passos, disse);
+		}
+		static string Linha(List<(bool Ko, bool Morto, double Hp, double Nucleo)> passos) =>
+			string.Join(" ", passos.Select((p, i) => $"{i + 1}s:{(p.Morto ? "MORTO" : p.Ko ? "KO" : "pe")}/{p.Hp:0}|{p.Nucleo:0}"));
+		static bool Disse(List<string> falas, string trecho) => falas.Any(s => s.Contains(trecho, StringComparison.OrdinalIgnoreCase));
+
+		try
+		{
+			// ---- X1/X2) a 3x a maestria: de pe ate o quarto segundo, no chao no quinto, quase morto -- e caido la, morre
+			Por(30);
+			AfirmarGm("(montagem) o vivo de pe na Terra, dominando 10x, num chao de 30x (a razao 3) e sem nada que o blinde",
+					  !f.dead && !f.KO && f.GravMastered == 10 && f.Planetgrav + f.gravmult == 30 && pl.Combate is { Blindado: false } && EsmagadoAgora(pl),
+					  $"morto {f.dead}; KO {f.KO}; maestria {f.GravMastered}; chao {f.Planetgrav + f.gravmult}; esmagado {EsmagadoAgora(pl)}");
+			var tres = Segundos(8);
+			bool dePeAteOQuarto = tres.Passos.Take(4).All(p => !p.Ko && !p.Morto);
+			var q5 = tres.Passos[4];
+			bool caiNoQuinto = q5.Ko && !q5.Morto && q5.Nucleo < 20 && q5.Nucleo > 0;
+			AfirmarGm("X1. **A 3x A MAESTRIA, O DANO MUITO ALTO: DE PE QUATRO SEGUNDOS E NO CHAO NO QUINTO, QUASE MORTO** (*\"tome um dano MUITO alto ao ponto "
+					  + "de quase morrer na hora uns 5 segundos ate desmaiar\"*): 30x de chao contra 10x dominada -- a barra VIDA (o nucleo) abaixo de 20%",
+					  dePeAteOQuarto && caiNoQuinto, "vida|nucleo " + Linha(tres.Passos));
+			int caiu = tres.Passos.FindIndex(p => p.Ko), morreu = tres.Passos.FindIndex(p => p.Morto);
+			AfirmarGm("X2. **...E CAIDO LA, MORRE** (*\"se cair em qualquer multiplicador e continuar levando dano sem sair da gravidade a tempo, uma hora "
+					  + "morre\"*): em ate 3 segundos depois de cair, lendo que foi a gravidade",
+					  caiu >= 0 && morreu > caiu && morreu - caiu <= 3 && f.dead && Disse(tres.Disse, "a gravidade vence o que restava do seu corpo"),
+					  $"{Linha(tres.Passos)}; disse \"{string.Join(" | ", tres.Disse.TakeLast(3))}\"");
+
+			// ---- X3) logo abaixo de 3x: cinco segundos nao derrubam
+			Por(29);
+			var quase = Segundos(5);
+			AfirmarGm("X3. **O DEGRAU E A 3x**: logo abaixo (29x contra 10x) cinco segundos de esmagamento nao derrubam ninguem -- o dano e o de sempre, pequeno",
+					  quase.Passos.All(p => !p.Ko && !p.Morto) && quase.Passos[^1].Hp > 80, Linha(quase.Passos));
+
+			// ---- X4) acima de 5x: o nocaute no primeiro segundo, vivo no quarto, morto no quinto
+			Por(60);
+			var seis = Segundos(6);
+			AfirmarGm("X4. **ACIMA DE 5x O NOCAUTE E NA HORA E O CORPO CAIDO MORRE NO QUINTO SEGUNDO** (*\"passou de 5x é insta KO e se ficar la mais tempo "
+					  + "morre\"*, \"5s\"): 60x de chao contra 10x dominada -- no chao no primeiro segundo, vivo no quarto, morto no quinto",
+					  seis.Passos[0].Ko && !seis.Passos[0].Morto && !seis.Passos[3].Morto && seis.Passos[4].Morto && Disse(seis.Disse, "a gravidade vence o que restava"),
+					  Linha(seis.Passos));
+
+			// ---- X5) a 5x exata: o primeiro segundo nao nocauteia
+			Por(50);
+			var cinco = Segundos(1);
+			AfirmarGm("X5. **E \"PASSOU DE 5x\"**: a 5x exata (50x contra 10x) o primeiro segundo machuca e nao nocauteia",
+					  !cinco.Passos[0].Ko && !cinco.Passos[0].Morto && cinco.Passos[0].Hp < 100, Linha(cinco.Passos));
+
+			// ---- X6) a gravidade mata quem regenera: o Majin e o Yardrat
+			Por(60, "Majin");
+			bool ehMajin = CorpoDeMajin(pl);
+			var majin = Segundos(6);
+			bool majinMorreu = f.dead, majinDesfeito = pl.Combate.Desfeito;
+			Por(60, "Yardrat");
+			bool yardratRegenera = pl.Combate.Corpo.RegeneraDecepado;
+			var yardrat = Segundos(6);
+			bool yardratMorreu = f.dead;
+			AfirmarGm("X6. **A GRAVIDADE MATA O MAJIN E QUEM ENTRAVA EM COMA** (*\"permita gravidade matar majin tb\"*, \"Todas essas tambem\"): acima de 5x o "
+					  + "Majin morre em vez de se desfazer, e o Yardrat (que refaz membro) morre em vez de cair em coma",
+					  ehMajin && majinMorreu && !majinDesfeito && yardratRegenera && yardratMorreu,
+					  $"Majin (corpo de Majin {ehMajin}): {Linha(majin.Passos)}, desfeito {majinDesfeito}; Yardrat (regenera {yardratRegenera}): {Linha(yardrat.Passos)}");
+
+			// ---- X7) o contra-exemplo: a gravidade volta a poupar quem regenera
+			GravidadePoupaQuemRegeneraDeTeste = true;
+			try
+			{
+				Por(60, "Majin");
+				var majinPoupado = Segundos(6);
+				bool desfez = pl.Combate.Desfeito, morreuPoupado = f.dead;
+				Por(60, "Yardrat");
+				var yardratPoupado = Segundos(6);
+				AfirmarGm("X7. (defeito injetado: a gravidade que poupa quem regenera, o jogo de antes) o Majin se desfaz, o Yardrat fica em coma e ninguem "
+						  + "morre -- a regua X6 REPROVA",
+						  desfez && !morreuPoupado && !f.dead && f.KO,
+						  $"Majin: {Linha(majinPoupado.Passos)}, desfeito {desfez}; Yardrat: {Linha(yardratPoupado.Passos)}");
+			}
+			finally { GravidadePoupaQuemRegeneraDeTeste = false; }
+
+			// ---- X8) a maestria 3x mais lenta: o passe de ficha (10x de chao) e o soco (4x de chao, o limite do treino), contra a conta do DM / 3
+			PalcoGm(pl);
+			pl.Race = racaGuardada;
+			f.Race = racaDaFichaGuardada;
+			pl.Combate.Corpo.Regen = regenGuardado;
+			f.Planetgrav = 10;
+			f.GravMastered = 1;
+			f.GravGain();
+			double passe = f.GravMastered - 1;
+			double passeDoDm = 0.001 + GainKnobs.BPTickDoDm * 10 * 10 * f.GravMod * GainKnobs.GlobalGravGain * 0.02;
+			f.Planetgrav = 4;
+			f.GravMastered = 1;
+			f.AttackGain(new Random(5));
+			double soco = f.GravMastered - 1;
+			double socoDoDm = 0.00001 * 4 * f.GravMod * GainKnobs.GlobalGravGain;
+			AfirmarGm("X8. **A MAESTRIA SOBE 3x MAIS DEVAGAR** (*\"triplique o tempo da maestria\"*): o passe de ficha num chao de 10x e o soco num de 4x "
+					  + "rendem a conta do DM dividida por 3",
+					  passe > 0 && soco > 0 && Math.Abs(passe * 3 / passeDoDm - 1) < 1e-9 && Math.Abs(soco * 3 / socoDoDm - 1) < 1e-9,
+					  $"passe +{passe:0.########} (DM {passeDoDm:0.########}, razao {passeDoDm / Math.Max(passe, 1e-300):0.###}); soco +{soco:0.##########} "
+					  + $"(DM {socoDoDm:0.##########}, razao {socoDoDm / Math.Max(soco, 1e-300):0.###})");
+
+			// ---- X9) a poda no login, pelo caminho do disco (o `DeJogador` serializado e lido de volta num corpo novo, como o login faz)
+			PalcoGm(pl);
+			var opcoes = new System.Text.Json.JsonSerializerOptions { IncludeFields = true };
+			(double Maestria, bool Podada) Relogar(double maestria, bool jaPodada)
+			{
+				CharacterSave lido = System.Text.Json.JsonSerializer.Deserialize<CharacterSave>(
+					System.Text.Json.JsonSerializer.Serialize(AccountStore.DeJogador(pl, NowMs()), opcoes), opcoes)!;
+				lido.Ficha.GravMastered = maestria;
+				lido.Ficha.MaestriaPodada = jaPodada;
+				var novo = new ServerPlayer();
+				AccountStore.ParaJogador(lido, novo);
+				return (novo.Ficha.GravMastered, novo.Ficha.MaestriaPodada);
+			}
+			var de80 = Relogar(80, jaPodada: false);
+			var jaPodado = Relogar(80, jaPodada: true);
+			var de30 = Relogar(30, jaPodada: false);
+			Fighter novato = Nascer(new Jandirus.Core.Races.CharacterDraft { Name = "Novato", Race = "Human", Planet = "Earth", Gender = "Male", Age = 18 }, "Novato");
+			AfirmarGm("X9. **QUEM TINHA MAIS DE 50x VOLTA PRA 50x, UMA VEZ** (*\"faça com quem tem mais de 50x gravidade masterizada, volte pra 50x\"*, \"Uma vez "
+					  + "so\"): o save de antes com 80x loga com 50x e marcado; o que ja foi podado (e subiu de novo a 80x) fica com 80x; 30x fica 30x, marcado; "
+					  + "e quem nasce agora ja vem marcado",
+					  de80.Maestria == 50 && de80.Podada && jaPodado.Maestria == 80 && de30.Maestria == 30 && de30.Podada && novato.MaestriaPodada,
+					  $"80x -> {de80.Maestria}x (marcado {de80.Podada}); ja podado 80x -> {jaPodado.Maestria}x; 30x -> {de30.Maestria}x (marcado {de30.Podada}); "
+					  + $"novato marcado {novato.MaestriaPodada}");
+		}
+		finally
+		{
+			GravidadePoupaQuemRegeneraDeTeste = false;
+			pl.Race = racaGuardada;
+			f.Race = racaDaFichaGuardada;
+			pl.Combate.Corpo.Regen = regenGuardado;
+			PalcoGm(pl);
+			_avisoDeEsmagamento.Remove(pl.Id);
+		}
+	}
+
+	// =====================================================================
+	// Y) O TETO DA MAESTRIA (o pedido 146)
+	// =====================================================================
+	/// <summary>
+	/// *"Faça o limite de maestria q alguem pode ter na gravidade ser 300x, mas mantenha o cap de gravidade em si em 500x, assim sempre q for
+	/// usar 500x o cara vai sofrer dano"*. Os numeros sao os do pedido, escritos aqui (a regua que lesse a constante aprovaria o mutante):
+	///   Y1  num chao de 500x, de 299,9999x, cinco passes de ficha (`GravGain`) param a maestria em 300x;
+	///   Y2  ...e cinquenta socos (`AttackGain`) tambem;
+	///   Y3  a maquina de gravidade continua indo a 500x (o teto da acao "Ajustar gravidade");
+	///   Y4  a 500x, dominando o teto (300x), um segundo de esmagamento tira vida -- de pe, abaixo dos degraus do pedido 143 -- com o aviso.
+	/// </summary>
+	private void OTetoDaMaestriaGm(ServerPlayer pl)
+	{
+		GD.Print("[gravmeta] -- Y) o teto da maestria (o pedido 146): ela para em 300x, a maquina vai a 500x, e a 500x sempre se toma dano --");
+		PalcoGm(pl, 50_000);
+		Fighter f = pl.Ficha;
+		try
+		{
+			f.Planetgrav = 500;
+			f.gravmult = 0;
+			f.GravMastered = 299.9999;
+			for (int i = 0; i < 5; i++) f.GravGain();
+			double peloPasse = f.GravMastered;
+			f.GravMastered = 299.9999;
+			var soco = new Random(7);
+			for (int i = 0; i < 50; i++) f.AttackGain(soco);
+			double peloSoco = f.GravMastered;
+			AfirmarGm("Y1. **A MAESTRIA PARA EM 300x** (*\"Faça o limite de maestria q alguem pode ter na gravidade ser 300x\"*): num chao de 500x, de "
+					  + "299,9999x, cinco passes de ficha (`GravGain`) param em 300x",
+					  Math.Abs(peloPasse - 300) < 1e-9, $"{peloPasse:0.######}x");
+			AfirmarGm("Y2. ...e cinquenta socos (`AttackGain`) tambem param em 300x", Math.Abs(peloSoco - 300) < 1e-9, $"{peloSoco:0.######}x");
+			AfirmarGm("Y3. **A MAQUINA CONTINUA EM 500x** (*\"mantenha o cap de gravidade em si em 500x\"*): o teto da acao \"Ajustar gravidade\"",
+					  Jandirus.Core.Tech.Interacoes.TetoDeGravidade == 500, $"{Jandirus.Core.Tech.Interacoes.TetoDeGravidade}x");
+
+			pl.Combate.Curar();
+			f.Planetgrav = 500;
+			f.GravMastered = 300;
+			f.stamina = f.maxstamina;
+			f.Statify();
+			f.PowerLevel(agoraMs: NowMs());
+			f.WeightTick();
+			_avisoDeEsmagamento.Remove(pl.Id);
+			double vidaAntes = f.HP;
+			List<string> disse = Ouvir(TickDoEsmagamento);
+			AfirmarGm("Y4. **E A 500x SEMPRE SE TOMA DANO** (*\"assim sempre q for usar 500x o cara vai sofrer dano\"*): dominando o teto (300x), um "
+					  + "segundo de esmagamento num chao de 500x tira vida -- de pe -- e o aviso diz que e a gravidade",
+					  EsmagadoAgora(pl) && f.HP < vidaAntes && !f.KO && disse.Any(s => s.Contains("seu corpo range sob a gravidade")),
+					  $"vida {vidaAntes:0.###} -> {f.HP:0.###}; KO {f.KO}; disse \"{string.Join(" | ", disse)}\"");
+		}
+		finally
+		{
+			PalcoGm(pl);
+			_avisoDeEsmagamento.Remove(pl.Id);
+		}
 	}
 }

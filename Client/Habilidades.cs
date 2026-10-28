@@ -294,6 +294,7 @@ public static class Habilidades
 		DoNeoTuffle();
 		DasRaciais();
 		DoEnsinoDeSkill();
+		DasLinguas();   // (2026-10-27) o pedido 118
 		DoEstudoDaMente();
 		HabilidadesDoDeus.Registrar();
 		HabilidadesDoJuiz.Registrar();   // (2026-10-19) a travessia do King Yemma -- ver `HabilidadesDoJuiz.cs`
@@ -594,6 +595,12 @@ public static class Habilidades
 			"Entra no corpo do jogador nocauteado mais perto e o dirige com o poder dele -- o mundo vê o dono do corpo, de cabelo "
 			+ "branco-acinzentado, e ele só assiste. Quando o corpo cair, você é expulso e volta pro seu.",
 			() => GameClient.Instance?.SendHabilidade("tuffle_possuir")) { Chave = "hab:tuffle_possuir" });
+		// (2026-10-28, o pedido 144) ...e o de sair dele quando quiser: a linha `hab:tuffle_sair` da tabela o mostra so pra quem esta dentro.
+		Verbos.Registrar(new Verbo(
+			"Sair do corpo",
+			Verbos.Outros,
+			"Sai do corpo que você possui e volta pro seu, um passo ao lado. O dono do corpo fica caído onde estava.",
+			() => GameClient.Instance?.SendHabilidade("tuffle_sair")) { Chave = "hab:tuffle_sair" });
 	}
 
 	/// <summary>
@@ -743,6 +750,32 @@ public static class Habilidades
 	/// cliente sabe pelo catalogo, e o botao recusaria pra todo mundo.
 	/// ===============================================================================================================
 	/// </summary>
+	/// <summary>
+	/// (2026-10-27) O ENSINO DE LINGUA (o pedido 118): ensinar a sua lingua nativa a quem esta colado na sua frente, e o "sim" e o "nao" de
+	/// quem recebe a oferta. +10% na hora e 2x mais rapido pra sempre, uma vez por lingua. Ver `GameServer.Linguas.cs`.
+	/// </summary>
+	public static void DasLinguas()
+	{
+		Verbos.Registrar(new Verbo(
+			"Ensinar a sua língua",
+			Verbos.Aprendizado,
+			"Oferece a sua língua nativa a quem está colado na sua frente: se aceitar, ele ganha 10% de maestria na hora e passa a "
+			+ "aprendê-la 2x mais rápido, para sempre. Uma vez por língua.",
+			() => GameClient.Instance?.SendHabilidade("lingua_ensinar")) { Chave = "hab:lingua_ensinar" });
+
+		Verbos.Registrar(new Verbo(
+			"Aceitar a língua ensinada",
+			Verbos.Aprendizado,
+			"Aceita a língua que alguém está te ensinando agora.",
+			() => GameClient.Instance?.SendHabilidade("lingua_aceitar")) { Chave = "hab:lingua_aceitar" });
+
+		Verbos.Registrar(new Verbo(
+			"Recusar a língua ensinada",
+			Verbos.Aprendizado,
+			"Recusa a língua oferecida.",
+			() => GameClient.Instance?.SendHabilidade("lingua_recusar")) { Chave = "hab:lingua_recusar" });
+	}
+
 	public static void DoEnsinoDeSkill()
 	{
 		SkillCatalog? cat = MenuJogo.CatalogoPublico();

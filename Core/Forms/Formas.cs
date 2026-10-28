@@ -1483,15 +1483,9 @@ public enum FolhaColada
 	/// </summary>
 	DeusAzul,
 
-	/// <summary>
-	/// (2026-10-23) `Electric_Majin.dmi` -- as faiscas do Majin, o `/obj/overlay/effects/MajinEffect` (`Majin.dm:20-23`) que o buff
-	/// `Majin` do DM cola no corpo (`:40`). Quem a veste aqui e o Super Majin (o visual que o dono escolheu: o corpo de sempre, a aura
-	/// rosa e estas faiscas). Folha de UMA animacao, 40 quadros de 32x32 com o desenho em 8 deles (a faisca estala e some, no ritmo do
-	/// original), e JA COLORIDA -- carmesim e branco (`ff0033`, `cc0033`, `ffffff`): nao se tinge.
-	///
-	/// NO FIM DO ENUM: os valores anteriores nao mudam de numero.
-	/// </summary>
-	FaiscaMajin,
+	// (2026-10-28, o pedido 145) A `FaiscaMajin` (a folha `Electric_Majin`, colada no Super Majin desde 2026-10-23) SAIU: o dono, *"o super
+	// majin n ta usando as faiscas de shaders e sim de sprite, troque elas pf pra faiscas vermelhas de shaders"* -- o Super Majin acende os
+	// raios de shader (`FormaDef.Raios`), vermelhos (`Catalogo.CorDosRaios`). Era a ultima do enum: os valores de cima nao mudam de numero.
 }
 
 /// <summary>
@@ -1846,10 +1840,8 @@ public static class Catalogo
 		// `DeBuff()` (`:407`). O proprio DM a chama de *"a aura colada no corpo"*.
 		LinhaDeForma.DeusDaDestruicao => [new(FolhaColada.Ameacadora, Ranks.KitDoDeus.RoxoDaFury)],
 
-		// (2026-10-23) O SUPER MAJIN -- as faiscas do `Electric_Majin`, sem tinta (a folha ja e carmesim). E a metade "com faiscas" do
-		// visual que o dono escolheu ("corpo de sempre + aura rosa"); a aura rosa e a chama dele (`FormaDef.Aura`).
-		LinhaDeForma.SuperMajin => [new(FolhaColada.FaiscaMajin)],
-
+		// (2026-10-28, o pedido 145) O SUPER MAJIN NAO COLA MAIS NADA: as faiscas dele viraram os raios de SHADER, vermelhos (o `Raios`
+		// da entrada e a `CorDosRaios`) -- *"troque elas pf pra faiscas vermelhas de shaders"*. Cai no `_` de baixo.
 		_ => [],
 	};
 
@@ -2782,6 +2774,11 @@ public static class Catalogo
 		// FICA NO REALCE (`ffffff`) E NAO NO TOM DOMINANTE (`c4c4c4`) pelo que esta escrito acima: o
 		// cinza do arquivo e que daria o risco cinza.
 		LinhaDeForma.Mistico => BrancoDaFaiscaMistica,
+
+		// (2026-10-28, o pedido 145) O SUPER MAJIN TEM FAISCA VERMELHA, a do Limit Breaker: *"troque elas pf pra faiscas vermelhas de
+		// shaders (igual o do ssj4 fp)"* -- e o unico vermelho de shader do jogo. Fora daqui ele cairia no `_ => d.Aura`, e a faisca sairia
+		// ROSA dentro da chama rosa dele (o verde-sobre-verde do `primal_legendary2`, ver `AzulDaFaisca`).
+		LinhaDeForma.SuperMajin => VermelhoDoLimitBreaker,
 
 		_ => d.Aura,
 	};
@@ -5452,10 +5449,13 @@ public static class Catalogo
 		// Majin nao sorteia limiar nenhum, entao vale o de fabrica) e o mesmo dreno. O que o dono pos por cima mora em `SuperMajin`: a
 		// maestria dez vezes mais lenta e o TETO pelo BP base (6x no nivel do SSJ1, 10x no do SSJ2, 100% = 16x no do SSJ3). Sem raiva (a
 		// linha cai no `_` do `DespertaPelaRaiva`), sem marco de ganho (nao ha proc do DM pra citar), sem corpo nem cabelo proprio (o visual
-		// escolhido e o corpo de sempre); a aura e rosa e as faiscas sao a colada do `Electric_Majin` (`Coladas`). Intensidade 3 -- a do
-		// SSJ3, onde ela termina: ESCOLHA MINHA, como a cena (o surto curto das formas sem proc no DM, `Cinematicas.SuperMajin`).
+		// escolhido e o corpo de sempre); a aura e rosa. Intensidade 3 -- a do SSJ3, onde ela termina: ESCOLHA MINHA, como a cena (o surto
+		// curto das formas sem proc no DM, `Cinematicas.SuperMajin`).
+		// (2026-10-28, o pedido 145) AS FAISCAS SAO OS RAIOS DE SHADER, VERMELHOS, e nao mais a colada do `Electric_Majin`: *"troque elas pf
+		// pra faiscas vermelhas de shaders (igual o do ssj4 fp)"*. Raios = 2, o cheio do Limit Breaker -- o unico vermelho de shader do jogo
+		// (a cor e a `CorDosRaios`).
 		new() { Id = SuperMajin.Id, IdRede = SuperMajin.IdRede, Linha = LinhaDeForma.SuperMajin, Ordem = 10,
-				Nome = "Super Majin", NumeroDm = -1, Intensidade = 3,
+				Nome = "Super Majin", NumeroDm = -1, Intensidade = 3, Raios = 2,
 				Mult = SuperMajin.Mult, Limiares = SuperMajin.Limiares, Dreno = SuperMajin.Dreno,
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat",
 				Aura = SuperMajin.AuraRosa,

@@ -425,7 +425,7 @@ public partial class GameServer
 	internal bool OHakaiPega(ServerPlayer deus, ServerPlayer alvo)
 	{
 		if (!EhDeusDaDestruicao(deus) || SemHakai(deus)) return false;                                 // `:183`
-		if (alvo == deus || alvo.Ficha.dead || alvo.Combate is not { Intocavel: false } c) return false;   // `:184`
+		if (alvo == deus || alvo.Ficha.dead || alvo.Combate is not { } c || c.IntocavelPara(deus.Combate)) return false;   // `:184` (2026-10-27: `IntocavelPara`, o pedido 129)
 		if (HakaiSemCriterioDeTeste) return true;
 
 		if (c.Corpo.Achar("Torso") is not { Decepado: false } torso) return false;                     // `:186-189`

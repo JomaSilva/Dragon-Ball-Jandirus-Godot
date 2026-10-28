@@ -186,6 +186,7 @@ public sealed partial class GameServer
 			AMorteEASaidaCara(a, kami, lookout, sala);
 			OClimaDaSalaFica();
 			OGuardiaoEASuaChave(a, kami, lookout);
+			ASalaFechadaNoComecoDoMundo(a, b, lookout, sala);   // (2026-10-27) o pedido 112
 		}
 		catch (Exception e) { AfirmarSala($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -895,10 +896,14 @@ public sealed partial class GameServer
 					!Esmagamento.Prende(f) && PodeMexerOCorpo(b));
 
 		// --- o teto de dano DISPARA ---
-		f.Planetgrav = 10_000;
-		AfirmarSala($"o teto de dano dispara de verdade ({Esmagamento.DanoTeto}/s, `GRAVCRUSH_DMG_CAP`)",
+		// (2026-10-28, o pedido 143) PELO PESO: a gravidade a 3x a maestria passou pros degraus do dono (o dano muito alto, a
+		// `--gravmetateste` familia X), entao o teto do DM so se alcanca pela razao do peso -- 100x o limite do corpo num chao de 1x.
+		f.Planetgrav = 10;
+		f.weight_ratio = 100;
+		AfirmarSala($"o teto de dano dispara de verdade ({Esmagamento.DanoTeto}/s, `GRAVCRUSH_DMG_CAP`) -- pelo peso",
 					Math.Abs(Esmagamento.DanoPorSegundo(f) - Esmagamento.DanoTeto) < 1e-9,
 					$"{Esmagamento.DanoPorSegundo(f):0.###}");
+		f.weight_ratio = 0;
 
 		// --- 4x: PRESO NO CHAO, e o funil de movimento obedece ---
 		f.Planetgrav = 40;
@@ -1020,8 +1025,11 @@ public sealed partial class GameServer
 			AfirmarSala("...e nao sai de novo enquanto nada muda", EscutaDeAtributos.Count == 1,
 						$"{EscutaDeAtributos.Count} pacote(s)");
 
-			// ENTRAR NA SALA: gravidade 10 e ritmo 280 -> 2800x, e o numero TEM que sair.
+			// ENTRAR NA SALA: gravidade 10 e ritmo 280 -> 2800x, e o numero TEM que sair. (2026-10-27) COM 2,5 DE MAESTRIA: acima de 4x a
+			// maestria nao se treina (o pedido 117, `Fighter.GravidadeDemaisPraTreinar`), e 10x contra 2,5 e o limite -- o fator de gravidade
+			// do ganho nao depende da maestria, entao o numero e o mesmo.
 			f.Planetgrav = 10;
+			f.GravMastered = 2.5;
 			f.zoneGainMult = GainKnobs.TimeChamberMult;
 			f.Statify();
 			f.WeightTick();
@@ -1570,6 +1578,148 @@ public sealed partial class GameServer
 		a.Zone = lookout;
 		ZoneList(lookout.Hash).Add(a);
 		AplicarGravidade(a);
+	}
+
+	// =====================================================================
+	// (2026-10-27) A SALA FECHADA NO COMECO DO MUNDO -- o pedido 112 do dono
+	// =====================================================================
+	/// <summary>
+	/// *"sala do tempo deveria ter q esperar 2 dias da vida real pra poder entrar pela primeira vez, ou somente quando um player batesse 20m
+	/// bp"* -- "o que vier primeiro". Pela porta de producao (`sala_entrar`), com a chave e sem recarga, e o nascimento do mundo escrito pela
+	/// bancada (o `_nascimentoDoMundo`, que mora no `universo.json`), com a familia pedindo a regra neste processo de bancada:
+	///   F1  o mundo nascido agora e ninguem com 20M: a porta recusa, diz quanto falta (2 dias) e a outra saida -- e a chave nao se gasta;
+	///   F2  1 dia e 23 h depois ainda recusa, e falta 1 h (as beiradas sao horas de relogio, como na recarga);
+	///   F3  2 dias e um minuto depois a porta aceita;
+	///   F4  com 19.999.999 de BP base o passe de 5 Hz (`Treinar`) nao abre nada; com 20 milhoes ele abre a Sala, anuncia, e a porta aceita
+	///       OUTRO corpo;
+	///   F5  a abertura vai pro `universo.json` (o reinicio a le de volta, com o nascimento intacto) e a limpeza a apaga: o mundo novo nasce
+	///       fechado;
+	///   F6  a regra da porta (`sala_regras`) diz a regra e o estado deste mundo.
+	/// O disco e o de uma pasta temporaria (`PalcoDeApagamentosDeBancada`): nada chega ao `universo.json` do mundo local.
+	/// </summary>
+	private void ASalaFechadaNoComecoDoMundo(ServerPlayer a, ServerPlayer b, ZoneKey lookout, ZoneKey sala)
+	{
+		GD.Print("[sala] -- (2026-10-27) A SALA FECHADA NO COMECO DO MUNDO: 2 dias reais ou 20M de BP base, o que vier primeiro --");
+		long nascimentoGuardado = _nascimentoDoMundo;
+		string abertaGuardada = _salaAbertaPor;
+		ulong sementeGuardada = _semente;
+		bool noDiscoGuardado = _sementeNoDisco;
+		double bpGuardado = b.Ficha.BP;
+		const long UmaHora = 3_600_000, UmDia = 24 * UmaHora;
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+		SalaFechadaNaBancadaDeTeste = true;
+
+		// EM FRENTE A PORTA, com a chave e sem recarga -- o molde da `ARecargaDuraUmDiaReal`
+		void NaPorta(ServerPlayer p)
+		{
+			_naSala.Clear();
+			ZoneList(p.Zone.Hash).Remove(p);
+			p.Zone = lookout;
+			ZoneList(lookout.Hash).Add(p);
+			p.Pos = new Vec2(124 * ZoneCollision.TileSize + 16, 81 * ZoneCollision.TileSize + 16);
+			p.SalaAutorizada = true;
+			p.SalaPreso = false;
+			p.SalaUltimaEntrada = 0;
+			p.SalaDiasDaSessao = 0;
+			p.SalaJanelaAte = 0;
+			p.Ficha.dead = p.Ficha.KO = false;
+			p.Voando = false;
+			EscutaDeAvisos?.Clear();
+		}
+
+		try
+		{
+			// ---- F1) o mundo nascido agora
+			_salaAbertaPor = "";
+			_nascimentoDoMundo = NowMs();
+			NaPorta(a);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			string f1 = UltimoAviso();
+			AfirmarSala("F1. NUM MUNDO NASCIDO AGORA A PORTA RECUSA: a Sala esta fechada, faltam 2 dias e a outra saida e alguem chegar a 20M de BP base",
+						a.Zone.Hash == lookout.Hash && f1.Contains("ainda está fechada neste mundo") && f1.Contains("2d00h")
+						&& f1.Contains("20 milhões de BP base"), $"{a.Zone.Name} / {f1}");
+			AfirmarSala("...e a chave do Guardiao NAO se gasta numa porta que ainda nao abriu", a.SalaAutorizada);
+
+			// ---- F2) 1 dia e 23 h depois (com 2 s de folga, pelo motivo da `ARecargaDuraUmDiaReal`)
+			_nascimentoDoMundo = NowMs() - (2 * UmDia - UmaHora - 2_000);
+			NaPorta(a);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("F2. 1 dia e 23 h depois a porta AINDA recusa, e falta UMA HORA (o prazo e de 2 dias)",
+						a.Zone.Hash == lookout.Hash && UltimoAviso().Contains("0d01h00m"), UltimoAviso());
+
+			// ---- F3) 2 dias e um minuto depois
+			_nascimentoDoMundo = NowMs() - (2 * UmDia + 60_000);
+			NaPorta(a);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("F3. PASSADOS OS 2 DIAS REAIS A PORTA ACEITA", a.Zone.Hash == sala.Hash, $"{a.Zone.Name} / {UltimoAviso()}");
+
+			// ---- F4) o poder: 19.999.999 nao abre; 20 milhoes abrem, com o anuncio, e a porta aceita outro corpo
+			_nascimentoDoMundo = NowMs();
+			_salaAbertaPor = "";
+			EscutaDasSagas = [];
+			b.Ficha.BP = BpQueAbreASala - 1;
+			Treinar(b);   // o passe de 5 Hz de producao
+			bool fechadaAbaixo = _salaAbertaPor.Length == 0;
+			b.Ficha.BP = BpQueAbreASala;
+			Treinar(b);
+			List<string> anuncios = [.. EscutaDasSagas];
+			EscutaDasSagas = null;
+			NaPorta(a);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("F4. UMA PESSOA COM 20 MILHOES DE BP BASE ABRE A SALA PRA TODO MUNDO: com 19.999.999 o passe de 5 Hz nao abre; com 20M "
+						+ "abre, anuncia o nome, e a porta aceita OUTRO corpo no mundo nascido agora",
+						fechadaAbaixo && _salaAbertaPor == b.Name && a.Zone.Hash == sala.Hash
+						&& anuncios.Any(s => s.Contains(b.Name) && s.Contains("a Sala do Tempo está aberta")),
+						$"abaixo fechada {fechadaAbaixo}; aberta por '{_salaAbertaPor}'; a em {a.Zone.Name}; disse \"{string.Join(" | ", anuncios)}\"");
+
+			// ---- F5) o disco: o reinicio le de volta, e a limpeza apaga
+			long nascido = _nascimentoDoMundo;
+			string quem = _salaAbertaPor;
+			_salaAbertaPor = "";
+			_nascimentoDoMundo = 0;
+			CarregarSemente();
+			bool voltou = _salaAbertaPor == quem && _nascimentoDoMundo == nascido;
+			ZerarSemente();
+			bool limpou = _salaAbertaPor.Length == 0 && !SalaDoTempoAberta(NowMs());
+			AfirmarSala("F5. A ABERTURA VAI PRO `universo.json`: o reinicio a le de volta, com o nascimento do mundo intacto -- e a limpeza a apaga, "
+						+ "o mundo novo nasce fechado",
+						voltou && limpou, $"voltou {voltou} ('{_salaAbertaPor}', nascido {_nascimentoDoMundo} contra {nascido}); limpou {limpou}");
+
+			// ---- F6) a regra da porta
+			_semente = sementeGuardada;
+			_sementeNoDisco = noDiscoGuardado;
+			_nascimentoDoMundo = NowMs();
+			_salaAbertaPor = "";
+			NaPorta(a);
+			ComandoDaSalaDoTempo(a, "sala_regras", "");
+			bool regraFechada = EscutaDeAvisos?.Any(s => s.Contains("ainda está fechada neste mundo")) == true;
+			_nascimentoDoMundo = NowMs() - (2 * UmDia + 60_000);
+			EscutaDeAvisos?.Clear();
+			ComandoDaSalaDoTempo(a, "sala_regras", "");
+			bool regraAberta = EscutaDeAvisos?.Any(s => s.Contains("fica fechada nos 2 primeiros dias reais") && s.Contains("já abriu")) == true;
+			AfirmarSala("F6. A REGRA DA PORTA diz a regra nova e o estado deste mundo (fechada, com quanto falta; ou ja aberta)",
+						regraFechada && regraAberta, $"fechada {regraFechada}, aberta {regraAberta}");
+		}
+		finally
+		{
+			SalaFechadaNaBancadaDeTeste = false;
+			EscutaDasSagas = null;
+			_nascimentoDoMundo = nascimentoGuardado;
+			_salaAbertaPor = abertaGuardada;
+			_semente = sementeGuardada;
+			_sementeNoDisco = noDiscoGuardado;
+			b.Ficha.BP = bpGuardado;
+			_naSala.Clear();
+			RecolherComidaDaSala();
+			a.SalaUltimaEntrada = 0;
+			a.SalaDiasDaSessao = 0;
+			a.SalaJanelaAte = 0;
+			a.SalaAutorizada = false;
+			ZoneList(a.Zone.Hash).Remove(a);
+			a.Zone = lookout;
+			ZoneList(lookout.Hash).Add(a);
+			AplicarGravidade(a);
+		}
 	}
 
 	// =====================================================================

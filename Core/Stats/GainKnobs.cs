@@ -141,8 +141,32 @@ public static class GainKnobs
 	public static Random SorteioDoBanco = new();
 
 
-	/// <summary>Teto absoluto de maestria de gravidade.</summary>
+	/// <summary>
+	/// O TOPO DA CURVA DA ACLIMATACAO (`StatCurves.GravFelt`: a razao maestria/chao para aqui, e e aqui que o bonus chega a +25%) -- 500x,
+	/// o mesmo teto da maquina de gravidade (`Interacoes.TetoDeGravidade`). Ate o pedido 146 era tambem o teto da MAESTRIA; hoje esse e o
+	/// <see cref="MaestriaMaximaDaGravidade"/>.
+	/// </summary>
 	public static double GravityCap = 500;
+
+	/// <summary>
+	/// (2026-10-28, o pedido 146) O TETO DA MAESTRIA DE GRAVIDADE: 300x. O dono: *"Faça o limite de maestria q alguem pode ter na gravidade ser
+	/// 300x, mas mantenha o cap de gravidade em si em 500x, assim sempre q for usar 500x o cara vai sofrer dano"*. O treino (`Fighter.GravGain`
+	/// e `Fighter.AttackGain`) nao passa daqui; a maquina continua ate 500x, e a 500x a razao fica em 500/300 -- esmaga sempre (a conta do
+	/// DM, ~0,2 por segundo, abaixo dos degraus do pedido 143). O nativo de um mundo mais pesado (`Birth.AclimatarAoBerco`) nao e treino.
+	/// </summary>
+	public const double MaestriaMaximaDaGravidade = 300;
+
+	/// <summary>
+	/// (2026-10-28, o pedido 143) A MAESTRIA DE GRAVIDADE 3x MAIS LENTA: *"triplique o tempo da maestria"*. Divide o que cada passe de
+	/// ficha (`Fighter.GravGain`) e cada golpe (`Fighter.AttackGain`) somam na maestria.
+	/// </summary>
+	public const double LentidaoDaMaestria = 3;
+
+	/// <summary>
+	/// (2026-10-28, o pedido 143) A PODA DE UMA VEZ: quem tinha mais que isto de maestria (subida no ritmo de antes) volta pra isto no
+	/// proximo login, uma vez so -- ver `Fighter.PodarAMaestria`. Depois a maestria volta a subir, no ritmo novo.
+	/// </summary>
+	public const double MaestriaDaPoda = 50;
 
 	/// <summary>
 	/// O BONUS MAXIMO DA ACLIMATACAO, em fracao do BP base: +25% (dono, 2026-10-23: *"o buff de bp do aclimado deveria ser no maximo 25%
@@ -172,6 +196,14 @@ public static class GainKnobs
 	/// que a razao 20 treinava como a 4 (8x). Lido por `Fighter.PesoDemaisPraTreinar`. Falso em jogo, sempre.
 	/// </summary>
 	public static bool PesoDemaisTreinaDeTeste;
+
+	/// <summary>
+	/// (2026-10-27) GRAVIDADE DEMAIS PRA TREINAR: com a gravidade que o corpo sente (`Esmagamento.Gravidade`) ACIMA disto vezes a maestria
+	/// (`Fighter.GravMastered`), o treino nao rende nada -- a regra do peso (<see cref="RazaoQueImpedeOTreino"/>) pedida pra gravidade. O dono:
+	/// *"faça com q a gravidade assim como o peso, se ela for mt acima da sua maestria (4x) vc n consegue nem treinar nela"*. E a mesma razao
+	/// em que o corpo fica preso no chao (`Esmagamento.RazaoQuePrende`). NAO EXISTE NO DM. Ver `Fighter.GravidadeDemaisPraTreinar`.
+	/// </summary>
+	public static double RazaoDaGravidadeQueImpedeOTreino = 4;
 
 	/// <summary>
 	/// `WEIGHT_ITEM_CAP_MULT = 2`: quanto peso o corpo aceita VESTIR, em multiplos do proprio limite
@@ -254,6 +286,27 @@ public static class GainKnobs
 
 	/// <summary>A JANELA DA TROCA: o outro jogador te atacou (soco ou ki, acertando, errando ou sendo bloqueado) ha no maximo isto.</summary>
 	public static double SegundosDaTroca = 10;
+
+	// --- lutar de verdade rende mais que o spar relaxado (dono, 2026-10-28, o pedido 148) ---------------
+	/// <summary>
+	/// O GOLPE DA TROCA COM A BARRA NO PISO -- e RELAXADO, que e o piso -- rende esta fracao do golpe com o poder inteiro (no meio, uma reta
+	/// pela barra: `PoderEmUso.FatorDaTroca`). O dono: *"o treino em relaxed deveria ser nerfado bastante, pra dar mais bp q o afk no t mas
+	/// beeem menos q o pvp full power"*. Escolha minha, a confirmar: um quarto (o spar relaxado de hoje rende umas seis vezes o T parado).
+	/// </summary>
+	public static double TrocaNoPiso = 0.25;
+
+	/// <summary>
+	/// A RESERVA DA LUTA -- o *"bp invisivel"* do dono: cada segundo de troca QUENTE guarda isto, em golpes de NPC (`AttackGain(1)`), com o
+	/// poder inteiro e o knockback ligado (a barra o desce em reta; relaxado ou sem knockback, nada), e a troca seguinte o paga. Sem troca na
+	/// janela (<see cref="SegundosDaTroca"/>) o que sobrou se perde. Escolha minha, a confirmar -- ver `GameServer.Ganhos.cs`.
+	/// </summary>
+	public static double ReservaPorSegundo = 3.5;
+
+	/// <summary>
+	/// A LUTA ESTA QUENTE enquanto houve golpe entre jogadores (dado ou levado, soco ou ki, acertando ou nao) ha no maximo isto: so ai a
+	/// reserva enche. Sem esta trava, dois jogadores trocando um soco a cada 9 s encheriam a reserva quase inteira.
+	/// </summary>
+	public static double SegundosDeLutaQuente = 3;
 
 	/// <summary>DEFEITO INJETADO (bancada `--ganhoteste`): socar o ar volta a render como um soco, a regra de antes. Falso em jogo, sempre.</summary>
 	public static bool SocoNoArRendeDeTeste;

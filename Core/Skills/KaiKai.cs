@@ -8,6 +8,9 @@ namespace Jandirus.Core.Skills;
 ///   * clicar leva NA HORA (sem concentracao, como o Kai Kai do DM), com o clarao e o som do Instant Transmission na saida e na
 ///     chegada, vistos por quem esta perto;
 ///   * continua cobrando o Ki CHEIO (Ki -> 0) e levando quem esta colado (a carona de 1,5 tile de sempre).
+/// (2026-10-27, o pedido 135) O KI CHEIO CAIU: o dono, *"tira o consumo absurdo do kaikai, faça ele no maximo usar 10% do ki inicial de um
+/// kaio, ou seja, bem pouco"* -- o salto custa <see cref="Custo"/> (10% do Ki com que um Kai nasce, um numero fixo e pequeno pra todo
+/// mundo) e nao pede mais o tanque cheio. Vigor o Kai Kai nunca gastou.
 /// Quem monta a lista e decide e o servidor (`Server/GameServer.KaiKai.cs`); o cliente so desenha (`Client/TelaDoKaiKai.cs`).
 ///
 /// OS DOIS ATRASOS DO CLARAO (decisao minha): o clarao do IT e o efeito de desviar um golpe, e ele e desenhado NO CORPO de quem
@@ -37,6 +40,16 @@ public static class KaiKai
 
 	/// <summary>...e desiste depois disto, devolvendo a palavra ao jogador (o Ki nunca foi cobrado: so se paga quando se salta).</summary>
 	public const long TetoDaEsperaMs = 30_000;
+
+	/// <summary>(2026-10-27, o pedido 135) Que parte do Ki com que um Kai NASCE o salto custa -- o "no maximo 10%" do dono.</summary>
+	public const double FracaoDoKiDeUmKai = 0.10;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 135) O PRECO DO SALTO, em Ki: <see cref="FracaoDoKiDeUmKai"/> do Ki maximo de um Kai recem-nascido (quem chama
+	/// passa esse numero -- o servidor o tira do funil de nascimento de producao), arredondado, e nunca menos de 1. Fixo e igual pra todo
+	/// mundo: quem tem um tanque grande paga o mesmo pouco.
+	/// </summary>
+	public static double Custo(double kiDeUmKaiRecemNascido) => Math.Max(1, Math.Round(kiDeUmKaiRecemNascido * FracaoDoKiDeUmKai));
 
 	/// <summary>
 	/// O NOME DE SEMPRE DE UM DESTINO DO MAPA, como o jogador le (quando ninguem o batizou). A Terra e a "Terra" (o

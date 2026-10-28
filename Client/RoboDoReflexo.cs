@@ -22,7 +22,7 @@ namespace Jandirus.Client;
 /// ============================ O QUE CADA CENA COBRA, E COM QUE OLHO ============================
 ///   0. O CONTROLE. Depois do login (dezenas de `PeerLook` de NPC) e de uma troca de roupa, nenhum
 ///      pacote de aparencia foi mal lido -- a regua nao reprova pacote bem escrito.
-///   1. O REFLEXO DA MENTE, erguido pelo `EntrarNaMente` de producao.
+///   1. O REFLEXO DA MENTE, erguido pela escolha da lista (o pedido 124c) depois da porta de producao.
 ///   2. A COPIA DO SPLITFORM, erguida pelo verb `SplitForm` de producao.
 ///   3. O CONTRA-EXEMPLO: com o segundo escritor de volta, a regua da cena 1 TEM que reprovar.
 ///
@@ -206,7 +206,7 @@ public partial class RoboDoReflexo : Node2D
 		if (!await EntrarNaMente(eu)) return;
 
 		int id = S!.ReflexoNoTeste(eu);
-		Afirmar("(preparo) a mente ergueu um reflexo (`EntrarNaMente` -> `CriarClone`, pelo pacote do jogador)", id != 0);
+		Afirmar("(preparo) a lista ergueu o reflexo (`ChamarOponenteDaMente` -> `CriarClone`, pelo pacote do botao)", id != 0);
 		if (id != 0)
 			await JulgarOCorpoErguido(eu, id, malAntes, "o reflexo", $"{C!.LocalName} (mente)", "reflexo-1-a-mente",
 									  // O reflexo LUTA, e um corpo colado no outro suja a medida de pixel dos
@@ -403,15 +403,26 @@ public partial class RoboDoReflexo : Node2D
 
 		// A ONDA VEM ANTES DA VIAGEM (`DimensaoMental.MsDaOnda`), entao a espera cobre as duas.
 		bool dentro = await EsperarAte(() => S!.NaMenteNoTeste(eu), 8.0);
-		if (!dentro) Afirmar("(preparo) o corpo chegou na mente (meditar + mergulhar)", false,
-							 "o servidor nao pos o corpo na mente em 8 s");
-		return dentro;
+		if (!dentro)
+		{
+			Afirmar("(preparo) o corpo chegou na mente (meditar + mergulhar)", false, "o servidor nao pos o corpo na mente em 8 s");
+			return false;
+		}
+
+		// (2026-10-27, o pedido 124c) O REFLEXO NAO NASCE MAIS NA PORTA: a lista abre, e ele e escolhido nela -- pelo pacote do botao
+		// "Enfrentar" da `TelaDaMente`, o mesmo canal de habilidade.
+		C.SendHabilidade(Jandirus.Core.Npc.MenteOponentes.Pedido(Jandirus.Core.Npc.MenteOponentes.Tipo.Reflexo, ""));
+		bool escolhido = await EsperarAte(() => S!.ReflexoNoTeste(eu) != 0, 4.0);
+		if (!escolhido) Afirmar("(preparo) o reflexo nasceu pela escolha da lista", false, "o servidor nao ergueu o reflexo em 4 s");
+		return escolhido;
 	}
 
 	private async Task SairDaMente(int eu)
 	{
 		if (S!.NaMenteNoTeste(eu))
 		{
+			// (2026-10-27, o pedido 124c) com a lembranca de pe nao se acorda: ela se desfaz antes, pelo caminho de quando chega um visitante
+			S.DesfazerOReflexoNoTeste(eu);
 			C!.SendHabilidade("sairdamente");
 			await EsperarAte(() => !S.NaMenteNoTeste(eu), 5.0);
 		}

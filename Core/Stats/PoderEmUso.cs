@@ -49,7 +49,8 @@ public enum EstadoDoPoder
 ///
 /// O QUE NENHUM DOS DOIS MUDA: a regeneracao e o dreno de Ki, o ganho de treino por tique (`Egains`,
 /// `base.dm:160`) e as portas de transformacao (que leem o BP BASE). O que os dois mudam alem do poder e o VIGOR:
-/// <see cref="FatorDeDescanso"/>.
+/// <see cref="FatorDeDescanso"/>. (2026-10-28) E o ganho da LUTA ENTRE JOGADORES: <see cref="FatorDaTroca"/> e
+/// <see cref="ReservaPorSegundo"/> (o pedido 148).
 ///
 /// ============================ DUAS FRASES DO ORIGINAL QUE O CODIGO DELE NAO CUMPRE ============================
 /// A caixa do `Power_Control` (`:178`) promete duas coisas: *"You can only use this to set your power lower
@@ -210,6 +211,33 @@ public static class PoderEmUso
 		if (Relaxado(f)) return DescansoRelaxado;
 		double contido = (Cheio - Math.Clamp(f.powerMod, Piso, Cheio)) / (Cheio - Piso);   // 0 = poder inteiro, 1 = no piso
 		return 1 + (DescansoNoPiso - 1) * contido;
+	}
+
+	// =====================================================================
+	// O TREINO DE LUTA -- regra do dono (2026-10-28, o pedido 148)
+	// =====================================================================
+
+	/// <summary>
+	/// QUANTO UM GOLPE NA TROCA ENTRE JOGADORES RENDE PELA BARRA DE QUEM GANHA. O dono: *"quanto menor o % de poder liberado menor os ganhos e
+	/// menos bp no tick, mas isso n conta o efetivo, apenas a % de bp liberado pelo power control"*. Uma reta pela barra, como a do descanso:
+	/// 1x com o poder inteiro, <see cref="GainKnobs.TrocaNoPiso"/> a 1%. Relaxado e o piso -- o corpo soltou o poder inteiro.
+	/// </summary>
+	public static double FatorDaTroca(Fighter f)
+	{
+		if (Relaxado(f)) return GainKnobs.TrocaNoPiso;
+		double solto = (Math.Clamp(f.powerMod, Piso, Cheio) - Piso) / (Cheio - Piso);   // 1 = poder inteiro, 0 = no piso
+		return GainKnobs.TrocaNoPiso + (1 - GainKnobs.TrocaNoPiso) * solto;
+	}
+
+	/// <summary>
+	/// QUANTO DA RESERVA DA LUTA UM SEGUNDO DE TROCA QUENTE GUARDA (o *"bp invisivel"* do dono): <see cref="GainKnobs.ReservaPorSegundo"/> vezes
+	/// a barra -- e NADA relaxado ou com os proprios golpes sem arremessar (*"enquanto o relaxed sem KB o bp por tick n aconteceria"*). A chave
+	/// do knockback e do servidor (`ServerPlayer.Knockback`), por isso vem de fora.
+	/// </summary>
+	public static double ReservaPorSegundo(Fighter f, bool knockback)
+	{
+		if (Relaxado(f) || !knockback) return 0;
+		return GainKnobs.ReservaPorSegundo * Math.Clamp(f.powerMod, Piso, Cheio);
 	}
 
 	/// <summary>A raiva a partir da qual nao se relaxa: `((MaxAnger-100)/1.66)+100` (`:91`).</summary>

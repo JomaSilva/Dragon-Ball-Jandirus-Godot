@@ -369,6 +369,9 @@ public partial class RoboDeVerbs : Node
 			("androide de absorção", Gente("Android", "Normal", terra, Fatos.AndroideDeAbsorcao)),
 			// (2026-10-18) O NEO TUFFLE: o Tsufurujin que passou pela maquina ve o "Possuir um nocauteado" (`Fatos.NeoTuffle`).
 			("Neo Tuffle", Gente("Tsujin", "Normal", terra, Fatos.NeoTuffle)),
+			// (2026-10-28) ...e DENTRO DE OUTRO CORPO ve o "Sair do corpo" (`Fatos.DentroDeOutroCorpo`, o pedido 144): com a raca do hospede, e sem o
+			// `Fatos.NeoTuffle` (a ficha e a dele -- e o "Possuir" some).
+			("Neo Tuffle dentro de outro corpo", Gente("Saiyan", "Elite", terra, Fatos.DentroDeOutroCorpo)),
 			("humano no espaço", Gente("Human", "Normal", Lugar.Espaco)),
 			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki, arma de fogo, um amor)",
 				Gente("Human", "Normal", terra, ofertas | Fatos.TemMestre | Fatos.TemAluno | Fatos.DirigeUmaFusao | Fatos.TemCopias | Fatos.GodKiDesperto

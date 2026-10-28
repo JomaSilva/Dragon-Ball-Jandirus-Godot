@@ -35,11 +35,8 @@ public static class ColadasDeForma
 	/// <summary>`god blue.tres` -- `sgkoverlay` (`AuraObject.dm:16`). Ja azul.</summary>
 	public const string FolhaDeusAzul = Pasta + "god blue.tres";
 
-	/// <summary>
-	/// (2026-10-23) `Electric_Majin.tres` -- as faiscas do Super Majin (o `MajinEffect` do DM, `Majin.dm:20-23`). Ja carmesim. Ver
-	/// <see cref="Jandirus.Core.Forms.FolhaColada.FaiscaMajin"/>.
-	/// </summary>
-	public const string FolhaFaiscaMajin = Pasta + "Electric_Majin.tres";
+	// (2026-10-28, o pedido 145) a `Electric_Majin.tres` (as faiscas de sprite do Super Majin) saiu daqui junto com a `FolhaColada.FaiscaMajin`:
+	// o Super Majin acende os raios de shader, vermelhos (`RaiosDaForma`). A arte continua no disco, sem ninguem que a vista.
 
 	/// <inheritdoc cref="ColadasDeForma"/>
 	public static string CaminhoDa(Jandirus.Core.Forms.FolhaColada f) => f switch
@@ -47,7 +44,6 @@ public static class ColadasDeForma
 		Jandirus.Core.Forms.FolhaColada.PoderLendario => FolhaPoderLendario,
 		Jandirus.Core.Forms.FolhaColada.Ameacadora => FolhaAmeacadora,
 		Jandirus.Core.Forms.FolhaColada.DeusAzul => FolhaDeusAzul,
-		Jandirus.Core.Forms.FolhaColada.FaiscaMajin => FolhaFaiscaMajin,
 		_ => FolhaDeus,
 	};
 

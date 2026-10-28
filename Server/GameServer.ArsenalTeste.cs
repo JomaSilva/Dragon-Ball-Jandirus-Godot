@@ -101,6 +101,7 @@ public partial class GameServer
 			AsDuasBarragens();
 			OsDoisCercos();
 			APernaTrancada();
+			NenhumRaioMultiplicaOBp();   // (2026-10-27) os pedidos 114 e 115 do dono
 		}
 		finally
 		{
@@ -280,6 +281,79 @@ public partial class GameServer
 				   masenko.ModsAgora() < 0.5, $"{masenko.ModsAgora():0.###}");
 		AfirmarArs("...e o Makankosappo chega MAIS FORTE (o avesso, e e a unica diferenca entre eles)",
 				   makan.ModsAgora() > 3, $"{makan.ModsAgora():0.###}");
+
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 7) NENHUM RAIO MULTIPLICA O BP, E O FINAL FLASH ENCOLHEU (o dono, 2026-10-27)
+	// =====================================================================
+	/// <summary>
+	/// OS RAIOS DE PRODUCAO, com a skill que da cada um (ou o degrau, os dois do G5 que vem de nivel). Escritos aqui pelo mesmo motivo
+	/// do <see cref="PorDegrauG5"/>: sao o FATO que a familia 7 afirma.
+	/// </summary>
+	private static readonly (string Verbo, string? Path)[] RaiosDeProducao =
+	[
+		("Ki_Wave", "/datum/skill/ki/Ki_Wave"), ("Masenko", null), ("Makkankosappo", "/datum/skill/rank/Makkankosappo"),
+		("Massive_Beam", null), ("Final_Flash", "/datum/skill/rank/FinalFlash"), ("Kamehameha", "/datum/skill/rank/Kamehameha"),
+		("GalicGun", "/datum/skill/rank/GalicGun"), ("Death_Beam", "/datum/skill/rank/Death_Beam"), ("Dodompa", "/datum/skill/rank/Dodompa"),
+		("Enkumei", "/datum/skill/Enkumei"), ("Boom_Wave", "/datum/skill/ki/Boom_Wave"),
+	];
+
+	/// <summary>
+	/// O pedido 115: *"N permita nenhum beam aumentar o bp do usuario"*; o 114: o Final Flash *"deveria ser 4x maior q um beam normal"* e
+	/// *"so ter uma potencia alta e nao multiplicar bp"* (a potencia, o dono escolheu: 3x no DANO, que e raiz de 3 no `powmod` -- o dano vai
+	/// pelo quadrado da potencia). Pelo caminho de producao
+	/// -- o verbo abre o canal e a cabeca nasce pelo `NascerORaio` --, com o `beamskill` no topo, onde o Enkumei tinha o `wavemult` 2:
+	///   7a  cada raio de producao nasce com o BP de quem atira (o `Bp` do tiro e o `expressedBP`, e o `MultDeOnda` e 1);
+	///   7b  o Final Flash tem o tronco QUATRO vezes o do Ki Wave, e 7b2 a potencia o `powmod` do DM vezes raiz de 3 (5,72 no ultimo degrau);
+	///   7c  o Massive Beam e o Enkumei do topo continuam o dobro de grossos (o `wavemult` 2 ficou so no desenho).
+	/// </summary>
+	private void NenhumRaioMultiplicaOBp()
+	{
+		GD.Print("[arsenal] -- 7) NENHUM RAIO MULTIPLICA O BP (o pedido 115) E O FINAL FLASH ENCOLHEU (o 114)");
+		Vec2 chao = CorredorLivre(40);
+		ServerPlayer pl = ForjarComSkills("Raiador", chao, 50_000,
+										  skills: [.. RaiosDeProducao.Where(r => r.Path != null).Select(r => r.Path!)],
+										  degraus: [.. PorDegrauG5.Select(t => (t.Path, t.Nivel))], kiMin: 5_000_000);
+		pl.Facing = Facing.East;
+		pl.Ficha.beamskill = 150;
+
+		var nascidos = new Dictionary<string, Projetil>();
+		foreach ((string verbo, _) in RaiosDeProducao)
+		{
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			UsarHabilidade(pl, verbo);
+			if (!_canais.TryGetValue(pl.Id, out CanalDeKi? c))
+			{
+				AfirmarArs($"7a. {verbo} nasce com o BP de quem atira", false, "o canal nao abriu");
+				continue;
+			}
+			double bp = pl.Ficha.expressedBP;
+			NascerORaio(pl, c);
+			Projetil? raio = c.Raio;
+			UsarHabilidade(pl, verbo);   // apertar de novo apaga o raio da mao
+			AfirmarArs($"7a. {verbo} nasce com o BP de quem atira (o `wavemult` nao multiplica mais nada)",
+					   raio != null && raio.MultDeOnda == 1 && Math.Abs(raio.Bp - bp) <= 1e-9 * Math.Max(bp, 1),
+					   raio == null ? "o raio nao nasceu" : $"BP do tiro {raio.Bp:0.###} | de quem atira {bp:0.###} | MultDeOnda {raio.MultDeOnda}");
+			if (raio != null) nascidos[verbo] = raio;
+		}
+
+		if (nascidos.TryGetValue("Final_Flash", out Projetil? ff) && nascidos.TryGetValue("Ki_Wave", out Projetil? onda))
+		{
+			float troncoFf = Feixe.MeiaEspessuraDoTronco(ff), troncoOnda = Feixe.MeiaEspessuraDoTronco(onda);
+			AfirmarArs("7b. o Final Flash tem o tronco QUATRO vezes o do Ki Wave (era 21,6 vezes: a folha de 64 px vezes o `wavemult` 4)",
+					   troncoOnda > 0 && Math.Abs(troncoFf - 4 * troncoOnda) < 1e-3, $"Final Flash {troncoFf:0.##} px | Ki Wave {troncoOnda:0.##} px");
+			AfirmarArs("7b2. ...e a potencia e o `powmod` do DM vezes RAIZ DE 3 (3,3 no ultimo degrau = 5,72): o dano, que vai pelo QUADRADO da "
+					   + "potencia, e 3x o do DM -- os 3/4 do BP 4x de antes",
+					   Math.Abs(ff.BaseDano - Math.Sqrt(3) * 3.3) < 1e-9, $"BaseDano {ff.BaseDano:0.###}");
+		}
+		else AfirmarArs("7b. o Final Flash e o Ki Wave nasceram pra comparar o tronco", false);
+
+		foreach (string grosso in new[] { "Massive_Beam", "Enkumei" })
+			AfirmarArs($"7c. {grosso} continua o dobro de grosso (o `wavemult` 2 ficou so no desenho)",
+					   nascidos.TryGetValue(grosso, out Projetil? r) && Math.Abs(r.EscalaVisual - 2) < 1e-9,
+					   nascidos.TryGetValue(grosso, out Projetil? r2) ? $"escala {r2.EscalaVisual}" : "nao nasceu");
 
 		LimparTudoDaBancada();
 	}

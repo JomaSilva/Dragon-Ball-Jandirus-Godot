@@ -67,6 +67,14 @@ public sealed partial class GameServer
 			LimparTudoDaBancada();
 			MqDaGeometria();
 			MqDoCampo(terra, px, py);
+			// (2026-10-27) os pedidos 139 e 140, num chao limpo: as obras e as paredes das familias de cima saem -- e a COLISAO com elas (a
+			// maquina da familia 4 e densa: tirada so da lista, a celula dela seguia barrando) --, e os campos caem
+			if (_noChao.Count > obrasAntes) _noChao.RemoveRange(obrasAntes, _noChao.Count - obrasAntes);
+			ZerarBases();
+			AplicarColisaoDasObras(terra);
+			LimparTudoDaBancada();
+			LerOsCampos();
+			MqDoTanqueNoCampo(px, py);
 		}
 		finally
 		{
@@ -771,5 +779,75 @@ public sealed partial class GameServer
 		AfirmarMq("comprada a ESTABILIZACAO (uma vez so), ela tambem sai do menu: sobram forca, bateria, a trava de seguranca e nanites",
 				  g.Estavel && MelhoriasNoMenu(maq).SequenceEqual(["upgrades/forca", "upgrades/bateria", "upgrades/trava", "upgrades/nanites"]),
 				  string.Join(",", MelhoriasNoMenu(maq)));
+	}
+
+	// =====================================================================
+	// 5) (2026-10-27) O TANQUE NO CAMPO EXPLODE; O TANQUE E O SACO SE RECOLHEM (os pedidos 139 e 140)
+	// =====================================================================
+	/// <summary>
+	/// 139: com a maquina de gravidade LIGADA, o regenerador que o campo dela alcanca explode (sai do mundo, com o aviso); o de longe fica, e
+	/// com a maquina desligada o do lado tambem fica (os contra-exemplos). 140: o menu da tecla E do regenerador e do saco (e da maquina de
+	/// socos, que divide a linha) oferece o "Pegar", e o pegar pelo menu recolhe cada um pra mochila -- o tanque com as melhorias na gaveta.
+	/// </summary>
+	private void MqDoTanqueNoCampo(int px, int py)
+	{
+		GD.Print("[maquinas] -- 5) (os pedidos 139 e 140) o regenerador no campo de gravidade explode; o tanque e o saco se recolhem --");
+		const int T = ZoneCollision.TileSize;
+		Vec2 No(int cx, int cy) => new(cx * T + T / 2f, cy * T + T / 2f - MoveRules.FeetOffsetY);
+		(int mx, int my) = (px + 2, py + 2);
+		ServerPlayer dono = Forjar("mq: o dono do tanque no campo", No(mx, my + 1), 1_000);
+		dono.Conta = "bancada_tanque_campo";
+		var recusas = new List<string>();
+		Obra? Assentar(string tipo, int cx, int cy)
+		{
+			dono.Pos = No(cx, cy + 1);   // o alcance de assentar e de quem assenta
+			Obra? posta = null;
+			List<string> ouviu = Ouvir(() => posta = AssentarDeTeste(dono, tipo, cx, cy));
+			if (posta == null) recusas.Add($"{tipo} em ({cx},{cy}): {string.Join(" | ", ouviu)}");
+			return posta;
+		}
+
+		// ---- 139: a maquina (alcance 4: o liquido chega a dois tiles), um tanque ao lado e um a cinco tiles
+		Obra? maq = Assentar("Gravity", mx, my);
+		Obra? aoLado = Assentar(Regenerador.Tipo, mx + 1, my);
+		Obra? longe = Assentar(Regenerador.Tipo, mx + 5, my);
+		AfirmarMq("(montagem, 5) a maquina e os dois tanques assentaram pelo funil de producao", maq != null && aoLado != null && longe != null,
+				  string.Join(" || ", recusas));
+		if (maq == null || aoLado == null || longe == null) return;
+		dono.Pos = No(mx, my + 1);
+		ComandoDeInteracao(dono, "grav_info", "");   // o estado nasce no primeiro uso
+		GravidadeDaObra g = maq.Gravidade!;
+		g.Range = 4;
+
+		LerOsCampos();
+		AfirmarMq("(o pedido 139) com a maquina DESLIGADA o tanque ao lado dela fica (o contra-exemplo do campo)",
+				  _noChao.Contains(aoLado) && _noChao.Contains(longe));
+
+		g.Grav = 10;
+		g.Cheias = null;
+		List<string> falas = Ouvir(LerOsCampos);
+		AfirmarMq("(o pedido 139) **O REGENERADOR DENTRO DO CAMPO DE GRAVIDADE EXPLODE**: com a maquina ligada (10x), o tanque ao lado dela sai do "
+				  + "mundo, com o aviso a vista -- e o de cinco tiles, fora do campo, fica",
+				  !_noChao.Contains(aoLado) && _noChao.Contains(longe) && Disse(falas, "EXPLODE"),
+				  $"ao lado {_noChao.Contains(aoLado)}; longe {_noChao.Contains(longe)} | {string.Join(" | ", falas)}");
+		g.Grav = 0;
+		LerOsCampos();
+
+		// ---- 140: o "Pegar" no menu do tanque e do saco, e o pegar pelo menu recolhe cada um (o tanque com a melhoria na gaveta)
+		AfirmarMq("(o pedido 140) **O MENU DA TECLA E OFERECE O \"PEGAR\"** no regenerador, no saco de pancada e na maquina de socos",
+				  Interacoes.Aceita(Regenerador.Tipo, "pegar") && Interacoes.Aceita("Punching_Bag", "pegar") && Interacoes.Aceita("Punching_Machine", "pegar"),
+				  string.Join(",", Interacoes.De(Regenerador.Tipo).Select(a => a.Verbo)) + " | " + string.Join(",", Interacoes.De("Punching_Bag").Select(a => a.Verbo)));
+
+		longe.Regenerador = new RegeneradorDaObra { Eficiencia = 3 };   // uma melhoria, pra a gaveta ter o que levar
+		dono.Pos = No(mx + 5, my + 1);
+		ComandoDeInteracao(dono, "pegar", "");
+		bool tanqueNaMochila = dono.Mochila.Pilhas.Any(p => Jandirus.Core.Items.MaquinaGuardada.Tipo(p.Id) == Regenerador.Tipo && Jandirus.Core.Items.MaquinaGuardada.Eh(p.Id));
+		Obra? saco = Assentar("Punching_Bag", mx + 3, my + 3);
+		dono.Pos = No(mx + 3, my + 4);
+		ComandoDeInteracao(dono, "pegar", "");
+		AfirmarMq("(o pedido 140) ...e o pegar pelo menu RECOLHE os dois: o tanque vai pra mochila com a melhoria na gaveta, e o saco tambem",
+				  !_noChao.Contains(longe) && tanqueNaMochila && saco != null && !_noChao.Contains(saco) && dono.Mochila.Quantos("Punching_Bag") == 1,
+				  $"tanque no chao {_noChao.Contains(longe)}, na mochila {tanqueNaMochila}; saco no chao {saco != null && _noChao.Contains(saco)}, "
+				  + $"na mochila {dono.Mochila.Quantos("Punching_Bag")} | {string.Join(" || ", recusas)}");
 	}
 }

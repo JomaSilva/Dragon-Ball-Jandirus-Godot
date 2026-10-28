@@ -227,7 +227,8 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// O CELL DO TORNEIO NASCEU (no dia, num reinicio, ou de volta do alem): chamado pelo `NascerChefeDaSaga` quando a marca `NoTorneio`
-	/// esta acesa. Na arena da Terra. Voltando do alem (Super Perfeito), o torneio acaba e a marca apaga: a luta e livre.
+	/// esta acesa. Na arena da Terra. Voltando do alem (Super Perfeito), o torneio acaba e a marca apaga: a luta e livre. (2026-10-28) E a
+	/// volta e pela Transmissao, ao lado de quem o matou na luta (`ChegarAoLadoDoMatador`); sem ele a alcance, no meio da arena.
 	/// </summary>
 	private bool AbrirOTorneioDoCell(EloDaSaga elo, EstadoDoChefe ec, ServerPlayer cell, bool ressurgindo, bool retomando)
 	{
@@ -241,7 +242,8 @@ public sealed partial class GameServer
 		{
 			EncerrarOTorneioDoCell();
 			ec.NoTorneio = false;
-			Transportar(cell, zona, arena.Centro);
+			// (2026-10-28) ao lado de quem o matou, pela Transmissao (o pedido 147); sem o matador a alcance, no meio da arena, como antes
+			if (!ChegarAoLadoDoMatador(cell, ec, zona)) Transportar(cell, zona, arena.Centro);
 			frase = TorneioDoCell.VoltaSuperPerfeito(cell.Name);
 		}
 		else
@@ -554,7 +556,7 @@ public sealed partial class GameServer
 	/// <summary>
 	/// 4. NOCAUTEADO NO X1, O CELL "MORRE NA LUTA" -- o dono: *"o jogo vai falar q ele foi morto na luta e volta super perfeito"*. A morte e a
 	/// da saga (`MorreuOChefe`): morto na Perfeita (o `ressurgeNoDegrau`), ele volta Super Perfeito em 1 min -- e a abertura dele, com a marca
-	/// `NoTorneio` ainda acesa, o poe na arena e encerra o torneio (`AbrirOTorneioDoCell`).
+	/// `NoTorneio` ainda acesa, o poe na arena e encerra o torneio (`AbrirOTorneioDoCell`). (2026-10-28) A volta e ao lado de quem o matou.
 	/// </summary>
 	private void CellMortoNaLuta(TorneioDoCellVivo t, ServerPlayer cell, ServerPlayer d)
 	{

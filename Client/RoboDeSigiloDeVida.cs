@@ -253,8 +253,10 @@ public partial class RoboDeSigiloDeVida : Node
 			// numa leitura pontual no fim.
 			if (_relogio > 3)
 			{
+				// (2026-10-27, o pedido 127) a barra e a PIOR parte vital, e nao mais a media: a regua faz a mesma conta, pelo corpo que chegou
+				double naBarra = (Body.VidaQueDerruba(cli.Corpo.Select(p => (p.Nome, (double)p.Vida, p.Decepado))) ?? hp) / 100.0;
 				if (Hud.Instancia is { } h)
-					_hudSeguiuSempre &= Math.Abs(h.BarraDeVida.Valor - hp / 100.0) <= 0.02;
+					_hudSeguiuSempre &= Math.Abs(h.BarraDeVida.Valor - naBarra) <= 0.02;
 				else _hudSeguiuSempre = false;
 			}
 		}
@@ -356,7 +358,7 @@ public partial class RoboDeSigiloDeVida : Node
 			   + "sem isto, a briga que o olhador mede do outro lado nao teria acontecido");
 
 		Conferir(_hudSeguiuSempre,
-				 "a BARRA DE VIDA DA HUD (que e a minha, e ficou) seguiu a ficha em TODO quadro da rodada");
+				 "a BARRA DE VIDA DA HUD (que e a minha, e ficou) seguiu o meu corpo (a pior parte vital) em TODO quadro da rodada");
 
 		Conferir(_pacotesDeCorpo > 0 && cli.Corpo.Count >= 10,
 				 $"o corpo POR MEMBRO tambem chega, e so pra mim ({cli.Corpo.Count} membros em "

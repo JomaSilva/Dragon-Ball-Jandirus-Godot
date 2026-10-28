@@ -437,13 +437,15 @@ public sealed partial class GameServer
 		ServerPlayer colado = Forjar("Colado", chao + new Vec2(ZoneCollision.TileSize, 0), bp: 1_000);
 		ServerPlayer longe = Forjar("Longe", chao + new Vec2(6 * ZoneCollision.TileSize, 0), bp: 1_000);
 
-		kai.Ficha.Ki = kai.Ficha.MaxKi / 2;
+		// (o pedido 135) o Kai Kai cobra um PRECO fixo e pequeno (`CustoDoKaiKai`, 10% do Ki de um Kai recem-nascido): nao pede mais
+		// o Ki cheio nem zera o tanque. Abaixo do preco ele recusa dizendo o preco -- ver a `--kaikaiteste` (2h/2a/2b/5a).
+		kai.Ficha.Ki = CustoDoKaiKai / 2;
 		List<string> falas = ApertarEOuvir(kai, "Kai_Kai:Namek");
-		AfirmarG11("com Ki pela metade o Kai Kai recusa ('Ki cheio') e ninguem sai do lugar",
-				   Disse(falas, "Ki cheio") && kai.Zone.Name == "Earth" && colado.Zone.Name == "Earth"
-				   && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi / 2) < 1e-9, Ultimos(falas));
+		AfirmarG11("com Ki ABAIXO do preco o Kai Kai recusa dizendo o preco ('o Kai Kai pede') e ninguem sai do lugar",
+				   Disse(falas, "o Kai Kai pede") && kai.Zone.Name == "Earth" && colado.Zone.Name == "Earth"
+				   && Math.Abs(kai.Ficha.Ki - CustoDoKaiKai / 2) < 1e-9, Ultimos(falas));
 
-		// a lista vem DEPOIS da porta do Ki (`if(...Ki>=MaxKi...) { input }`, `kai.dm:115-117`) -- e desde 2026-10-23 ela vai pra TELA
+		// a lista vem DEPOIS da porta do Ki (no DM `if(...Ki>=MaxKi...) { input }`, `kai.dm:115-117`; hoje o preco do pedido 135) -- e desde 2026-10-23 ela vai pra TELA
 		// do Kai Kai (`S2C.DestinosDoKaiKai`), e nao pro chat. Ver `GameServer.KaiKai.cs` e a `--kaikaiteste`.
 		kai.Ficha.Ki = kai.Ficha.MaxKi;
 		List<(int Quem, List<DestinoDoKaiKai> Lista)> tela = [];
@@ -458,8 +460,9 @@ public sealed partial class GameServer
 		// (o salto do Kai Kai pisca 0,2 s antes de sumir, pra quem fica ver o clarao: a bancada vence o relogio -- `GameServer.KaiKai.cs`)
 		UsarHabilidade(kai, "Kai_Kai:Namek");
 		TerminarOKaiKaiDeTeste(kai.Id);
-		AfirmarG11("com Ki cheio o Kaioshin CHEGA em Namek, sem uma gota de Ki",
-				   kai.Zone.Name == "Namek" && kai.Ficha.Ki == 0, $"{kai.Zone.Name}, Ki {kai.Ficha.Ki}");
+		AfirmarG11("com Ki cheio o Kaioshin CHEGA em Namek, pagando so o preco do salto (o pedido 135; antes o Ki zerava)",
+				   kai.Zone.Name == "Namek" && Math.Abs(kai.Ficha.Ki - (kai.Ficha.MaxKi - CustoDoKaiKai)) < 1e-6,
+				   $"{kai.Zone.Name}, Ki {kai.Ficha.Ki} de {kai.Ficha.MaxKi} (preco {CustoDoKaiKai})");
 		AfirmarG11("...quem estava COLADO chegou junto", colado.Zone.Name == "Namek", colado.Zone.Name);
 		AfirmarG11("...e quem estava a seis tiles FICOU na Terra", longe.Zone.Name == "Earth", longe.Zone.Name);
 

@@ -180,6 +180,7 @@ public partial class RoboDeTrilha : Node
 		{
 			cli.SheetUpdated += AoReceberFicha;
 			cli.SnapshotReceived += Avistou;
+			cli.OponentesDaMenteMudaram += AoAbrirAListaDaMente;   // (2026-10-27, o pedido 124c) o reflexo e escolhido na lista
 		}
 		Nota("de pe. Os roteiros do dono, no jogo, com o relogio de verdade.");
 		OSorteioNaoMisturaAsPastas();
@@ -634,6 +635,7 @@ public partial class RoboDeTrilha : Node
 		if (C is not { } cli) return;
 		cli.SheetUpdated -= AoReceberFicha;
 		cli.SnapshotReceived -= Avistou;
+		cli.OponentesDaMenteMudaram -= AoAbrirAListaDaMente;
 	}
 
 	private void AoReceberFicha(Jandirus.Net.SheetState f) { if (f.SocoMs > 0) _cadencia = f.SocoMs / 1000.0; }
@@ -1005,7 +1007,7 @@ public partial class RoboDeTrilha : Node
 		cli.SendActivity(Jandirus.Net.Protocol.Activity.Meditando);
 		cli.SendHabilidade("mente");
 		_naMente = true;
-		Nota("meditando e mergulhando na propria mente -- o clone e o adversario");
+		Nota("meditando e mergulhando na propria mente -- o clone (escolhido na lista) e o adversario");
 		return false;   // um quadro pro servidor trocar a zona e o clone entrar no snapshot
 	}
 
@@ -1013,6 +1015,9 @@ public partial class RoboDeTrilha : Node
 	private void SairDaMente()
 	{
 		if (!_naMente || C is not { } cli) return;
+		_naMente = false;   // antes do desfazer: a lista que volta nao pode erguer outro reflexo (ver `AoAbrirAListaDaMente`)
+		// (2026-10-27, o pedido 124c) com a lembranca de pe nao se acorda: ela se desfaz antes, pelo caminho de quando chega um visitante
+		Jandirus.Server.GameServer.Instance?.DesfazerOReflexoNoTeste(cli.LocalId);
 		cli.SendHabilidade("sairdamente");
 		cli.SendActivity(Jandirus.Net.Protocol.Activity.Parado);
 		_naMente = false;
@@ -1022,6 +1027,15 @@ public partial class RoboDeTrilha : Node
 	}
 
 	private bool _naMente;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124c) A LISTA DA MENTE ABRIU: o robo escolhe o reflexo, o adversario de sempre -- na entrada, e de novo depois de
+	/// cada vitoria (ate ali o reflexo derrubado se reerguia sozinho, e a briga nao parava).
+	/// </summary>
+	private void AoAbrirAListaDaMente(bool abrir)
+	{
+		if (abrir && _naMente) C?.SendHabilidade(Jandirus.Core.Npc.MenteOponentes.Pedido(Jandirus.Core.Npc.MenteOponentes.Tipo.Reflexo, ""));
+	}
 
 	// =====================================================================
 	// 3. A TAG SOBE

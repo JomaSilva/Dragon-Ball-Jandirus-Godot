@@ -231,18 +231,26 @@ public partial class GameServer
 		GD.Print("[kaikai] -- 2) A TELA: sem destino, a lista vai pra tela -- os doze de sempre e os mundos do livro; nao viaja nem cobra");
 		(ServerPlayer kai, _, _) = CenaKK();
 
-		kai.Ficha.Ki = kai.Ficha.MaxKi / 2;
+		// (2026-10-27, o pedido 135) O PEDAGIO E O PRECO DO SALTO (10% do Ki de um Kai recem-nascido), e nao mais o Ki cheio
+		double preco = CustoDoKaiKai;
+		double kiDeUmKai = KiDeUmKaiRecemNascido();
+		AfirmarKK("2h. (o pedido 135) o PRECO do Kai Kai e 10% do Ki com que um Kai nasce -- um numero fixo e pequeno, igual pra todo mundo",
+				  preco >= 1 && Math.Abs(preco - Math.Round(kiDeUmKai * 0.10)) < 1e-9 && preco < kai.Ficha.MaxKi / 2,
+				  $"preco {preco:0}; Ki de um Kai recem-nascido {kiDeUmKai:0}; Ki maximo de quem salta {kai.Ficha.MaxKi:0}");
+
+		kai.Ficha.Ki = preco / 2;
 		EscutaDoKaiKai = [];
 		List<string> falas = ApertarEOuvir(kai, "Kai_Kai");
-		AfirmarKK("2a. com Ki pela metade a tela NAO abre (a porta vem antes da lista, `kai.dm:114-115`): diz 'Ki cheio' e nada se cobra",
-				  EscutaDoKaiKai.Count == 0 && Disse(falas, "Ki cheio") && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi / 2) < 1e-9,
+		AfirmarKK("2a. com Ki ABAIXO do preco a tela NAO abre (a porta vem antes da lista, `kai.dm:114-115`): diz o preco e nada se cobra",
+				  EscutaDoKaiKai.Count == 0 && Disse(falas, "o Kai Kai pede") && Math.Abs(kai.Ficha.Ki - preco / 2) < 1e-9,
 				  Ultimos(falas));
 
-		kai.Ficha.Ki = kai.Ficha.MaxKi;
+		double kiDaTela = kai.Ficha.MaxKi / 2;
+		kai.Ficha.Ki = kiDaTela;
 		EscutaDoKaiKai = [];
 		falas = ApertarEOuvir(kai, "Kai_Kai");
 		List<DestinoDoKaiKai> tela = DaTelaKK(kai);
-		AfirmarKK("2b. com Ki cheio a lista vai pra TELA de quem apertou, e o chat diz onde ela esta",
+		AfirmarKK("2b. (o pedido 135) com Ki pela METADE (acima do preco -- o Ki cheio nao e mais pedido) a lista vai pra TELA de quem apertou, e o chat diz onde ela esta",
 				  EscutaDoKaiKai.Count == 1 && tela.Count > 0 && Disse(falas, "na tela do Kai Kai"), $"{EscutaDoKaiKai.Count} lista(s) | {Ultimos(falas)}");
 
 		string[] doze = [.. DestinosDoKaiKaiG11.Where(d => _catalogo?.Get(d) != null)];
@@ -257,8 +265,8 @@ public partial class GameServer
 				  TelaEmTexto(tela));
 		AfirmarKK("2e. ...e a Terra, onde ele esta, marcada 'voce esta aqui' (e so ela)",
 				  tela.Count(d => d.Aqui) == 1 && tela.Find(d => d.Chave == "Earth").Aqui, TelaEmTexto(tela));
-		AfirmarKK("2f. ...e abrir a tela nao viaja nem cobra: Ki cheio, na Terra, nenhum salto em curso",
-				  kai.Zone.Name == "Earth" && Math.Abs(kai.Ficha.Ki - kai.Ficha.MaxKi) < 1e-9 && FaseDoKaiKaiDeTeste(kai.Id) == null,
+		AfirmarKK("2f. ...e abrir a tela nao viaja nem cobra: o Ki de antes, na Terra, nenhum salto em curso",
+				  kai.Zone.Name == "Earth" && Math.Abs(kai.Ficha.Ki - kiDaTela) < 1e-9 && FaseDoKaiKaiDeTeste(kai.Id) == null,
 				  $"{kai.Zone.Name}, Ki {kai.Ficha.Ki:0}/{kai.Ficha.MaxKi:0}, fase {FaseDoKaiKaiDeTeste(kai.Id) ?? "-"}");
 
 		KaiKaiListaNoChatDeTeste = true;
@@ -356,8 +364,8 @@ public partial class GameServer
 		Vec2 deKai = kai.Pos, deColado = colado.Pos;
 		EscutaDaTransmissao = [];
 		List<string> falas = ApertarEOuvir(kai, "Kai_Kai:Namek");
-		AfirmarKK("5a. o clique PAGA na hora (Ki 0, o `usr.Ki = 0` do DM) e PISCA quem salta e quem esta colado, nas posicoes da Terra",
-				  kai.Ficha.Ki == 0 && EscutaDaTransmissao.Count == 2 && PiscouEm(EscutaDaTransmissao, 0, kai, deKai)
+		AfirmarKK("5a. (o pedido 135) o clique PAGA na hora o PRECO do salto (e nao zera mais o Ki, o `usr.Ki = 0` do DM) e PISCA quem salta e quem esta colado, nas posicoes da Terra",
+				  Math.Abs(kai.Ficha.Ki - (kai.Ficha.MaxKi - CustoDoKaiKai)) < 1e-6 && EscutaDaTransmissao.Count == 2 && PiscouEm(EscutaDaTransmissao, 0, kai, deKai)
 				  && PiscouEm(EscutaDaTransmissao, 1, colado, deColado),
 				  $"Ki {kai.Ficha.Ki:0}; claroes {ClaroesEmTexto(EscutaDaTransmissao)} | {Ultimos(falas)}");
 		AfirmarKK("5b. ...e o corpo ainda esta na Terra no tique do clique: o clarao e desenhado no corpo, e quem fica tem de ve-lo",
@@ -503,8 +511,8 @@ public partial class GameServer
 			TickDoKaiKai();
 			if (FaseDoKaiKaiDeTeste(kai.Id) == "EsperandoOMundo") System.Threading.Thread.Sleep(5);
 		}
-		AfirmarKK("7d. quando o mundo nasce o salto sai: paga AGORA (Ki 0) e pisca quem salta e o colado na Terra",
-				  FaseDoKaiKaiDeTeste(kai.Id) == "Saindo" && kai.Ficha.Ki == 0 && EscutaDaTransmissao.Count == 2
+		AfirmarKK("7d. quando o mundo nasce o salto sai: paga AGORA (o preco do salto, o pedido 135) e pisca quem salta e o colado na Terra",
+				  FaseDoKaiKaiDeTeste(kai.Id) == "Saindo" && Math.Abs(kai.Ficha.Ki - (kai.Ficha.MaxKi - CustoDoKaiKai)) < 1e-6 && EscutaDaTransmissao.Count == 2
 				  && PiscouEm(EscutaDaTransmissao, 0, kai, deKai),
 				  $"fase {FaseDoKaiKaiDeTeste(kai.Id) ?? "-"}, Ki {kai.Ficha.Ki:0}, claroes {ClaroesEmTexto(EscutaDaTransmissao)}");
 
@@ -541,8 +549,9 @@ public partial class GameServer
 		try
 		{
 			UsarHabilidade(kai, $"Kai_Kai:{m.ChaveB}");
-			AfirmarKK("7h. (defeito injetado: o salto nao espera o mundo) a regua de 7a REPROVA -- ele sai na hora, pagando, pro mundo frio",
-					  FaseDoKaiKaiDeTeste(kai.Id) == "Saindo" && kai.Ficha.Ki == 0, $"Ki {kai.Ficha.Ki:0}, fase {FaseDoKaiKaiDeTeste(kai.Id) ?? "-"}");
+			AfirmarKK("7h. (defeito injetado: o salto nao espera o mundo) a regua de 7a REPROVA -- ele sai na hora, pagando (o preco do salto), pro mundo frio",
+					  FaseDoKaiKaiDeTeste(kai.Id) == "Saindo" && Math.Abs(kai.Ficha.Ki - (kai.Ficha.MaxKi - CustoDoKaiKai)) < 1e-6,
+					  $"Ki {kai.Ficha.Ki:0}, fase {FaseDoKaiKaiDeTeste(kai.Id) ?? "-"}");
 		}
 		finally { KaiKaiNaoEsperaOMundoDeTeste = false; EsquecerOKaiKaiDeTeste(kai.Id); }
 	}

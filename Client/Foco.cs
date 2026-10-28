@@ -26,9 +26,12 @@ public static class Foco
 	// com o teclado dentro dele -- sem esta linha o "E" do epitafio abriria outro menu por cima.
 	// A SEXTA e a pergunta da senha, ao erguer uma porta (`ModoDeConstruir`): outro `LineEdit` de verdade.
 	// (2026-10-22) A SETIMA e o nome do dragao, no menu da estatua (`JanelaDaEstatua`).
+	// (2026-10-27) A OITAVA e a resposta do minijogo de estudo, na Research Station (`TelaDoEstudo`): o dono, *"quando vc vai digitar
+	// algo nas respostas do research bench q tem algo atelado a ela, o jogo faz a funcao da tecla e n responde a pergunta"* -- o "P" do
+	// fosforo abria o menu (e levava o foco), o "T" do "Ti" abria o treino, o "M" do "Mg" a meditacao.
 	public static bool Digitando =>
 		Chat.Digitando || MenuJogo.Digitando || TelaDeTecnicas.Digitando || TelaDeTeclas.Digitando
-		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando || JanelaDaEstatua.Digitando;
+		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando || JanelaDaEstatua.Digitando || TelaDoEstudo.Digitando;
 
 	/// <summary>
 	/// POSSO DISPARAR UM ATALHO AGORA? A pergunta dos ATALHOS -- menu, aba, mochila, interacao, chat,

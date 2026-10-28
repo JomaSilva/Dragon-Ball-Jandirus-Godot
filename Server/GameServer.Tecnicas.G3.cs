@@ -540,11 +540,12 @@ public partial class GameServer
 		// esta perna, o corpo protegido nao levaria dano nenhum e mesmo assim morreria pelo `f.HP <= 10`
 		// -- que e a vida que ele JA TINHA. E o mesmo erro de ler estado velho depois de um dano que nao
 		// aconteceu, e ele aparece em todo lugar onde a consequencia mora fora do laco (ver
-		// `GameServer.Sol.Queimar` e `EspalharDanoG2`).
+		// `GameServer.Sol.Queimar` e `EspalharDanoG2`). (2026-10-27) O `Blindado`, e nao o `Intocavel`: a aposta e de quem soltou, e a
+		// zona segura nao a barra (o pedido 113 do dono).
 		if (carga.Contador > CargaLetalG3
 			&& (_rng.NextDouble() * 100 < CargaMortePct || f.HP <= 10 || f.KO)
 			&& !EhCadaver(pl)
-			&& !pl.Combate.Intocavel
+			&& !pl.Combate.Blindado
 			&& pl.Combate.Morrer())
 		{
 			AvisarPertoG3(pl, 20 * ZoneCollision.TileSize, $"{pl.Name} morre na propria Final Explosion.");
@@ -1147,7 +1148,8 @@ public partial class GameServer
 		// O bit do mestre e o peso da luta, iguais ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
 		double luta = FatorDaLuta(a, d);
 		if (luta > 0) a.Ficha.AttackGain(_rng, luta * a.Ficha.FightGainMult(d.Ficha, EhMeuMestre(a, d), EhColegaDeMestre(a, d)));
-		if (luta > 0 && r.Encostou) d.Ficha.AttackGain(_rng, luta * d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a), EhColegaDeMestre(d, a)));
+		if (luta > 0 && r.Encostou)   // (2026-10-28, o pedido 148) quem apanha, pela propria barra
+			d.Ficha.AttackGain(_rng, FatorDaLuta(a, d, quemGanha: d) * d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a), EhColegaDeMestre(d, a)));
 
 		// o contra-ataque de guarda perfeita vale contra tecnica tambem: quem bloqueou na hora
 		// certa devolve, venha o golpe de um soco ou de uma espada de Ki
@@ -1176,10 +1178,15 @@ public partial class GameServer
 	/// original eles entravam com `prob(10)`, o que dava na mesma com mais sorteio.
 	/// </summary>
 	/// <param name="porKi">(2026-10-15) o dano e de KI (a explosao final, a autodestruicao, o estouro do embate): o unico que mata o Majin de vez -- ver `CombatState.QuandoONucleoCede`.</param>
-	private void EspalharDanoG3(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal, bool porKi = false)
+	/// <param name="mataQuemRegenera">(2026-10-28, o pedido 143) o nucleo que cede MATA ate quem regenera (o coma e o "se desfazer" nao
+	/// valem): a gravidade -- ver `GameServer.TickDoEsmagamento`.</param>
+	private void EspalharDanoG3(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal, bool porKi = false, bool mataQuemRegenera = false)
 	{
 		CombatState? c = vitima.Combate;
-		if (c == null || dano <= 0 || EhCadaver(vitima) || c.Intocavel) return;
+		// (2026-10-27) SEM ALGOZ (autor = vitima: o esmagamento, o vacuo, o preco de uma tecnica) a pergunta e o `Blindado`: a zona segura
+		// so barra golpe de outro corpo (o pedido 113 do dono -- la dentro a gravidade esmaga).
+		bool semAlgoz = autor == vitima;
+		if (c == null || dano <= 0 || EhCadaver(vitima) || (semAlgoz ? c.Blindado : c.IntocavelPara(autor.Combate))) return;   // (2026-10-27, o pedido 129) `IntocavelPara`
 		// (2026-10-26) QUEM ESTA NA ZONA SEGURA NAO FERE NINGUEM -- o preco que um corpo paga a si mesmo (autor = vitima) continua. Ver `NaZonaSegura`.
 		if (autor != vitima && NaZonaSegura(autor)) return;
 
@@ -1196,11 +1203,11 @@ public partial class GameServer
 			// membro que zera por dano LETAL cai aqui dentro (o `LopLimb` do `DamageMe`, que o
 			// `SpreadDamage` do DM sempre teve), e a peca vai pro chao pelo `AoDecepar`. Este laco
 			// feria e parava, e o braco zerado por explosao ficava no corpo sem peca nenhuma.
-			c.Ferir(p, dano, letal);
+			c.Ferir(p, dano, letal, doMundo: semAlgoz);
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
-		ConsequenciaDoDano(vitima, autor, "com dano em area", letal, porKi, MembrosDeForaPerdidos(c) > membrosAntes);
+		ConsequenciaDoDano(vitima, autor, "com dano em area", letal, porKi, MembrosDeForaPerdidos(c) > membrosAntes, mataQuemRegenera);
 	}
 
 	/// <summary>
@@ -1221,7 +1228,9 @@ public partial class GameServer
 	/// <param name="letal">(2026-10-19) o dano era LETAL -- so ele mata; o nao-letal que acha um nucleo ja zerado so derruba (ver
 	/// `MeleeResolver.AplicarNoMembro`). Obrigatorio de proposito: cada fonte diz o que e, e uma nova nao herda o lado errado calada.</param>
 	/// <param name="porKi">(2026-10-15) o dano era de ki -- ver `CombatState.QuandoONucleoCede`.</param>
-	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool letal, bool porKi = false, bool perdeuMembro = false)
+	/// <param name="mataQuemRegenera">(2026-10-28, o pedido 143) o nucleo que cede mata ate quem regenera -- ver `EspalharDanoG3`.</param>
+	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool letal, bool porKi = false, bool perdeuMembro = false,
+									bool mataQuemRegenera = false)
 	{
 		if (vitima.Combate is not { } c) return;
 		if (autor != vitima) TalvezIrritar(vitima, autor, perdeuMembro);
@@ -1232,7 +1241,8 @@ public partial class GameServer
 		// comum morre, a raca que refaz membro cai em coma, e o Majin se desfaz em pedacos -- menos no ki (`porKi`).
 		// (2026-10-19) E SO NO DANO LETAL, pela mesma regra do soco e do tiro (`MeleeResolver.AplicarNoMembro`): o nao-letal que
 		// encontra um nucleo que OUTRA coisa zerou nao mata -- cai no nocaute la embaixo.
-		FimDoNucleo? fim = (letal || NaoLetal.MataPeloEstadoDeTeste) && c.Corpo.DeveMorrer() ? c.QuandoONucleoCede(porKi) : null;
+		FimDoNucleo? fim = (letal || NaoLetal.MataPeloEstadoDeTeste) && c.Corpo.DeveMorrer()
+			? (mataQuemRegenera ? FimDoNucleo.Morre : c.QuandoONucleoCede(porKi)) : null;
 		if (fim == FimDoNucleo.Morre && c.Morrer())
 		{
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);

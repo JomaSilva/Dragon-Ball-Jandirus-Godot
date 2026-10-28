@@ -654,7 +654,7 @@ public partial class MapaEstelar : Control
 		var achados = new List<PlanetaNoEspaco>();
 		if (DaCelula(seed, bx, by) is { } s)
 			foreach (PlanetaNoEspaco p in s.Planetas())
-				if (!p.Premade) achados.Add(p);   // os pre-feitos ja entram por fora, sempre
+				if (!p.Premade && p.Nome != Yardrat.Nome) achados.Add(p);   // os pre-feitos ja entram por fora, sempre; o Yardrat e secreto (o pedido 109)
 
 		_cache[(bx, by)] = achados;
 		return achados;

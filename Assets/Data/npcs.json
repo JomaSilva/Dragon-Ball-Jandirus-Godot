@@ -557,6 +557,98 @@
       "perfil": { "voa": 0.5, "ki": 0.6 },
       "_nota": "(2026-10-19) O GRANDE PATRIARCA DE NAMEK -- o dono: 'adicione o patriarca em namek assim como tinha no Finale-master'. E o mob/npc/Citizen/Guru do PlanetPopulation.dm (:213-235) e a fabrica make_namek_guru (:444-452): Namekuseijin do Cla do Dragao ('Dragon clan'), homem, o nome 'Guru', BP rand(9000,12000) e o corpo 'NamekOld - Guru Style', SEM roupa (a fabrica dele nao chama npc_wear_*: a folha ja e o manto). A folha e cravada no codigo, num indice reservado do corpo (Core/Npc/Patriarca.cs). 'vagueia': false e o idle_wandering = 0 (:219): ele nao passeia nem entra em spar, e o embaralho do planeta vazio nao o leva. O resto e o de todo habitante (o init_citizen do DM e o mesmo pipeline): o temperamento e o behavior_vals do mob/npc/Citizen, e ele revida quem bate nele. Falar com ele (tecla E) desperta o potencial oculto UMA vez na vida, se a reputacao com Namek nao for 'Malvisto' pra baixo (Server/GameServer.Patriarca.cs)."
     },
+    {
+      "id": "habitante_yardrat",
+      "nome": "Yardrat",
+      "tipo": "cidadao",
+      "talentos": [
+        "/datum/skill/ki/Ki_Wave",
+        "/datum/skill/mind/Ki_Unlocked@35",
+        "/datum/skill/ki/Scattering_Bullet",
+        "/datum/skill/mind/Basic_Ki_Control@30",
+        "/datum/skill/ki/Afterimage"
+      ],
+      "quantosTalentos": 0.8,
+      "generos": [
+        "Male",
+        "Male",
+        "Male",
+        "Female"
+      ],
+      "bpMin": 500,
+      "bpMax": 5000,
+      "marcosBase": 2,
+      "marcosPorDecada": 1.2,
+      "vocacao": [
+        "/datum/skill/tree/Body",
+        "/datum/skill/tree/Mind"
+      ],
+      "nivelDasSkills": 20,
+      "escadaAutomatica": false,
+      "inteligencia": 50,
+      "agressividade": 60,
+      "coragem": 80,
+      "furia": 70,
+      "perfil": {
+        "voa": 0.5,
+        "ki": 0.6
+      },
+      "racas": [
+        "Yardrat"
+      ],
+      "corpo": "Yardrat",
+      "nomes": [
+        "Yadrat",
+        "Selipa",
+        "Nunn",
+        "Torbie",
+        "Kamin"
+      ],
+      "_nota": "(2026-10-27) O POVO DO PLANETA YARDRAT -- o pedido 109 ('vai ter npcs dessa raça andando por la'). O habitante de sempre (o 'cidadao'), com a raca e os nomes cravados: o planeta e gerado, e nao ha berco Yardrat pra raca sair dele. Nasce com o chao (Server/GameServer.Yardrat.cs). (2026-10-27, o pedido 130) O CORPO CRAVADO: a lista da raca tem o Yardrat e mais seis corpos humanos (os do jogador escolher), e o sorteio do NPC caia quase sempre num humano -- o dono: 'n esta spawnando npcs com icone de yardrat'. O nome do mestre (Pybara) saiu da lista do povo."
+    },
+    {
+      "id": "mestre_yardrat",
+      "nome": "Mestre Yardrat",
+      "tipo": "cidadao",
+      "racas": [
+        "Yardrat"
+      ],
+      "generos": [
+        "Male"
+      ],
+      "corpo": "Yardrat",
+      "nomes": [
+        "Mestre Pybara"
+      ],
+      "bpMin": 20000,
+      "bpMax": 30000,
+      "vagueia": false,
+      "talentos": [
+        "/datum/skill/ki/Ki_Wave",
+        "/datum/skill/mind/Ki_Unlocked@35",
+        "/datum/skill/ki/Scattering_Bullet",
+        "/datum/skill/mind/Basic_Ki_Control@30",
+        "/datum/skill/ki/Afterimage"
+      ],
+      "quantosTalentos": 0.8,
+      "marcosBase": 2,
+      "marcosPorDecada": 1.2,
+      "vocacao": [
+        "/datum/skill/tree/Body",
+        "/datum/skill/tree/Mind"
+      ],
+      "nivelDasSkills": 20,
+      "escadaAutomatica": false,
+      "inteligencia": 50,
+      "agressividade": 60,
+      "coragem": 80,
+      "furia": 70,
+      "perfil": {
+        "voa": 0.5,
+        "ki": 0.6
+      },
+      "_nota": "(2026-10-27) O MESTRE DO PLANETA YARDRAT -- o pedido 109 ('IT needs a npc in a yardrat planet'). O molde do Guru (parado, 'vagueia': false; revida quem bate nele), Yardrat, com o nome do Yardrat do manga (Pybara). Falar com ele (tecla E) ensina o Instant Transmission a quem ainda nao o sabe (Server/GameServer.Yardrat.cs). (2026-10-27, o pedido 131) O dono nao o achou ('eles n tem um npc tipo guru q ensina instant transmission'): ele nascia com um corpo humano sorteado e com o mesmo nome de um habitante. Agora o corpo de Yardrat e cravado e o nome e so dele ('Mestre Pybara')."
+    },
 
     {
       "id": "guardiao_saiyajin",

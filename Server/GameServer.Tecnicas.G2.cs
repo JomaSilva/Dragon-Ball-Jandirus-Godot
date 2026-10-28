@@ -612,7 +612,8 @@ public partial class GameServer
 		// O bit do mestre e o peso da luta, iguais ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
 		double luta = FatorDaLuta(pl, alvo);
 		if (luta > 0) pl.Ficha.AttackGain(_rng, luta * pl.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(pl, alvo), EhColegaDeMestre(pl, alvo)));
-		if (luta > 0 && r.Encostou) alvo.Ficha.AttackGain(_rng, luta * alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl), EhColegaDeMestre(alvo, pl)));
+		if (luta > 0 && r.Encostou)   // (2026-10-28, o pedido 148) quem apanha, pela propria barra
+			alvo.Ficha.AttackGain(_rng, FatorDaLuta(pl, alvo, quemGanha: alvo) * alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl), EhColegaDeMestre(alvo, pl)));
 
 		// O CONTRA CONTINUA VALENDO. Deixar o punho ignorar a guarda perfeita faria dele o jeito
 		// de furar o sistema de contra-ataque -- e ai ninguem mais usaria soco.
@@ -813,9 +814,13 @@ public partial class GameServer
 		// (`TickDaForma`); isto e a mesma regra, no mesmo prazo.
 		//
 		// Antes do laco, e nao so no `Ferir`: o `DeveNocautear` la embaixo le o ESTADO do corpo.
-		if (dano <= 0 || pl.Combate is not { Intocavel: false }) return;
+		//
+		// (2026-10-27) E A PERGUNTA E O `Blindado`, nao o `Intocavel`: a zona segura so barra golpe de outro corpo, e la dentro o Kaio-ken
+		// drena (o pedido 113 do dono).
+		if (dano <= 0 || pl.Combate is not { Blindado: false }) return;
 		foreach (BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano * FatorDoMembroG2(sorteio), letal: false, soNosAninhados: !RepiqueNaVirilhaDeTeste);
+			if (!p.Decepado && !p.Aninhado)
+				pl.Combate.Ferir(p, dano * FatorDoMembroG2(sorteio), letal: false, soNosAninhados: !RepiqueNaVirilhaDeTeste, doMundo: true);
 		pl.Combate.SincronizarVida();
 
 		if (!pl.Ficha.KO && !EhCadaver(pl) && pl.Combate.Corpo.DeveNocautear())
@@ -880,12 +885,12 @@ public partial class GameServer
 		// O CORPO NAO SE DESFAZ EM CENA -- mesma regra do `EspalharDanoG2` logo acima, e aqui ela e
 		// literalmente a diferenca entre morrer e nao morrer: este e o caminho que MATA no Kaio-ken.
 		// A cobranca nao some, so espera: assim que a cena acaba, o Ki abaixo do minimo estoura o
-		// corpo no proximo tique, como sempre estourou.
-		if (pl.Combate is not { Intocavel: false }) return;
+		// corpo no proximo tique, como sempre estourou. (2026-10-27) Pelo `Blindado`: a zona segura nao segura o corpo que se desfaz.
+		if (pl.Combate is not { Blindado: false }) return;
 		Avisar(pl, motivo);
 
 		foreach (BodyPart p in pl.Combate.Corpo.Partes.ToList())
-			if (!p.Decepado) pl.Combate.Ferir(p, p.VidaMax * 10, letal: true);
+			if (!p.Decepado) pl.Combate.Ferir(p, p.VidaMax * 10, letal: true, doMundo: true);
 		pl.Combate.SincronizarVida();
 
 		if (pl.Combate.Corpo.DeveMorrer() && !pl.Combate.Corpo.RegeneraDecepado

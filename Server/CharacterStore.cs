@@ -1215,6 +1215,10 @@ public sealed class AccountStore(string pasta)
         // reforco. Ver `Fighter.TirarOLsdAntigo`.
         pl.Ficha.TirarOLsdAntigo();
 
+        // (2026-10-28, o pedido 143) A MAESTRIA DE GRAVIDADE PODADA EM 50x, UMA VEZ: quem subiu acima no ritmo de antes (o de agora e 3x mais
+        // lento) volta pra 50x. Ver `Fighter.PodarAMaestria`.
+        pl.Ficha.PodarAMaestria();
+
         // (2026-10-18) OS PESOS DE ANTES: o maximo e a arte moravam na ficha (`Fighter.pesoMaximoKg`/`pesoArte`) -- agora moram no id de cada
         // peso (`PesoDeTreino`). Os pesos de fabrica da mochila levam o que a ficha tinha (o que o jogador pagou continua dele), e quem estava
         // vestido continua vestido com um deles. Os campos da ficha zeram: a migracao roda uma vez. AQUI, com a ficha do disco ja no corpo (a

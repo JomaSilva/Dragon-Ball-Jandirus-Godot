@@ -509,6 +509,9 @@ public partial class GameServer
 		// origem, o passo nem acontece -- e o cliente, avisado pelo efeito `torneio_espera`, nem
 		// tenta (`LocalPlayer.PorQueNaoAnda`).
 		&& !PresoNoTorneio(pl.Id)
+		// (2026-10-27, o pedido 128) ...e o jogador da vez na CONTAGEM da luta dele, pelo mesmo funil e com o aviso ao cliente (o efeito
+		// `torneio_contagem`). Ver `NaContagemDoTorneio`.
+		&& !NaContagemDoTorneio(pl)
 		// (2026-10-23) NO RITUAL MISTICO DO VELHO KAIOHSHIN NENHUM DOS DOIS SE MOVE (o dono) -- pelo mesmo funil e com o mesmo aviso ao
 		// cliente (o efeito `ritual_kaioshin`). Ver `GameServer.RitualDoKaioshin.cs`.
 		&& !PresoNoRitual(pl)

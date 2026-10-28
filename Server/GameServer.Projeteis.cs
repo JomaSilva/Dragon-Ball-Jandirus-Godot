@@ -1547,10 +1547,11 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool Colidiu(Projetil p, List<ServerPlayer> corpos)
 	{
+		CombatState? deQuem = QuemAtirou(p);   // (2026-10-27, o pedido 129) o lutador da vez no torneio so leva tiro do adversario
 		foreach (ServerPlayer o in corpos)
 		{
 			// O CADAVER TAMBEM LEVA O TIRO (dono, 2026-09-05: "corpos mortos ainda sao corpos de personagem").
-			if (o.Id == p.Dono || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o.Id == p.Dono || o.Combate == null || o.Combate.IntocavelPara(deQuem)) continue;
 
 			// QUEM DEFLETIU NAO E ALVO DO TIRO QUE ELE MESMO DEFLETIU -- ver `Projetil.Desviador`: o pedaco de raio
 			// que sai de lado nasce a um contato do corpo dele, e sem esta linha o deflect certo levava o proprio deflect.
@@ -1654,6 +1655,9 @@ public sealed partial class GameServer
 	/// 256 tiros de um corpo no meio da multidao numa grade longe dela, e com a marca valendo todos morriam no primeiro tique
 	/// em quem estava colado no atirador. (No raio canalizado a cauda e a boca, refeita pelo passo 3 com o corpo parado.)
 	/// </summary>
+	/// <summary>(2026-10-27, o pedido 129) O estado de combate de quem atirou (nulo: o dono ja nao esta no mundo) -- o `IntocavelPara` do alvo.</summary>
+	private CombatState? QuemAtirou(Projetil p) => _players.TryGetValue(p.Dono, out ServerPlayer? d) ? d.Combate : null;
+
 	private bool AcertarQuemEstavaNoCano(Projetil p, List<ServerPlayer> corpos)
 	{
 		int id = p.AlvoNoCano;
@@ -1661,7 +1665,7 @@ public sealed partial class GameServer
 		if ((p.Pos - p.Cauda).LengthSquared > 0.25f) return false;
 		foreach (ServerPlayer o in corpos)
 			if (o.Id == id)
-				return o.Combate is { Intocavel: false } && !p.EstaForaDaLinha(o.Id)
+				return o.Combate is { } oc && !oc.IntocavelPara(QuemAtirou(p)) && !p.EstaForaDaLinha(o.Id)
 					&& Voo.PodeAcertar(Voo.Andar(p.Altitude), Voo.Andar(o.Altitude)) && Acertar(p, o);
 		return false;
 	}
@@ -2148,7 +2152,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void FerirComAExplosao(Projetil p, ServerPlayer dono, ServerPlayer alvo, double fracao)
 	{
-		if (alvo.Combate is not { Intocavel: false } cd || fracao <= 0 || p.DaZonaSegura) return;
+		if (alvo.Combate is not { } cd || cd.IntocavelPara(dono.Combate) || fracao <= 0 || p.DaZonaSegura) return;
 
 		bool defendendo = cd.Bloqueando;
 		double batida = DanoDeKi.Final(p.ModsAgora(), p.BaseDano, p.MaxDano, p.Bp, cd, defendendo, p.Fisico);

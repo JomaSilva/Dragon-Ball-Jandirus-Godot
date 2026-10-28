@@ -200,7 +200,13 @@ public partial class GameServer
 	/// </summary>
 	internal void SairDoTranse(ServerPlayer pl)
 	{
-		if (NaMente(pl)) { SairDaMente(pl, "voce abre os olhos."); return; }
+		if (NaMente(pl))
+		{
+			// (2026-10-27, o pedido 124c) A LUTA NA MENTE NAO SE ENCERRA NO MEIO: com a lembranca de pe, nao se acorda. Ver `GameServer.MenteLista.cs`.
+			if (LutandoNaMente(pl)) { Avisar(pl, "a luta na mente so acaba quando um dos dois cai -- nao da pra acordar no meio dela."); return; }
+			SairDaMente(pl, "voce abre os olhos.");
+			return;
+		}
 
 		// (2026-10-18) QUEM OBSERVA UMA NAVE DE FORA nao esta em transe, mas tambem esta fora do corpo: volta pela porta dele, que desfaz o
 		// olho e a barra do tanque -- o ramo de baixo devolveria o corpo e deixaria o olho registrado. Ver `GameServer.NaveObservar.cs`.

@@ -81,9 +81,10 @@ public sealed partial class GameServer
 		float alcance = Feixe.AlcanceDaCabeca(p);
 		if (!Feixe.Tronco(p.Cauda, p.Pos, p.Rumo, alcance, out _)) return;
 
+		CombatState? deQuem = QuemAtirou(p);   // (2026-10-27, o pedido 129) o lutador da vez no torneio nao corta o raio de quem e de fora
 		foreach (ServerPlayer o in corpos)
 		{
-			if (o.Id == p.Dono || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o.Id == p.Dono || o.Combate == null || o.Combate.IntocavelPara(deQuem)) continue;
 			if (o.Id == p.Arrastando) continue;
 			// quem defletiu nao corta o raio que ele mesmo defletiu (a cauda nasce colada nele) -- `Projetil.Desviador`
 			if (p.Desviador != 0 && o.Id == p.Desviador) continue;

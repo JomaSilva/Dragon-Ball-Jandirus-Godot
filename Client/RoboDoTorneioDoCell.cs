@@ -433,44 +433,57 @@ public partial class RoboDoTorneioDoCell : Node
 
 	// =====================================================================
 	// D. O DOBRO DO JOGADOR MAIS FORTE: O RAIO NA CARA DO SUPER PERFEITO (dono, 2026-10-20)
+	// (2026-10-27, o pedido 138) O DOBRO VIROU 1,25x (*"25% acima do player mais forte e nao 2x, ta mt op 2x"*): o raio de quem tem 1,9 bilhao
+	// pode derruba-lo agora. A regua e o TEMPO: ele aguenta mais que o dobro do que aguenta o Super Perfeito com a ficha de recem-criado (o
+	// contra-exemplo, medido primeiro), ou fica de pe os doze segundos.
 	// =====================================================================
 	private IEnumerable ODobro(World mundo, GameServer srv, int eu)
 	{
-		GD.Print("[dtorneiocell] --- D: o Kamehameha na cara do Super Perfeito, com o dobro do jogador mais forte ---");
-		// ---- de verdade: o Super Perfeito com o dobro dos meus atributos e a pericia no maximo -- doze segundos de Kamehameha e ele de pe
-		int cell = srv.PalcoTC_RaioNoSuperPerfeito(eu, comODefeito: false);
-		for (int i = 0; i < 60 && cell != 0 && !srv.PalcoTC_OCellDoRaio(eu).Raio; i++) yield return 0.1;   // a carga
-		bool saiu = srv.PalcoTC_OCellDoRaio(eu).Raio;
+		GD.Print("[dtorneiocell] --- D: o Kamehameha na cara do Super Perfeito, com 1,25x o jogador mais forte (o pedido 138; era o dobro) ---");
+
+		// o raio na cara dele, contado em decimos desde que sai da mao: em que decimo ele caiu (-1: de pe os doze segundos, ou o raio acabou)
+		int caiuEm = -1;
 		double menor = 1;
-		for (int i = 0; i < 20; i++) { menor = Math.Min(menor, srv.PalcoTC_OCellDoRaio(eu).Tronco); yield return 0.1; }
-		Fotografar("tc-17-kamehameha-na-cara-do-super-perfeito-ele-aguenta");
-		for (int i = 0; i < 100; i++)
+		IEnumerable ORaio(bool fotografar, string foto)
 		{
-			var agora = srv.PalcoTC_OCellDoRaio(eu);
-			if (!agora.Raio || agora.Caido) break;
-			menor = Math.Min(menor, agora.Tronco);
-			yield return 0.1;
+			caiuEm = -1;
+			menor = 1;
+			for (int d = 0; d < 120; d++)
+			{
+				var agora = srv.PalcoTC_OCellDoRaio(eu);
+				if (agora.Caido) { caiuEm = d; break; }
+				if (!agora.Raio) break;
+				menor = Math.Min(menor, agora.Tronco);
+				if (fotografar && d == 20) Fotografar(foto);
+				yield return 0.1;
+			}
 		}
-		var depois = srv.PalcoTC_OCellDoRaio(eu);
+
+		// ---- o contra-exemplo PRIMEIRO, pelo tempo dele: o Super Perfeito de antes, com a ficha de recem-criado -- o mesmo raio o derruba
+		int cell = srv.PalcoTC_RaioNoSuperPerfeito(eu, comODefeito: true);
+		for (int i = 0; i < 60 && cell != 0 && !srv.PalcoTC_OCellDoRaio(eu).Raio; i++) yield return 0.1;   // a carga
+		foreach (object passo in ORaio(false, "")) yield return passo;
+		int caiuAntes = caiuEm;
+		yield return 0.5;
+		Fotografar("tc-18-contra-exemplo-o-super-perfeito-de-antes-cai");
+		Afirmar("   CONTRA-EXEMPLO (o Super Perfeito de antes, com a ficha de recem-criado): o mesmo raio o derruba -- a regua de baixo reprovaria",
+				caiuAntes >= 0, $"caiu em ~{caiuAntes / 10.0:0.#} s; tronco {srv.PalcoTC_OCellDoRaio(eu).Tronco:P0}");
 		srv.PalcoTC_LargarORaio(eu);
-		Afirmar("**O SUPER PERFEITO AGUENTA O RAIO** (*\"eu tinha 1,9B no ssj grade 4 + buffs e o cell 5bi e ainda venci tranquilamente\"*): com 1,9 "
-				+ "bilhao, doze segundos de Kamehameha na cara dele -- ele toma (o tronco desce) e fica de pe: o dobro dos meus atributos e a pericia no "
-				+ "maximo",
-				cell != 0 && saiu && mundo.CorpoDeTeste(cell) != null && !depois.Caido && menor is > 0.2 and < 1,
-				$"cell {cell}; o raio saiu {saiu}; caido {depois.Caido}; o menor tronco {menor:P0}");
 		srv.PalcoTC_LimparORaio();
 		yield return 1.0;
 
-		// ---- o contra-exemplo: o Super Perfeito de antes, com a ficha de recem-criado -- o mesmo raio o derruba
-		cell = srv.PalcoTC_RaioNoSuperPerfeito(eu, comODefeito: true);
-		for (int i = 0; i < 60 && cell != 0 && !srv.PalcoTC_OCellDoRaio(eu).Raio; i++) yield return 0.1;
-		bool caiu = false;
-		for (int i = 0; i < 120 && !(caiu = srv.PalcoTC_OCellDoRaio(eu).Caido); i++) yield return 0.1;
-		yield return 0.5;
-		Fotografar("tc-18-contra-exemplo-o-super-perfeito-de-antes-cai");
-		Afirmar("   CONTRA-EXEMPLO (o Super Perfeito de antes, com a ficha de recem-criado): o mesmo raio o derruba -- a regua de cima reprovaria", caiu,
-				$"caiu {caiu}; tronco {srv.PalcoTC_OCellDoRaio(eu).Tronco:P0}");
+		// ---- de verdade: o Super Perfeito com 1,25x os meus atributos e a pericia no maximo -- ate doze segundos de Kamehameha
+		cell = srv.PalcoTC_RaioNoSuperPerfeito(eu, comODefeito: false);
+		for (int i = 0; i < 60 && cell != 0 && !srv.PalcoTC_OCellDoRaio(eu).Raio; i++) yield return 0.1;   // a carga
+		bool saiu = srv.PalcoTC_OCellDoRaio(eu).Raio;
+		foreach (object passo in ORaio(true, "tc-17-kamehameha-na-cara-do-super-perfeito")) yield return passo;
 		srv.PalcoTC_LargarORaio(eu);
+		Afirmar("**O SUPER PERFEITO DE 1,25x AGUENTA O RAIO BEM MAIS QUE O DE ANTES** (o pedido 138; *\"eu tinha 1,9B no ssj grade 4 + buffs e o cell "
+				+ "5bi e ainda venci tranquilamente\"*): com 1,9 bilhao, o Kamehameha na cara dele -- ele toma (o tronco desce) e aguenta mais que o dobro "
+				+ "do tempo do de antes, ou fica de pe os doze segundos",
+				cell != 0 && saiu && mundo.CorpoDeTeste(cell) != null && menor < 1 && caiuAntes >= 0 && (caiuEm < 0 || caiuEm > 2 * caiuAntes),
+				$"cell {cell}; o raio saiu {saiu}; {(caiuEm < 0 ? "de pe" : $"caiu em ~{caiuEm / 10.0:0.#} s")} (o de antes, ~{caiuAntes / 10.0:0.#} s); "
+				+ $"o menor tronco {menor:P0}");
 		srv.PalcoTC_LimparORaio();
 		yield return 1.0;
 	}

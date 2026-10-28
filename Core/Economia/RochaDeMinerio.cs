@@ -87,8 +87,12 @@ public static class RochaDeMinerio
 	// QUANTO RENDE
 	// =====================================================================
 
-	/// <summary>A faixa do que UMA rocha rende, em recursos: o sorteio e uniforme entre os dois, inteiro.</summary>
-	public const int RendimentoMinimo = 40, RendimentoMaximo = 160;
+	/// <summary>
+	/// A faixa do que UMA rocha rende, em recursos: o sorteio e uniforme entre os dois, inteiro. (2026-10-27, o pedido 124a) DEZ VEZES a de
+	/// antes (40 a 160): o dono escolheu "Pedras 10x" no documento de um jogador -- a nave (300 mil recursos) pedia 42 min parado com a
+	/// furadeira, e a rocha espalhada pelo planeta vira o caminho de quem treina sozinho. A reserva do planeta continua sendo o teto.
+	/// </summary>
+	public const int RendimentoMinimo = 400, RendimentoMaximo = 1600;
 
 	/// <summary>
 	/// O QUE ESTA ROCHA PEDE A RESERVA. <paramref name="sorteio"/> e um numero em [0,1). O que o jogador

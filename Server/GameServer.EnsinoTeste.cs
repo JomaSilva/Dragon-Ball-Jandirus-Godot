@@ -115,6 +115,7 @@ public partial class GameServer
 			ALicaoAlcancaQuemEstaEmCena(a, d);
 			DoCargoSoOAtaqueDeKi(a, b);
 			OPotentialUnleashedNaoSeEnsina(a, b);   // (2026-10-23) a familia 11m -- o dono: so o ritual da a forma
+			OKaiKaiPedeOKiDivino(a, b);             // (2026-10-27) a familia 11k -- o dono: so Kai ou quem tem o ki divino
 		}
 		catch (Exception e)
 		{
@@ -965,6 +966,107 @@ public partial class GameServer
 		finally
 		{
 			EnsinoDeSkill.MisticoSeEnsinaComoAntesDeTeste = false;
+			a.RecargaDaLicao = 0;
+			b.PedidoDeLicao = null;
+			Zerar(a, b);
+		}
+	}
+
+	/// <summary>
+	/// 11k. O KAI KAI SO PRA QUEM E KAI OU JA DESPERTOU O KI DIVINO (dono, 2026-10-27) -- *"racas sem serem kai, q nao tem god ki n
+	/// poderiam aprender kai kai, kai sem god ki podem tranquilamente"*. O mesmo mestre, o mesmo aluno, pelas portas de producao:
+	///   11k1/11k2  o Humano sem ki divino: a oferta nem chega, e a recusa diz a regra inteira;
+	///   11k3       o Humano que DESPERTOU o ki divino aprende;
+	///   11k4       o Kai sem ki divino aprende (como no DM);
+	///   11k5       a licao de mestre tambem recusa o Humano sem ki divino;
+	///   11k6       a regra e so do Kai Kai: o mesmo Humano aprende outra skill ensinavel do mesmo mestre;
+	///   11k7       o bio sem ki divino nao herda o Kai Kai do doador (a copia dele e ensinada) -- e com o ki divino herda.
+	/// </summary>
+	private void OKaiKaiPedeOKiDivino(ServerPlayer a, ServerPlayer b)
+	{
+		GD.Print("[ensino] -- 11k) O KAI KAI SO PRA QUEM E KAI OU JA DESPERTOU O KI DIVINO (dono, 2026-10-27)");
+		Skill? kaiKai = _skills!.Get(EnsinoDeSkill.KaiKai);
+		Skill? outra = AlvoDesligado();   // a da secao 2, que ensina a este mesmo Humano
+		if (kaiKai == null || !kaiKai.Ensinavel || outra == null)
+		{
+			AfirmarEns("11k. PRECONDICAO: o Kai Kai existe no catalogo e se ensina (`teacher = TRUE`), e ha outra ensinavel",
+					   false, kaiKai?.Nome ?? "sem a skill");
+			return;
+		}
+
+		string racaDoB = b.Race;
+		try
+		{
+			// ---- 11k1/11k2) O HUMANO SEM KI DIVINO ----
+			Zerar(a, b);
+			b.Ficha.godki = null;
+			a.Livro.Dar(kaiKai.Path);
+			b.Livro.Conceder(50);
+			Estacionar(a, 0);
+			Encostar(a, b, tiles: 1);
+			List<string> falas = Ouvir(() => UsarVerboDeEnsino(a, $"ens_ensinar:{kaiKai.Path}"));
+			AfirmarEns($"11k1. O HUMANO SEM KI DIVINO nao aprende o Kai Kai ('{kaiKai.Nome}'): o mestre aponta pra quem esta colado e a oferta nem chega",
+					   b.PedidoDeLicao == null && !b.Livro.Sabe(kaiKai.Path), b.PedidoDeLicao?.ToString() ?? "");
+			AfirmarEns("11k2. ...e a recusa diz a regra inteira: so quem e Kai ou ja despertou o ki divino",
+					   Disse(falas, "só se ensina a quem é Kai") && Disse(falas, "God Ki"), Ultimos(falas));
+
+			// ---- 11k3) O HUMANO QUE DESPERTOU ----
+			Zerar(a, b);
+			a.Livro.Dar(kaiKai.Path);
+			b.Livro.Conceder(50);
+			Jandirus.Core.Forms.DespertarDivino.Despertar(b.Ficha);
+			Encostar(a, b, tiles: 1);
+			AfirmarEns("11k3. O HUMANO QUE DESPERTOU O KI DIVINO aprende o Kai Kai pela licao de sempre",
+					   Licao(a, b, kaiKai), $"ki divino {b.Ficha.godki?.awakened}");
+
+			// ---- 11k4) O KAI SEM KI DIVINO ----
+			Zerar(a, b);
+			b.Ficha.godki = null;
+			b.Race = b.Ficha.Race = EnsinoDeSkill.RacaDoKaiKai;
+			a.Livro.Dar(kaiKai.Path);
+			b.Livro.Conceder(50);
+			Encostar(a, b, tiles: 1);
+			AfirmarEns("11k4. O KAI SEM KI DIVINO aprende o Kai Kai, como no DM", Licao(a, b, kaiKai), $"raca {b.Race}");
+			b.Race = b.Ficha.Race = racaDoB;
+
+			// ---- 11k5) A LICAO DE MESTRE (pura, o molde da 11m4) ----
+			var doMestre = new SkillBook();
+			doMestre.Dar(kaiKai.Path);
+			var doAluno = new SkillBook();
+			doAluno.Conceder(50);
+			RecusaDeLicao deMestre = EnsinoDeSkill.Avaliar(doMestre, doAluno, kaiKai, true, true, false, 1, false, eMeuAluno: true,
+				doAlunoSozinho: Recusa.Pode,
+				alunoAlcancaOKaiKai: EnsinoDeSkill.AlcancaOKaiKai("Human", new Jandirus.Core.Stats.Fighter { Race = "Human" }));
+			AfirmarEns("11k5. A LICAO DE MESTRE tambem recusa o Humano sem ki divino", deMestre == RecusaDeLicao.SemKiDivino, $"{deMestre}");
+
+			// ---- 11k6) SO O KAI KAI ----
+			Zerar(a, b);
+			b.Ficha.godki = null;
+			a.Livro.Dar(outra.Path);
+			b.Livro.Conceder(50);
+			Encostar(a, b, tiles: 1);
+			AfirmarEns($"11k6. A regra e so do Kai Kai: o mesmo Humano sem ki divino aprende '{outra.Nome}' do mesmo mestre",
+					   Licao(a, b, outra));
+
+			// ---- 11k7) O BIO ----
+			Gestacao DoDoadorKai() => new()
+			{
+				Amostras = { new Amostra { Doador = "bancada: o doador Kai" } },
+				Tecnicas = { kaiKai.Path },
+			};
+			Zerar(b);
+			b.Ficha.godki = null;
+			int semKi = HerdarOLivroDosDoadores(b, DoDoadorKai());
+			Zerar(b);
+			Jandirus.Core.Forms.DespertarDivino.Despertar(b.Ficha);
+			int comKi = HerdarOLivroDosDoadores(b, DoDoadorKai());
+			AfirmarEns("11k7. O BIO sem ki divino nao herda o Kai Kai do doador Kai (a copia dele e ensinada) -- e com o ki divino herda",
+					   semKi == 0 && comKi == 1 && b.Livro.Sabe(kaiKai.Path), $"sem {semKi}, com {comKi}");
+		}
+		finally
+		{
+			b.Race = b.Ficha.Race = racaDoB;
+			b.Ficha.godki = null;
 			a.RecargaDaLicao = 0;
 			b.PedidoDeLicao = null;
 			Zerar(a, b);

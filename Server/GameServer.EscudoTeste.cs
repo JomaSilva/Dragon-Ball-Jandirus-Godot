@@ -44,7 +44,8 @@ namespace Jandirus.Server;
 /// ANTES do laco (`Sol.Queimar`, `EspalharDanoG2`, `EstourarG2`, `EspalharDanoDaCarga`,
 /// `LimitarVida`, `ConsumarDestruicao`, o sorteio do `DetonarG3`). Se um dia alguem escrever um
 /// crivo que pergunta pelo `EmCena` direto, a injecao deixa de avermelhar aquela fonte -- e isso
-/// apareceria aqui como uma linha 3 verde, que e falha.
+/// apareceria aqui como uma linha 3 verde, que e falha. (2026-10-27) As portas do dano SEM ALGOZ perguntam pelo `CombatState.Blindado`,
+/// que e o `Intocavel` sem a zona segura (o pedido 113, familia 11) -- e a cena mora nos dois, entao a injecao avermelha as duas.
 /// ====================================================================================
 ///
 /// ============================ E A INJECAO UMA FONTE POR VEZ, NO CODIGO DE PRODUCAO ============================
@@ -187,6 +188,7 @@ public partial class GameServer
 			OCorpoQueEntraNaCenaJaNoLimiar();
 			OPortaoDeMovimentoNaoRegrediu();
 			ATravaAtravessaACena();
+			NaZonaSeguraSoOGolpePara();   // (2026-10-27) o pedido 113 -- a zona segura so barra golpe
 		}
 		finally
 		{
@@ -1103,6 +1105,94 @@ public partial class GameServer
 		var antes = Medir(npc: false, defeito: true);
 		EscudoCheca("(defeito injetado: a marca apagada calada no intocavel, o jogo de antes) a marca some na cena -- a regua (a) REPROVA",
 					!antes.Ficou, antes.Detalhe);
+	}
+
+	// =====================================================================
+	// 11) NA ZONA SEGURA SO O GOLPE PARA (o pedido 113 do dono, 2026-10-27)
+	// =====================================================================
+	/// <summary>
+	/// *"safe zone deveria so proteger de npc e pvp nada mais"* (os jogadores: la dentro *"gravity does not crush"* e *"kaioken does not
+	/// drain"*). No berco da Terra, sem cena, a cobaia esta na zona segura -- intocavel pra outro corpo e NAO blindada -- e:
+	///   11.  cada fonte SEM ALGOZ fere: o esmagamento, as duas metades do Kaio-ken, a sobrecarga, o transbordar e a aposta da Final
+	///        Explosion de quem a soltou caido (essa, pela morte: o preco em vida passa pelo mesmo funil do esmagamento, que tem a linha dele);
+	///   11z. o contra-exemplo: o dano de ki pronto e o dano em area de OUTRO corpo continuam sem pegar nela (a `--naoletalteste`, familia 7,
+	///        mede o golpe, o tiro, a tecnica e o raio);
+	///   11v. o veneno do Cuspe Acido de quem ja saiu do jogo continua golpe: na zona nao tira vida, fora dela tira (o controle).
+	/// </summary>
+	private void NaZonaSeguraSoOGolpePara()
+	{
+		GD.Print("[escudo] -- 11) NA ZONA SEGURA SO O GOLPE PARA: o que vem do corpo ou do mundo fere (o pedido 113, 2026-10-27) --");
+		const float T = ZoneCollision.TileSize;
+		ZonaSeguraNaBancadaDeTeste = true;
+		try
+		{
+			Vec2 berco = PontoDeNascimento(ZonaDoEscudo);
+
+			(string Nome, Action<ServerPlayer>? Palco, Action<ServerPlayer> Disparar, bool SoMorte)[] fontes =
+			[
+				("esmagamento por gravidade (`TickDoEsmagamento`, o funil sem algoz)", PalcoDaGravidade, _ => TickDoEsmagamento(), false),
+				("Kaio-ken continuo (`EspalharDanoG2`)", null, v => EspalharDanoG2(v, 20), false),
+				("Kaio-ken que ESTOURA o corpo (`EstourarG2`)", null, v => EstourarG2(v, "bancada: o corpo se desfaz"), false),
+				("sobrecarga de Ki, segurar C (`EspalharDanoDaCarga`)", null, v => EspalharDanoDaCarga(v, 20), false),
+				("o preco do transbordar (`FerirOTroncoPeloTransbordar`)", null, v => FerirOTroncoPeloTransbordar(v, 20), false),
+				("Final Explosion: a aposta de quem a soltou caido (`DetonarG3`, pela morte)", PorEmNocaute, DispararFinalExplosionEmSi, true),
+			];
+			foreach ((string nome, Action<ServerPlayer>? palco, Action<ServerPlayer> disparar, bool soMorte) in fontes)
+			{
+				ServerPlayer v = Forjar("bancada: a cobaia na zona", ZonaDoEscudo, berco, 3_000_000);
+				try
+				{
+					palco?.Invoke(v);
+					bool naZona = NaZonaSegura(v) && v.Combate!.Intocavel && !v.Combate.Blindado;
+					Marca antes = Ler(v);
+					disparar(v);
+					Marca depois = Ler(v);
+					EscudoCheca($"11. na zona segura MACHUCA: {nome}", naZona && (soMorte ? depois.Morto : depois.Piorou(antes)),
+								$"na zona {naZona}; {antes} -> {depois}");
+				}
+				finally { RecolherOsCorpos(); }
+			}
+
+			// ---- 11z) O CONTRA-EXEMPLO: o golpe de outro corpo continua parado ----
+			ServerPlayer alvo = Forjar("bancada: a cobaia na zona", ZonaDoEscudo, berco, 3_000_000);
+			ServerPlayer fora = Forjar("bancada: quem bate de fora", ZonaDoEscudo, berco + new Vec2(15 * T, 0), 3_000_000);
+			try
+			{
+				Marca antes = Ler(alvo);
+				MeleeResolver.AplicarDanoPronto(alvo.Combate!, 60, letal: true, _rng);
+				EspalharDanoG3(alvo, fora, 60, letal: true);
+				Marca depois = Ler(alvo);
+				EscudoCheca("11z. ...e o golpe de OUTRO corpo continua sem pegar nela: o dano de ki pronto e o dano em area de quem esta fora",
+							NaZonaSegura(alvo) && !NaZonaSegura(fora) && !depois.Piorou(antes), $"{antes} -> {depois}");
+			}
+			finally { RecolherOsCorpos(); }
+
+			// ---- 11v) O VENENO DE QUEM SAIU DO JOGO ----
+			(bool NaZona, Marca Antes, Marca Depois) Veneno(Vec2 onde)
+			{
+				ServerPlayer v = Forjar("bancada: o envenenado", ZonaDoEscudo, onde, 3_000_000);
+				try
+				{
+					long agora = NowMs();
+					// o dono e um id que nao esta no mundo: quem cuspiu ja saiu do jogo
+					_venenoG14[v.Id] = new VenenoG14 { Dono = -1, Ate = agora + 60_000, ProximoEm = agora };
+					Marca antes = Ler(v);
+					TickG14();
+					return (NaZonaSegura(v), antes, Ler(v));
+				}
+				finally
+				{
+					_venenoG14.Remove(v.Id);
+					RecolherOsCorpos();
+				}
+			}
+			var dentro = Veneno(berco);
+			var foraDaZona = Veneno(berco + new Vec2(15 * T, 0));
+			EscudoCheca("11v. o veneno de OUTRO corpo continua golpe, ate com o dono fora do jogo: na zona nao tira vida, fora dela tira (o controle)",
+						dentro.NaZona && !dentro.Depois.Piorou(dentro.Antes) && !foraDaZona.NaZona && foraDaZona.Depois.Piorou(foraDaZona.Antes),
+						$"na zona: {dentro.Antes} -> {dentro.Depois}; fora: {foraDaZona.Antes} -> {foraDaZona.Depois}");
+		}
+		finally { ZonaSeguraNaBancadaDeTeste = false; }
 	}
 
 	/// <summary>

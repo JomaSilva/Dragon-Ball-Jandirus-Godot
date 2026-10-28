@@ -83,6 +83,9 @@ public partial class Chat : CanvasLayer
 	private RichTextLabel _texto = null!;
 	private LineEdit _entrada = null!;
 	private OptionButton _canal = null!;
+
+	/// <summary>(2026-10-27) O BOTAO DA LINGUA DO SAY (o pedido 118): diz a lingua de agora e, clicado, pede a proxima que eu falo inteira.</summary>
+	private Button _lingua = null!;
 	private HBoxContainer _rodape = null!;
 	private readonly List<Button> _abas = [];
 
@@ -194,6 +197,19 @@ public partial class Chat : CanvasLayer
 			_canal.AddItem(NomeDoCanal(f), (int)f);
 		_canal.Selected = 0;
 		_rodape.AddChild(_canal);
+
+		// (2026-10-27) A LINGUA DO SAY: o botao alterna entre as linguas que eu falo inteiras (a Galactica, a nativa, a dos Deuses...). Quem
+		// decide e o servidor; o botao so pede a proxima e mostra a que voltou (`S2C.Linguas`). Ver `Core/Races/Linguas.cs`.
+		_lingua = new Button
+		{
+			FocusMode = Control.FocusModeEnum.None,
+			TooltipText = "A língua do say. Quem não a entende inteira lê embaralhado — e aprende um pouco a cada fala que ouve.",
+		};
+		_lingua.AddThemeFontSizeOverride("font_size", 12);
+		_lingua.Pressed += ProximaLingua;
+		_rodape.AddChild(_lingua);
+		MostrarALingua();
+		if (GameClient.Instance is { } cliDaLingua) cliDaLingua.LinguasMudaram += MostrarALingua;
 
 		_entrada = new LineEdit
 		{
@@ -514,4 +530,36 @@ public partial class Chat : CanvasLayer
 		Protocol.Fala.Looc => "LOOC",
 		_ => f.ToString(),
 	};
+
+	/// <summary>
+	/// (2026-10-27) O botao diz a lingua do say de agora, e a dica dele diz o QUANTO eu sei de cada lingua que conheco -- a maestria do
+	/// pedido 118 (*"de 0% entendendo NADA, ate 100% q vc entende tudo"*), uma por linha.
+	/// </summary>
+	private void MostrarALingua()
+	{
+		if (_lingua == null || !IsInstanceValid(_lingua)) return;
+		GameClient? cli = GameClient.Instance;
+		string rotulo = Jandirus.Core.Races.Linguas.Rotulo(cli?.LinguaDaFala ?? Jandirus.Core.Races.Linguas.Galactica);
+		_lingua.Text = char.ToUpperInvariant(rotulo[0]) + rotulo[1..];
+
+		var dica = new System.Text.StringBuilder("A língua do say. Quem não a entende inteira lê embaralhado — e aprende um pouco a cada fala que ouve.\n");
+		if (cli != null)
+			foreach ((string id, float maestria, bool ensinada) in cli.LinguasConhecidas)
+			{
+				string quanto = (maestria * 100).ToString(maestria >= 1 ? "0" : "0.0#", System.Globalization.CultureInfo.InvariantCulture);
+				string deQual = Jandirus.Core.Races.Linguas.Rotulo(id);
+				dica.Append('\n').Append(ensinada ? $"{deQual}: {quanto}% (ensinada: 2x mais rápido)" : $"{deQual}: {quanto}%");
+			}
+		_lingua.TooltipText = dica.ToString();
+	}
+
+	/// <summary>(2026-10-27) Pede ao servidor a proxima lingua que eu falo inteira, na ordem da lista que ele mandou.</summary>
+	private void ProximaLingua()
+	{
+		if (GameClient.Instance is not { } cli) return;
+		List<string> fala = [.. cli.LinguasConhecidas.Where(l => l.Maestria >= 1).Select(l => l.Id)];
+		if (fala.Count == 0) fala.Add(Jandirus.Core.Races.Linguas.Galactica);
+		int i = fala.IndexOf(cli.LinguaDaFala);
+		cli.SendHabilidade("lingua_falar:" + fala[(i + 1) % fala.Count]);
+	}
 }

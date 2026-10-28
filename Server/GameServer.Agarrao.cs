@@ -190,7 +190,7 @@ public sealed partial class GameServer
 			// imunidade de embate). Pular aqui nao e uma regra nova do agarrao: e a mesma que o
 			// `AlvoNaFrente` do soco aplica, e agarrar alguem no meio da cena do SSJ3 seria
 			// atravessar o escudo que a cena inteira existe pra dar.
-			if (o.Combate.Intocavel) continue;
+			if (o.Combate.IntocavelPara(a.Combate)) continue;   // (2026-10-27, o pedido 129) e o lutador da vez no torneio, pra quem e de fora
 
 			// QUEM ALCANCA QUEM, POR ANDAR -- assimetrico de proposito (ver `Voo.PodeAcertar`): quem
 			// paira rasante agarra quem esta no chao, e nao o contrario. E o que faz o carregar pelo
@@ -784,7 +784,7 @@ public sealed partial class GameServer
 		}
 
 		CombatState? c = d.Combate;
-		if (c == null || CaidoPelaMorte(d) || c.Intocavel) return;   // (2026-10-16) o pescoco do fantasma de pe aperta
+		if (c == null || CaidoPelaMorte(d) || c.IntocavelPara(a.Combate)) return;   // (2026-10-16) o pescoco do fantasma de pe aperta (2026-10-27: `IntocavelPara`, o pedido 129)
 		BodyPart? pescoco = c.Corpo.Achar("Cabeca") is { Decepado: false } cabeca ? cabeca : c.Corpo.Sortear("cabeca", _rng);
 		if (pescoco == null) return;
 

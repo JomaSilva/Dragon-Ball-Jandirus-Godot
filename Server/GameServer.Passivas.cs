@@ -234,7 +234,7 @@ public sealed partial class GameServer
 	{
 		CombatState c = pl.Combate!;
 		if (pl.Ficha.KO || pl.Ficha.dead || c.Corpo.Achar(Body.NomeDoTronco) is not { Decepado: false } tronco) return;
-		bool feriu = c.Ferir(tronco, tronco.VidaMax * porcento / 100, letal: false);
+		bool feriu = c.Ferir(tronco, tronco.VidaMax * porcento / 100, letal: false, doMundo: true);   // (2026-10-27) sem algoz: a zona segura nao o barra
 		c.SincronizarVida();
 		if (feriu && c.Corpo.DeveNocautear())
 		{
@@ -644,7 +644,7 @@ public sealed partial class GameServer
 		float raio = (float)(Passivas.TilesDoKiai * ZoneCollision.TileSize);
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.IntocavelPara(pl.Combate)) continue;   // (2026-10-27, o pedido 129) `IntocavelPara`
 			Vec2 fora = o.Pos - pl.Pos;
 			if (fora.Length > raio) continue;
 			Vec2 rumo = fora.LengthSquared > 1e-4f ? fora.Normalized() : MeleeArea.Frente(pl.Facing);

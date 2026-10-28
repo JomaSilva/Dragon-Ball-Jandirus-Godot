@@ -590,6 +590,15 @@ public partial class GameServer
 	/// <returns>Sempre verdadeiro: o tiro acaba no mundo, tenha ele ferido ou nao.</returns>
 	public bool AtingirMundoComKi(PlanetaNoEspaco corpo, Projetil p, ServerPlayer? atirador)
 	{
+		// ============================ TIRO DE NPC NAO FERE PLANETA (dono, 2026-10-27) ============================
+		// *"tiro de NPC no espaco nao fere planeta"*. O pedido desta porta foi de PESSOAS no espaco atacando um mundo, e o Freeza que
+		// seguiu um jogador ate a orbita derrubou Namek com UM tiro (o log da VPS de 2026-10-27: `VIDA ZERADA por fogo de ki do espaco
+		// ... ataque de ki de Freeza`). O tiro do NPC do mundo acaba no disco sem tirar nada e sem frase -- a primeira pergunta, antes de
+		// todas, porque nenhuma das de baixo e sobre ele. O outro lado da regra: o NPC nao sobe pro espaco voando
+		// (`TentarRomperAAtmosfera`); este cobre o que chegou la de carona. Quem ja saiu do mundo (`atirador` nulo) segue como era.
+		// ======================================================================================================
+		if (atirador != null && EhNpcDoMundo(atirador)) return true;
+
 		ZoneKey zona = Espaco.ZonaDe(corpo);
 
 		// ============================ NUM MUNDO QUE JA ESTA MORRENDO NAO HA MAIS VIDA PRA TIRAR ============================

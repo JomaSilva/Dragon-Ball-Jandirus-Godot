@@ -20,6 +20,14 @@ public sealed partial class GameServer
 		pl.Class = pl.Ficha.Class = "Majin";
 		pl.Ficha.BP = bp;
 		pl.Ficha.Statify();
+		// (2026-10-28) UM TANQUE QUE SEGURA A FORMA A CENA INTEIRA: desde o dreno em PONTOS (o pedido 93, 2026-10-26) o tanque de fabrica deste
+		// Majin de bancada (~110) acaba em ~4 s de Super Majin, e a forma caia antes das fotos -- o S1f..S6 estavam vermelhos desde entao (a r1
+		// do `faiscamajin` mediu "Ki 3/110" no S1). Cem vezes o tanque: minutos de forma. So a ficha de bancada, e uma vez.
+		if (pl.Ficha.MaxKi < 10_000)
+		{
+			pl.Ficha.baseKi *= 100;
+			pl.Ficha.Statify();
+		}
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		pl.Visual.CorAura = new Jandirus.Core.Appearance.Rgb(70, 130, 255);
 		ReapresentarAparencia(pl);

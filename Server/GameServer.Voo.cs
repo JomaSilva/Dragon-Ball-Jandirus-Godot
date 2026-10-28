@@ -555,6 +555,12 @@ public partial class GameServer
 	{
 		if (Espaco.EhEspaco(pl.Zone)) return;
 
+		// (2026-10-27) O NPC DO MUNDO NAO SAI DO PLANETA VOANDO (dono: *"NPC nao sai do planeta voando"*). O caso que abriu a regra: o Freeza de
+		// Namek segue a ALTURA do alvo (`QuerSubirPara`, no cerebro), e quando um jogador subiu pro espaco ele bateu no teto atras e saiu como
+		// jogador -- a tropa fugiu, as esferas cairam, e no espaco um tiro dele derrubou Namek (a outra metade: `AtingirMundoComKi`). No teto o
+		// NPC fica no ar, calado (ninguem le o aviso). A carona continua: quem o leva e outro corpo, e por outra porta.
+		if (EhNpcDoMundo(pl)) return;
+
 		// (v0.2.1) AO LEME, QUEM ROMPE A ATMOSFERA E A NAVE -- os tres portoes abaixo sao do CORPO que voa sozinho (o
 		// `Space_Flight`, `Mindo.dm:162`), e uma nave existe justamente pra levar quem nao os tem. Ver
 		// `RomperAAtmosferaComANave` (`GameServer.Nave.cs`).

@@ -75,7 +75,8 @@ public sealed partial class GameServer
 	/// (dono, 2026-10-23) MENOS A SKILL DE CARGO QUE O ENSINO NAO DA MAIS (a chave da Sala do Tempo de um Guardiao doador): a copia
 	/// que o bio levaria e ensinada, e a reconciliacao do cargo a tiraria no tique seguinte -- o parto contaria uma skill que ele nao
 	/// tem. A amostra continua guardando o livro inteiro; quem escolhe e o parto. E MENOS O POTENTIAL UNLEASHED (a skill `kai/Mystic`):
-	/// o dono fechou o ensino dele por porta nenhuma, e a heranca do bio era a ultima.
+	/// o dono fechou o ensino dele por porta nenhuma, e a heranca do bio era a ultima. (2026-10-27) E MENOS O KAI KAI de um doador
+	/// Kai, se o bio nao o alcanca (`EnsinoDeSkill.AlcancaOKaiKai`: ele nao e Kai, e so com o ki divino desperto).
 	/// </summary>
 	private int HerdarOLivroDosDoadores(ServerPlayer pl, Gestacao g)
 	{
@@ -92,6 +93,10 @@ public sealed partial class GameServer
 			if (EnsinadasQueSaem.Contains(path) && !Jandirus.Core.Ranks.DadivaDeCargo.EnsinadaDoCargoFicaDeTeste) continue;
 			// (2026-10-23) ...nem o Potential Unleashed do doador: so o ritual o da (`EnsinoDeSkill.SoPeloRitual`), e o laboratorio nao e porta.
 			if (Jandirus.Core.Skills.EnsinoDeSkill.SoPeloRitual(_skills.Get(path)!)) continue;
+			// (2026-10-27) ...nem o Kai Kai pra quem nao o alcanca: a copia do bio e ENSINADA, e o dono fechou essa licao a quem
+			// nao e Kai nem despertou o ki divino.
+			if (Jandirus.Core.Skills.EnsinoDeSkill.PedeKiDivino(_skills.Get(path)!)
+				&& !Jandirus.Core.Skills.EnsinoDeSkill.AlcancaOKaiKai(pl.Race, pl.Ficha)) continue;
 			pl.Livro.DarComoEnsinada(path);
 			herdadas++;
 		}

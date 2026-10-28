@@ -135,7 +135,8 @@ public static class MeleeResolver
 		// Mundo eram invulneraveis por decreto. Agora so o intocavel (cinematica, imunidade de embate) escapa;
 		// o corpo morto perde vida nos membros como qualquer corpo, e o `Morrer()` de quem ja esta morto e
 		// vazio (`CombatState.Morrer`) -- ninguem morre duas vezes por um soco no defunto.
-		if (d.Intocavel) return r;
+		// (2026-10-27, o pedido 129) ...e quem so apanha de alguns (o lutador da vez no torneio) escapa de quem nao e o adversario.
+		if (d.IntocavelPara(a)) return r;
 
 		// golpear GASTA a carencia de quem acabou de renascer: o escudo e pra sair de perto,
 		// nao pra voltar batendo de graca

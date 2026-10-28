@@ -1518,6 +1518,51 @@ public partial class GameServer
 		AfirmarCat("quem nunca a teve nao e tocado (2 livres continuam 2, nada pra avisar)",
 				   pl.Livro.MarcosLivres == 2 && pl.SkillsQueSairam.Count == 0);
 
+		// (2026-10-27, o pedido 125) O KAI KAI FORA DA REGRA DO 108 -- o dono: *"Faca quem tem kaikai no save q nao seja kaio ou n tenha god ki
+		// perder ele"*. Sai no login de quem nao e Kai nem despertou o God Ki, sem marco (a copia ensinada nao custou nada), com o recado; o
+		// Kai e quem tem o God Ki ficam com ele (os contra-exemplos).
+		{
+			string kaiKai = EnsinoDeSkill.KaiKai;
+			CharacterSave ComKaiKai()
+			{
+				CharacterSave s = Antigo();
+				s.Skills = [dura, kaiKai];
+				s.SkillsEnsinadas = [kaiKai];
+				s.MarcosLivres = 1;
+				return s;
+			}
+			string racaAntes = pl.Race;
+			GodKiState? godKiAntes = pl.Ficha.godki;
+			try
+			{
+				pl.Race = "Saiyan";
+				pl.Ficha.godki = null;
+				PrepararSkills(pl, ComKaiKai());
+				List<string> falasKk = Ouvir(() => AvisarDasAposentadas(pl));
+				AfirmarCat("KK1. (o pedido 125) o KAI KAI de quem nao e Kai nem despertou o God Ki SAI do livro no login, sem marco (1 livre continua 1), com o recado -- uma vez so",
+						   !pl.Livro.Sabe(kaiKai) && pl.Livro.Sabe(dura) && pl.Livro.MarcosLivres == 1 && Disse(falasKk, "Kai Kai")
+						   && Ouvir(() => AvisarDasAposentadas(pl)).Count == 0,
+						   $"sabe {pl.Livro.Sabe(kaiKai)}, livres {pl.Livro.MarcosLivres}; {string.Join(" | ", falasKk)}");
+				pl.Race = EnsinoDeSkill.RacaDoKaiKai;
+				PrepararSkills(pl, ComKaiKai());
+				bool doKai = pl.Livro.Sabe(kaiKai);
+				List<string> falasDoKai = Ouvir(() => AvisarDasAposentadas(pl));
+				pl.Race = "Saiyan";
+				pl.Ficha.godki = new GodKiState { awakened = true };
+				PrepararSkills(pl, ComKaiKai());
+				bool doGodKi = pl.Livro.Sabe(kaiKai);
+				List<string> falasDoGodKi = Ouvir(() => AvisarDasAposentadas(pl));
+				AfirmarCat("KK2. ...e o do KAI e o de quem tem o GOD KI desperto FICAM, sem recado (os contra-exemplos)",
+						   doKai && doGodKi && !Disse(falasDoKai, "Kai Kai") && !Disse(falasDoGodKi, "Kai Kai"),
+						   $"Kai {doKai}, God Ki {doGodKi}");
+			}
+			finally
+			{
+				pl.Race = racaAntes;
+				pl.Ficha.godki = godKiAntes;
+			}
+		}
+
 		// AS TRES DO ARQUIVO FORA DO `.dme` (dono, 2026-10-11: *"pode tirar"*): duas skills e uma arvore do sistema
 		// VELHO de ataques customizados, que o jogo original nao compila. O catalogo que o jogo carrega nao as tem;
 		// as duas folhas estao na lista das aposentadas, e o save que tiver uma (so por admin: nenhuma arvore as

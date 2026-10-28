@@ -65,7 +65,7 @@ public sealed partial class Fighter
     /// </summary>
     public void TrainGain(Random rng, double mult = 1)
     {
-        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) peso acima de 8x o limite do corpo: o T nao rende nada
+        if (DemaisPraTreinar()) return;   // (2026-10-23) peso acima de 8x o limite do corpo (2026-10-27: ou a gravidade acima de 4x a maestria): o T nao rende nada
         if (mult == 0) mult = 1;
         mult *= GainKnobs.GlobalTrainGain * zoneGainMult * racialGanhoDeTreino;   // (v0.4.0) o Persistence -- `Fighter.racialGanhoDeTreino`
 
@@ -102,7 +102,7 @@ public sealed partial class Fighter
     /// <summary>Meditar. Rende menos por tick que treinar, mas nao custa folego.</summary>
     public void MedGain(Random rng, double multi = 1)
     {
-        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) ...nem a meditacao
+        if (DemaisPraTreinar()) return;   // (2026-10-23) ...nem a meditacao
         if (multi == 0) multi = 1;
         double lugar = FatorDaGravidade();   // (2026-10-16) a gravidade multiplica a meditacao tambem (a atividade) -- ver `FatorDaGravidade`
 
@@ -126,10 +126,13 @@ public sealed partial class Fighter
     /// <summary>
     /// Trocar golpes. E o ganho mais rapido do jogo por design -- lutar de verdade ensina
     /// mais que socar o ar -- e o unico que passa pela TECNICA (Etechnique).
+    ///
+    /// (2026-10-28, o pedido 148) <paramref name="soOBp"/>: so o BP. A reserva da luta entre jogadores paga assim (`GameServer.Ganhos.cs`) --
+    /// ela nao e um golpe, e com a maestria de gravidade e o folego de cada golpe a luta em gravidade acostumaria o corpo duas vezes mais depressa.
     /// </summary>
-    public void AttackGain(Random rng, double mult = 1)
+    public void AttackGain(Random rng, double mult = 1, bool soOBp = false)
     {
-        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) ...nem a luta
+        if (DemaisPraTreinar()) return;   // (2026-10-23) ...nem a luta
         if (mult == 0) mult = 1;
         mult *= GainKnobs.GlobalSparGain * zoneGainMult;
 
@@ -139,10 +142,12 @@ public sealed partial class Fighter
             tmp_activ_gains = Math.Max(0, tmp_activ_gains - 25);
         }
 
-        // lutar em gravidade alta tambem acostuma o corpo, so que devagar
+        // lutar em gravidade alta tambem acostuma o corpo, so que devagar -- (2026-10-28, o pedido 143) e 3x mais devagar, ver `GravGain`
         double gravidade = Planetgrav + gravmult;
-        if (gravidade > GravMastered)
-            GravMastered += 0.00001 * gravidade * GravMod * GainKnobs.GlobalGravGain;
+        // (2026-10-28, o pedido 146) e para no teto de 300x (`GainKnobs.MaestriaMaximaDaGravidade`), como o passe do `GravGain`
+        if (!soOBp && gravidade > GravMastered && GravMastered < GainKnobs.MaestriaMaximaDaGravidade)
+            GravMastered = Math.Min(GravMastered + 0.00001 * gravidade * GravMod * GainKnobs.GlobalGravGain / GainKnobs.LentidaoDaMaestria,
+                                    GainKnobs.MaestriaMaximaDaGravidade);
 
         if (BP < relBPmax)
         {
@@ -155,7 +160,7 @@ public sealed partial class Fighter
             BP += GanhoDeAtividade(CapCheck(GainKnobs.BPTick * BpGainBase() * Etechnique * SparMod * Egains * weight * mult * lugar));
         }
 
-        if (DmMath.Prob(rng, 20)) maxstamina += 0.01 * weight;
+        if (!soOBp && DmMath.Prob(rng, 20)) maxstamina += 0.01 * weight;
     }
 
     /// <summary>
@@ -165,7 +170,7 @@ public sealed partial class Fighter
     /// </summary>
     public void BlastGain(Random rng, double mult = 1, bool ignoreMinuteshot = false)
     {
-        if (PesoDemaisPraTreinar()) return;   // (2026-10-23) ...nem o ki
+        if (DemaisPraTreinar()) return;   // (2026-10-23) ...nem o ki
         if (mult == 0) mult = 1;
         mult *= zoneGainMult;
 
@@ -268,6 +273,10 @@ public sealed partial class Fighter
     /// multiplicador ETERNO de treino (dominar 100x num chao de 1x valia 20,8x). Saiu: a aclimatacao e so o bonus de PODER do
     /// `gravFelt` (`Fighter.Power`, `StatCurves.GravFelt`), que a aba de Formas mostra. DIVERGENCIA DECLARADA.
     /// =======================================================================================================
+    ///
+    /// (2026-10-28, o pedido 143) LINEAR DE NOVO: de 2026-10-27 22:59 a 2026-10-28 o fator foi `1 + log2(gravidade)` (o pedido 141), e o
+    /// dono o desfez -- *"volta a gravidade como era antes"* -- trocando o freio pelo da MAESTRIA (3x mais lenta, ver `GravGain`) e pelo
+    /// castigo da gravidade alta (`Esmagamento`, os degraus de 3x e de 5x).
     /// </summary>
     public double FatorDaGravidade()
     {
@@ -323,12 +332,15 @@ public sealed partial class Fighter
     {
         double gravidade = gravmult + Planetgrav;
 
-        // o teto de aclimatacao so sobe encarando gravidade ACIMA dele
-        if (gravidade > GravMastered)
+        // o teto de aclimatacao so sobe encarando gravidade ACIMA dele -- (2026-10-28, o pedido 146) e para nos 300x
+        // (`GainKnobs.MaestriaMaximaDaGravidade`; era o `GravityCap`, 500x, que hoje e so o da maquina e o da curva da aclimatacao). Quem ja
+        // passa do teto sem treino (o nativo de um mundo mais pesado, `Birth.AclimatarAoBerco`) nao e podado aqui: so nao sobe mais.
+        if (gravidade > GravMastered && GravMastered < GainKnobs.MaestriaMaximaDaGravidade)
         {
             // a maestria de gravidade nao e BP: o ganho de BP ficou 20x menor (2026-10-16) e depois 2x (2026-10-23), ela segue no ritmo do DM
-            GravMastered += 0.001 + GainKnobs.BPTickDoDm * 10 * gravidade * GravMod * GainKnobs.GlobalGravGain * 0.02;
-            GravMastered = Math.Min(Math.Min(gravidade, GravMastered), GainKnobs.GravityCap);
+            // -- (2026-10-28, o pedido 143) dividido por `GainKnobs.LentidaoDaMaestria` (3): *"triplique o tempo da maestria"*
+            GravMastered += (0.001 + GainKnobs.BPTickDoDm * 10 * gravidade * GravMod * GainKnobs.GlobalGravGain * 0.02) / GainKnobs.LentidaoDaMaestria;
+            GravMastered = Math.Min(Math.Min(gravidade, GravMastered), GainKnobs.MaestriaMaximaDaGravidade);
         }
     }
 
@@ -361,12 +373,13 @@ public sealed partial class Fighter
     /// o dono pediu -- ver o multiplicador. O <see cref="zoneGainMult"/> entra na conta.
     /// ======================================================================================
     ///
-    /// (2026-10-23) ZERO COM PESO DEMAIS: acima de 8x o limite do corpo o treino nao rende nada (<see cref="PesoDemaisPraTreinar"/>), e o
+    /// (2026-10-23) ZERO COM PESO DEMAIS (2026-10-27: ou com a gravidade acima de 4x a maestria, <see cref="GravidadeDemaisPraTreinar"/>):
+    /// acima de 8x o limite do corpo o treino nao rende nada (<see cref="PesoDemaisPraTreinar"/>), e o
     /// painel diz o que o tique paga -- o `weight` continua 8 (ele divide o poder), mas o "8x pesos" seria mentira.
     /// </summary>
     public double MultiplicadorDeGanho()
     {
-        if (PesoDemaisPraTreinar()) return 0;
+        if (DemaisPraTreinar()) return 0;
         double gmult = FatorDaGravidade();   // o MESMO fator que o tique paga (2026-10-16)
 
         // O PESO MULTIPLICA O TREINO, e so pra cima: `weight` nasce em 1 e o `WeightTick` ja o
@@ -416,6 +429,22 @@ public sealed partial class Fighter
     /// vai inteira pro save, e uma propriedade publica entraria nele.
     /// </summary>
     public bool PesoDemaisPraTreinar() => weight_ratio > GainKnobs.RazaoQueImpedeOTreino && !GainKnobs.PesoDemaisTreinaDeTeste;
+
+    /// <summary>
+    /// (2026-10-27) GRAVIDADE DEMAIS PRA TREINAR? A gravidade que o corpo sente acima de <see cref="GainKnobs.RazaoDaGravidadeQueImpedeOTreino"/>
+    /// (4x a maestria) -- e ai nada do treino rende, como no peso (<see cref="PesoDemaisPraTreinar"/>): o pedido 117 do dono, *"faça com q a
+    /// gravidade assim como o peso, se ela for mt acima da sua maestria (4x) vc n consegue nem treinar nela"*. So a gravidade -- a razao do
+    /// `Esmagamento.Razao` sem o peso, que tem a regra dele. A maestria do chao continua subindo a cada passe (<see cref="GravGain"/>), e e
+    /// ela que tira o corpo dali.
+    /// </summary>
+    public bool GravidadeDemaisPraTreinar() =>
+        Esmagamento.Gravidade(this) / Math.Max(GravMastered, 1) > GainKnobs.RazaoDaGravidadeQueImpedeOTreino;
+
+    /// <summary>
+    /// (2026-10-27) O TREINO NAO RENDE NADA: o peso (<see cref="PesoDemaisPraTreinar"/>) ou a gravidade (<see cref="GravidadeDemaisPraTreinar"/>)
+    /// passaram do que o corpo aguenta treinar. A pergunta do T, da meditacao, da luta, do ki e do painel.
+    /// </summary>
+    public bool DemaisPraTreinar() => PesoDemaisPraTreinar() || GravidadeDemaisPraTreinar();
 
     // =====================================================================
     // O ACUMULADOR DE QUEM NAO ESTA TREINANDO

@@ -18,7 +18,10 @@ namespace Jandirus.Client;
 ///       `gravmeta-3-recusa-no-chat`;
 ///   G4. sem peso, dominando 500x na Terra: a aba Forms diz "Aclimatado +25% nesta gravidade" (eram +97%) -- foto `gravmeta-4-aclimatado-500x`;
 ///       e 100x diz +14%;
-///   G5. morto, no portao do Inferno (10x) dominando 1x: o tique de 1 Hz o prende e o fere, e o chat avisa -- foto `gravmeta-5-morto-no-inferno`.
+///   G5. morto, no portao do Inferno (10x) dominando 1x: o tique de 1 Hz o prende e o fere, e o chat avisa -- foto `gravmeta-5-morto-no-inferno`;
+///   G6. (2026-10-27, o pedido 117) vivo e sem peso em Vegeta (10x) dominando 1x: a aba Stats diz "Ganho de BP 0x" e a pilula "gravidade demais
+///       (acima de 4x a sua maestria): nao se treina", e a Equip "0x -- a gravidade passa de 4x a sua maestria" -- foto
+///       `gravmeta-6-stats-gravidade-demais`. CONTRA-EXEMPLO: os binarios do ciclo (`ag/gravtreino`).
 ///
 ///     Godot --janela --resolution 1280x720 --host --rede 10911 --horateste 0.5 --semfauna --diaggravmeta --raca Human --conta bancada_dgravmeta --nome Pesado
 /// </summary>
@@ -140,6 +143,25 @@ public partial class RoboDaGravMeta : Node
 		string em100 = menu.ValorDesenhado("Forms", "Aclimatado") ?? "(nulo)";
 		Checa("G4b. ...e dominando 100x, \"+14% nesta gravidade\" (a mesma curva, eram +53%)", em100Chegou && em100 == "+14% nesta gravidade",
 			  $"no fio {cli.Atributos.Aclimatacao:0.####}; na tela '{em100}'");
+		menu.Fechar();
+
+		// ---------------------------------------------------------------- G6. (2026-10-27) a gravidade demais, na aba Stats e na Equip
+		bool pesado = srv.PalcoGm_GravidadeDemais(id);
+		bool chegouG = pesado && await Ate(() => cli.Zone.Equals(Jandirus.Core.World.ZoneKey.Premade("Vegeta")) && cli.Atributos.PesoKg <= 0
+												  && cli.Atributos.GanhoDeTreino <= 0 && cli.Atributos.Esmagamento > 4, 15);
+		Checa("(montagem) vivo e sem peso em Vegeta (10x), dominando 1x: a ficha lenta chega com o ganho do treino em zero", chegouG,
+			  $"zona {cli.Zone.Name}; peso {cli.Atributos.PesoKg:N0} kg; ganho {cli.Atributos.GanhoDeTreino:0.##}x; razao {cli.Atributos.Esmagamento:0.#}");
+		await AbrirNaAba(menu, "Stats");
+		string ganhoG = menu.ValorDesenhado("Stats", "Ganho de BP") ?? "(nulo)";
+		Label? pilulaG = RotuloQueDiz(menu, "Stats", "gravidade demais (acima de 4x a sua maestria): não se treina");
+		Checa("G6. **A ABA STATS DIZ QUE NESSA GRAVIDADE NAO SE TREINA** (o pedido 117): \"Ganho de BP 0x\" e a pilula \"gravidade demais (acima "
+			  + "de 4x a sua maestria): não se treina\" -- e nao a do peso",
+			  ganhoG == "0x" && pilulaG != null && RotuloQueDiz(menu, "Stats", "peso demais") == null, $"ganho '{ganhoG}'; pilula {(pilulaG != null ? "sim" : "nao")}");
+		await Fotografar("gravmeta-6-stats-gravidade-demais", pilulaG);
+		await AbrirNaAba(menu, "Equip");
+		string naEquipG = menu.ValorDesenhado("Equip", "Ganho no treino") ?? "(nulo)";
+		Checa("G6b. ...e a aba Equip diz \"0x -- a gravidade passa de 4x a sua maestria\"",
+			  naEquipG == "0x -- a gravidade passa de 4x a sua maestria", $"'{naEquipG}'");
 		menu.Fechar();
 
 		// ---------------------------------------------------------------- G5. o morto no Inferno

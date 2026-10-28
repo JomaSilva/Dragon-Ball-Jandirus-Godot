@@ -89,6 +89,11 @@ public partial class GameServer
 		// (2026-10-18) ...e o MAJIN que tinha a `Regenerate` troca pelo Sleep, sem pagar nem receber marco: a compra continua compra. Ver
 		// `Races.SonoDoMajin`.
 		pl.SonoTrocado = Jandirus.Core.Races.SonoDoMajin.Migrar(pl.Livro, pl.Race);
+		// (2026-10-27, o pedido 125) ...e o KAI KAI de quem nao e Kai nem despertou o God Ki sai do livro -- a regra do 108 pra tras (o dono:
+		// *"a cagada ja foi feita kkkk jogadores ja ensinaram pra geral"*). Sem marco: fora da raca ele so chegava por licao, heranca ou
+		// presente, e a copia ensinada nao custou nada (`EnsinoDeSkill.Esquecer`). A raca e a ficha ja vieram do save (`ParaJogador`).
+		pl.KaiKaiTirado = pl.Livro.Sabe(EnsinoDeSkill.KaiKai) && !EnsinoDeSkill.AlcancaOKaiKai(pl.Race, pl.Ficha);
+		if (pl.KaiKaiTirado) pl.Livro.Esquecer(EnsinoDeSkill.KaiKai);
 
 		MigrarRazao(pl, save);
 	}
@@ -108,6 +113,12 @@ public partial class GameServer
 
 		if (pl.SonoTrocado) Avisar(pl, Jandirus.Core.Races.SonoDoMajin.AvisoDaTroca);
 		pl.SonoTrocado = false;
+
+		// (2026-10-27, o pedido 125) o Kai Kai fora da regra que o login tirou -- ver `PrepararSkills`
+		if (pl.KaiKaiTirado)
+			Avisar(pl, "o Kai Kai saiu do seu livro: desde a 0.5.2 ele é só de quem é Kai ou já despertou o God Ki -- desperte o God Ki e um Kai "
+					 + "pode te ensinar de novo.");
+		pl.KaiKaiTirado = false;
 
 		foreach ((SkillsFechadas.Fechada skill, int devolvidos) in pl.SkillsQueFecharam)
 			Avisar(pl, $"a habilidade {skill.Nome} ainda não existe neste jogo (falta {skill.Falta}) e saiu do seu livro. "

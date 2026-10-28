@@ -242,7 +242,7 @@ public partial class GameServer
 			pl.Combate.Combo = 3;
 			pl.Combate.Letal = true;
 			_paralisadoAte[pl.Id] = NowMs() + 60_000;
-			pl.UltimoAgressor = pl.CloneId;
+			pl.UltimoAgressor = pl.Id + 1;   // (2026-10-27) um agressor qualquer: o reflexo nao nasce mais na porta (a lista do pedido 124c)
 			pl.RancorAte = NowMs() + 90_000;
 			DefinirAtividade(pl, Protocol.Activity.Treinando);
 			Acordar();

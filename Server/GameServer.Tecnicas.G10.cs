@@ -234,7 +234,7 @@ public sealed partial class GameServer
 	private void FerirUmMembroG10(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal, string? zona = null)
 	{
 		CombatState? c = vitima.Combate;
-		if (c == null || dano <= 0 || EhCadaver(vitima) || c.Intocavel) return;
+		if (c == null || dano <= 0 || EhCadaver(vitima) || c.IntocavelPara(autor.Combate)) return;   // (2026-10-27, o pedido 129) `IntocavelPara`
 		if (autor != vitima && NaZonaSegura(autor)) return;   // (2026-10-26) quem esta na zona segura nao fere ninguem -- ver `NaZonaSegura`
 
 		BodyPart? membro = c.Corpo.Sortear(zona ?? autor.Combate?.ZonaMirada, _rng);

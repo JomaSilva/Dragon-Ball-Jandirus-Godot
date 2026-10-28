@@ -232,6 +232,8 @@ public sealed partial class GameServer
 		if (pl.Ficha.dead) { Avisar(pl, "mortos não treinam."); return true; }
 		if (pl.Ficha.KO) { Avisar(pl, "você mal se sustenta de pé. Levante primeiro."); return true; }
 		if (pl.Voando) { Avisar(pl, "pouse antes de atravessar a porta."); return true; }
+		// (2026-10-27) a Sala fechada no comeco do mundo vale aqui tambem (o pedido 112) -- ver `SalaDoTempoAberta`
+		if (!SalaDoTempoAberta(NowMs())) { Avisar(pl, FraseDaSalaFechada(NowMs())); return true; }
 
 		ZoneKey sala = SalaDePlaneta.Interior(pl.Zone);
 		int dentro = QuantosNaSalaDePlaneta(sala);

@@ -294,7 +294,7 @@ public sealed partial class GameServer
 			BaseDano = r.Potencia,        // `powmod`
 			Velocidade = velocidade,      // `beamspeed` -- ver o bloco acima sobre a unidade dele
 			AlcanceTiles = r.Alcance,     // `maxdistance`
-			MultDeOnda = r.Onda,          // `wavemult`
+			EscalaVisual = r.Onda,        // o `wavemult` so no TAMANHO (2026-10-27): nenhum raio multiplica o BP de quem atira (o pedido 115)
 			Piercer = true,               // `bypass = 1` nos seis
 			EstouraNoImpacto = deathBeam,
 			PressaSobreODm = Projetil.BeamspeedLidoComoSpeedDeTeste ? 0 : Projetil.PressaSobreORaioDoDm(velocidade),

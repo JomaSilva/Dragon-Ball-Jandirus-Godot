@@ -98,6 +98,7 @@ public partial class GameServer
 			OCensoNaoMenteMais();
 			OPainelLidoDoPacote();
 			OEfeitoComOCargoNoTrono();
+			OSeloNaoLevaONpcDeSaga();   // (2026-10-27, o pedido 132)
 		}
 		catch (Exception e)
 		{
@@ -932,6 +933,54 @@ public partial class GameServer
 		=> ForjarComSkills(nome, onde, bp,
 						   skills: ["/datum/skill/rank/Mafuba", "/datum/skill/rank/DeadZone", "/datum/skill/rank/SuperiorSeal"],
 						   degraus: [("/datum/skill/mind/Basic_Ki_Control", 5)]);
+
+	// =====================================================================
+	// 11) (2026-10-27, o pedido 132) O NPC DE SAGA NAO E SELADO -- ele nao sai do planeta da saga, nem pro pote nem pra fenda
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"n deixe nenhum npc de saga pode sair do planeta q a saga acontece pq isso causa bugs"*. Selar e mudar o corpo de zona (o bolso
+	/// dos selados), entao o chefe de saga nao vai pro pote nem pra fenda: a fita do Mafuba se desfaz nele, e a fenda da Dead Zone nao o suga.
+	/// O corpo forjado e um "selador" com o papel que o nascimento do chefe de saga escreve (`PapelDeNpc.DaSaga`).
+	/// </summary>
+	private void OSeloNaoLevaONpcDeSaga()
+	{
+		GD.Print("[selo] -- 11) o NPC de saga nao e selado: a fita se desfaz nele e a fenda nao o suga (o pedido 132)");
+		Jandirus.Core.Npc.MoldeDeNpc? doChefe = _moldes?.Todos.FirstOrDefault(m => m.EhChefe);
+		if (doChefe == null) { AfirmarSe("(montagem) um molde de chefe no npcs.json", false); return; }
+		ServerPlayer DeSaga(string nome, Vec2 onde)
+		{
+			ServerPlayer c = ForjarSelador(nome, onde, bp: 900);
+			c.Papel = new Jandirus.Core.Npc.PapelDeNpc(doChefe, 1) { DaSaga = true };
+			return c;
+		}
+
+		// ---- a fita do Mafuba
+		Vec2 chao = CorredorLivre(20);
+		ServerPlayer quemSela = ForjarSelador("SeladorDaSaga", chao, bp: 5_000);
+		ServerPlayer chefe = DeSaga("ChefeDaSaga", new Vec2(chao.X + 5 * ZoneCollision.TileSize, chao.Y));
+		quemSela.AlvoId = chefe.Id;
+		PorUmPote(quemSela.Zone, chao.X + 2 * ZoneCollision.TileSize, chao.Y);
+		int fitasAntes = _fitas.Count;
+		UsarHabilidade(quemSela, "Mafuba");
+		bool saiu = _fitas.Count == fitasAntes + 1;
+		for (int i = 0; i < 200 && _fitas.Count > fitasAntes; i++) TickDoSelo(0.05);
+		AfirmarSe("11a. (o pedido 132) o NPC DE SAGA nao vai pro pote: a fita do Mafuba chega e se desfaz nele, e ele fica no planeta, solto",
+				  saiu && _fitas.Count == fitasAntes && !chefe.Selo.Preso && chefe.Zone.Equals(ZonaDaBancadaDeProjetil),
+				  $"fita {saiu}, fitas a mais {_fitas.Count - fitasAntes}, preso {chefe.Selo.Preso}, zona {chefe.Zone.Name}");
+
+		// ---- a fenda da Dead Zone: o chefe posto bem no meio dela
+		Vec2 chao2 = CorredorLivre(20);
+		ServerPlayer quemAbre = ForjarSelador("GarlicDaSaga", chao2, bp: 40_000);
+		quemAbre.Ficha.Ki = quemAbre.Ficha.MaxKi;
+		int portaisAntes = _portais.Count;
+		UsarHabilidade(quemAbre, "Open_Dead_Zone");
+		if (_portais.Count == portaisAntes) { AfirmarSe("(montagem) a fenda da Dead Zone abre", false); return; }
+		PortalDaDeadZone fenda = _portais[^1];
+		ServerPlayer chefe2 = DeSaga("ChefeNaFenda", fenda.Pos);
+		for (int i = 0; i < 10; i++) TickDoSelo(0.1);
+		AfirmarSe("11b. ...e a fenda da Dead Zone nao o suga: quem cai dentro e selado, menos o NPC de saga",
+				  !chefe2.Selo.Preso && chefe2.Zone.Equals(ZonaDaBancadaDeProjetil), $"preso {chefe2.Selo.Preso}, zona {chefe2.Zone.Name}");
+	}
 
 	/// <summary>Assenta um Pote Selante de verdade, pelo mesmo caminho de dado que o jogador usa.</summary>
 	private Obra PorUmPote(ZoneKey zona, float x, float y)

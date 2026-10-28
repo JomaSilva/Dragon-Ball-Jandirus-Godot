@@ -576,6 +576,119 @@ public partial class GameServer
 				a.Poderes = poderesAntes;
 				a.EmSessao = false;
 			}
+
+			// ---------------------------------------------------------------- 9. lutar de verdade x o spar relaxado
+			// O dono (2026-10-28, o pedido 148): *"Atualmente o meta de treinar é ficar relaxed e mirar nos braços pro spar durar mais e desligar
+			// knock back, vamos fazer com q lutar com 100% de poder, kock back ligado etc, deem mais bp"*. O golpe pelo soco de producao, a reserva
+			// pelo tique de producao (`CuidarDaReservaDaLuta`), com o relogio da troca escrito a mao (a bancada roda num quadro so).
+			GD.Print("[ganho] -- 9) LUTAR DE VERDADE RENDE MAIS QUE O SPAR RELAXADO: a barra no golpe da troca, e a reserva da luta (dono, 2026-10-28) --");
+			try
+			{
+				double unidade = noNpcA.Ganho;   // o soco num NPC: a regua de todas as razoes desta familia
+				bool Perto(double medido, double esperado) => esperado > 0 && Math.Abs(medido / esperado - 1) < 0.03;
+
+				SocoMedido NaTroca(double barra, bool relaxado)
+				{
+					a.Ficha.powerMod = barra;
+					a.Ficha.relaxado = relaxado;
+					_ultimoAtaque[(b.Id, a.Id)] = NowMs();   // o outro o atacou ha um instante: a troca esta viva
+					return SocoEm(a, b);
+				}
+				double Razao(SocoMedido s) => unidade > 0 ? s.Ganho / unidade : 0;
+				SocoMedido cheio = NaTroca(1, false), metade = NaTroca(0.5, false), noPiso = NaTroca(0.01, false), relaxado = NaTroca(1, true);
+				double piso = GainKnobs.GanhoDaTrocaPvp * GainKnobs.TrocaNoPiso;
+				double meio = GainKnobs.GanhoDaTrocaPvp * (GainKnobs.TrocaNoPiso + (1 - GainKnobs.TrocaNoPiso) * (0.5 - 0.01) / 0.99);
+				AfirmarGn($"9a. COM O PODER INTEIRO o golpe da troca rende o de sempre: {GainKnobs.GanhoDaTrocaPvp:0.#}x o soco num NPC",
+						  cheio.Acertou && Perto(Razao(cheio), GainKnobs.GanhoDaTrocaPvp), $"razao {Razao(cheio):0.###}; {cheio}");
+				AfirmarGn($"9b. **RELAXADO, O GOLPE DA TROCA RENDE {GainKnobs.TrocaNoPiso:0.##} DO DE SEMPRE** (*\"o treino em relaxed deveria ser nerfado "
+						  + "bastante\"*) -- e com a barra no piso (1%), o mesmo",
+						  relaxado.Acertou && noPiso.Acertou && Perto(Razao(relaxado), piso) && Perto(Razao(noPiso), piso),
+						  $"relaxado {Razao(relaxado):0.###}, a 1% {Razao(noPiso):0.###} (esperado {piso:0.###})");
+				AfirmarGn("9c. **...E NO MEIO, UMA RETA PELA BARRA** (*\"quanto menor o % de poder liberado menor os ganhos\"*): a 50%, "
+						  + $"{meio:0.###}x o soco num NPC", metade.Acertou && Perto(Razao(metade), meio), $"razao {Razao(metade):0.###}");
+
+				double Apanhou(bool bRelaxado, bool aRelaxado)
+				{
+					a.Ficha.powerMod = b.Ficha.powerMod = 1;
+					a.Ficha.relaxado = aRelaxado;
+					b.Ficha.relaxado = bRelaxado;
+					_ultimoAtaque[(b.Id, a.Id)] = NowMs();   // quem apanha atacou ha um instante: os dois estao na troca
+					(bool encostou, double ganho) = GanhoDeQuemApanha(a, b, pista, bp);
+					return encostou ? ganho : -1;
+				}
+				double apanhaInteiro = Apanhou(false, false), apanhaRelaxado = Apanhou(true, false), apanhaDeRelaxado = Apanhou(false, true);
+				AfirmarGn($"9d. **QUEM APANHA GANHA PELA PROPRIA BARRA**: relaxado, o golpe que leva rende {GainKnobs.TrocaNoPiso:0.##} -- e o golpe de quem bate "
+						  + "relaxado rende o de sempre a quem esta com o poder inteiro",
+						  apanhaInteiro > 0 && Perto(apanhaRelaxado, apanhaInteiro * GainKnobs.TrocaNoPiso) && Perto(apanhaDeRelaxado, apanhaInteiro),
+						  $"inteiro {apanhaInteiro:0.##########}, relaxado {apanhaRelaxado:0.##########}, de quem bate relaxado {apanhaDeRelaxado:0.##########}");
+
+				double Encher(double barra, bool relax, bool knockback, bool quente, int tiques)
+				{
+					a.Ficha.powerMod = barra;
+					a.Ficha.relaxado = relax;
+					a.Knockback = knockback;
+					a.ReservaDaLuta = 0;
+					long agora = NowMs();
+					a.TrocouEm = a.ReservaPagaEm = agora;   // na troca, com a reserva acabada de pagar
+					a.GolpeNaTrocaEm = quente ? agora : agora - (long)(GainKnobs.SegundosDeLutaQuente * 1000) - 500;
+					for (int i = 0; i < tiques; i++) CuidarDaReservaDaLuta(a);
+					return a.ReservaDaLuta;
+				}
+				int cincoSegundos = (int)Math.Round(5 / SegundosPorFicha);
+				double cheia = Encher(1, false, true, true, cincoSegundos), aMetade = Encher(0.5, false, true, true, cincoSegundos);
+				AfirmarGn($"9e. **A RESERVA DA LUTA (o *\"bp invisivel\"*) ENCHE A CADA TIQUE DE TROCA QUENTE**: 5 s com o poder inteiro e o knockback "
+						  + $"ligado guardam {5 * GainKnobs.ReservaPorSegundo:0.#} golpes de NPC -- e a 50% da barra, a metade (*\"menos bp no tick\"*)",
+						  Perto(cheia, 5 * GainKnobs.ReservaPorSegundo) && Perto(aMetade, 2.5 * GainKnobs.ReservaPorSegundo),
+						  $"cheia {cheia:0.###}, a 50% {aMetade:0.###}");
+				double relaxada = Encher(1, true, true, true, cincoSegundos), semKnockback = Encher(1, false, false, true, cincoSegundos);
+				AfirmarGn("9f. **RELAXADO OU COM O KNOCKBACK DESLIGADO, A RESERVA NAO ENCHE** (*\"enquanto o relaxed sem KB o bp por tick n aconteceria\"*)",
+						  relaxada == 0 && semKnockback == 0, $"relaxado {relaxada:0.###}, sem knockback {semKnockback:0.###}");
+				double fria = Encher(1, false, true, false, cincoSegundos);
+				AfirmarGn($"9g. **COM A LUTA FRIA -- nenhum golpe entre os dois ha mais de {GainKnobs.SegundosDeLutaQuente:0} s -- A RESERVA NAO ENCHE** (dois "
+						  + "jogadores trocando um soco a cada 9 s nao a encheriam)", fria == 0, $"{fria:0.###}");
+
+				Encher(1, false, true, true, cincoSegundos);
+				PrepararParaMedir(a, bp);
+				a.TrocouEm = a.ReservaPagaEm + 1;   // uma troca nova
+				CuidarDaReservaDaLuta(a);
+				double pago = a.Ficha.BP - bp, esperado = (5 + SegundosPorFicha) * GainKnobs.ReservaPorSegundo * unidade;
+				AfirmarGn("9h. **A TROCA SEGUINTE PAGA A RESERVA EM BP** (*\"ao trocarem golpe esse bp invisivel vira bp ganho no treino\"*): os 5 s guardados "
+						  + "e o tique da troca, em golpes de NPC -- e ela zera",
+						  Perto(pago, esperado) && a.ReservaDaLuta == 0, $"pago {pago:0.##########}, esperado {esperado:0.##########}, sobrou {a.ReservaDaLuta:0.###}");
+
+				Encher(1, false, true, true, cincoSegundos);
+				PorBp(a, bp);
+				a.TrocouEm = NowMs() - JanelaDaTrocaMs - 500;   // a ultima troca saiu da janela
+				CuidarDaReservaDaLuta(a);
+				AfirmarGn($"9i. **SEM TROCA HA MAIS DE {GainKnobs.SegundosDaTroca:0} s, A RESERVA SE PERDE** (*\"esse bp invisivel por tick é descartado pq ninguém "
+						  + "se bateu mais\"*): zera, e nao vira BP", a.ReservaDaLuta == 0 && a.Ficha.BP == bp, $"sobrou {a.ReservaDaLuta:0.###}, BP +{a.Ficha.BP - bp:0.##########}");
+
+				double gravAntes = a.Ficha.gravmult, maestriaAntes = a.Ficha.GravMastered;
+				try
+				{
+					a.Ficha.gravmult = 3 - a.Ficha.Planetgrav;   // 3x com a maestria em 1x: abaixo do "demais pra treinar" (4x a maestria)
+					Encher(1, false, true, true, cincoSegundos);
+					PrepararParaMedir(a, bp);
+					a.Ficha.GravMastered = 1;
+					a.TrocouEm = a.ReservaPagaEm + 1;
+					CuidarDaReservaDaLuta(a);
+					AfirmarGn("9j. A RESERVA PAGA SO O BP: a maestria de gravidade nao sobe com ela (ela nao e golpe; com ela a luta em gravidade acostumaria "
+							  + "o corpo umas duas vezes mais depressa)", a.Ficha.BP > bp && a.Ficha.GravMastered == 1,
+							  $"BP +{a.Ficha.BP - bp:0.##########}, maestria {a.Ficha.GravMastered:0.#######}");
+				}
+				finally { a.Ficha.gravmult = gravAntes; a.Ficha.GravMastered = maestriaAntes; }
+			}
+			finally
+			{
+				foreach (ServerPlayer p in new[] { a, b })
+				{
+					p.Ficha.powerMod = 1;
+					p.Ficha.relaxado = false;
+					p.Knockback = true;
+					p.ReservaDaLuta = 0;
+					p.TrocouEm = p.ReservaPagaEm = p.GolpeNaTrocaEm = 0;
+				}
+			}
 		}
 		catch (Exception e)
 		{

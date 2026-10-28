@@ -315,7 +315,7 @@ public partial class GameServer
 			// =====================================================================
 			// 9. A ABSORCAO -- a ficha do Cell movida por um evento, e nao por dano
 			// =====================================================================
-			MedirAAbsorcao(Checa);
+			MedirAAbsorcao(pl, Checa);
 
 			// =====================================================================
 			// 10. A FICHA NOVA NA SAGA QUE JA DISPAROU (2026-10-18; os androides e o Cell, 2026-10-19)
@@ -545,7 +545,7 @@ public partial class GameServer
 	// =====================================================================
 	// A ABSORCAO
 	// =====================================================================
-	private void MedirAAbsorcao(Checagem Checa)
+	private void MedirAAbsorcao(ServerPlayer pl, Checagem Checa)
 	{
 		EstadoDoElo est = Elo("cell");
 		if (!est.Disparou) { Checa("a saga do Cell disparou pra medir a absorcao", false); return; }
@@ -613,8 +613,11 @@ public partial class GameServer
 			  cell.Papel!.Estagio == 2 && Math.Abs(cell.Ficha.BP - 3_500_000_000) < 1,
 			  $"degrau {cell.Papel!.Estagio + 1} BP {cell.Ficha.BP:N0}");
 
+		// (2026-10-28, pedido 147) QUEM O MATA e o anfitriao da bancada, posto onde o Cell cai: a volta e ao lado dele, pela Transmissao.
+		// (A recompensa nao entra: morrer no degrau de onde ele volta nao paga ninguem.)
+		if (pl.Zone.Hash != cell.Zone.Hash) MoveToZone(pl.Id, cell.Zone, cell.Pos); else CravarPosicao(pl, cell.Pos);
 		EscutaDasSagas = [];
-		cell.UltimoAgressor = 0;                 // sem matador: a recompensa nao e o que se mede aqui
+		cell.UltimoAgressor = pl.Id;
 		cell.Ficha.dead = true;
 		TickDasSagas();
 
@@ -623,12 +626,37 @@ public partial class GameServer
 			  && est.Fase == FaseDaSaga.EmCurso, $"{est.Fase}");
 
 		_relogioDoMundo += 61;
-		TickDasSagas();
-		ServerPlayer? voltou = Corpo(eCell);
-		Checa("...e um minuto depois ele volta no degrau 4, com 5 B",
-			  voltou != null && voltou.Papel!.Estagio == 3
-			  && Math.Abs(voltou.Ficha.BP - 5_000_000_000) < 1,
-			  $"{voltou?.Papel?.Estagio} / {voltou?.Ficha.BP:N0}");
+		List<(int Id, float X, float Y)>? claraoAntes = EscutaDaTransmissao;
+		EscutaDaTransmissao = [];
+		try
+		{
+			// onde ele voltaria sem a regra: o ponto de habitante seguinte (o `NascerChefeDaSaga` gasta o proximo `_lugarDasSagas`)
+			Vec2 deSempre = PontoDeHabitante(cell.Zone, _lugarDasSagas + 1);
+			List<string> falas = Ouvir(() => TickDasSagas());
+			ServerPlayer? voltou = Corpo(eCell);
+			Checa("...e um minuto depois ele volta no degrau 4, com 5 B",
+				  voltou != null && voltou.Papel!.Estagio == 3
+				  && Math.Abs(voltou.Ficha.BP - 5_000_000_000) < 1,
+				  $"{voltou?.Papel?.Estagio} / {voltou?.Ficha.BP:N0}");
+
+			int claroesNaVolta = EscutaDaTransmissao.Count;
+			if (voltou != null) EnvelhecerATransmissaoDeTeste(voltou.Id, 1000);
+			double tiles = voltou == null ? -1 : Vec2.Distance(voltou.Pos, pl.Pos) / ZoneCollision.TileSize;
+			Checa("(montagem, pedido 147) quem o matou esta longe de onde ele voltaria sem a regra (o ponto de habitante seguinte)",
+				  Vec2.Distance(deSempre, pl.Pos) > 3 * ZoneCollision.TileSize, $"{Vec2.Distance(deSempre, pl.Pos) / ZoneCollision.TileSize:0.#} tiles");
+			Checa("**...AO LADO DE QUEM O MATOU NA FORMA PERFEITA** (pedido 147, *\"spawnar ... proximo ao player q matou ele na forma perfeita\"*): "
+				  + "o tile ao lado, o da chegada da Transmissao",
+				  voltou != null && voltou.Zone.Hash == pl.Zone.Hash && tiles <= 1.05,
+				  $"a {tiles:0.##} tiles; quem matou em ({pl.Pos.X / 32:0},{pl.Pos.Y / 32:0}), ele em ({voltou?.Pos.X / 32:0},{voltou?.Pos.Y / 32:0}), "
+				  + $"sem a regra em ({deSempre.X / 32:0},{deSempre.Y / 32:0})");
+			Checa("...e QUEM O MATOU OUVE A FRASE DA TRANSMISSAO (\"aparece num instante ao seu lado\")",
+				  voltou != null && Disse(falas, $"{voltou.Name} aparece num instante ao seu lado"), string.Join(" | ", falas));
+			Checa("...e O CLARAO DA TRANSMISSAO sai no corpo dele 0,1 s DEPOIS da chegada (com o corpo ja no retrato da zona), onde ele esta",
+				  voltou != null && claroesNaVolta == 0 && EscutaDaTransmissao.Count == 1 && EscutaDaTransmissao[0].Id == voltou.Id
+				  && Math.Abs(EscutaDaTransmissao[0].X - voltou.Pos.X) < 1 && Math.Abs(EscutaDaTransmissao[0].Y - voltou.Pos.Y) < 1,
+				  $"na volta {claroesNaVolta}; depois {string.Join(", ", EscutaDaTransmissao.Select(c => $"#{c.Id} ({c.X:0},{c.Y:0})"))}");
+		}
+		finally { EscutaDaTransmissao = claraoAntes; }
 	}
 
 	// =====================================================================

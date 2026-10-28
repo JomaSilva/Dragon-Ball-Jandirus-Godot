@@ -13,8 +13,9 @@ namespace Jandirus.Client;
 ///
 ///   S0. A PREMISSA: Majin de classe Majin no nivel do SSJ1 (2 M de BP base), na base -- foto `smajin-0-base`. E o CONTROLE da chama: com o Ki
 ///       acima de 100% a chama da base e a PESSOAL (cravada azul) -- foto `smajin-0b-base-chama`.
-///   S1. O C, PELO FIO: o Super Majin. O CORPO DE SEMPRE (a mesma folha e a mesma tinta da base, sem corpo de forma por cima) e as FAISCAS
-///       coladas nele, na tela -- foto `smajin-1-super-majin` (num quadro com faisca) e `smajin-1b-sem-faisca` (num quadro sem).
+///   S1. O C, PELO FIO: o Super Majin. O CORPO DE SEMPRE (a mesma folha e a mesma tinta da base, sem corpo de forma por cima) e as FAISCAS --
+///       (2026-10-28, o pedido 145: *"troque elas pf pra faiscas vermelhas de shaders (igual o do ssj4 fp)"*) os RAIOS DE SHADER, vermelhos
+///       como os do Limit Breaker, e nenhuma camada colada (a `Electric_Majin` de sprite saiu) -- foto `smajin-1-super-majin` (com uma rajada).
 ///   S2. A AURA ROSA: com o Ki acima de 100% a chama do Super Majin e ROSA, no material e na foto -- foto `smajin-2-aura-rosa`.
 ///   S3. A ABA FORMS: o cartao "Super Majin" EM USO, a barra no comeco, o estagio x2 e a nota da trava -- foto `smajin-3-aba-forms`.
 ///   S4. O TETO DO NIVEL DO SSJ1: um tique de producao de 90 s a partir de 29,98% para a barra em 30% e o estagio em x6, e o servidor avisa --
@@ -106,23 +107,28 @@ public partial class RoboDoSuperMajin : Node
 			  vis != null && vis.FolhaDoCorpoDeTeste == folhaDaBase && !vis.CorpoDaFormaDeTeste && Equals(vis.TintaDoCorpoDeTeste, tintaDaBase),
 			  $"[folha {vis?.FolhaDoCorpoDeTeste.GetFile()} (base {folhaDaBase.GetFile()}), corpo de forma {vis?.CorpoDaFormaDeTeste}, tinta "
 			  + $"{vis?.TintaDoCorpoDeTeste} (base {tintaDaBase})]");
-		Checa("S1f. **AS FAISCAS DO MAJIN** estao coladas no corpo: uma camada, a `Electric_Majin`, sem tinta",
-			  coladas.Length == 1 && coladas[0].Folha.EndsWith("Electric_Majin.tres", StringComparison.Ordinal) && coladas[0].Tinta.IsEqualApprox(Colors.White),
-			  $"[{string.Join(", ", coladas.Select(c => $"{c.Folha.GetFile()} #{c.Tinta.ToHtml(false)}"))}]");
-		if (!virou || vis == null) return;
+		// (2026-10-28, o pedido 145) AS FAISCAS SAO OS RAIOS DE SHADER: o node `Raios` do corpo, aceso no CHEIO (2, o do Limit Breaker) e no
+		// VERMELHO dele -- `#ff2d2f`, escrito aqui pelos canais e nao lido do Core (a regua que le a constante aprovaria o mutante) --, e
+		// nenhuma camada colada no corpo: a `Electric_Majin` de sprite saiu. A cor e lida do UNIFORM do shader (`CorDeTeste`), que e o que pinta.
+		RaiosDaForma? raios = World.Instancia?.CorpoDeTeste(eu)?.GetNodeOrNull<RaiosDaForma>("Raios");
+		Color corDosRaios = raios?.CorDeTeste ?? default;
+		bool vermelho = corDosRaios.R >= 0.95f && corDosRaios.G <= 0.25f && corDosRaios.B <= 0.25f;
+		Checa("S1f. **AS FAISCAS SAO OS RAIOS DE SHADER, VERMELHOS** (*\"troque elas pf pra faiscas vermelhas de shaders (igual o do ssj4 fp)\"*): "
+			  + "os raios acesos no cheio (2) e no vermelho #ff2d2f, e nenhuma camada colada no corpo (a `Electric_Majin` de sprite saiu)",
+			  coladas.Length == 0 && raios is { IntensidadeDeTeste: 2 } && vermelho,
+			  $"[coladas: {coladas.Length} ({string.Join(", ", coladas.Select(c => c.Folha.GetFile()))}); raios: "
+			  + $"{(raios == null ? "sem node" : $"intensidade {raios.IntensidadeDeTeste}, cor #{corDosRaios.ToHtml(false)}")}]");
+		if (!virou || vis == null || raios == null) return;
 
-		// A FAISCA ESTALA E SOME (8 dos 40 quadros da folha tem desenho): uma foto num quadro cheio e outra num vazio, e a cor carmesim na
-		// caixa do corpo tem de aparecer na primeira. A CONTA E PELA DIFERENCA entre as duas fotos (o corpo parado e o mesmo nas duas): o
-		// carmesim que so o quadro cheio tem e a faisca -- e a sombra avermelhada de uma pele de Majin nao conta, porque esta nas duas.
-		Image? comFaisca = await FotoNoQuadroDaFaisca(vis, cheio: true, "smajin-1-super-majin");
-		Image? semFaisca = await FotoNoQuadroDaFaisca(vis, cheio: false, "smajin-1b-sem-faisca");
-		Rect2 caixaDaFaisca = CaixaNaTela(vis, 8);
-		bool duas = comFaisca != null && semFaisca != null;
-		int carmesimCom = duas ? Contar(comFaisca!, semFaisca, caixaDaFaisca, EhCarmesim) : -1;
-		int carmesimSem = duas ? Contar(semFaisca!, comFaisca, caixaDaFaisca, EhCarmesim) : -1;
-		Checa("S1t. ...e NA TELA: num quadro de faisca a caixa do corpo ganha o carmesim do Electric_Majin, e num quadro vazio ele some",
-			  carmesimCom >= 30 && carmesimCom >= 3 * Math.Max(carmesimSem, 1),
-			  $"[carmesim que so o quadro cheio tem: {carmesimCom} px; que so o vazio tem: {carmesimSem} px]");
+		// E ELES ESTALAM: o relogio do node solta uma rajada a cada 1,3-2,7 s, entao em 4 s sai pelo menos uma sozinha. A foto sai com uma
+		// rajada forcada (`DispararDeTeste`) -- e o retrato pro dono, nao a regua.
+		int rajadasAntes = raios.RajadasDeTeste;
+		await Segundos(4.0);
+		int rajadas = raios.RajadasDeTeste - rajadasAntes;
+		raios.DispararDeTeste();
+		await Quadros(2);
+		await Fotografar("smajin-1-super-majin");
+		Checa("S1t. ...e ESTALAM SOZINHOS: em 4 s o corpo solta rajadas de raio pelo relogio do node", rajadas >= 1, $"[{rajadas} rajada(s) em 4 s]");
 
 		// ---------------------------------------------------------- S2. a aura rosa
 		var (azulSm, rosaSm) = await AChamaAcesa("smajin-2-aura-rosa", vis);
@@ -215,7 +221,6 @@ public partial class RoboDoSuperMajin : Node
 
 	private static bool EhAzulado(Color c) => c.B - c.R >= 0.12f && c.B >= 0.45f;
 	private static bool EhRosado(Color c) => c.R - c.G >= 0.12f && c.B - c.G >= -0.02f && c.R >= 0.45f;
-	private static bool EhCarmesim(Color c) => c.R >= 0.6f && c.R - c.G >= 0.45f && c.B <= 0.45f;
 
 	/// <summary>
 	/// A CAIXA DO CORPO NA FOTO, alargada <paramref name="folga"/> pixels do QUADRO pra cada lado: o quadro do corpo vira tela pelo transform
@@ -251,20 +256,6 @@ public partial class RoboDoSuperMajin : Node
 				if (teste(c)) n++;
 			}
 		return n;
-	}
-
-	/// <summary>
-	/// A CAMADA DAS FAISCAS (a colada do `Electric_Majin`) e uma foto num quadro dela COM desenho (o 1 e o 2 sao os mais cheios) ou SEM (do 15
-	/// em diante a folha e vazia). A camada e achada na arvore pela folha -- sem API nova no `CharacterVisual`.
-	/// </summary>
-	private async System.Threading.Tasks.Task<Image?> FotoNoQuadroDaFaisca(CharacterVisual vis, bool cheio, string nome)
-	{
-		AnimatedSprite2D? faisca = vis.GetChildren().OfType<AnimatedSprite2D>()
-			.FirstOrDefault(s => s.SpriteFrames?.ResourcePath.EndsWith("Electric_Majin.tres", StringComparison.Ordinal) == true);
-		if (faisca == null) { Nota("nao achei a camada das faiscas na arvore do boneco"); return null; }
-		bool achou = await Ate(() => cheio ? faisca.Frame is 1 or 2 : faisca.Frame is >= 15 and <= 30, 8);
-		Nota($"faisca: quadro {faisca.Frame} ({(cheio ? "cheio" : "vazio")}, achou {achou})");
-		return await Fotografar(nome);
 	}
 
 	// =====================================================================

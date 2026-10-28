@@ -83,6 +83,25 @@ public sealed partial class GameServer
 		return true;
 	}
 
+	/// <summary>
+	/// (2026-10-27) VIVO E SEM PESO EM VEGETA (10x), dominando 1x: a gravidade passa de 4x a maestria e o treino nao rende (o pedido 117). O
+	/// tique do chao escreve a gravidade sentida, e a ficha lenta leva o zero. Falso sem o jogador.
+	/// </summary>
+	internal bool PalcoGm_GravidadeDemais(int id)
+	{
+		if (!PalcoGm_Vivo(id, out ServerPlayer pl)) return false;
+		if (_pesoDoPalcoGm != null && pl.Ficha.Weighted > 0) AjustarPeso(pl, _pesoDoPalcoGm, "0");
+		ZoneKey vegeta = ZoneKey.Premade("Vegeta");
+		MoveToZone(pl.Id, vegeta, PontoDeNascimento(vegeta));
+		pl.Ficha.GravMastered = 1;
+		// (2026-10-28, o pedido 143) BLINDADO PELA CARENCIA: a 10x contra 1x o nocaute e na hora (e a morte no quinto segundo), e a cena e a
+		// do painel de quem esta de pe. O `PalcoGm_Vivo` da cena seguinte a tira (o `Curar`).
+		pl.Combate.Carencia = 60;
+		pl.SigAtributos = "";
+		MandarAtributos(pl);
+		return true;
+	}
+
 	/// <summary>O corpo de volta vivo, inteiro e sem o peso de bancada, na Terra.</summary>
 	internal void PalcoGm_Limpar(int id)
 	{

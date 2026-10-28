@@ -109,6 +109,8 @@ public sealed partial class GameServer
 		if (NaMente(pl)) { Avisar(pl, "aqui dentro nada é real: não há o que levar."); return; }
 
 		ServerPlayer? alvo = CaidoPerto(pl);
+		// (2026-10-27) nem saque entre personagens do mesmo IP (o pedido 110) -- ver `GameServer.MesmoIp.cs`
+		if (alvo != null && MesmoIp(pl, alvo)) { Avisar(pl, FraseDoMesmoIp); return; }
 		if (alvo == null)
 		{
 			Avisar(pl, "não há ninguém nocauteado ao seu alcance.");

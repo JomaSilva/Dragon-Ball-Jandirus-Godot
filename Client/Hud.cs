@@ -130,6 +130,7 @@ public partial class Hud : CanvasLayer
 			cli.ConviteDeTorneioFechou += AoFecharConviteDeTorneio;
 			cli.ChaveDeTorneio += AoChaveDeTorneio;
 			cli.SheetUpdated += Mostrar;
+			cli.CorpoAtualizado += AoMudarCorpo;
 			cli.PoderEmUsoMudou += MostrarOPoderEmUso;
 			cli.AtributosRecebidos += MostrarPoderes;
 			cli.ActivityChanged += MostrarAtividade;
@@ -149,6 +150,7 @@ public partial class Hud : CanvasLayer
 		SoltarAsEscalas();
 		if (GameClient.Instance is not { } cli) return;
 		cli.SheetUpdated -= Mostrar;
+		cli.CorpoAtualizado -= AoMudarCorpo;
 		cli.PoderEmUsoMudou -= MostrarOPoderEmUso;
 		cli.AtributosRecebidos -= MostrarPoderes;
 		cli.ActivityChanged -= MostrarAtividade;
@@ -210,7 +212,8 @@ public partial class Hud : CanvasLayer
 
 		v.AddChild(new HSeparator());
 
-		_hp = new Barra("VIDA", Tema.Vida);
+		// (2026-10-27, o pedido 127) com o TRACO no ponto do desmaio: a barra e a pior parte vital (`MostrarAVida`), e abaixo do traco ela derruba
+		_hp = new Barra("VIDA", Tema.Vida) { Limiar = Jandirus.Core.Combat.Regras.LimiarQuebra };
 		v.AddChild(_hp);
 		_ki = new Barra("KI", Tema.Ki);
 		v.AddChild(_ki);
@@ -455,7 +458,7 @@ public partial class Hud : CanvasLayer
 		_efetivo.AddThemeColorOverride("font_color",
 			f.Inteireza >= 0.9 ? Tema.Bom : f.Inteireza <= 0.5 ? Tema.Perigo : Tema.Texto);
 
-		_hp.Valor = f.HP / 100.0;
+		MostrarAVida(f);
 
 		// O TRILHO ANTES DO VALOR: e ele que decide se o excedente cabe na barra. Ver `Barra.Teto`.
 		_ki.Teto = f.TrilhoDeKi;
@@ -465,6 +468,28 @@ public partial class Hud : CanvasLayer
 		_nutricao.Valor = f.RazaoDeNutricao;
 		MostrarOsAvisosDoCorpo(f);
 	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 127) A BARRA VIDA E A PARTE QUE DERRUBA: a pior entre cabeca, torso e abdomen (`Body.VidaQueDerruba`, pelo corpo que o
+	/// servidor manda so pro dono), e nao mais a media do corpo inteiro -- o dono: *"pra assim o jogador saber se vai desmaiar mesmo ou nao"*. O
+	/// traco dos 20% (`Barra.Limiar`) e a linha do desmaio. Sem corpo na mao (os primeiros quadros), vale a ficha como era.
+	/// </summary>
+	private void MostrarAVida(SheetState f) => _hp.Valor = VidaNaTela(f) / 100.0;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 127) A VIDA QUE SE MOSTRA, 0-100: a pior parte que derruba, ou a ficha enquanto o corpo nao chegou. A MESMA conta
+	/// pra barra VIDA daqui e pra Vida do menu P -- a barra da aba Stats e a faixa da aba Corpo (o dono: *"Faz o menu P seguir a do HUD"*).
+	/// Duas telas, uma regua.
+	/// </summary>
+	public static double VidaNaTela(SheetState f)
+	{
+		List<Protocol.ParteState>? corpo = GameClient.Instance?.Corpo;
+		double? pior = corpo == null ? null : Jandirus.Core.Combat.Body.VidaQueDerruba(corpo.Select(p => (p.Nome, (double)p.Vida, p.Decepado)));
+		return pior ?? f.HP;
+	}
+
+	/// <summary>O corpo por membro chegou (`S2C.Corpo`): a barra VIDA se redesenha na hora, sem esperar a proxima ficha.</summary>
+	private void AoMudarCorpo(List<Protocol.ParteState> _) => MostrarAVida(_ficha);
 
 	/// <summary>
 	/// O BP COMO ELE PODE SER LIDO. Duas portas, e as duas fecham do mesmo jeito:
@@ -542,7 +567,32 @@ public partial class Barra : VBoxContainer
 	private readonly Label _txt;
 	private readonly Panel _excesso;
 	private readonly ColorRect _marca;
-	private double _valor = 1, _teto = 1;
+	private readonly ColorRect _traco;
+	private double _valor = 1, _teto = 1, _limiar;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 127) UM TRACO NESTA RAZAO DO TRILHO -- 0 = sem traco (o padrao). A VIDA o usa no ponto do desmaio
+	/// (`Regras.LimiarQuebra`, 20%): abaixo dele a parte que derruba nocauteia.
+	/// </summary>
+	public double Limiar
+	{
+		get => _limiar;
+		set { _limiar = Math.Max(value, 0); Reaplicar(); }
+	}
+
+	/// <summary>Onde o traco do <see cref="Limiar"/> ficou no trilho, ou 0 quando ele nao esta na tela. Ver <see cref="TextoDeTeste"/>.</summary>
+	public double LimiarDeTeste => _traco.Visible ? _traco.AnchorLeft : 0;
+
+	/// <summary>O retangulo do trilho NA TELA (pixel da janela) -- pra regua de pixel do robo achar o traco na foto.</summary>
+	public Rect2 TrilhoNaTelaDeTeste
+	{
+		get
+		{
+			Transform2D t = _b.GetGlobalTransformWithCanvas();
+			Vector2 a = t * Vector2.Zero, b = t * _b.Size;
+			return new Rect2(a, b - a);
+		}
+	}
 
 	/// <summary>
 	/// ATE ONDE O TRILHO VAI, em razao. 1 = a barra de sempre (o comportamento de VIDA e VIGOR).
@@ -661,6 +711,16 @@ public partial class Barra : VBoxContainer
 		};
 		_b.AddChild(_marca);
 
+		// ---- (2026-10-27, o pedido 127) o traco do limiar, o mesmo desenho do traco dos 100% ----
+		_traco = new ColorRect
+		{
+			Color = new Color(1, 1, 1, 0.85f), Visible = false,
+			AnchorTop = 0, AnchorBottom = 1,
+			OffsetLeft = -1, OffsetRight = 1,
+			MouseFilter = MouseFilterEnum.Ignore,
+		};
+		_b.AddChild(_traco);
+
 		Reaplicar();
 	}
 
@@ -686,5 +746,9 @@ public partial class Barra : VBoxContainer
 		_excesso.Visible = sobra && _valor > 1;
 		_excesso.AnchorLeft = umCheio;
 		_excesso.AnchorRight = (float)(Math.Clamp(_valor, 1, _teto) / _teto);
+
+		// O TRACO DO LIMIAR, na mesma regua do trilho (o teto)
+		_traco.Visible = _limiar > 0 && _limiar < _teto;
+		_traco.AnchorLeft = _traco.AnchorRight = (float)(_limiar / _teto);
 	}
 }

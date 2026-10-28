@@ -3613,6 +3613,11 @@ public partial class World : Node2D
 		_atores.AddChild(corpo);
 		_local = corpo;
 
+		// (2026-10-27) A CABECA NA TELA (o pedido 119): a visao turva da cabeca ferida e o desmaio pela cabeca (a tela preta, o corpo por
+		// cima do veu). So do dono do corpo. Ver `CabecaNaTela`.
+		_cabeca = new CabecaNaTela { Name = "CabecaNaTela", Veu = _veu, Corpo = corpo };
+		AddChild(_cabeca);
+
 		// OS VERBS FIXOS entram agora. As skills registram os DELAS quando sao aprendidas
 		// (`Habilidades`); estes existem pra todo personagem, entao nascem com o corpo.
 		VerbosDoJogo.Registrar();
@@ -6467,6 +6472,15 @@ public partial class World : Node2D
 		}
 		_loucura.Mostrar(sanidade, insano);
 	}
+
+	/// <summary>(2026-10-27) A visao turva e o desmaio pela cabeca do meu corpo (o pedido 119). Ver `CabecaNaTela`.</summary>
+	private CabecaNaTela? _cabeca;
+
+	/// <summary>A cabeca na tela, ou nula. So o robo de fotos (`--diagcabeca`).</summary>
+	internal CabecaNaTela? CabecaDeTeste => _cabeca != null && IsInstanceValid(_cabeca) ? _cabeca : null;
+
+	/// <summary>O z do corpo do jogador agora (o desmaio pela cabeca o sobe acima do veu). So o robo de fotos (`--diagcabeca`).</summary>
+	internal int ZDoCorpoLocalDeTeste => _local != null && IsInstanceValid(_local) ? _local.ZIndex : 0;
 
 	/// <summary>A tela da loucura, ou nula. So bancada e o robo de fotos (`--diagsagamajin`).</summary>
 	internal LoucuraNaTela? LoucuraDeTeste => _loucura != null && IsInstanceValid(_loucura) ? _loucura : null;

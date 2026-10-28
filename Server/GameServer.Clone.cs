@@ -39,16 +39,18 @@ public partial class GameServer
 	/// O QUE ELE COPIA MORA NUM LUGAR SO -- <see cref="EspelharODono"/> --, e o nascimento e apenas o
 	/// PRIMEIRO chamador dele: o segundo e a volta do reflexo derrotado. Ver o cabecalho de la.
 	/// </summary>
-	private ServerPlayer CriarClone(ServerPlayer dono, ZoneKey zona)
+	private ServerPlayer CriarClone(ServerPlayer dono, ZoneKey zona, Jandirus.Core.Social.Conhecido? lembranca = null)
 	{
 		var clone = new ServerPlayer
 		{
 			Id = _nextId++,
 			Peer = null,                       // e o que faz dele um NPC
-			Name = dono.Name + " (mente)",
+			// (2026-10-27, o pedido 124c) A LEMBRANCA DE UM JOGADOR (`lembranca`) e este mesmo corpo de treino com o nome, a raca, o genero
+			// e a cara DELE -- de quando o vi (`Conhecido.AparenciaVista`); o poder entra depois do espelho, mais abaixo.
+			Name = (lembranca?.Nome ?? dono.Name) + " (mente)",
 			Zone = zona,
 			Pos = dono.Pos + new Vec2(DistanciaDoOponente, 0),
-			Race = dono.Race,
+			Race = lembranca is { Raca.Length: > 0 } && lembranca.Raca != "?" ? lembranca.Raca : dono.Race,
 			Class = dono.Class,
 			// `SpeedStat` NAO E COPIADO do dono desde que o nascimento virou funcao unica: quem o
 			// calcula e o `PorNoMundo`, a partir do `Espeed` da ficha -- que e a mesma ficha, entao
@@ -56,8 +58,8 @@ public partial class GameServer
 			// COPIA, e nao a mesma instancia. Dono e clone dividiam o MESMO objeto (e a mesma lista
 			// de roupa): tingir uma peca num aparecia no outro, e o `Sanear` de um reescrevia a
 			// lista do outro. O `Copiar()` existia pra isto e nunca tinha sido chamado.
-			Visual = dono.Visual.Copiar(),
-			Genero = dono.Genero,
+			Visual = (lembranca?.AparenciaVista ?? dono.Visual).Copiar(),
+			Genero = lembranca is { Genero.Length: > 0 } && lembranca.Genero != "?" ? lembranca.Genero : dono.Genero,
 			Planeta = dono.Planeta,
 			Idade = dono.Idade,
 			LastInputMs = NowMs(),
@@ -88,6 +90,18 @@ public partial class GameServer
 		// O ESPELHO E CHAMADO COM O CORPO NA MAO e nao dentro do inicializador, porque ele escreve nos
 		// DOIS lados: a ficha e o pino (`BpDaMente`). Ver <see cref="EspelharODono"/>.
 		EspelharODono(clone, dono.Ficha);
+
+		// (2026-10-27, o pedido 124c) A LEMBRANCA DE UM JOGADOR: a raca e o poder DELE de quando o vi (o expresso, como o do reflexo e o
+		// seu). Sem a foto do poder (ficha de antes), fica o seu. O pino acompanha, pelo mesmo motivo do espelho.
+		if (lembranca != null)
+		{
+			clone.Ficha.Race = clone.Race;
+			clone.Ficha.BP = Math.Max(lembranca.PoderVisto > 0 ? lembranca.PoderVisto : dono.Ficha.expressedBP, 1);
+			clone.Ficha.Statify();
+			clone.Ficha.Ki = clone.Ficha.MaxKi;
+			clone.Ficha.PowerLevel();
+			clone.BpDaMente = clone.Ficha.BP;
+		}
 
 		// A SEQUENCIA DE NASCER UM CORPO SEM DONO E UMA FUNCAO SO (`GameServer.Npc.cs`): statify,
 		// velocidade, corpo, entrar no `_players` e na lista da zona, gravidade do chao. Era escrita
@@ -157,8 +171,8 @@ public partial class GameServer
 
 	/// <summary>
 	/// ============================ O REFLEXO E O DONO **AGORA**, INTEIRO ============================
-	/// A unica funcao que ANCORA a ficha do reflexo, e ela e chamada de dois lugares: o nascimento
-	/// (<see cref="CriarClone"/>) e cada volta dele do chao (<see cref="ReerguerOOponente"/>). Ela
+	/// A unica funcao que ANCORA a ficha do reflexo, e ela e chamada do nascimento (<see cref="CriarClone"/>)
+	/// -- ate o pedido 124c (2026-10-27) tambem de cada volta dele do chao, que saiu junto com a volta. Ela
 	/// tambem escreve o PINO (<see cref="ServerPlayer.BpDaMente"/>), que e o que segura o numero entre
 	/// uma ancoragem e a seguinte -- ver o re-pino no <see cref="TicarUmCorpo"/>.
 	///
@@ -500,11 +514,11 @@ public partial class GameServer
 		if (npc.DonoDoClone != 0)
 		{
 			// ============================ O CORPO QUE A MENTE ERGUEU ============================
-			// Sao DOIS hoje -- o reflexo e o chefe convocado (`ChamarChefe`, `GameServer.Mente.cs`) --
-			// e eles compartilham este ramo de proposito: os dois vem atras do dono, os dois somem com
-			// ele, os dois se REERGUEM quando caem e so a morte dos dois encerra o transe. O que difere
-			// e a FICHA (o reflexo copia a sua; o chefe tem a ficha pronta dele, com degraus e roteiro),
-			// e ficha nao e comportamento.
+			// Sao QUATRO hoje -- o reflexo, o habitante, o jogador lembrado e o chefe convocado (a lista
+			// do pedido 124c, `GameServer.MenteLista.cs`) -- e eles compartilham este ramo de proposito:
+			// todos vem atras do dono, somem com ele, e cair ou morrer e a VITORIA dele (ate 2026-10-27
+			// eles se REERGUIAM, o `clone_watch` do DM). O que difere e a FICHA (o reflexo copia a sua; o
+			// chefe tem a ficha pronta dele, com degraus e roteiro), e ficha nao e comportamento.
 			// ================================================================================
 			if (!_players.TryGetValue(npc.DonoDoClone, out ServerPlayer? dono)
 				|| dono.Zone.Hash != npc.Zone.Hash)
@@ -513,36 +527,25 @@ public partial class GameServer
 				return;
 			}
 
+			// (2026-10-27, o pedido 124c) O DONO CAIU COM A LEMBRANCA DE PE: DERROTA -- ele acorda, e o foco abalado nao mergulha por um
+			// tempo. Em jogo a borda do corpo largado o tira antes deste tique (a marca vem no `SairDaMente`); aqui chega quem nao tem corpo
+			// largado. Ver `GameServer.MenteLista.cs`.
+			if (dono.Ficha.KO && !npc.Ficha.KO && !npc.Ficha.dead)
+			{
+				PerderNaMente(dono);
+				return;
+			}
+
 			if (npc.Ficha.dead)
 			{
-				// ============================ MORRER **ENCERRA** O TRANSE, e nocautear nao ============================
-				// Sao as duas unicas maneiras de derrubar o corpo que a mente ergueu, e a resposta a
-				// cada uma e o oposto da outra de proposito:
-				//
-				//   * NOCAUTE -- ele se reergue (ver <see cref="ReerguerOOponente"/>). E o
-				//     `clone_watch()` do DM, e o que faz do reflexo um parceiro de treino INFINITO;
-				//   * MORTE -- fim. E a unica vitoria que termina a sessao, e ela e OPCIONAL: so
-				//     acontece com o golpe LETAL ligado (o padrao e desligado, e ai o piso por membro
-				//     do `MeleeResolver` impede que qualquer corpo chegue no `DeveMorrer`). Quem quer
-				//     encerrar por vitoria liga o letal e destroi a coisa; quem quer treinar, nao liga
-				//     e ela levanta pra sempre.
-				//
-				// No DM esta metade nem chega a existir: o `mind_enter` guarda o `murderToggle` do
-				// meditador e o zera na entrada (`mind_premurder`, `:375-376`), entao la o reflexo E
-				// indestrutivel. **Aqui e uma escolha do jogador**, e ela e a saida por vitoria que o
-				// port passou a precisar no instante em que o nocaute deixou de ser uma.
-				//
-				// A FRASE VEM DO QUE ELE E, e nao de um campo: "reflexo" pra quem tem ficha copiada,
-				// o NOME pra quem tem ficha pronta de chefe. Guardar o tipo seria a segunda verdade
-				// sobre uma coisa que o corpo ja diz.
-				// ================================================================================================
-				// A GOTA NA VOLTA: a tela ondula 1,8 s e SO ENTAO o mundo real volta -- *"atualmente a
-				// transicao ta MT RAPIDA E MT SECA sem efeito nenhum"*. Quem segura a viagem e o
-				// `ComecarAVoltaDaMente`, que ja desfaz o corpo derrotado nesta linha (senao este
-				// mesmo ramo o reencontraria morto no tique seguinte).
-				ComecarAVoltaDaMente(dono, npc.Papel is { EhChefe: true }
-					? $"{npc.Name} se desfaz em nada. Voce abre os olhos."
-					: "o seu reflexo se desfaz. Voce abre os olhos.");
+				// ============================ (2026-10-27, o pedido 124c) MORRER E VITORIA, COMO O NOCAUTE ============================
+				// Ate o pedido 124c as duas quedas eram opostas de proposito: o nocaute se reerguia (o `clone_watch` do DM, o parceiro de
+				// treino infinito) e so a MORTE encerrava o transe, com a onda da volta. O dono trocou a regra -- *"Vitoria e escolhe outro"*:
+				// as duas quedas pagam o BP pela forca da lembranca e devolvem a lista (`VencerNaMente`, que tambem a desfaz nesta linha --
+				// senao este mesmo ramo a reencontraria morta no tique seguinte). O transe so acaba pela porta (acordar sem luta) ou pela
+				// derrota.
+				// ========================================================================================================================
+				VencerNaMente(dono, npc);
 				return;
 			}
 
@@ -551,14 +554,11 @@ public partial class GameServer
 				// CAIDO, NAO AGE -- a mesma guarda dos outros dois ramos, e pelo mesmo motivo: sem ela o
 				// `Atacar` seria chamado a 30 Hz contra o `PodeAtacar()` de um corpo no chao.
 				npc.Moving = false;
-				DerrubadoNaMente(npc, dono);
+				// (2026-10-27, o pedido 124c) DERRUBAR A LEMBRANCA E VITORIA -- o dono: "Vitoria e escolhe outro". Ela nao se reergue mais (o
+				// `clone_watch` do DM saiu inteiro): paga o BP pela forca dela e devolve a lista.
+				VencerNaMente(dono, npc);
 				return;
 			}
-
-			// DE PE DEPOIS DE TER CAIDO: o relogio do nocaute venceu e o `CombatState.Tick` ja o
-			// levantou neste MESMO tique (o `TickCombate` roda antes do `TickDosCorposSemDono`). Falta
-			// a outra metade do `clone_watch`, que e a cura.
-			if (npc.CaiuNaMente) ReerguerOOponente(npc, dono);
 
 			// ============================ O BP DO REFLEXO NAO ANDA SOZINHO ============================
 			// O `NPCTicker()` do `MindClone` (`MindMeditate.dm:322-327`) inteiro, e ele e a mesma forma
@@ -807,120 +807,6 @@ public partial class GameServer
 				   // `behavior_check` seria adivinhar -- e o proprio cabecalho do `--diagia` diz que a
 				   // calibragem come mais tempo que o codigo.
 				   + $" | furia {cerebro.FuriaExpressa:0.00} cautela {cerebro.CautelaExpressa:0.00}");
-	}
-
-	// =====================================================================
-	// O CORPO DA MENTE SE REERGUE -- o `clone_watch()` (`MindMeditate.dm:288-306`)
-	// =====================================================================
-	/// <summary>
-	/// QUANTO O CORPO ERGUIDO PELA MENTE FICA NO CHAO. **LITERAL**: `#define MIND_CLONE_REVIVE 150`
-	/// (`MindMeditate.dm:19`), e o comentario do autor ao lado ja da a conversao -- *"ticks ate o clone
-	/// derrotado se reerguer (15s)"*. O `sleep(150)` do BYOND e 150/10 s.
-	///
-	/// ============================ ELE **SUBSTITUI** O NOCAUTE COMUM, e nao se soma a ele ============================
-	/// `MeleeResolver.TetoDoNocaute` e 12, e e ele que estaria valendo: o reflexo levantaria
-	/// sozinho tres segundos antes -- com os nucleos no piso do `Levantar()` (1,5x o limiar de quebra),
-	/// ou seja de pe e quase caindo de novo. O que este numero faz e REESCREVER aquele relogio no
-	/// instante da queda, pra a contagem ser uma so.
-	/// ==========================================================================================================
-	/// </summary>
-	private const double SegundosAteOReflexoSeReerguer = 15;
-
-	/// <summary>Quanto ele recupera ao se reerguer. **LITERAL**: o `SpreadHeal(150, 1, 1)` do DM.</summary>
-	private const double CuraDoReerguer = 150;
-
-	/// <summary>
-	/// O CORPO DA MENTE CAIU. Chamado a 30 Hz enquanto ele estiver no chao; o trabalho e todo na
-	/// PRIMEIRA volta -- ver <see cref="ServerPlayer.CaiuNaMente"/>.
-	///
-	/// *"Seu reflexo cai... mas a mente nunca descansa."* -- a frase e a do original, e o anuncio vai
-	/// pra TODO mundo do bolso (o `for(var/mob/P in members)` do `clone_watch`) e nao so pro dono: com
-	/// um visitante na mente, contar so pra um seria a "linha nova em dois dos tres lugares" de sempre.
-	/// </summary>
-	private void DerrubadoNaMente(ServerPlayer npc, ServerPlayer dono)
-	{
-		if (npc.CaiuNaMente) return;   // ja anunciado: quem conta o prazo daqui pra frente e o nocaute
-		npc.CaiuNaMente = true;
-
-		// O RELOGIO E O DO NOCAUTE, reescrito -- ver `SegundosAteOReflexoSeReerguer`. Nao ha um segundo
-		// cronometro neste sistema, e e por isso que nao ha como as duas contagens discordarem.
-		npc.Combate.NocauteRestante = SegundosAteOReflexoSeReerguer;
-
-		// E ELE DEIXA DE SER UM COMA POR NUCLEO. Sem esta linha o reflexo passaria a responder a
-		// `CombatState.NocautePorVital`, ou seja a CURA decidiria a hora de levantar -- e um reflexo
-		// de raca que regenera em combate (Majin, Bio) se ergueria antes dos 15 s do original,
-		// enquanto um de raca comum ficaria esperando os 225 s do teto. O `clone_watch` do DM e um
-		// `sleep(150)` e mais nada: aqui a contagem continua sendo uma so, e e esta.
-		npc.Combate.NocautePorVital = false;
-
-		AvisarNaMente(npc.Zone, npc.Papel is { EhChefe: true }
-			? $"{npc.Name} cai... mas a mente nunca descansa."
-			: "o seu reflexo cai... mas a mente nunca descansa.");
-		GD.Print($"[server] o corpo da mente de {dono.Name} caiu e se reergue em {SegundosAteOReflexoSeReerguer:0}s");
-	}
-
-	/// <summary>
-	/// ELE SE LEVANTA DE NOVO -- a segunda metade do `clone_watch`: `Un_KO()`, `SpreadHeal(150,1,1)` e
-	/// `Ki = MaxKi` (`MindMeditate.dm:300-306`).
-	///
-	/// ============================ O `Un_KO` JA ACONTECEU, E DE PROPOSITO ============================
-	/// Quem tira o corpo do chao e o `CombatState.Tick`, quando o `NocauteRestante` que a queda
-	/// reescreveu chega a zero -- o mesmo caminho de todo mundo. Esta funcao roda no tique em que ele
-	/// JA ESTA de pe, e o que ela faz e a CURA, que o `Levantar()` nao da (ele so poe os nucleos um
-	/// pouco acima do limiar, o suficiente pra nao cair no proximo tique).
-	///
-	/// Sem a cura, o reflexo voltaria por 15 s e cairia de novo no primeiro soco -- o parceiro de treino
-	/// infinito que se degrada ate virar um saco de pancada. A cura E o desenho: *"a mente nunca
-	/// descansa"* quer dizer que ele volta INTEIRO.
-	/// =========================================================================================
-	///
-	/// ============================ NAO HA "REENGAJAR" A ESCREVER ============================
-	/// O DM precisa do `spawn(5) CC.foundTarget(T2)` porque la o alvo e um campo que a morte limpou.
-	/// Aqui o alvo do corpo erguido pela mente e DERIVADO todo tique (`presa = dono`, tres linhas
-	/// abaixo da chamada desta funcao): de pe, ele ja esta vindo. O `members[1]` do original -- que
-	/// reengaja o PRIMEIRO membro e nao necessariamente o dono -- some junto, e pra melhor: o reflexo
-	/// e de quem sonha.
-	/// ==================================================================================
-	/// </summary>
-	private void ReerguerOOponente(ServerPlayer npc, ServerPlayer dono)
-	{
-		npc.CaiuNaMente = false;
-
-		// ============================ O REFLEXO SE REANCORA NO DONO DE **AGORA** ============================
-		// *"se o dono ficou mais forte treinando, o clone acompanha"* -- o pedido do dono, e ele e uma
-		// SAIDA DO ORIGINAL que precisa estar escrita: no DM o reflexo e congelado no `mind_seed_bp` da
-		// entrada e o `NPCTicker()` dele reescreve aquele mesmo numero pra sempre (`:322-327`). La isso
-		// nao incomoda porque a mente do DM e uma luta; aqui ela e um treino INFINITO, e um oponente
-		// congelado vira saco de pancada exatamente na sessao longa que a Camada 2 existe pra permitir.
-		//
-		// **SO O REFLEXO.** A lembranca de chefe tem ficha PROPRIA -- degraus, gatilho por membro, BP
-		// pinado pelo `TickDoRoteiro` a partir do `Papel.BpAtual` -- e reescreve-la com a sua seria
-		// apagar o Freeza e por voce no lugar dele. A pergunta e a mesma que ja escolhe a frase duas
-		// linhas abaixo: e um corpo com ficha de chefe ou nao.
-		//
-		// **DONO CAIDO NAO SERVE DE ANCORA**: nocauteado, `expressedBP` e 10% do base (o corpo exposto),
-		// e reancorar ali daria um reflexo dez vezes mais fraco. Nao ha caso pratico -- o dono caido e
-		// EXPULSO da mente no mesmo tique (`BordasDeQuemEstaFora`) -- mas a ordem entre os dois lacos
-		// nao e uma coisa em que apostar o poder do oponente.
-		// ================================================================================================
-		if (npc.Papel is not { EhChefe: true } && !dono.Ficha.KO && !dono.Ficha.dead)
-		{
-			EspelharODono(npc, dono.Ficha);   // reescreve a ficha E o pino (`BpDaMente`)
-			npc.SigAtributos = "";            // o pacote de atributos so sai de novo se a assinatura mudar
-		}
-
-		// `SpreadHeal(150, 1, 1)` -- o 150 e do DM, e ele e uma CURA CHEIA e nao um numero de ajuste:
-		// o corpo deste jogo tem 100 por membro, e o `Body.Curar` (a porta unica da cura) ja tem teto
-		// por membro. Membro DECEPADO nao volta -- nem la nem aqui --, e com o golpe letal desligado
-		// nao ha como decepar nada dentro da mente.
-		npc.Combate.Corpo.Curar(CuraDoReerguer);
-		npc.Combate.SincronizarVida();
-		npc.Ficha.Ki = npc.Ficha.MaxKi;
-
-		AvisarNaMente(npc.Zone, npc.Papel is { EhChefe: true }
-			? $"{npc.Name} se levanta de novo!"
-			: "o seu reflexo se levanta de novo!");
-		GD.Print($"[server] o corpo da mente de {dono.Name} se reergueu inteiro");
 	}
 
 	/// <summary>

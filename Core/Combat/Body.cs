@@ -282,6 +282,28 @@ public sealed class Body
 	/// </summary>
 	public double VidaQuePesaNoPoder() => DebuffsDeMembro.VidaQuePesaNoPoder(Partes.Select(p => (p.Fracao * 100, p.Decepado)));
 
+	/// <summary>
+	/// (2026-10-27, o pedido 127) OS NOMES DAS PARTES QUE DERRUBAM: os nucleos do <see cref="Novo"/> (cabeca, torso e abdomen, a virilha) --
+	/// qualquer um abaixo de <see cref="Regras.LimiarQuebra"/> nocauteia (<see cref="DeveNocautear"/>). Tirados do proprio molde: um nucleo
+	/// novo entra sozinho.
+	/// </summary>
+	public static readonly string[] NomesDosNucleos = [.. Novo().Partes.Where(p => p.Papel == Vitalidade.Nucleo).Select(p => p.Nome)];
+
+	/// <summary>
+	/// (2026-10-27, o pedido 127) A VIDA QUE DERRUBA, 0-100: a PIOR das partes que nocauteiam (<see cref="NomesDosNucleos"/>), com a decepada
+	/// valendo zero. E o que a barra VIDA do HUD mostra -- o dono: *"o health bar q aparece na gui do jogador deveria mostrar o menor hp entre a
+	/// cabeca e o torco/groin pra assim o jogador saber se vai desmaiar mesmo ou nao"*. Recebe as partes como o fio as traz (`S2C.Corpo`); nulo
+	/// quando nao veio nucleo nenhum (o corpo ainda nao chegou).
+	/// </summary>
+	public static double? VidaQueDerruba(IEnumerable<(string Nome, double Vida, bool Decepado)> partes)
+	{
+		double? pior = null;
+		foreach ((string nome, double vida, bool decepado) in partes)
+			if (Array.IndexOf(NomesDosNucleos, nome) >= 0)
+				pior = Math.Min(pior ?? double.MaxValue, decepado ? 0 : vida);
+		return pior;
+	}
+
 	// =====================================================================
 	// ESTADO
 	// =====================================================================

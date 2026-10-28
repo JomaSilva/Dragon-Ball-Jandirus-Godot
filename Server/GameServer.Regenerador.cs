@@ -301,6 +301,48 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
+	// (2026-10-27, o pedido 139) O TANQUE NAO AGUENTA GRAVIDADE ARTIFICIAL
+	// =====================================================================
+	/// <summary>
+	/// ============================ O REGENERADOR DENTRO DO CAMPO EXPLODE (dono, 2026-10-27, o pedido 139) ============================
+	/// *"faça regeneradores explodirem dentro de gravidade artificial, assim acabando com o meta q tem"* -- o meta: o tanque curando dentro
+	/// da sala de gravidade, e o treino pesado sem nunca cair. Todo regenerador que o campo de uma maquina LIGADA alcanca (o mesmo
+	/// `CampoDeGravidade.Alcanca` que pesa os corpos, chamado pelo `LerOsCampos` a cada leitura) explode: a cratera e a fumaca no chao, o
+	/// aviso a vista, e ele cai como obra derrubada (`Estragar`, a porta do soco que a derruba: a colisao, o disco e o desenho). Ligado ou
+	/// nao, do dono ou da cidade: dentro do campo ele nao fica. A explosao NAO fere quem esta perto.
+	/// ===============================================================================================================================
+	/// </summary>
+	private void ExplodirOsRegeneradoresNoCampo()
+	{
+		List<Obra>? explodem = null;
+		foreach (Obra r in _noChao)
+		{
+			if (r.Tipo != Regenerador.Tipo) continue;
+			var onde = new Vec2((float)r.X, (float)r.Y);
+			foreach (Obra m in _camposLigados)
+				if (m.Zona.Equals(r.Zona) && CampoDeGravidade.Alcanca(m.X, m.Y, m.Gravidade!.Range, onde, m.Gravidade.Cheias!))
+				{
+					(explodem ??= []).Add(r);
+					break;
+				}
+		}
+		if (explodem == null) return;
+
+		foreach (Obra r in explodem)
+		{
+			var onde = new Vec2((float)r.X, (float)r.Y);
+			AnunciarAVista(r, "o regenerador não aguenta a gravidade artificial e EXPLODE!");
+			if (MapaDaZonaOuCatalogo(r.Zona) != null && !Espaco.EhEspaco(r.Zona))
+			{
+				MandarDecalque(r.Zona, Jandirus.Net.Protocol.Decal.CrateraGrande, onde, Facing.South);
+				MandarDecalque(r.Zona, Jandirus.Net.Protocol.Decal.Fumaca, onde, Facing.South);
+			}
+			// a pancada que passa de qualquer armadura: a obra cede pela porta de sempre
+			Estragar(r, r.ArmaduraMax * 10 + 1, null);
+		}
+	}
+
+	// =====================================================================
 	// O PULSO -- `proc/Ticker` (`:65-141`)
 	// =====================================================================
 	/// <summary>

@@ -123,7 +123,12 @@ public partial class MenuJogo
 			return new Vital($"{s.Inteireza * 100:0.#}%   (do seu pico sem desgaste)", s.Inteireza, corDoEfetivo, corDoEfetivo);
 		});
 
-		VitalVivo("Vida", c, f, s => new Vital($"{s.HP:0}%", s.HP / 100, Tema.Vida, CorDaRazao(s.HP / 100)));
+		// (2026-10-27, o pedido 127) A VIDA E A DO HUD: a pior parte que derruba (`Hud.VidaNaTela`), e nao mais a media do corpo
+		VitalVivo("Vida", c, f, s =>
+		{
+			double vida = Hud.VidaNaTela(s);
+			return new Vital($"{vida:0}%", vida / 100, Tema.Vida, CorDaRazao(vida / 100));
+		});
 
 		// A RAZAO SAI DO STRUCT, e nao de um `Ki / MaxKi` escrito aqui: era essa copia -- tres delas,
 		// nesta aba, na aba Ki e no HUD -- que deixava o corte de uma passar despercebido nas outras.
@@ -267,6 +272,9 @@ public partial class MenuJogo
 
 		var partes = new List<(string Texto, Color Cor)>();
 		if (_atributos.Gravidade > 0) partes.Add(($"{_atributos.Gravidade:0.#}x grav", Tema.Texto));
+		// (2026-10-27) GRAVIDADE DEMAIS: a pilula diz que nessa gravidade nao se treina (o pedido 117) -- ver `GravidadeDemaisNaFicha`
+		if (GravidadeDemaisNaFicha)
+			partes.Add(($"gravidade demais (acima de {Jandirus.Core.Stats.GainKnobs.RazaoDaGravidadeQueImpedeOTreino:0.#}x a sua maestria): não se treina", Tema.Perigo));
 		// (A ACLIMATACAO NAO ENTRA AQUI desde 2026-10-16: ela e PODER, e nao treino -- a linha dela mora na aba de Formas.)
 		float vigor = _atributos.VigorMult;
 		if (vigor >= 1.02f) partes.Add(($"{vigor:0.##}x vigor", Tema.Bom));
@@ -324,7 +332,16 @@ public partial class MenuJogo
 	/// so nesse caso ele e zero (`Fighter.MultiplicadorDeGanho`). A pilula dos pesos (aba Stats) e a linha "Ganho no treino" (aba Equip) dizem
 	/// isso, e nao o "8x" do `weight` (que continua 8: ele ainda divide o poder). O cliente nao refaz a regra: le o zero que veio pronto.
 	/// </summary>
-	private bool PesoDemaisNaFicha => _atributos.PesoKg > 0 && _atributos.GanhoDeTreino <= 0 && !PesoDemaisCaladoDeTeste;
+	private bool PesoDemaisNaFicha => _atributos.PesoKg > 0 && _atributos.GanhoDeTreino <= 0 && !GravidadeDemaisNaFicha && !PesoDemaisCaladoDeTeste;
+
+	/// <summary>
+	/// (2026-10-27) A GRAVIDADE DEMAIS NA FICHA (o pedido 117, `Fighter.GravidadeDemaisPraTreinar`): o ganho do treino zerado com a razao do
+	/// esmagamento acima de 4x. Sem peso vestido a razao e so a gravidade; com peso, a gravidade so e a causa certa ate os 8x do peso (acima
+	/// disso quem fala e a pilula do peso). Sem campo novo no fio: a ficha lenta ja traz o ganho, a razao e o peso.
+	/// </summary>
+	private bool GravidadeDemaisNaFicha =>
+		_atributos.GanhoDeTreino <= 0 && _atributos.Esmagamento > Jandirus.Core.Stats.GainKnobs.RazaoDaGravidadeQueImpedeOTreino
+		&& (_atributos.PesoKg <= 0 || _atributos.Esmagamento <= Jandirus.Core.Stats.GainKnobs.RazaoQueImpedeOTreino);
 
 	/// <summary>
 	/// DEFEITO INJETADO (robo `--diaggravmeta`): a tela ignora o zero do peso demais -- a aba Stats volta a dizer "8x pesos" e a Equip o "8x"

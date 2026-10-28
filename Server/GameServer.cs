@@ -514,16 +514,6 @@ public sealed class ServerPlayer
 	public double BpDaMente;
 
 	/// <summary>
-	/// ESTE CORPO JA CAIU NESTA SESSAO DE TRANSE (e ainda nao se reergueu). RECONSTRUIDO.
-	///
-	/// E o latch do `clone_watch()` do DM: o anuncio da queda sai UMA vez (`DerrubadoNaMente`) e
-	/// quem conta o prazo daqui pra frente e o nocaute; o bit cai quando o corpo e reerguido e curado
-	/// (`ReerguerOOponente`), o que reabre o ciclo pra a proxima queda. E o que faz o reflexo ser um
-	/// parceiro de treino INFINITO -- nocaute levanta, so a morte encerra.
-	/// </summary>
-	public bool CaiuNaMente;
-
-	/// <summary>
 	/// ATE QUANDO A COLEIRA DESTE CORPO FICA CALADA (`NowMs()`). RECONSTRUIDO.
 	///
 	/// A mente nao tem mais parede, e quem devolve o reflexo que ficou pra tras e o
@@ -734,6 +724,8 @@ public sealed class ServerPlayer
 	/// recado. So vive do `PrepararSkills` ate o `AvisarDasAposentadas` -- nao vai pro save.
 	/// </summary>
 	public List<(Jandirus.Core.Skills.SkillsAposentadas.Aposentada Skill, int Devolvidos)> SkillsQueSairam = [];
+	/// <summary>(2026-10-27, o pedido 125) O login tirou o Kai Kai deste livro (nem Kai, nem God Ki): o recado do `AvisarDasAposentadas`.</summary>
+	public bool KaiKaiTirado;
 
 	/// <summary>O mesmo, pras skills FECHADAS que eu tinha comprado (`SkillsFechadas.Limpar`): os marcos voltaram.</summary>
 	public List<(Jandirus.Core.Skills.SkillsFechadas.Fechada Skill, int Devolvidos)> SkillsQueFecharam = [];
@@ -867,6 +859,13 @@ public sealed class ServerPlayer
 	/// (`attack_bck.dm:3`). Desligar existe pra treinar com alguem sem joga-lo pra longe.
 	/// </summary>
 	public bool Knockback = true;
+
+	/// <summary>
+	/// (2026-10-28, o pedido 148) A RESERVA DA LUTA (golpes de NPC guardados por segundo de troca quente), a ultima troca que rendeu, a ultima
+	/// vez que a reserva foi paga e o ultimo golpe entre este jogador e outro (ms) -- ver `GameServer.Ganhos.cs`.
+	/// </summary>
+	public double ReservaDaLuta;
+	public long TrocouEm, ReservaPagaEm, GolpeNaTrocaEm;
 
 	/// <summary>
 	/// (2026-10-15) ESTE NPC SUMIU DENTRO DE UM MAJIN: sai do mundo sem deixar cadaver -- ver
@@ -1489,6 +1488,9 @@ public sealed class ServerPlayer
 	/// snapshot pra todo mundo. Estudar so interessa a quem estuda.
 	/// </summary>
 	public bool Estudando;
+
+	/// <summary>(2026-10-27) Quando este corpo socou o saco de pancada pela ultima vez (ms) -- um soco a cada 1,5 s, como no DU. Ver `GameServer.SacoDoDu.cs`.</summary>
+	public long UltimoSocoNoSaco = long.MinValue / 2;
 
 	/// <summary>
 	/// MINERANDO (nulo = nao). Ao contrario do estudo, esta E uma pose que os outros veem -- a de treino, ver
@@ -3201,6 +3203,9 @@ public partial class GameServer : Node
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--classerarateste") >= 0) RodarBancadaDaClasseRara();
 			// (v0.4.0) as PASSIVAS E ATIVAS RACIAIS da lista do amigo do dono -- ver `GameServer.PassivasTeste.cs`
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--passivasteste") >= 0) RodarBancadaDasPassivas();
+
+			// `--estudoteste`: (2026-10-27) OS MINIJOGOS DE ESTUDO -- o pedido 120. Ver `GameServer.EstudoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--estudoteste") >= 0) RodarBancadaDoEstudo();
 			// (2026-10-17) a IA com as passivas e as ativas da RACA -- o povo do mundo e os chefes de saga. Ver `GameServer.IaRaciaisTeste.cs`
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--iaraciaisteste") >= 0) RodarBancadaDaIaRacial();
 
@@ -3436,6 +3441,9 @@ public partial class GameServer : Node
 			// Ver `GameServer.SalaTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--salateste") >= 0) RodarBancadaDaSalaDoTempo();
 
+			// `--cabecateste`: (2026-10-27) O DESMAIO PELA CABECA E A GAGUEIRA -- o pedido 119. Ver `GameServer.CabecaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cabecateste") >= 0) RodarBancadaDaCabeca();
+
 			// `--cargoportas`: AS PORTAS DE CARGO -- nomeacao, sucessao, duelo formal e a dadiva.
 			//
 			// No boot pelos mesmos motivos das de cima: ela forja corpos numa zona pre-feita e nao
@@ -3492,6 +3500,7 @@ public partial class GameServer : Node
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sentidosteste") >= 0) RodarBancadaDosSentidos();   // `--sentidosteste`: a aba Sense/Scan -- alcances, identidade, sigilo do BP no fio e reenvio so na mudanca; vizinha da mente porque os alcances acendem pelo contador dela. Ver `GameServer.SentidosTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--poderteste") >= 0) RodarBancadaDoPoder();   // `--poderteste`: POWER UP E POWER DOWN -- baixar, subir com C, relaxar, esconder (e o que o Sense, o scouter e a IA dos outros leem); vizinha dos sentidos porque usa os corpos e a leitura dela. Ver `GameServer.PoderTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--regenformateste") >= 0) RodarBancadaDaRegenDaForma();   // (2026-10-19) `--regenformateste`: a forma NAO DOMINADA que consome Ki nao regenera sozinha (a meditacao e a tecla C seguem); vizinha do poder porque mede o mesmo tanque pelo mesmo tique de carga. Ver `GameServer.RegenDaFormaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mesmoipteste") >= 0) RodarBancadaDoMesmoIp();   // (2026-10-27) o pedido 110
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--naoletalteste") >= 0) RodarBancadaDoNaoLetal();   // (2026-10-19) `--naoletalteste`: o golpe nao-letal nao mata -- o baque, o arremesso do agarrao, a cambalhota e a fome param no piso, e as portas da morte so atendem o golpe letal. Ver `GameServer.NaoLetalTeste.cs`.
 
 			// `--arvoreteste`: O TIER DE VITRINE E O `enabled` LIDO COMO O DM LE -- pelo FUNIL do
@@ -3561,7 +3570,11 @@ public partial class GameServer : Node
 			// `--saqueteste`: O SAQUE DE QUEM ESTA NOCAUTEADO (item 9b do playtest de 2026-10-10) -- o que sai, o
 			// que fica, e quem pode ser revistado. Ver `GameServer.SaqueTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--saqueteste") >= 0) RodarBancadaDoSaque();
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sacoduteste") >= 0) RodarBancadaDoSacoDoDu();   // (2026-10-27) o pedido 111
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mentelistateste") >= 0) RodarBancadaDaListaDaMente();   // (2026-10-27) o pedido 124c
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--aliadosteste") >= 0) RodarBancadaDosAliados();   // (2026-10-21) amizade, treino e aliados -- ver GameServer.AliadosTeste.cs
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--yardratteste") >= 0) RodarBancadaDoYardrat();   // (2026-10-27) o pedido 109
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--snakewayteste") >= 0) RodarBancadaDaSnakeWay();   // (2026-10-27) o pedido 124d
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--aposentadosteste") >= 0) RodarBancadaDosItensAposentados();   // `--aposentadosteste`: o item que saiu do jogo sai da mochila no login com a frase que diz por que, e sem zeni de volta. Ver `GameServer.ItensAposentadosTeste.cs`.
 
 			// `--aguateste`: A AGUA ULTRA DIVINA DO MIRANTE (item 11 do playtest de 2026-10-10) -- o jarro no mapa,
@@ -3626,6 +3639,8 @@ public partial class GameServer : Node
 			// dentro de um temporario) e devolve o mundo do dono no `finally` pelo mesmo `NaCaixa`.
 			// Rodando no meio da lista, ela zeraria a memoria debaixo das bancadas seguintes.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sementeteste") >= 0) RodarBancadaDaSemente();
+			// (2026-10-27) `--linguasteste`: as linguas do say e as esferas de Namek (os pedidos 118 e 121). Ver `GameServer.LinguasTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--linguasteste") >= 0) RodarBancadaDasLinguas();
 
 			// `--wipeteste`: A LIMPEZA TOTAL DO SERVIDOR -- e ela e a **ULTIMA DE TODAS**, por um
 			// motivo que nenhuma outra tem: ela APAGA O MUNDO DE VERDADE e devolve depois.
@@ -4126,6 +4141,14 @@ public partial class GameServer : Node
 	/// </summary>
 	public static Action<byte[]>? EspiaoDeEntrada;
 
+	/// <summary>
+	/// QUEM NAO MEXE O CORPO PELO PACOTE agora -- a porta do despacho pros `ComandoDeCorpo` (ver o bloco no `Handle`): sem as redeas, o olho de
+	/// fora da nave, o corpo possuido pelo Neo Tuffle e (2026-10-27, o pedido 128) o jogador da vez na contagem do torneio. Funcao, e nao a conta
+	/// solta no despacho, pra bancada `--torneioteste` (4d) perguntar pela MESMA porta que o pacote atravessa.
+	/// </summary>
+	internal bool RecusaOComandoDeCorpo(ServerPlayer pl) =>
+		SemAsRedeas(pl) || EhOlhoDeFora(pl) || (pl.PossuidoPor != 0 && !HospedeComAsRedeasDeTeste) || NaContagemDoTorneio(pl);
+
 	private void Handle(NetPeer peer, NetPacketReader reader)
 	{
 		EspiaoDeEntrada?.Invoke(reader.RawData is { } cru
@@ -4151,8 +4174,9 @@ public partial class GameServer : Node
 		// olho -- sem soco, sem tecnica, sem atividade (minerar, treinar). Os verbos passam: e por eles que ele volta e abastece. Ver
 		// `GameServer.NaveObservar.cs`.
 		// (2026-10-18) E O DONO DE UM CORPO POSSUIDO PELO NEO TUFFLE: ele so assiste -- ver `GameServer.NeoTuffle.cs`.
-		if (ComandoDeCorpo(id) && _byPeer.TryGetValue(peer, out ServerPlayer? tomado)
-			&& (SemAsRedeas(tomado) || EhOlhoDeFora(tomado) || (tomado.PossuidoPor != 0 && !HospedeComAsRedeasDeTeste)))
+		// (2026-10-27, o pedido 128) E O JOGADOR DA VEZ NA CONTAGEM DO TORNEIO: do "5..." ao "COMECEM!" nem soco, nem guarda, nem carga, nem
+		// tecnica. As quatro razoes moram no `RecusaOComandoDeCorpo`.
+		if (ComandoDeCorpo(id) && _byPeer.TryGetValue(peer, out ServerPlayer? tomado) && RecusaOComandoDeCorpo(tomado))
 			return;
 		// (2026-10-19) E QUEM ESTA AO LEME TAMBEM NAO: pilotando nao se usa skill nem poder, e ele ouve por que. So o gesto de LIGAR e engolido;
 		// o de desligar (soltar a guarda ou a carga, parar a atividade) passa, sem efeito. Ver `GameServer.Leme.cs`.
@@ -5319,6 +5343,7 @@ public partial class GameServer : Node
 		// um botao que so aparece depois que o jogador abre a tela certa e um botao que ele nao sabe
 		// que tem. Ver `GameServer.Customizadas.cs`.
 		MandarCustomizadas(pl);
+		MandarLinguas(pl);   // (2026-10-27) a lingua do say e as que o corpo conhece -- ver GameServer.Linguas.cs
 		// E OS CHEFES JA VISTOS, pelo mesmo argumento: cada um deles e um botao ("enfrentar na
 		// mente"), e um botao que so aparece depois de o jogador reencontrar o chefe no mundo seria
 		// um botao que ele nao sabe que tem. Ver `GameServer.Mente.cs`.
@@ -5791,6 +5816,9 @@ public partial class GameServer : Node
 		// (2026-10-26) QUEM NASCE DEPOIS DO BANCO DO POTENCIAL NAO TEM ESTOQUE ANTIGO: o login nunca zera o banco dele (ver
 		// `Fighter.ZerarOPotencialAntigo`) -- nem o que o eco da reencarnacao poe por cima. O filho tambem nasce por aqui.
 		f.potencialAntigoZerado = true;
+		// (2026-10-28, o pedido 143) e quem nasce depois da poda da maestria nao e podado: os 50x sao a volta UNICA de quem subiu no ritmo
+		// de antes (ver `Fighter.PodarAMaestria`), e o novato que passar de 50x pelo ritmo de agora fica com o que treinou.
+		f.MaestriaPodada = true;
 		f.Statify();
 		return f;
 	}
@@ -5888,6 +5916,8 @@ public partial class GameServer : Node
 		// A AREA DE ESPERA DO TORNEIO fecha o teclado inteiro (o `move = 0` do `apply_hold`,
 		// `Tournament.dm:331`): nem subir nem descer -- e quem estava no ar desce e fica no chao.
 		if (PresoNoTorneio(pl.Id)) { pl.QuerSubir = false; pl.QuerDescer = pl.Altitude > 0f; }
+		// (2026-10-27, o pedido 128) ...e o jogador da vez na CONTAGEM fica na altura em que foi posto, ate o "COMECEM!"
+		if (NaContagemDoTorneio(pl)) { pl.QuerSubir = false; pl.QuerDescer = false; }
 
 		// ============================ SE DEBATER E TENTAR ANDAR PRESO -- E A LEITURA VEM AQUI ============================
 		// No original o bloco de escape mora DENTRO do laco de movimento, no ramo `if(grabParalysis)`
@@ -6309,6 +6339,7 @@ public partial class GameServer : Node
 		_aoEsquecer.Add(EsquecerG3);
 		_aoEsquecer.Add(EsquecerG4);
 		_aoEsquecer.Add(EsquecerG5);
+		_aoEsquecer.Add(EsquecerAsLinguas);   // (2026-10-27) a lingua do say e a licao pendente: id se reusa
 		_aoEsquecer.Add(EsquecerG6);
 		_aoEsquecer.Add(EsquecerG7);
 		_aoEsquecer.Add(EsquecerG9);
@@ -6318,6 +6349,7 @@ public partial class GameServer : Node
 		_aoEsquecer.Add(EsquecerComunicacoes);
 		_aoEsquecer.Add(EsquecerCompanheiros);
 		_aoEsquecer.Add(EsquecerKits);
+		_aoEsquecer.Add(EsquecerOEstudo);   // (2026-10-27) o minijogo, os bonus e os baralhos do estudo: id se reusa
 		_aoEsquecer.Add(EsquecerSuperComputador);
 		_aoEsquecer.Add(EsquecerG10);
 		_aoEsquecer.Add(EsquecerG11);
@@ -6593,7 +6625,9 @@ public partial class GameServer : Node
 			if (_tickCount % TicksPorSegundo == 0) TickDasIlhas();          // (2026-10-15) AS ILHAS DO OUTRO MUNDO puxam 10x: quem pisa numa (ou sai dela) ganha a gravidade do lugar -- ver `GameServer.GravidadeDoChao.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDaFeridaDoRabo(1.0);   // (2026-10-15) A FERIDA DO RABO QUE NAO VOLTA fecha em dez minutos de relogio -- ver `GameServer.Combat.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDoGodKi();       // O KI DIVINO (dono, 2026-10-10): quem respira uma atmosfera divina enche o medidor do despertar, e a maestria de quem ja e deus sobe -- as constantes sao por segundo. Ver `GameServer.GodKi.cs`
+			if (_tickCount % TicksPorSegundo == 0) AnotarHabitantesVistos();   // (2026-10-27) OS HABITANTES QUE CADA UM VIU DE PERTO, pela lista da mente (o pedido 124c) -- ver GameServer.MenteLista.cs
 			if (_tickCount % TicksPorSegundo == 0) TickDosBebes(1.0);   // (2026-10-18) O BEBE CRESCE depois de uma hora no jogo -- ver `GameServer.Bebe.cs`
+			TickDaSnakeWay();   // (2026-10-27) A CORRIDA DA SNAKE WAY a cada tique: o voo cancela, a chegada ao Sr. Kaioh fecha -- ver GameServer.SnakeWay.cs
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
@@ -6681,6 +6715,7 @@ public partial class GameServer : Node
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			Treinar(pl);
+			CuidarDaReservaDaLuta(pl);  // (2026-10-28) o *"bp invisivel"* da luta entre jogadores -- o pedido 148, `GameServer.Ganhos.cs`
 			CumprirPenaNoInferno(pl);   // o `afterlife_alignment_check()` do DM, no laco de fichas
 			CumprirOPasseDoEnma(pl);    // (v0.3.0) e o relogio do passe pros vivos, ao lado -- `GameServer.PasseEReencarnacao.cs`
 			CumprirAPassagem(pl);       // (v0.3.2) e a passagem de 5 s do morto que transmitiu -- `GameServer.PassagemDoMorto.cs`
@@ -6827,6 +6862,9 @@ public partial class GameServer : Node
 		// E OS MARCOS DAS FORMAS (dono, 2026-10-11), pelo argumento do bloco de cima: por estado, neste laco -- ver `GameServer.MarcosDeForma.cs`.
 		ConferirOsMarcosDeForma(pl);
 
+		// (2026-10-27) E A SALA DO TEMPO QUE O PODER ABRE (o pedido 112): a primeira pessoa com 20M de BP base -- ver `GameServer.SalaDoTempo.cs`.
+		AbrirASalaPeloPoder(pl);
+
 		// ============================ O SUPER NAMEKUSEIJIN DESPERTA AQUI (regra N5 do dono) ============================
 		// Ao lado do marco, e pelo MESMO argumento escrito no bloco acima: e o ponto do laco por jogador
 		// que roda todo tique, fora do galho de treino/meditacao, e quem cruza um patamar precisa ser
@@ -6867,7 +6905,7 @@ public partial class GameServer : Node
 		{
 			// (2026-10-13) O TREINO CANSA, e para quando o corpo nao aguenta -- ver `PagarOVigorDoTreino`.
 			if (!PagarOVigorDoTreino(pl)) { f.BufferTick(); return; }
-			f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho * foco);
+			f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho * foco * Inspiracao(pl));   // (2026-10-27) o INSPIRADO -- o pedido 124b, ver GameServer.Amizade.cs
 		}
 		else if (f.med) f.MedGain(_rng, foco);
 		else { f.BufferTick(); return; }   // parado: so acumula pro proximo treino
@@ -6918,6 +6956,12 @@ public partial class GameServer : Node
 		if (!Jandirus.Core.Npc.BillsEWhis.DivinoSaiDoPlanetaDeTeste && DivinoDe(pl) is { } divino && !destino.Equals(divino.Zona))
 		{
 			GD.Print($"[server] {pl.Name} nao sai do planeta: a viagem pra {destino.Name} foi recusada");
+			return;
+		}
+		// (2026-10-27, o pedido 132) NEM O NPC DE SAGA: ele nasce no planeta da saga e ali fica (`EhDeSaga`) -- a rede, como a de cima.
+		if (EhDeSaga(pl) && !destino.Equals(pl.Zone))
+		{
+			GD.Print($"[server] {pl.Name} e de saga e nao sai de {pl.Zone.Name}: a viagem pra {destino.Name} foi recusada");
 			return;
 		}
 

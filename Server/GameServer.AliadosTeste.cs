@@ -373,6 +373,101 @@ public partial class GameServer
 			if (TreinoDeAmizadeDe(pl) is { } medo) EncerrarOTreinoDeAmizade(medo, FimDoTreinoDeAmizade.Parou);
 			pl.Ficha.expressedBP = poderJusto;
 
+			// ---------------------------------------------------------------- 3b. (o pedido 124b) o que o treino paga, e a distancia com folga
+			GD.Print("[aliados] -- 3b) o treino que chega ao fim paga BP e o Inspirado; a distancia tem folga (o pedido 124b) --");
+			{
+				npc.Ficha.HP = 100;
+				pl.Ficha.HP = 100;
+				pl.Ficha.inspirado_ate = 0;
+
+				// SP1: o fim que vale (o habitante na metade da vida) paga
+				Ouvir(() => Verbo(pl, Amizade.VerboTreinar, ""));
+				bool abriu = TreinoDeAmizadeDe(pl) != null;
+				double bpAntes = pl.Ficha.BP;
+				npc.Ficha.HP = 40;
+				List<string> fimQueVale = Ouvir(() => TickDosAliados(0.05));
+				double pago = pl.Ficha.BP - bpAntes;
+				long inspiradoAte = pl.Ficha.inspirado_ate;
+				pl.Ficha.missedtrain = 0;
+				pl.Ficha.tmp_activ_gains = 0;
+				double antesDeUmPasse = pl.Ficha.BP;
+				pl.Ficha.TrainGain(_rng, 6.0 / (1 + Math.Log(2)));
+				double umPasse = pl.Ficha.BP - antesDeUmPasse;
+				double passes = umPasse > 0 ? pago / umPasse : 0;
+				AfirmarAmi("SP1. (o pedido 124b) o treino que chega ao FIM paga o BP de 3 min treinando (~900 passes do T) e deixa INSPIRADO por 10 min, com o aviso",
+						   abriu && pago > 0 && passes is > 600 and < 1300 && inspiradoAte > NowMs() + 9 * 60_000
+						   && inspiradoAte <= NowMs() + 10 * 60_000 + 5_000 && Disse(fimQueVale, "INSPIRADO"),
+						   $"pago {pago:0.####} BP (~{passes:0} passes de {umPasse:0.######}), inspirado por mais {(inspiradoAte - NowMs()) / 1000} s; {Ultimos(fimQueVale)}");
+				npc.Ficha.HP = 100;
+				pl.Ficha.HP = 100;
+
+				// SP1b: o treino PARADO no meio nao paga
+				pl.Ficha.inspirado_ate = 0;
+				Ouvir(() => Verbo(pl, Amizade.VerboTreinar, ""));
+				bool abriuDeNovo = TreinoDeAmizadeDe(pl) != null;
+				double bpAntesDoParou = pl.Ficha.BP;
+				List<string> parou = Ouvir(() => Verbo(pl, Amizade.VerboParar, ""));
+				AfirmarAmi("SP1b. ...e o treino PARADO no meio nao paga nada (nem BP, nem Inspirado) -- o contra-exemplo",
+						   abriuDeNovo && TreinoDeAmizadeDe(pl) == null && pl.Ficha.BP == bpAntesDoParou && pl.Ficha.inspirado_ate == 0
+						   && !Disse(parou, "INSPIRADO"), Ultimos(parou));
+
+				// SP2: o passe do treino (a tecla T) com e sem a inspiracao
+				bool treinavaAntes = pl.Ficha.train;
+				try
+				{
+					double UmPasseDoT(long inspirado)
+					{
+						pl.Ficha.inspirado_ate = inspirado;
+						pl.Ficha.train = true;
+						pl.Ficha.stamina = pl.Ficha.maxstamina;
+						pl.Ficha.missedtrain = 0;
+						pl.Ficha.tmp_activ_gains = 0;
+						double a = pl.Ficha.BP;
+						Treinar(pl);
+						return pl.Ficha.BP - a;
+					}
+					double sem = UmPasseDoT(0), com = UmPasseDoT(NowMs() + 60_000), vencido = UmPasseDoT(NowMs() - 1);
+					AfirmarAmi("SP2. INSPIRADO, o passe do treino (a tecla T) rende 1,5x; vencido, volta a 1x",
+							   sem > 0 && Math.Abs(com / sem - 1.5) < 0.02 && Math.Abs(vencido / sem - 1) < 0.02,
+							   $"sem {sem:0.######}, com {com:0.######}, vencido {vencido:0.######}");
+				}
+				finally
+				{
+					pl.Ficha.train = treinavaAntes;
+					pl.Ficha.inspirado_ate = 0;
+				}
+
+				// SP3: a distancia com folga
+				Ouvir(() => Verbo(pl, Amizade.VerboTreinar, ""));
+				bool abriuLonge = TreinoDeAmizadeDe(pl) != null;
+				Vec2 perto = pl.Pos;
+				Vec2 noMeio = npc.Pos + new Vec2(20 * ZoneCollision.TileSize, 0);   // entre os 15 de antes e os 30 de agora
+				Vec2 longe = npc.Pos + new Vec2((Amizade.TilesDoTreino + 3) * ZoneCollision.TileSize, 0);
+				pl.Pos = noMeio;
+				TickDosAliados(0.05);
+				TickDosAliados(5);
+				bool noMeioSegue = TreinoDeAmizadeDe(pl) != null;
+				pl.Pos = longe;
+				TickDosAliados(0.05);
+				TickDosAliados(10);
+				bool dezLongeSegue = TreinoDeAmizadeDe(pl) != null;
+				pl.Pos = perto;
+				TickDosAliados(0.05);
+				pl.Pos = longe;
+				TickDosAliados(0.05);
+				TickDosAliados(10);
+				bool aVoltaZerou = TreinoDeAmizadeDe(pl) != null;
+				List<string> caiu = Ouvir(() => TickDosAliados(6));
+				bool acabou = TreinoDeAmizadeDe(pl) == null;
+				pl.Pos = perto;
+				AfirmarAmi("SP3. a DISTANCIA tem folga: a 20 tiles o treino segue (eram 15); alem de 30 so cai depois de 15 s SEGUIDOS -- voltar perto zera a conta",
+						   abriuLonge && noMeioSegue && dezLongeSegue && aVoltaZerou && acabou && Disse(caiu, "afastaram"),
+						   $"no meio {noMeioSegue}, 10 s longe {dezLongeSegue}, a volta zerou {aVoltaZerou}, 16 s seguidos acabou {acabou}; {Ultimos(caiu)}");
+				if (TreinoDeAmizadeDe(pl) is { } sobrou) EncerrarOTreinoDeAmizade(sobrou, FimDoTreinoDeAmizade.Parou);
+				npc.Ficha.HP = 100;
+				pl.Ficha.HP = 100;
+			}
+
 			// ---------------------------------------------------------------- 4. bater zera; encher; recrutar
 			GD.Print("[aliados] -- 4) bater zera, recrutar, ordens --");
 			_relogioDosAliados += Amizade.SegundosDeFolegoAoFim + 1;

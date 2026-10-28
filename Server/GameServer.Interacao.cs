@@ -60,6 +60,7 @@ public sealed partial class GameServer
 			// (v0.3.0) as duas saidas novas da mesa: o passe pros vivos e a reencarnacao (`GameServer.PasseEReencarnacao.cs`)
 			case "enma_passe": EnmaPasse(pl, arg); return true;
 			case "enma_reencarnar": EnmaReencarnar(pl, arg); return true;
+			case Jandirus.Core.World.SnakeWay.Verbo: EnmaSnakeWay(pl); return true;   // (2026-10-27) o pedido 124d -- ver GameServer.SnakeWay.cs
 
 			// O SR. KAIOH E O KORIN (v0.3.0, `GameServer.NpcsDeConversa.cs`): a conversa do DM, pelo menu E.
 			case "kaioh_falar": SrKaiohFalar(pl); return true;
@@ -67,6 +68,7 @@ public sealed partial class GameServer
 			// (2026-10-19) O GRANDE PATRIARCA DE NAMEK (`GameServer.Patriarca.cs`): falar com ele desperta o potencial. Corpo e nao obra,
 			// como o Bills e o Whis -- o alcance e o estado dele sao conferidos la dentro.
 			case Jandirus.Core.Npc.Patriarca.VerboFalar: FalarComOPatriarca(pl); return true;
+			case Jandirus.Core.World.Yardrat.VerboAprender: AprenderComOMestreYardrat(pl); return true;   // (2026-10-27) o pedido 109
 
 			// OS VERBOS DE TECNOLOGIA JA EXISTIAM -- o menu so virou uma segunda porta pra eles. Por
 			// isso o reenvio pro canal de sempre em vez de uma copia da logica aqui: duas copias
@@ -201,6 +203,8 @@ public sealed partial class GameServer
 	{
 		Obra? saco = ObraQueAceita(pl, "treinar_saco");
 		if (saco == null) { Avisar(pl, "não há saco de pancada por perto."); return; }
+		// (2026-10-27, o pedido 136) o saco que ja estava numa Sala do Tempo nao rende -- ver `BonusDeTreinoPerto`
+		if (Jandirus.Core.World.LugarDeObra.NaoRendeAqui(saco.Zona, saco.Tipo)) { Avisar(pl, Jandirus.Core.World.LugarDeObra.NaoRendeNaSala); return; }
 		if (!saco.Aparafusada) { Avisar(pl, "aparafuse o saco antes de bater nele."); return; }
 
 		Avisar(pl, "você começa a bater no saco. Enquanto estiver por perto, o treino rende o dobro.");
@@ -218,6 +222,8 @@ public sealed partial class GameServer
 		{
 			if (!o.Zona.Equals(pl.Zone) || !o.Aparafusada) continue;
 			if (o.Tipo is not ("Punching_Bag" or "Punching_Machine")) continue;
+			// (2026-10-27, o pedido 136) o saco e a maquina de socos que ja estavam numa Sala do Tempo nao dobram o treino la dentro
+			if (Jandirus.Core.World.LugarDeObra.NaoRendeAqui(o.Zona, o.Tipo)) continue;
 			if (Math.Abs(o.X - pl.Pos.X) > AlcanceDeUso || Math.Abs(o.Y - pl.Pos.Y) > AlcanceDeUso) continue;
 			return DobraDoSaco;
 		}

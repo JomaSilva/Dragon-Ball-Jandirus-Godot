@@ -15,14 +15,15 @@ namespace Jandirus.Server;
 ///
 /// ============================ O CAMINHO ============================
 ///   1. O verbo SEM destino (o botao, a tecla, o `Kai_Kai` digitado) passa pela porta do salto de planeta -- quem pode, a recarga
-///      e o Ki CHEIO, nessa ordem, como no DM (`kai.dm:114-115`: o `input()` so abre com Ki cheio) -- e manda a LISTA pelo
+///      e o Ki CHEIO, nessa ordem, como no DM (`kai.dm:114-115`: o `input()` so abre com Ki cheio; desde 2026-10-27, o pedido 135, e o
+///      PRECO do salto -- `CustoDoKaiKai`, 10% do Ki de um Kai recem-nascido) -- e manda a LISTA pelo
 ///      `S2C.DestinosDoKaiKai`: os doze de sempre (`DestinosDoKaiKaiG11`) e os mundos gerados do livro de batismo (o primeiro
 ///      jogador que pisa num mundo gerado o anota, `AnotarDescoberta`), cada um com o nome de batismo; o destruido fica de fora.
 ///      O cliente abre a tela ao receber.
 ///   2. Cada linha da tela manda `Kai_Kai:chave` (o nome da zona, ou `#seed` do mundo gerado). O verbo digitado com destino
 ///      (`Kai_Kai:Namek`, `Kai_Kai:Terra`, o nome de batismo) continua valendo: chave primeiro, nome depois, e nome repetido
 ///      recusa (mundo gerado repete nome). O servidor confere tudo de novo: a porta, e que o destino ESTA na lista de agora.
-///   3. O salto e NA HORA, sem concentracao: paga (Ki -> 0, a recarga, o emote e a carona de 1,5 tile de sempre), pisca na saida
+///   3. O salto e NA HORA, sem concentracao: paga (o preco do salto -- era Ki -> 0 --, a recarga, o emote e a carona de 1,5 tile de sempre), pisca na saida
 ///      (`S2C.TransmissaoPiscar`, o pacote e o desenho do Instant Transmission, mandado a zona), some, chega e pisca na chegada.
 ///      Os dois atrasos do clarao (`KaiKai.AtrasoDaSaidaMs`, `KaiKai.AtrasoDoClaraoDaChegadaMs`) existem pra quem esta perto
 ///      VER o efeito -- ele e desenhado no corpo, e o corpo tem de estar na tela de quem olha.
@@ -70,6 +71,23 @@ public partial class GameServer
 	/// <summary>A BANCADA ESCUTA A LISTA QUE VAI PRA TELA (corpo forjado nao tem Peer). Nula em jogo.</summary>
 	internal static List<(int Quem, List<DestinoDoKaiKai> Lista)>? EscutaDoKaiKai;
 
+	/// <summary>
+	/// (2026-10-27, o pedido 135) O PRECO DO KAI KAI, em Ki: o <see cref="KaiKai.Custo"/> do Ki maximo de um Kai RECEM-NASCIDO, pelo funil
+	/// de nascimento de producao -- uma vez so (a ficha de raca nao muda com o servidor no ar). O dono: *"tira o consumo absurdo do kaikai,
+	/// faça ele no maximo usar 10% do ki inicial de um kaio, ou seja, bem pouco"*. Era o Ki CHEIO, e o salto zerava o tanque.
+	/// </summary>
+	private double CustoDoKaiKai => _custoDoKaiKai ??= KaiKai.Custo(KiDeUmKaiRecemNascido());
+
+	private double? _custoDoKaiKai;
+
+	/// <summary>O Ki maximo com que um Kai nasce (a semente fixa: o mesmo numero em todo boot).</summary>
+	internal double KiDeUmKaiRecemNascido()
+	{
+		Jandirus.Core.Stats.Fighter kai = Jandirus.Core.Races.Birth.Nascer(_racas, "Kai", "", new Random(0));
+		kai.Statify();
+		return kai.MaxKi;
+	}
+
 	// =====================================================================
 	// O ESTADO
 	// =====================================================================
@@ -111,8 +129,8 @@ public partial class GameServer
 	{
 		if (RecusarPelaMenteFragmentada(pl)) return;
 		// A PORTA ANTES DA LISTA (`kai.dm:114-115`). No clique ela e perguntada de novo: entre a tela aberta e o botao da pra ter
-		// gastado Ki, levado um agarrao ou caido.
-		if (!PortaDoSaltoDePlaneta(pl, kiCheio: true)) return;
+		// gastado Ki, levado um agarrao ou caido. (2026-10-27, o pedido 135) O pedagio e o preco do salto, e nao mais o Ki cheio.
+		if (!PortaDoSaltoDePlaneta(pl, kiCheio: true, custoFixo: CustoDoKaiKai)) return;
 
 		List<DestinoDoKaiKaiNoServidor> todos = TodosOsDestinosDoKaiKai(pl);
 		if (arg.Length == 0)
@@ -266,13 +284,13 @@ public partial class GameServer
 	// O SALTO
 	// =====================================================================
 	/// <summary>
-	/// O SALTO DECIDIDO: paga (o Ki inteiro, a recarga, o emote e a carona -- `PagarOSaltoDePlaneta`, o mesmo do RiftTeleport e do
-	/// Devil Bringer), pisca na saida e espera <see cref="KaiKai.AtrasoDaSaidaMs"/> pra sumir: o clarao e desenhado no corpo, e quem
-	/// fica so o ve se o corpo ainda estiver na zona dele.
+	/// O SALTO DECIDIDO: paga (o preco do salto -- <see cref="CustoDoKaiKai"/>, o pedido 135 --, a recarga, o emote e a carona --
+	/// `PagarOSaltoDePlaneta`, o mesmo do RiftTeleport e do Devil Bringer), pisca na saida e espera <see cref="KaiKai.AtrasoDaSaidaMs"/> pra
+	/// sumir: o clarao e desenhado no corpo, e quem fica so o ve se o corpo ainda estiver na zona dele.
 	/// </summary>
 	private void ComecarOSaltoDoKaiKai(ServerPlayer pl, ZoneKey zona, string chave, string nome, Vec2 ponto)
 	{
-		List<ServerPlayer> caronas = PagarOSaltoDePlaneta(pl, kiCheio: true, comCarona: true, EmoteDoKaiKai);
+		List<ServerPlayer> caronas = PagarOSaltoDePlaneta(pl, kiCheio: true, comCarona: true, EmoteDoKaiKai, custoFixo: CustoDoKaiKai);
 		ClaraoDoKaiKai(pl, caronas);
 		var e = new KaiKaiEmCurso
 		{
@@ -375,7 +393,7 @@ public partial class GameServer
 		if (MundoDaZona(e.Zona, e.Corpo) is { } viva)
 		{
 			_kaiKaiEmCurso.Remove(pl.Id);
-			if (!PortaDoSaltoDePlaneta(pl, kiCheio: true)) return;
+			if (!PortaDoSaltoDePlaneta(pl, kiCheio: true, custoFixo: CustoDoKaiKai)) return;
 			if (!TodosOsDestinosDoKaiKai(pl).Exists(d => d.Fio.Chave == e.Chave && DaTela(d)))
 			{
 				Avisar(pl, $"{e.Nome} não existe mais: o Kai Kai não chega lá.");

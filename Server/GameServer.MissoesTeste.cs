@@ -432,6 +432,13 @@ public partial class GameServer
 		AfirmarMis("(a) O SERVICO DIZ SO A PARTE DE QUEM LE: o mestre, os vivos TREINANDO; o Outro Mundo, os MORTOS -- com o raio, o ponto por "
 				 + "minuto, o teto e o placar (*\"I cannot comprehend what this actually means\"*)",
 				   SoOMestre(doMestre) && SoOKaio(doKaio), $"mestre: {doMestre} || Outro Mundo: {doKaio}");
+		// (2026-10-27, o pedido 137) o da ESCADA DIVINA diz que a alma do Outro Mundo tambem conta; o do King Yemma (o de cima), nao
+		string daEscada = MissoesDeCargo.Descricao(servico, doOutroMundo: true, almaNpcConta: true);
+		AfirmarMis("(o pedido 137) ...e o da ESCADA DIVINA diz que a alma do Outro Mundo tambem conta (o do King Yemma, nao)",
+				   SoOKaio(daEscada) && daEscada.Contains("almas do Outro Mundo", StringComparison.Ordinal)
+				   && !doKaio.Contains("almas do Outro Mundo", StringComparison.Ordinal)
+				   && MissoesDeCargo.AlmaNpcEAtendida("nkai") && MissoesDeCargo.AlmaNpcEAtendida("kaioshin") && !MissoesDeCargo.AlmaNpcEAtendida("yemma"),
+				   daEscada);
 		const string deAntes = "SERVIÇO: 4/15 pontos (visitantes qualificados a 6 tiles: vivos TREINANDO para os mestres, almas MORTAS para o Outro Mundo)";
 		AfirmarMis("(contra-exemplo: o texto de antes, o que o jogador leu) as duas metades pra todo cargo -- a regua (a) REPROVA",
 				   !SoOMestre(deAntes) && !SoOKaio(deAntes));
@@ -538,6 +545,44 @@ public partial class GameServer
 			$"{_missoes["nkai"].Progresso}");
 		kaio.Ficha.dead = false;
 		aluno.Ficha.dead = false;
+
+		// ---- (2026-10-27, o pedido 137) A ALMA NPC por perto tambem conta pro Kaio; o habitante VIVO nao; e pro King Yemma, so jogador ----
+		// a alma nasce pelo funil de sempre (`NascerNpc` -> `FazerAlma`: morta, de aureola), como o povoamento a poe no Outro Mundo
+		const float T = ZoneCollision.TileSize;
+		ServerPlayer? almaNpc = NascerNpc("alma", kaio.Zone, kaio.Pos + new Vec2(2 * T, T), 98_700);
+		ServerPlayer? vivoNpc = NascerNpc("cidadao", kaio.Zone, kaio.Pos + new Vec2(0, 2 * T), 98_701);
+		try
+		{
+			aluno.Pos = kaio.Pos + new Vec2(40 * T, 0);   // o jogador sai de perto: ficam so as duas NPC
+			int antes = _missoes["nkai"].Progresso;
+			UmaVoltaDoMotor();
+			AfirmarMis("(o pedido 137) **A ALMA NPC TAMBEM E ATENDIDA PELO KAIO**: a alma do alem a 2 tiles pontua 1 -- e o habitante VIVO ao lado nao",
+				almaNpc is { Ficha.dead: true } && vivoNpc != null && _missoes["nkai"].Progresso == antes + 1,
+				$"{antes} -> {_missoes["nkai"].Progresso}; alma {(almaNpc == null ? "nao nasceu" : $"morta {almaNpc.Ficha.dead}")}; vivo {vivoNpc != null}");
+
+			_tronos.Clear();
+			_missoes.Clear();
+			_tronos["yemma"] = kaio.Conta;
+			UmaVoltaDoMotor();
+			AdiantarMundo(MissoesDeCargo.SegundosDeIntervalo);
+			UmaVoltaDoMotor();
+			int antesY = _missoes["yemma"].Progresso;
+			UmaVoltaDoMotor();
+			int soAAlma = _missoes["yemma"].Progresso;
+			aluno.Pos = kaio.Pos + new Vec2(2 * T, 0);
+			aluno.Ficha.dead = true;
+			UmaVoltaDoMotor();
+			AfirmarMis("...e pro KING YEMMA a alma NPC NAO conta (o contra-exemplo: so jogador morto, como antes) -- o jogador morto ao lado conta",
+				_missoes["yemma"].Tarefa == TipoDeTarefa.Servico && soAAlma == antesY && _missoes["yemma"].Progresso == antesY + 1,
+				$"{_missoes["yemma"].Tarefa}: {antesY} -> so a alma {soAAlma} -> com o jogador morto {_missoes["yemma"].Progresso}");
+		}
+		finally
+		{
+			if (almaNpc != null) RemoverNpc(almaNpc);
+			if (vivoNpc != null) RemoverNpc(vivoNpc);
+			aluno.Ficha.dead = false;
+			aluno.Pos = kaio.Pos + new Vec2(2 * T, 0);
+		}
 
 		// ---- A VERBA DO PRESIDENTE ----
 		_tronos.Clear();

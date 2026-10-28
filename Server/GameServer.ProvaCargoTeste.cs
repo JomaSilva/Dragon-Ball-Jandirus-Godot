@@ -22,7 +22,8 @@ namespace Jandirus.Server;
 ///   V. QUEM DERRUBA LEVA: o trono, o espirito fora do mundo, a trava solta.
 ///   I. O INTRUSO nao da o cargo nem vergonha. `IntrusoValeDeTeste`.
 ///   D. QUEM CAI perde e fica 30 min com vergonha. `SemVergonhaDeTeste`.
-///   F. fugir, trocar de mapa e o tempo acabar tambem perdem.
+///   F. trocar de mapa e o tempo acabar tambem perdem -- e (2026-10-27, o pedido 133) a DISTANCIA nao encerra mais: a 30 tiles a prova segue.
+///   K. (2026-10-27, o pedido 134) A ESCADA DOS KAIOS pela prova: o Kaio do Norte com renome vira Grand Kai, e o Grand Kai vira Kaioshin.
 ///   T. UMA ALMA POR VEZ por cargo. `SemTravaDeTeste`.
 ///   M. o MORTO prova o cargo do Outro Mundo.
 ///   C. A CAMPANHA do Presidente e cobrada ao vencer -- e quem a gasta na prova nao leva. `CampanhaDeGracaDeTeste`.
@@ -63,6 +64,7 @@ public partial class GameServer
 			AFugaPcg(pl);
 			ATravaPcg(pl);
 			OMortoDoAlemPcg();
+			AEscadaDosKaiosPcg(pl);   // (2026-10-27, o pedido 134)
 			ACampanhaPcg(pl);
 			ASaidaPcg(mesa, cli);
 		}
@@ -348,12 +350,24 @@ public partial class GameServer
 			return $"{esperado}: armou {armou}, vergonha {_vergonhaDoCargo.ContainsKey(pl.Assinatura)} | {Ultimos(falas)}";
 		}
 
-		string f1 = Rodar(() => pl.Pos = (EspiritoPcg("turtle")?.Pos ?? pl.Pos) + new Vec2(30 * ZoneCollision.TileSize, 0), "você fugiu da prova", out bool ok1);
+		// (2026-10-27, o pedido 133) A DISTANCIA NAO ENCERRA MAIS A PROVA -- o dono: "vamos tirar o limite de distancia q os npcs de rank
+		// (os q vc enfrenta) tem, pq o knock back toda hora faz eles despawnarem". Trinta tiles (o knockback que separa os dois) e o juiz deixa
+		// a prova seguir: o espirito fica no mundo, e ninguem leva vergonha.
+		LimparAsProvasPcg();
+		DePe(pl);
+		pl.Pos = lugar;
+		PedirAProvaDoCargo(pl, "turtle");
+		bool armou = ProvaPcg("turtle") != null;
+		pl.Pos = (EspiritoPcg("turtle")?.Pos ?? pl.Pos) + new Vec2(30 * ZoneCollision.TileSize, 0);
+		List<string> longe = Ouvir(TickDosCargos);
+		AfirmarPcg("F1. (o pedido 133) **A DISTANCIA NAO ENCERRA A PROVA**: a 30 tiles do espirito (o knockback que separa os dois), a prova segue -- o espirito fica no mundo e ninguem leva vergonha",
+				  armou && ProvaPcg("turtle") != null && EspiritoPcg("turtle") != null && !_vergonhaDoCargo.ContainsKey(pl.Assinatura),
+				  $"armou {armou}; prova {ProvaPcg("turtle") != null}; espirito {EspiritoPcg("turtle") != null}; vergonha {_vergonhaDoCargo.ContainsKey(pl.Assinatura)} | {Ultimos(longe)}");
+
 		string f2 = Rodar(() => MoveToZone(pl.Id, ZoneKey.Premade("Namek"), new Vec2(10 * ZoneCollision.TileSize, 10 * ZoneCollision.TileSize)),
 						  "você saiu do lugar da prova", out bool ok2);
 		string f3 = Rodar(() => { if (ProvaPcg("turtle") is { } p) p.AcabaEm = NowMs() - 1; }, "o tempo da prova acabou", out bool ok3);
-		AfirmarPcg("F. fugir (30 tiles), trocar de mapa e deixar o tempo acabar tambem perdem -- com vergonha", ok1 && ok2 && ok3,
-				  $"{f1} || {f2} || {f3}");
+		AfirmarPcg("F. trocar de mapa e deixar o tempo acabar perdem -- com vergonha", ok2 && ok3, $"{f2} || {f3}");
 		LimparAsProvasPcg();
 		if (!pl.Zone.Equals(casa)) MoveToZone(pl.Id, casa, lugar);
 		pl.Pos = lugar;
@@ -414,6 +428,64 @@ public partial class GameServer
 				  armou && continua && _tronos.GetValueOrDefault("nkai") == morto.Conta,
 				  $"armou {armou}; continua {continua}; trono {_tronos.GetValueOrDefault("nkai") ?? "(vago)"} | {Ultimos(pediu)}");
 		_tronos.Remove("nkai");
+		LimparAsProvasPcg();
+	}
+
+	// =====================================================================
+	// K) A ESCADA DOS KAIOS PELA PROVA (2026-10-27, o pedido 134)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"cheque se da pra de kaio(norte,sul,oeste etc) virar grand kai e dps kaioshin, pq quando vc ja tem um rank, n consegue
+	/// selecionar outro, porem pra ser grand kai, vc tem q der kaio de algum lugar (norte, sul etc) primeiro"*. Pelo caminho de producao
+	/// inteiro (o pedido da prova, o espirito, o juiz de 1 Hz e a concessao no fim): o Kaio do Norte nao pega um cargo de FORA da escada (uma
+	/// alma, um trono), nem sobe sem o RENOME (3 tarefas cumpridas no cargo -- o Rank Duty); com o renome, o Espirito do Grand Kai se ergue,
+	/// cai pelas maos dele e o trono troca (o do Norte VAGA); e o Grand Kai com renome e karma 75+ faz o mesmo com o Kaioshin.
+	/// </summary>
+	private void AEscadaDosKaiosPcg(ServerPlayer pl)
+	{
+		GD.Print("[provacargo] -- K) a escada dos Kaios pela prova (o pedido 134) --");
+		LimparAsProvasPcg();
+		ServerPlayer kaio = ForjarPcg(6, "bancada: o Kaio do Norte", "Human", pl.Zone, pl.Pos + new Vec2(0, 8 * ZoneCollision.TileSize), karma: 80);
+		_tronos["nkai"] = kaio.Conta;
+		ReconciliarDadiva(kaio);
+
+		void ComRenome(string cargo)
+		{
+			AdiantarMundo(MissoesDeCargo.SegundosDoLaco);
+			TickDasMissoes();
+			if (_missoes.TryGetValue(cargo, out FichaDeMissao? f)) f.Cumpridas = MissoesDeCargo.TarefasParaAscender;
+		}
+
+		bool Subir(string cargo, out string detalhe)
+		{
+			List<string> pediu = Ouvir(() => PedirAProvaDoCargo(kaio, cargo));
+			bool ergueu = EspiritoPcg(cargo) != null;
+			if (EspiritoPcg(cargo) is { } e) DerrubarPcg(e, kaio);
+			List<string> fim = Ouvir(TickDosCargos);
+			DePe(kaio);
+			detalhe = $"{cargo}: espirito {ergueu}, cargo agora {CargoDe(kaio)} | {Ultimos(pediu)} | {Ultimos(fim)}";
+			return ergueu && string.Equals(CargoDe(kaio), cargo, StringComparison.OrdinalIgnoreCase);
+		}
+
+		// uma alma, um trono: o Kaio nao pega o Eremita (fora da escada) -- e sem renome nao sobe
+		List<string> fora = Ouvir(() => PedirAProvaDoCargo(kaio, "turtle"));
+		List<string> semRenome = Ouvir(() => PedirAProvaDoCargo(kaio, "grandkai"));
+		bool barrado = ProvaPcg("turtle") == null && Disse(fora, "Uma alma, um trono")
+					   && ProvaPcg("grandkai") == null && Disse(semRenome, "RENOME");
+
+		ComRenome("nkai");
+		bool grandKai = Subir("grandkai", out string dGrand) && !_tronos.ContainsKey("nkai");
+		ComRenome("grandkai");
+		bool kaioshin = Subir("kaioshin", out string dShin) && !_tronos.ContainsKey("grandkai");
+		AfirmarPcg("K. (o pedido 134) **A ESCADA DOS KAIOS PELA PROVA**: o Kaio do Norte nao pega cargo de fora da escada nem sobe sem renome; com renome, "
+				  + "o Espirito do Grand Kai cai e ele VIRA Grand Kai (o Norte vaga), e o Grand Kai vira KAIOSHIN do mesmo jeito (o Grand Kai vaga)",
+				  barrado && grandKai && kaioshin,
+				  $"barrado {barrado} ({Ultimos(fora)} || {Ultimos(semRenome)}); {dGrand}; {dShin}");
+
+		foreach (string vaga in _tronos.Where(kv => kv.Value.Contains(kaio.Conta, StringComparison.Ordinal)).Select(kv => kv.Key).ToList())
+			_tronos.Remove(vaga);
+		_missoes.Clear();
+		ReconciliarDadiva(kaio);
 		LimparAsProvasPcg();
 	}
 

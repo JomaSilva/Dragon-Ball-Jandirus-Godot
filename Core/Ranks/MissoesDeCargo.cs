@@ -224,15 +224,26 @@ public static class MissoesDeCargo
 	};
 
 	/// <summary>
-	/// A META DO SERVICO -- `:495`. Dez pros seis da escada divina, quinze pro resto.
+	/// OS SEIS DA ESCADA DIVINA -- os quatro Kaios, o Grand Kai e o Kaioshin (`:495`).
 	///
 	/// ESTA LISTA E LITERAL DE PROPOSITO, e e a unica do arquivo. Nao ha campo na `RankDef` que
 	/// separe estes seis (nem `DoOutroMundo` serve: o King Yemma esta la e recebe 15), entao derivar
 	/// exigiria inventar um criterio que o DM nao tem. Um literal com a linha do original ao lado e
-	/// mais honesto que uma regra bonita que o autor nunca escreveu.
+	/// mais honesto que uma regra bonita que o autor nunca escreveu. A meta do servico e a alma NPC (o
+	/// pedido 137) leem esta mesma lista.
 	/// </summary>
-	public static int MetaDeServico(string chave) =>
-		chave.ToLowerInvariant() is "nkai" or "skai" or "ekai" or "wkai" or "grandkai" or "kaioshin" ? 10 : 15;
+	public static bool DaEscadaDivina(string chave) =>
+		chave.ToLowerInvariant() is "nkai" or "skai" or "ekai" or "wkai" or "grandkai" or "kaioshin";
+
+	/// <summary>A META DO SERVICO -- `:495`. Dez pros seis da escada divina, quinze pro resto.</summary>
+	public static int MetaDeServico(string chave) => DaEscadaDivina(chave) ? 10 : 15;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 137) A ALMA NPC TAMBEM E ATENDIDA NA ESCADA DIVINA. O dono, perguntado se o renome do Kaio -- que so juntava
+	/// jogador MORTO por perto, e num servidor pequeno nao junta nunca -- deve contar a alma NPC do Outro Mundo: *"Alma NPC conta"*. A alma
+	/// e o habitante do alem (`MoldeDeNpc.Alma`, morto de aureola). O King Yemma, que nao sobe pra lugar nenhum, segue so com jogador.
+	/// </summary>
+	public static bool AlmaNpcEAtendida(string chave) => DaEscadaDivina(chave);
 
 	/// <summary>
 	/// QUAL TAREFA ESTE CARGO RECEBE AGORA. E a escada literal do `rq_assign` (`:493-526`), na ordem.
@@ -345,8 +356,11 @@ public static class MissoesDeCargo
 	// lingua (Tools/AssetPipeline) traduzir os MESMOS textos que o jogador recebe.
 	// =========================================================================================================================
 
-	/// <summary>A tarefa em palavras -- o `rq_task_desc` (`:476`), reescrito. <paramref name="doOutroMundo"/> escolhe a metade do servico.</summary>
-	public static string Descricao(FichaDeMissao f, bool doOutroMundo) => f.Tarefa switch
+	/// <summary>
+	/// A tarefa em palavras -- o `rq_task_desc` (`:476`), reescrito. <paramref name="doOutroMundo"/> escolhe a metade do servico, e
+	/// <paramref name="almaNpcConta"/> (a escada divina, o pedido 137) diz que a alma do Outro Mundo tambem conta.
+	/// </summary>
+	public static string Descricao(FichaDeMissao f, bool doOutroMundo, bool almaNpcConta = false) => f.Tarefa switch
 	{
 		TipoDeTarefa.Libertar => $"LIBERTAR {NomeVisivel(f.Planeta)}: o seu planeta foi conquistado por outro jogador -- tire o domínio "
 							   + "dele (o planeta fica livre ou passa a ser seu)",
@@ -357,6 +371,9 @@ public static class MissoesDeCargo
 		TipoDeTarefa.Planeta => $"DESTRUIR o planeta {f.Planeta}",
 		TipoDeTarefa.Verba => $"FINANCIAR a Terra: deposite {VerbaDoPresidente:N0} zeni no cofre dela com o botão Fund Earth (aba Other)",
 		// `ContaComoServico`: o Outro Mundo atende ALMAS; o mestre, quem TREINA -- e mestre morto nao da aula (`PodeServir`)
+		TipoDeTarefa.Servico when doOutroMundo && almaNpcConta =>
+			$"ATENDER ALMAS: fique a até {TilesDoServico} tiles de MORTOS -- jogadores ou almas do Outro Mundo; cada um vale 1 ponto por "
+			+ $"minuto (até {TetoDoServico} por minuto). Pontos: {Math.Min(f.Progresso, f.Meta)}/{f.Meta}",
 		TipoDeTarefa.Servico when doOutroMundo =>
 			$"ATENDER ALMAS: fique a até {TilesDoServico} tiles de jogadores MORTOS -- cada um vale 1 ponto por minuto "
 			+ $"(até {TetoDoServico} por minuto). Pontos: {Math.Min(f.Progresso, f.Meta)}/{f.Meta}",
@@ -382,9 +399,9 @@ public static class MissoesDeCargo
 	/// O AVISO DE TAREFA NOVA, em tres linhas: o que fazer; o prazo e o que acontece se ele acabar; o que cumprir rende e onde ver o
 	/// andamento (o `Rank Duty`, `GameServer.VerboMeusDeveres`).
 	/// </summary>
-	public static string[] AvisoDeTarefaNova(string cargo, FichaDeMissao f, bool doOutroMundo, bool maligno) =>
+	public static string[] AvisoDeTarefaNova(string cargo, FichaDeMissao f, bool doOutroMundo, bool maligno, bool almaNpcConta = false) =>
 	[
-		$"{cargo}: NOVA TAREFA -- {Descricao(f, doOutroMundo)}.",
+		$"{cargo}: NOVA TAREFA -- {Descricao(f, doOutroMundo, almaNpcConta)}.",
 		$"Prazo: {TextoDeTempo(SegundosDePrazo)}. Se o prazo acabar, você leva 1 falha (tem {f.Falhas} de {FalhasQueDestituem}); "
 		+ $"com {FalhasQueDestituem} falhas, perde o cargo.",
 		maligno

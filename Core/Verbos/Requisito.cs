@@ -143,6 +143,13 @@ public enum Fatos : ulong
 	/// saida). Ver `GameServer.RitualDoKaioshin.cs`.
 	/// </summary>
 	RitualDoKaioshin = 1ul << 33,
+
+	// ---- (2026-10-28, o pedido 144) o Neo Tuffle que sai quando quiser ----
+	/// <summary>
+	/// Esta DENTRO do corpo de outro jogador (a posse do Neo Tuffle): o botao "Sair do corpo" e dele. O irmao do <see cref="NeoTuffle"/>, que
+	/// so acende no proprio corpo. Ver `GameServer.NeoTuffle.cs`.
+	/// </summary>
+	DentroDeOutroCorpo = 1ul << 34,
 }
 
 /// <summary>

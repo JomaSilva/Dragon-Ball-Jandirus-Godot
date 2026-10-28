@@ -85,8 +85,23 @@ public static class Amizade
 	/// <summary>...ou quando passa este tempo.</summary>
 	public const double SegundosDoTreino = 60;
 
-	/// <summary>Quem se afasta mais que isto do parceiro larga o treino (sem pontos).</summary>
-	public const int TilesDoTreino = 15;
+	/// <summary>
+	/// Quem fica mais longe que isto do parceiro, por <see cref="SegundosLongeQueEncerram"/> seguidos, larga o treino (sem pontos).
+	/// (2026-10-27, o pedido 124b) Eram 15, e na hora: um soco com recuo jogava o parceiro pra fora e encerrava o treino.
+	/// </summary>
+	public const int TilesDoTreino = 30;
+
+	/// <summary>(2026-10-27, o pedido 124b) ...o tempo SEGUIDO alem de <see cref="TilesDoTreino"/> que encerra; voltar perto zera a conta.</summary>
+	public const double SegundosLongeQueEncerram = 15;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124b) O QUE O TREINO QUE CHEGA AO FIM PAGA ALEM DA AMIZADE -- a escolha do dono, "BP + Inspirado": o BP de
+	/// tantos segundos treinando ali (a tecla T: os mesmos passes do `Treinar`), e o estado INSPIRADO, em que o treino rende
+	/// <see cref="MultiplicadorDoInspirado"/> vezes por <see cref="MinutosDoInspirado"/> minutos.
+	/// </summary>
+	public const double SegundosDeTreinoDaRecompensa = 180;
+	public const double MultiplicadorDoInspirado = 1.5;
+	public const double MinutosDoInspirado = 10;
 
 	/// <summary>
 	/// FOLGA DO MENU JA ABERTO, em pixels (dois tiles). A tecla E aponta quem esta a dois tiles, mas o clique chega

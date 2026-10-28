@@ -99,13 +99,48 @@ public static class Esmagamento
 	///
 	/// O `max(excess, 0.2)` e um PISO no segundo fator, nao no primeiro: logo acima do limite o dano
 	/// e linear e pequeno (razao 1,1 da 0,01/s), e so vira castigo de verdade acima do dobro.
+	///
+	/// (2026-10-28, o pedido 143) ACIMA DOS DEGRAUS DA GRAVIDADE o teto cai: a <see cref="RazaoQueDerruba"/> o dano e o
+	/// <see cref="DanoDosTresX"/>, e acima da <see cref="RazaoQueNocauteia"/> o <see cref="DanoDosCincoX"/>. Abaixo deles, a conta do DM.
 	/// </summary>
 	public static double DanoPorSegundo(Fighter f)
 	{
+		double rg = RazaoDaGravidade(f);
+		if (rg > RazaoQueNocauteia) return DanoDosCincoX;
+		if (rg >= RazaoQueDerruba) return DanoDosTresX;
 		double excesso = Razao(f) - 1;
 		if (excesso <= 0) return 0;
 		return Math.Min(DanoBase * excesso * Math.Max(excesso, 0.2), DanoTeto);
 	}
+
+	// ============================ OS DEGRAUS DA GRAVIDADE ALTA (dono, 2026-10-28, o pedido 143) ============================
+	// *"caso o personagem esteja em uma gravidade 3 vezes acima do cap dele, tome um dano MUITO alto ao ponto de quase morrer na hora uns
+	// 5 segundos ate desmaiar, passou de 5x é insta KO e se ficar la mais tempo morre"* -- e, perguntado: *"se cair em qualquer
+	// multiplicador e continuar levando dano sem sair da gravidade a tempo, uma hora morre"*, e acima de 5x, cinco segundos. So a
+	// GRAVIDADE (a razao gravidade/maestria): o peso esmaga pela conta de sempre. O dano e por membro, sem defesa, e o membro vai a 100:
+	//   * a 3x: 17/s -- no quinto segundo o nucleo cheio passa abaixo dos 20% e o corpo desmaia (85), e no sexto zera (morre);
+	//   * acima de 5x: o nocaute e NA HORA (o `GameServer.TickDoEsmagamento`), e 20/s zera o corpo caido no quinto segundo.
+	// E a gravidade MATA quem hoje entra em coma ou se desfaz em vez de morrer (o Majin, o Bio-Androide, o Meta, o Tsujin, o Yardrat) --
+	// o dono: "Todas essas tambem". Ver `GameServer.EspalharDanoG3` (`mataQuemRegenera`).
+	// ======================================================================================================================
+
+	/// <summary>A razao que derruba: a 3x a maestria, o dano de <see cref="DanoDosTresX"/> por segundo.</summary>
+	public const double RazaoQueDerruba = 3;
+
+	/// <summary>A razao que nocauteia NA HORA: acima de 5x a maestria.</summary>
+	public const double RazaoQueNocauteia = 5;
+
+	/// <summary>O dano por segundo a partir de 3x: desmaio no quinto segundo, morte no sexto.</summary>
+	public const double DanoDosTresX = 17;
+
+	/// <summary>O dano por segundo acima de 5x: o corpo caido (nocauteado na hora) zera no quinto segundo.</summary>
+	public const double DanoDosCincoX = 20;
+
+	/// <summary>A razao SO da gravidade (gravidade / maestria), sem o peso: e ela que os degraus leem.</summary>
+	public static double RazaoDaGravidade(Fighter f) => Gravidade(f) / Math.Max(f.GravMastered, 1);
+
+	/// <summary>Acima de 5x a maestria: o nocaute e na hora.</summary>
+	public static bool NocauteiaNaHora(Fighter f) => RazaoDaGravidade(f) > RazaoQueNocauteia;
 
 	/// <summary>Dreno de folego por segundo: `stamina -= maxstamina * 0.002 * r`.</summary>
 	public static double DrenoDeVigorPorSegundo(Fighter f) =>

@@ -60,6 +60,25 @@ public static class SorteioDeNpc
 		Espaco.Misturar(seedDoUniverso, Espaco.Hash64(moldeId), lugar);
 
 	/// <summary>
+	/// AS RACAS QUE ESTE MOLDE PODE TER NESTE PLANETA: a lista dele, ou o berco do planeta, ou (o vilao avulso) o forasteiro. Vazia = ali
+	/// nao nasce ninguem dele, e o <see cref="Sortear"/> recusa. (2026-10-27) Funcao propria porque ganhou um segundo leitor: a lista da
+	/// mente so guarda o habitante visto num lugar onde ele PODE nascer (`GameServer.AnotarHabitantesVistos`) -- e a pergunta tem que ser
+	/// esta, e nao uma copia dela.
+	/// </summary>
+	public static string[] RacasPossiveis(MoldeDeNpc molde, string planeta, RaceCatalog racas)
+	{
+		string[] pool = molde.Racas.Length > 0
+			? molde.Racas
+			: Bercos.RacasNascidasEm(planeta, racas.Protos.Keys);
+
+		// (2026-10-23) O VILAO AVULSO NUM MUNDO GERADO: ninguem tem berco la, e ele e um FORASTEIRO -- a raca sai da lista do
+		// `VilaoAvulso.RacasDoForasteiro` (o porque esta la). So o vilao: o HABITANTE sem berco continua gritando no `Sortear`.
+		if (pool.Length == 0 && molde.Tipo == TipoDeNpc.Vilao && !VilaoAvulso.ForasteiroSemRacaDeTeste)
+			pool = [.. VilaoAvulso.RacasDoForasteiro.Where(racas.Protos.ContainsKey)];
+		return pool;
+	}
+
+	/// <summary>
 	/// MONTA A FICHA. `mediaDoServidor` so e lido por molde com <see cref="MoldeDeNpc.BpRelativo"/>. (2026-10-23) Quem chama escolhe
 	/// QUAL media: o servidor passa a do servidor inteiro, e o vilao avulso a do planeta onde ele nasce (`GameServer.NascerVilao`).
 	///
@@ -84,14 +103,7 @@ public static class SorteioDeNpc
 		// Ela tambem devolvia `[]` pra qualquer planeta fora dos cinco do menu, e o `Escolher` caia no
 		// padrao "Human": um cidadao de Icer nasceria humano por acidente, calado.
 		// ============================================================================================
-		string[] pool = molde.Racas.Length > 0
-			? molde.Racas
-			: Bercos.RacasNascidasEm(planeta, racas.Protos.Keys);
-
-		// (2026-10-23) O VILAO AVULSO NUM MUNDO GERADO: ninguem tem berco la, e ele e um FORASTEIRO -- a raca sai da lista do
-		// `VilaoAvulso.RacasDoForasteiro` (o porque esta la). So o vilao: o HABITANTE sem berco continua gritando logo abaixo.
-		if (pool.Length == 0 && molde.Tipo == TipoDeNpc.Vilao && !VilaoAvulso.ForasteiroSemRacaDeTeste)
-			pool = [.. VilaoAvulso.RacasDoForasteiro.Where(racas.Protos.ContainsKey)];
+		string[] pool = RacasPossiveis(molde, planeta, racas);
 
 		// SEM NINGUEM PRA NASCER ALI, NAO SE INVENTA NINGUEM. `Escolher` cairia no "Human" e o
 		// planeta ganharia habitantes humanos sem que nada no dado dissesse isso -- a armadilha 5 da

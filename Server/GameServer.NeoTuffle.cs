@@ -19,6 +19,14 @@ public sealed class PosseDoTuffle
 	public Fighter FichaDoTuffle = null!;
 	public CombatState CombateDoTuffle = null!;
 	public DisfarceG12 Corpo = null!;
+
+	/// <summary>
+	/// (2026-10-28, o pedido 144) O RESTO DO CORPO DO TUFFLE, guardado enquanto ele usa o do hospede: a raca e a classe (as passivas de raca,
+	/// a Ascensao e a escada de formas perguntam por elas), o livro de tecnicas e o estado das formas. Voltam na expulsao.
+	/// </summary>
+	public string RacaDoTuffle = "", ClasseDoTuffle = "";
+	public Jandirus.Core.Skills.SkillBook LivroDoTuffle = null!;
+	public Jandirus.Core.Forms.EstadoDeForma FormaDoTuffle = null!;
 }
 
 /// <summary>
@@ -48,10 +56,16 @@ public sealed class PosseDoTuffle
 ///     (`HospedeEscondido`) e anda com o Tuffle
 ///     (<see cref="TickDasPosses"/>); o dono dele nao mexe em nada (o portao do `Handle`) e o cliente dele segue o Tuffle (`S2C.Possuido`):
 ///     ele so assiste.
-///   * A MENTE E DO TUFFLE: as tecnicas, a mochila, a raca do personagem e as formas continuam as dele. Ele usa o poder do outro, nao o
-///     livro do outro.
+///   * (2026-10-28, o pedido 144) O CORPO E O DO HOSPEDE POR INTEIRO: *"poder usar todas as skills e formas desse corpo"* e *"ele n vai ter
+///     ascencion bonus nem nada, ele vai ter literal tudo do corpo do hospedeiro, formas etc, e se a raça do hospedeiro n tiver ascencion
+///     ele tb n vai ter"*. Alem da ficha, o Tuffle passa a ter a RACA e a CLASSE do hospede (as passivas de raca, a Ascensao -- que so
+///     sobe raca sem escada de formas -- e a escada que a tecla C sobe), e uma COPIA do livro de tecnicas e do estado das formas dele (o
+///     que o Tuffle treinar nelas fica na copia, como o poder). Os dele voltam na expulsao (`PosseDoTuffle`). A MOCHILA continua dele.
+///     Ate aqui a mente era do Tuffle: as tecnicas, a raca e as formas eram as dele, e a Ascensao do Tsufurujin subia no poder do outro.
 ///
-/// ============================ O FIM: O CORPO POSSUIDO CAI ============================
+/// ============================ O FIM: O CORPO POSSUIDO CAI -- OU O TUFFLE SAI ============================
+/// (2026-10-28, o pedido 144) O Tuffle sai quando quiser: o verb "Sair do corpo" (aba Other, so pra quem esta dentro de outro corpo --
+/// `Fatos.DentroDeOutroCorpo`) e a mesma expulsao, e o hospede fica caido onde estava.
 /// Nocauteado ou morto o corpo emprestado, o Tuffle e expulso (<see cref="Expulsar"/>): ele volta pro proprio corpo -- como estava quando
 /// entrou -- um tile ao lado, e o hospede volta a ser corpo onde o emprestado caiu, com o que ele sofreu la (os membros, o nocaute, a
 /// morte). Sair do jogo (qualquer um dos dois) tambem expulsa, ANTES do save (o `Drop`). E o Tuffle nao vai pro disco enquanto esta dentro
@@ -130,9 +144,23 @@ public sealed partial class GameServer
 	/// <summary>O verb da aba Other. Mora na cadeia do `UsarHabilidade`, ao lado dos filhos.</summary>
 	private bool UsarVerboDoTuffle(ServerPlayer pl, string id)
 	{
-		if (id != "tuffle_possuir") return false;
-		Possuir(pl);
-		return true;
+		switch (id)
+		{
+			case "tuffle_possuir": Possuir(pl); return true;
+			case "tuffle_sair": SairDoCorpo(pl); return true;   // (2026-10-28) o pedido 144
+			default: return false;
+		}
+	}
+
+	/// <summary>
+	/// (2026-10-28, o pedido 144) SAIR DO CORPO QUANDO QUISER: *"permita o neotuffle ter uma opçao de sair do corpo de quem ele invadiu quando
+	/// quiser"*. E a mesma expulsao do corpo que cai (<see cref="Expulsar"/>): o Tuffle volta pro proprio corpo um tile ao lado, e o hospede
+	/// fica onde estava, caido -- quem sai de um corpo o deixa no chao, como no logout.
+	/// </summary>
+	private void SairDoCorpo(ServerPlayer a)
+	{
+		if (PosseDoTuffleDe(a.Id) is not { } p || p.Tuffle != a) { Avisar(a, "você não está dentro de outro corpo."); return; }
+		Expulsar(p, $"você sai do corpo de {p.Corpo.Nome}.");
 	}
 
 	/// <summary>A posse em que este corpo esta (como Tuffle ou como hospede), ou nula.</summary>
@@ -181,6 +209,23 @@ public sealed partial class GameServer
 		_posses[a.Id] = posse;
 		_posses[b.Id] = posse;
 
+		// (2026-10-28, o pedido 144) O RESTO DO CORPO DO HOSPEDE: a raca e a classe dele, e uma copia do livro e das formas -- ver o cabecalho.
+		// Os do Tuffle ficam guardados na posse e voltam na expulsao. Os `AplicarPoderes`/`AplicarEfeitos` logo abaixo ja leem o livro novo:
+		// os efeitos das tecnicas DO HOSPEDE sobre a ficha dele, e as arvores pela raca dele.
+		posse.RacaDoTuffle = a.Race;
+		posse.ClasseDoTuffle = a.Class;
+		posse.LivroDoTuffle = a.Livro;
+		posse.FormaDoTuffle = a.Forma;
+		if (!TuffleComAMenteDeTeste)
+		{
+			a.Race = b.Race;
+			a.Class = b.Class;
+			a.Livro = CopiaDoLivro(b.Livro);
+			a.Forma = CopiaDasFormas(b.Forma);
+		}
+
+		// (A ASCENSAO e a do corpo sem linha nenhuma aqui: a ficha copiada traz o bonus do hospede, e o tique que a reafirma -- `AfirmarAAscensao`
+		// -- pergunta pela raca, que agora e a dele. Com a raca do Tuffle, o tique punha a Ascensao do Tsufurujin no poder do outro.)
 		a.Ficha.Statify();
 		a.SigAtributos = "";
 		AplicarPoderes(a);
@@ -241,6 +286,51 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-10-28, o pedido 144) AS TECNICAS DO HOSPEDE, COPIADAS -- pelo mesmo caminho do login (`PrepararSkills`, que monta o livro do que o
+	/// save guarda): as aprendidas, as ensinadas, as compradas, as escolhas, o que a compra somou e os marcos. O que o Tuffle fizer com elas
+	/// (comprar, esquecer, escolher) fica na copia, como o poder na ficha copiada. As arvores destravadas se recontam no `AplicarEfeitos`.
+	/// </summary>
+	private static Jandirus.Core.Skills.SkillBook CopiaDoLivro(Jandirus.Core.Skills.SkillBook o)
+	{
+		var l = new Jandirus.Core.Skills.SkillBook();
+		l.Carregar([.. o.Aprendidas]);
+		l.CarregarEnsinadas([.. o.Ensinadas]);
+		l.CarregarCompradas([.. o.Compradas]);
+		l.CarregarEscolhas(new Dictionary<string, int>(o.Escolhas));
+		l.CarregarGanhos(o.GanhosNaCompra.ToDictionary(kv => kv.Key, kv => new Dictionary<string, double>(kv.Value)));
+		l.MarcosTotais = o.MarcosTotais;
+		l.MarcosLivres = o.MarcosLivres;
+		l.MarcosPorBp = o.MarcosPorBp;
+		return l;
+	}
+
+	/// <summary>
+	/// (2026-10-28, o pedido 144) AS FORMAS DO HOSPEDE, COPIADAS -- o que o save guardaria delas (`RestaurarFormaEDisciplina`): as despertadas,
+	/// as ja estreadas, as portas cortadas, a maestria de cada uma, os limiares sorteados no nascimento dele e as duas preferencias do C. Na
+	/// base: o corpo caido nao esta em forma nenhuma. A maestria que o Tuffle treinar nelas fica na copia.
+	/// </summary>
+	private static Jandirus.Core.Forms.EstadoDeForma CopiaDasFormas(Jandirus.Core.Forms.EstadoDeForma o)
+	{
+		var c = new Jandirus.Core.Forms.EstadoDeForma
+		{
+			Limiares = o.Limiares,
+			Liberadas = [.. o.Liberadas],
+			EstreiaVista = [.. o.EstreiaVista],
+			PortasCortadas = [.. o.PortasCortadas],
+			GradesLigados = o.GradesLigados,
+			CPelasDivinas = o.CPelasDivinas,
+		};
+		c.Maestria.DoSave(o.Maestria.ParaSave());
+		return c;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--tuffleteste`, o pedido 144): a mente do Tuffle dentro do corpo -- a raca, as tecnicas e as formas continuam as dele,
+	/// e a Ascensao do Tsufurujin sobe no poder do outro (o jogo de antes). Lido pelo `Possuir`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool TuffleComAMenteDeTeste;
+
+	/// <summary>
 	/// O TIQUE DAS POSSES, logo depois das naves: o corpo emprestado que caiu expulsa o Tuffle, e o corpo de verdade do hospede anda com ele
 	/// -- e de la que o dono assiste (a zona do Tuffle e a que chega no cliente dele).
 	/// </summary>
@@ -286,6 +376,11 @@ public sealed partial class GameServer
 		a.Ficha = posse.FichaDoTuffle;
 		a.Combate = posse.CombateDoTuffle;
 		a.CorpoDaPosse = null;
+		// (2026-10-28, o pedido 144) e a raca, a classe, o livro e as formas dele -- as copias do hospede ficam pra tras, com a ficha copiada
+		a.Race = posse.RacaDoTuffle;
+		a.Class = posse.ClasseDoTuffle;
+		a.Livro = posse.LivroDoTuffle;
+		a.Forma = posse.FormaDoTuffle;
 		a.Ficha.Statify();
 		a.SigAtributos = "";
 

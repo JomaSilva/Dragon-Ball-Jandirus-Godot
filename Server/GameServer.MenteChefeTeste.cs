@@ -232,6 +232,9 @@ public partial class GameServer
 		AfirmarMcf("MCF3. nasce na etapa pedida, ja na forma, sem a cinematica", noPerfeito,
 			corpo == null ? "sem corpo" : "estagio " + corpo.Papel?.Estagio + " bio " + corpo.Papel?.Degrau?.DegrauDoBio + " anuncios " + EscutaDoRoteiro.Count);
 
+		// (2026-10-27, o pedido 124c) com o Cell de pe a convocacao seria recusada ANTES da etapa (a luta nao se encerra no meio) -- a regua
+		// passaria pelo motivo errado. Ele sai primeiro.
+		DesfazerOOponente(dono, "");
 		int antes = dono.CloneId;
 		ChamarChefe(dono, "cell:3");
 		AfirmarMcf("etapa que nao viu e recusada", dono.CloneId == antes);

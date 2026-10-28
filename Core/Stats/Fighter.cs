@@ -98,6 +98,15 @@ public sealed partial class Fighter
 	public bool godtongue;
 
 	/// <summary>
+	/// (2026-10-27) AS LINGUAS QUE ESTE CORPO ESTA APRENDENDO, de 0 a 1 (o pedido 118) -- so as aprendidas ouvindo ou ensinadas; a nativa, a
+	/// Galactica e a dos Deuses de quem tem a marca valem 1 sem estar aqui. Ver `Races.Linguas`.
+	/// </summary>
+	public Dictionary<string, double> Linguas = new(StringComparer.Ordinal);
+
+	/// <summary>(2026-10-27) As linguas que alguem ENSINOU a este corpo: ele as aprende 2x mais rapido, e elas nao se ensinam de novo.</summary>
+	public HashSet<string> LinguasEnsinadas = new(StringComparer.Ordinal);
+
+	/// <summary>
 	/// **A DIVIDA DO "MAIS FORTE DO UNIVERSO"** -- `mob/var/sw_doom_year` (`WishTable.dm:25`), em
 	/// segundos do relogio do mundo. Zero = sem divida.
 	///
@@ -574,6 +583,26 @@ public sealed partial class Fighter
 	public double GravMastered = 1, Planetgrav = 1, gravmult = 0;
 	public double gravFelt = 1, gravBuff = 1;
 
+	/// <summary>
+	/// (2026-10-28, o pedido 143) A MAESTRIA JA FOI PODADA nesta ficha? Vai pro save com a ficha inteira: o save de antes chega falso, e
+	/// o login poda UMA vez (<see cref="PodarAMaestria"/>) -- dai em diante a maestria sobe de novo sem ser podada outra vez.
+	/// </summary>
+	public bool MaestriaPodada;
+
+	/// <summary>
+	/// (2026-10-28, o pedido 143) *"faça com quem tem mais de 50x gravidade masterizada, volte pra 50x"* -- e, perguntado, uma vez so: quem
+	/// subiu acima de <see cref="GainKnobs.MaestriaDaPoda"/> no ritmo de antes (o de agora e 3x mais lento) volta pra ela. Marca a ficha
+	/// como podada (a de quem nao passava tambem: o proximo login nao poda mais). Devolve se desceu.
+	/// </summary>
+	public bool PodarAMaestria()
+	{
+		if (MaestriaPodada) return false;
+		MaestriaPodada = true;
+		if (GravMastered <= GainKnobs.MaestriaDaPoda) return false;
+		GravMastered = GainKnobs.MaestriaDaPoda;
+		return true;
+	}
+
 	// =====================================================================
 	// SOMAS DIRETAS (zeni cru, nao razao -- nunca vire "Nx" numa UI)
 	// =====================================================================
@@ -591,6 +620,15 @@ public sealed partial class Fighter
 	// GOD KI
 	// =====================================================================
 	public GodKiState? godki;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124c) OS HABITANTES QUE ESTE PERSONAGEM JA VIU DE PERTO, pelo MOLDE -- a categoria "Habitantes" da lista da
+	/// mente (`GameServer.MenteLista.cs`), anotada como os chefes vistos. Nulo em save de antes. Nao existe no DM.
+	/// </summary>
+	public HashSet<string>? HabitantesDaMente;
+
+	/// <summary>(2026-10-27, o pedido 124c) Ate quando (ms do relogio do servidor) quem PERDEU na mente nao mergulha de novo. Zero = livre.</summary>
+	public long mergulho_bloqueado_ate;
 	public bool godki_gt_mode;
 	public double godki_boost = 2.5, gt_boost = 3;   // (2026-10-23) o `godki_give_mult` saiu da ficha -- ver `GodKiFactor`
 	public double ssj = 0, lssj = 0;
@@ -627,6 +665,12 @@ public sealed partial class Fighter
 	/// (`GameServer.EnmaPasse`); quem apaga e o relogio do passe, a volta a vida e o "morrer de novo". Nao existe no DM.
 	/// </summary>
 	public long passe_do_enma_ate;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124d) ESTE PERSONAGEM JA CORREU A SNAKE WAY -- a pe, da mesa do Enma ate o Sr. Kaioh. Uma vez na vida: deu o BP
+	/// fixo da chegada, e e o que o Sr. Kaioh pede pra ensinar (Kaio-ken, Genkidama). Ver `GameServer.SnakeWay.cs`. Nao existe no DM.
+	/// </summary>
+	public bool SnakeWayFeita;
 
 	/// <summary>
 	/// ATE QUANDO ESTE CORPO NAO PODE FUNDIR DE NOVO -- o `fusion_cooldown_until` do DM
@@ -880,6 +924,13 @@ public sealed partial class Fighter
 	/// ==========================================================================================
 	/// </summary>
 	public double zoneGainMult = 1;
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124b) ATE QUANDO (ms do relogio do servidor) ESTE CORPO ESTA INSPIRADO: o treino com um habitante que chegou ao
+	/// fim deixa o treino (a tecla T) `Amizade.MultiplicadorDoInspirado` vezes, por `Amizade.MinutosDoInspirado`. Zero = nao esta. Vai pro
+	/// save como a pena do Inferno: quem sai e volta dentro do prazo segue inspirado. Quem le e o `GameServer.Treinar`. Nao existe no DM.
+	/// </summary>
+	public long inspirado_ate;
 
 	/// <summary>
 	/// Ritmo de MAESTRIA DE FORMA da zona -- campo separado do <see cref="zoneGainMult"/> de

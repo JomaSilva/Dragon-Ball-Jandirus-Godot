@@ -444,6 +444,9 @@ public static class LinguaBench
 				foreach (bool maligno in new[] { false, true })
 				{
 					avisos.AddRange(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeTarefaNova("Crane Hermit", f, outroMundo, maligno));
+					// (2026-10-27, o pedido 137) o servico da escada divina, que tambem conta a alma NPC
+					if (outroMundo)
+						avisos.AddRange(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeTarefaNova("North Kai", f, outroMundo, maligno, almaNpcConta: true));
 					avisos.Add(Jandirus.Core.Ranks.MissoesDeCargo.AvisoDeCumprida("Crane Hermit",
 						Jandirus.Core.Ranks.MissoesDeCargo.NomeCurto(f, outroMundo), f, maligno,
 						Jandirus.Core.Ranks.MissoesDeCargo.TextoDeRenome(f.Cumpridas, !maligno)));

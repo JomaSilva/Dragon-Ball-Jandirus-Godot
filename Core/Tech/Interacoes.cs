@@ -234,6 +234,9 @@ public static class Interacoes
 			new Acao("Reencarnar (renascer com 10% do poder)", "enma_reencarnar", "",
 					 "este personagem acaba PARA SEMPRE e você volta pra criação -- escreva o nome dele pra confirmar",
 					 Forma.Texto, 0, 24),
+			// (2026-10-27, o pedido 124d) a corrida da Snake Way, NO FIM (a `--recursosteste` le os indices das outras) -- ver `GameServer.SnakeWay.cs`
+			new Acao("Correr a Snake Way", Jandirus.Core.World.SnakeWay.Verbo, "",
+					 "corra A PÉ até o Sr. Kaioh (voar cancela): chegando, +1.000 de BP uma vez, e ele passa a te ensinar"),
 		],
 
 		// ============================ O SR. KAIOH E O KORIN (v0.3.0) ============================
@@ -283,6 +286,14 @@ public static class Interacoes
 		// ============================ O GRANDE PATRIARCA DE NAMEK (2026-10-19) ============================
 		// O `Guru/Click()` do DM (`PlanetPopulation.dm:220-234`). Ele e um CORPO, como o Bills e o Whis, e o servidor o aponta pelo
 		// mesmo canal (`S2C.DivinoPerto`); a distancia, a reputacao e o "uma vez na vida" sao conferidos la (`GameServer.Patriarca.cs`).
+		// (2026-10-27) O MESTRE DO PLANETA YARDRAT (o pedido 109): ensina o Instant Transmission -- um CORPO, apontado pelo mesmo
+		// `S2C.DivinoPerto`. Ver `Core/World/Yardrat.cs` e `GameServer.Yardrat.cs`.
+		World.Yardrat.Tipo =>
+		[
+			new Acao("Aprender o Instant Transmission", World.Yardrat.VerboAprender, "",
+					 "o mestre Yardrat ensina a técnica de se transportar até o ki de alguém -- a de graça, a quem ainda não a sabe"),
+		],
+
 		Npc.Patriarca.Tipo =>
 		[
 			new Acao("Falar com o Grande Patriarca", Npc.Patriarca.VerboFalar, "",
@@ -427,6 +438,9 @@ public static class Interacoes
 					 Forma.Submenu),
 			new Acao("Ver estado", "regen_info", "", "ligado ou não, bateria, a cura de cada pulso e os preços"),
 			new Acao("Aparafusar / soltar", "aparafusar", "", "ele só liga aparafusado"),
+			// (2026-10-27, o pedido 140) RECOLHER, como as outras maquinas: o servidor ja sabia (`PegarObra`, e a gaveta guarda as melhorias),
+			// o menu e que nao oferecia -- e quem montava o tanque no chao nao o tirava mais de la
+			new Acao("Pegar", "pegar", "", "recolhe o regenerador pra mochila (só o seu) -- as melhorias vão junto"),
 		],
 
 		// A lista do `verb/Upgrade` (`Tier 1.5.dm:159-218`), menos a `Durability` -- ver o cabecalho de
@@ -535,6 +549,8 @@ public static class Interacoes
 		[
 			new Acao("Treinar aqui", "treinar_saco", "", "bater no saco rende mais que treinar no ar"),
 			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			// (2026-10-27, o pedido 140) RECOLHER pra mochila -- o servidor ja sabia (`PegarObra`), o menu e que nao oferecia
+			new Acao("Pegar", "pegar", "", "recolhe pra mochila (só o seu)"),
 		],
 
 		// ============================ OS DEPOSITOS (v0.2.1) ============================

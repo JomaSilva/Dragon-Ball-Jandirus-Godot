@@ -120,6 +120,9 @@ public partial class RoboDeForma : Node
 		// derivacao `PedeGodKi >= GodkiRoyalePct` na bancada faria os dois lados errarem juntos no dia
 		// em que alguem mexesse no `PedeGodKi` da Fera.
 		Jandirus.Core.Forms.LinhaDeForma.Mistico => d.Id == "beast" ? "d9b0ff" : "ffffff",
+		// (2026-10-28, o pedido 145) O SUPER MAJIN E VERMELHO, o vermelho do Limit Breaker: *"troque elas pf pra faiscas vermelhas de
+		// shaders (igual o do ssj4 fp)"*. Pela LINHA, que e uma forma so -- e fora daqui ela seguiria a aura rosa dele.
+		Jandirus.Core.Forms.LinhaDeForma.SuperMajin => "ff2d2f",
 		_ => null,   // divinas, Oozaru e a base: seguem a aura
 	};
 
@@ -510,10 +513,12 @@ public partial class RoboDeForma : Node
 		string[] esperado =
 		// (2026-10-26) E DOZE DE NOVO: a Super Perfeita (`Raios = 2`) saiu do jogo, e as duas divinas do bio que a substituiram nao
 		// acendem faisca -- sao o SSG e o Blue Evolution dele, e nenhum dos dois acende.
+		// (2026-10-28, o pedido 145) E TREZE COM O SUPER MAJIN: as faiscas de sprite dele (a colada `Electric_Majin`) viraram os raios de
+		// shader -- *"troque elas pf pra faiscas vermelhas de shaders"*.
 			["ssj2", "ssj3", "primal_legendary2", "primal_legendary3", "ssj4_limit_breaker",
-			 "mistico", "beast", "snamek", "orange", "heran2", "alien1", "alien2"];
+			 "mistico", "beast", "snamek", "orange", "heran2", "alien1", "alien2", "super_majin"];
 		Conferir(comRaio.Count == esperado.Length && esperado.All(comRaio.Contains),
-				 $"SO doze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
+				 $"SO treze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
 
 		// O VOLUME. O SSJ2 e o UNICO leve porque no DM o `if(2)` acende UMA folha; o SSJ3 e o
 		// `primal_legendary2` sao o CHEIO porque os dois caem no `if(3)`, que soma tres; o Limit
@@ -527,6 +532,9 @@ public partial class RoboDeForma : Node
 				 "o LSSJ3 do Primal Legendary tambem e cheio (nao PERDE faisca subindo a escada)");
 		Conferir(Jandirus.Core.Forms.Catalogo.Def("ssj4_limit_breaker")!.Raios == 2,
 				 "o Limit Breaker e cheio (as duas folhas proprias dele no DM)");
+		// (2026-10-28, o pedido 145) E O SUPER MAJIN TAMBEM, o mesmo cheio: *"faiscas vermelhas de shaders (igual o do ssj4 fp)"*.
+		Conferir(Jandirus.Core.Forms.Catalogo.Def("super_majin")!.Raios == 2,
+				 "o Super Majin e cheio, como o Limit Breaker (o pedido 145: as faiscas de sprite viraram as de shader)");
 
 		// E OS QUE NAO TEM. Os quatro estao aqui porque cada um representa um motivo diferente de
 		// alguem querer devolver a faisca: o `ssj1` foi o primeiro corte do dono, os grades eram o
@@ -603,8 +611,9 @@ public partial class RoboDeForma : Node
 		// (E DEZ COM O ORANGE: a linha do Namekuseijin tambem cai no `_ => d.Aura`, e a faisca dele sai no laranja
 		// `ff8a1e` da propria chama -- tom novo, uma forma so.)
 		// (2026-10-26) E NOVE SEM A SUPER PERFEITA: o `9fe8a8` era so dela.
+		// (2026-10-28, o pedido 145) E CONTINUAM NOVE com o Super Majin: o vermelho dele e o do Limit Breaker, que ja estava na conta.
 		Conferir(tomDaFaisca.Count == 9,
-				 $"as doze faiscas saem em NOVE tons ({tomDaFaisca.Count}: "
+				 $"as treze faiscas saem em NOVE tons ({tomDaFaisca.Count}: "
 			   + $"{string.Join(" / ", tomDaFaisca.Select(p => $"{p.Key}={p.Value.Count}"))})");
 		Conferir(tomDaFaisca.TryGetValue("8fe3ff", out List<string>? azuis) && azuis.Count == 4,
 				 $"QUATRO delas sao azuis #8fe3ff ({Quem("8fe3ff")})");
@@ -616,9 +625,11 @@ public partial class RoboDeForma : Node
 			{ ("snamek", "6fe36f"), ("orange", "ff8a1e"), ("heran2", "ff4a4a") })
 			Conferir(tomDaFaisca.TryGetValue(tom, out List<string>? so) && so.Count == 1 && so[0] == id,
 					 $"e a faisca de `{id}` e #{tom}, so dela ({Quem(tom)})");
+		// (2026-10-28, o pedido 145) E DUAS SAO VERMELHAS: o Limit Breaker e o Super Majin (*"faiscas vermelhas de shaders"*). Pelos dois
+		// ids, e nao pela conta: um vermelho escorregando pra outra forma no lugar de um deles passaria num "== 2".
 		Conferir(tomDaFaisca.TryGetValue("ff2d2f", out List<string>? vermelhas)
-			  && vermelhas.Count == 1 && vermelhas[0] == "ssj4_limit_breaker",
-				 $"e UMA e vermelha #ff2d2f, o Limit Breaker ({Quem("ff2d2f")})");
+			  && vermelhas.Count == 2 && vermelhas.Contains("ssj4_limit_breaker") && vermelhas.Contains("super_majin"),
+				 $"e DUAS sao vermelhas #ff2d2f, o Limit Breaker e o Super Majin ({Quem("ff2d2f")})");
 
 		// ============================ E A LINHA DO MISTICO VIROU DOIS TONS ============================
 		// Esta conta era TRES tons com DUAS brancas -- a linha inteira dividia o `ffffff`. O dono
@@ -6614,8 +6625,7 @@ public partial class RoboDeForma : Node
 					? [new(FolhaColada.Ameacadora, Rosa)] : [new(FolhaColada.Deus)],
 				// A FURY do Deus da Destruicao (2026-10-11): a aura dela no DM E a `god - grey` roxa colada.
 				LinhaDeForma.DeusDaDestruicao => [new(FolhaColada.Ameacadora, RoxoDaFury)],
-				// O SUPER MAJIN (2026-10-23): as faiscas do `Electric_Majin`, ja carmesim -- o visual que o dono escolheu.
-				LinhaDeForma.SuperMajin => [new(FolhaColada.FaiscaMajin)],
+				// O SUPER MAJIN (2026-10-28, o pedido 145): NAO cola mais nada -- as faiscas dele viraram os raios de shader, vermelhos.
 				_ => [],
 			};
 
@@ -6702,8 +6712,7 @@ public partial class RoboDeForma : Node
 			(FolhaColada.Deus,          false, "ja vem LARANJA (`gkoverlay`, AuraObject.dm:14)"),
 			(FolhaColada.DeusAzul,      false, "ja vem AZUL (`sgkoverlay`, AuraObject.dm:16)"),
 			(FolhaColada.PoderLendario, false, "ja vem no verde-limao da fagulha"),
-			// (2026-10-23) o Super Majin: o branco do nucleo da faisca conta como cinza (18% medidos), o resto e carmesim
-			(FolhaColada.FaiscaMajin,   false, "ja vem CARMESIM (`Electric_Majin.dmi`, o `MajinEffect` do Majin.dm:20-23)"),
+			// (2026-10-28, o pedido 145) a `FaiscaMajin` (a `Electric_Majin`) saiu do enum: o Super Majin acende os raios de shader
 		];
 
 		foreach ((FolhaColada f, bool deveSerCinza, string oque) in arte)
@@ -7007,7 +7016,6 @@ public partial class RoboDeForma : Node
 				{
 					FolhaColada.Deus => "QUENTE",
 					FolhaColada.DeusAzul => "FRIA",
-					FolhaColada.FaiscaMajin => "CARMESIM",
 					_ => "LIMAO",
 				};
 				porCor[cor] = porCor.GetValueOrDefault(cor) + 1;
@@ -7015,9 +7023,6 @@ public partial class RoboDeForma : Node
 				{
 					FolhaColada.Deus => EhQuente(saiu),
 					FolhaColada.DeusAzul => EhFria(saiu),
-					// (2026-10-23) A FAISCA DO SUPER MAJIN: `#ff0033`, o vermelho bem acima dos outros dois -- e nao o `EhQuente`, em que a
-					// `god` (laranja, G alto) tambem passa: aqui o G tem de estar la embaixo.
-					FolhaColada.FaiscaMajin => saiu.R > saiu.G + 0.30f && saiu.R > saiu.B + 0.30f,
 					// A FAGULHA: `#d3ff26`, verde-limao. A forma dela e o G bem acima do B, e NAO o
 					// `EhVerde` -- ela passa nele raspando (G-R = 0,17), o que a tornaria indistinguivel da
 					// cinza tingida de verde, que e a camada ao lado dela no MESMO Legendary.
@@ -7044,13 +7049,14 @@ public partial class RoboDeForma : Node
 				 $"e as {Enum.GetValues<FolhaColada>().Length} folhas apareceram em alguma camada ({vistas.Count})");
 		Conferir(pintadas > 0 && cruas > 0,
 				 $"e os DOIS estados de tinta existem no jogo ({pintadas} pintadas, {cruas} cruas)");
-		// SEIS FORMAS DE COR: as duas tintas (verde e rosa) mais as quatro artes que ja vem pintadas (quente,
-		// fria, limao e, desde 2026-10-23, a carmesim da faisca do Super Majin) -- a cinza aparece nas duas
-		// primeiras porque quem a pinta e a LINHA. Um jogo em que todas as coladas sairem da mesma cor passaria
-		// em cada linha de forma de cor acima e cairia aqui, que e o unico lugar que olha o conjunto.
-		Conferir(porCor.Count == 6,
-				 "e as SEIS formas de cor sairam todas -- verde e rosa (as duas tintas), quente, fria, limao e "
-			   + $"carmesim (as quatro artes ja coloridas) ({porCor.Count}: {string.Join("/", porCor.Keys.Order())})");
+		// CINCO FORMAS DE COR: as duas tintas (verde e rosa) mais as tres artes que ja vem pintadas (quente,
+		// fria e limao) -- a cinza aparece nas duas primeiras porque quem a pinta e a LINHA. Um jogo em que todas
+		// as coladas sairem da mesma cor passaria em cada linha de forma de cor acima e cairia aqui, que e o unico
+		// lugar que olha o conjunto. (Eram SEIS de 2026-10-23 a 2026-10-28: a carmesim era a faisca de sprite do
+		// Super Majin, que o pedido 145 trocou pelos raios de shader.)
+		Conferir(porCor.Count == 5,
+				 "e as CINCO formas de cor sairam todas -- verde e rosa (as duas tintas), quente, fria e limao "
+			   + $"(as tres artes ja coloridas) ({porCor.Count}: {string.Join("/", porCor.Keys.Order())})");
 
 		// ============================ E A CAMADA TEM QUE TER O MATERIAL QUE LE A TINTA ============================
 		// O elo que faltava entre as duas metades: o `Modulate` so vira pixel porque o material da camada e

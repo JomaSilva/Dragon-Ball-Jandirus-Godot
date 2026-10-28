@@ -32,7 +32,8 @@ namespace Jandirus.Client;
 ///   2  "Meditar normal" medita e NAO viaja                  | o botao normal ligado no caminho da profunda
 ///   3  a ida ONDULA, e a viagem so acontece no FIM da onda  | `DefeitoMergulhoSemOnda`: viagem em 17 ms em vez
 ///                                                           | de 1534, e 0% de pixel movido contra 29,7%
-///   4  a volta por VITORIA ondula                           | `DefeitoSaidaSecaDaMente`: 19 ms, zero onda
+///   4  a VITORIA nao tira da mente (o pedido 124c): sem     | -- (ate 2026-10-27 era "a volta por VITORIA ondula", com o
+///      onda e sem viagem, e a lista volta                   | `DefeitoSaidaSecaDaMente`: a vitoria deixou de sair)
 ///   5  o soco no corpo real NAO ondula, e e SECO            | `DefeitoSocoQueOndula`: 187 quadros de onda e a
 ///                                                           | volta atrasada pra 1845 ms
 ///   6  a mente nao tem borda: 500 tiles sem esbarrar        | `Colisao.SemBorda = false`: para na celula 99
@@ -222,7 +223,7 @@ public partial class RoboDoMergulho : Node2D
 			if (Roda(1)) await ATelinha();
 			if (Roda(2)) await ONormalMeditaNormal();
 			if (Roda(3)) await AIdaOndula();
-			if (Roda(4)) await AVoltaPorVitoriaOndula();
+			if (Roda(4)) await AVitoriaNaoTiraDaMente();
 			if (Roda(5)) await OSocoNoCorpoRealESeco();
 			if (Roda(6) || Roda(8)) await AFugaDeQuinhentosTiles();
 			if (Roda(7)) await AColeira();
@@ -473,49 +474,32 @@ public partial class RoboDoMergulho : Node2D
 	}
 
 	// =====================================================================
-	// 4. A VOLTA POR VITORIA ONDULA
+	// 4. A VITORIA NAO TIRA DA MENTE (o pedido 124c, 2026-10-27)
 	// =====================================================================
-	private async Task AVoltaPorVitoriaOndula()
+	/// <summary>
+	/// ATE 2026-10-27 ESTA FAMILIA ERA "A VOLTA POR VITORIA ONDULA": matar o reflexo encerrava o transe, com a onda. O dono trocou a regra (o
+	/// documento de um jogador, *"Vitoria e escolhe outro"*): derrubar a lembranca paga e devolve a LISTA, e o transe continua -- nao ha mais
+	/// volta por vitoria pra ondular. O que se mede agora, pelo mesmo gesto e pela mesma morte escrita: a tela NAO ondula, o corpo continua na
+	/// mente, e a lista volta na tela. A regra inteira e da `--mentelistateste` e do `--diagmentelista`.
+	/// </summary>
+	private async Task AVitoriaNaoTiraDaMente()
 	{
-		GD.Print("[mergulho] --- 4. derrotar o reflexo: a volta tambem ondula ---");
+		GD.Print("[mergulho] --- 4. derrotar o reflexo: a lista volta, e ninguem sai da mente ---");
 
 		int eu = C?.LocalId ?? 0;
 		if (!await EntrarNaMentePeloGesto()) return;
+		if (!await EscolherOReflexo(eu)) return;
 
-		Afirmar("ha um REFLEXO de pe na mente pra ser derrotado", S?.PosDoReflexoNoTeste(eu) != null);
-
-		Transicao volta = await Medir("a VOLTA", "mergulho-3-meio-da-onda-da-volta", 4.0, () =>
+		Transicao vitoria = await Medir("a VITORIA", "mergulho-3-a-vitoria", 2.5, () =>
 		{
 			S?.MatarOReflexoNoTeste(eu);
 			return Task.CompletedTask;
 		});
 
-		Nota(volta.Contar("volta"));
-		Afirmar("matar o reflexo faz a tela ONDULAR (a saida deixou de ser seca)",
-				volta.MsAteOndular >= 0 && (volta.MsAteViajar < 0 || volta.MsAteOndular < volta.MsAteViajar),
-				volta.Contar("volta"));
-		Afirmar($"...e o mundo real so volta no fim da onda ({volta.MsAteViajar:0} ms)",
-				volta.MsAteViajar >= DimensaoMental.MsDaOnda * 0.7, volta.Contar("volta"));
-		Afirmar("...e quem voltou foi a AUTORIDADE (o servidor tirou o corpo da mente)",
-				!(S?.NaMenteNoTeste(eu) ?? true));
-
-		JulgarOPixel("4. A TELA ONDULOU DE VERDADE na volta: a mente branca se moveu antes da saida", volta);
-
-		// ---- DEFEITO: a volta seca -- a linha que estava em `GameServer.Clone.cs:490` antes da gota.
-		if (!await EntrarNaMentePeloGesto()) return;
-
-		Transicao secaVolta = await Medir("a volta SECA (defeito)", "", 2.5, () =>
-		{
-			S?.DefeitoSaidaSecaDaMente(eu);
-			return Task.CompletedTask;
-		});
-
-		Nota(secaVolta.Contar("volta seca"));
-		Afirmar("[defeito] `SairDaMente` cru (a transicao \"MT RAPIDA E MT SECA\" da queixa): "
-				+ "nao ha onda nenhuma e a volta e no mesmo tique -- as provas de cima REPROVAM",
-				secaVolta.MsAteOndular < 0 && secaVolta.MsAteViajar >= 0
-				&& secaVolta.MsAteViajar < DimensaoMental.MsDaOnda * 0.7,
-				secaVolta.Contar("defeito"));
+		Nota(vitoria.Contar("vitoria"));
+		Afirmar("matar o reflexo NAO tira da mente: nenhuma onda, nenhuma viagem (o pedido 124c)",
+				vitoria.MsAteOndular < 0 && vitoria.MsAteViajar < 0 && (S?.NaMenteNoTeste(eu) ?? false), vitoria.Contar("vitoria"));
+		Afirmar("...e a LISTA de quem enfrentar volta na tela", TelaDaMente.Instancia?.NaTela == true);
 	}
 
 	// =====================================================================
@@ -596,7 +580,9 @@ public partial class RoboDoMergulho : Node2D
 		if (!await EntrarNaMentePeloGesto()) return;
 
 		// A MENTE FICA VAZIA PRA ESTA CAMINHADA -- ver `DesfazerOReflexoNoTeste`. A borda e do MAPA;
-		// medi-la com um oponente batendo mede a briga.
+		// medi-la com um oponente batendo mede a briga. (2026-10-27, o pedido 124c) O reflexo e escolhido
+		// na lista antes, e e isso que FECHA a lista: aberta, ela escurece a tela que o olho do branco mede.
+		if (!await EscolherOReflexo(eu)) return;
 		Afirmar("o reflexo se desfez pra a caminhada da BORDA (a mente fica vazia)",
 				S?.DesfazerOReflexoNoTeste(eu) ?? false);
 		await Esperar(0.5);
@@ -653,6 +639,7 @@ public partial class RoboDoMergulho : Node2D
 		await Esperar(1.0);
 
 		if (!await EntrarNaMentePeloGesto()) return;
+		if (await EscolherOReflexo(eu)) S?.DesfazerOReflexoNoTeste(eu);   // a lista fecha (ver acima)
 		Caminhada presa = await Caminhar("defeito: o quarto de volta", TilesDeFuga);
 		Afirmar("[defeito] com o quarto de volta (`SemBorda = false`), o corpo PARA na beirada da "
 				+ $"chapa ({presa.TilesAndados:0} tiles) -- a familia 6 REPROVA",
@@ -698,6 +685,7 @@ public partial class RoboDoMergulho : Node2D
 
 		int eu = C?.LocalId ?? 0;
 		if (!await EntrarNaMentePeloGesto()) return;
+		if (!await EscolherOReflexo(eu)) return;   // (2026-10-27, o pedido 124c) ele nao nasce mais sozinho na porta
 		if (S?.PosDoReflexoNoTeste(eu) == null) { Afirmar("ha um reflexo vivo pra medir", false); return; }
 
 		// O DONO CORRE DURANTE A MEDIDA -- e o que garante que quem voltar voltou pela coleira e nao
@@ -1139,12 +1127,28 @@ public partial class RoboDoMergulho : Node2D
 		if (!(S?.NaMenteNoTeste(eu) ?? false)) { C?.SendActivity(Protocol.Activity.Parado); await Esperar(0.3); return; }
 
 		// A SAIDA VOLUNTARIA -- o verb `sairdamente`, que e seco de proposito e por isso nao atrapalha
-		// a medida seguinte.
+		// a medida seguinte. (2026-10-27, o pedido 124c) Com a lembranca de pe nao se acorda: ela se desfaz
+		// antes, pelo caminho de quando chega um visitante.
+		if (S?.PosDoReflexoNoTeste(eu) != null) S?.DesfazerOReflexoNoTeste(eu);
 		C?.SendHabilidade("sairdamente");
 		double prazo = _relogio + 4.0;
 		while (_relogio < prazo && (S?.NaMenteNoTeste(eu) ?? false)) await Esperar(0.1);
 		C?.SendActivity(Protocol.Activity.Parado);
 		await Esperar(0.4);
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124c) ESCOLHE O REFLEXO NA LISTA -- ele nao nasce mais sozinho na porta. Pelo pacote do botao "Enfrentar" da
+	/// `TelaDaMente`, e espera a autoridade erguer o corpo.
+	/// </summary>
+	private async Task<bool> EscolherOReflexo(int eu)
+	{
+		C?.SendHabilidade(Jandirus.Core.Npc.MenteOponentes.Pedido(Jandirus.Core.Npc.MenteOponentes.Tipo.Reflexo, ""));
+		double prazo = _relogio + 4.0;
+		while (_relogio < prazo && S?.PosDoReflexoNoTeste(eu) == null) await Esperar(0.1);
+		bool ok = S?.PosDoReflexoNoTeste(eu) != null;
+		if (!ok) Afirmar("o reflexo nasceu pela escolha da lista", false, "o servidor nao ergueu o reflexo em 4 s");
+		return ok;
 	}
 
 	// =====================================================================

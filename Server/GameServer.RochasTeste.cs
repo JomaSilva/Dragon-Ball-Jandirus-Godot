@@ -113,9 +113,13 @@ public partial class GameServer
 				double r = RochaDeMinerio.Rendimento(i / 1000.0);
 				faixa &= r >= RochaDeMinerio.RendimentoMinimo && r <= RochaDeMinerio.RendimentoMaximo && r == Math.Floor(r);
 			}
-			AfirmarRo("o RENDIMENTO e inteiro e fica na faixa (40 a 160), com as duas pontas alcancadas",
+			AfirmarRo("o RENDIMENTO e inteiro e fica na faixa, com as duas pontas alcancadas",
 					  faixa && RochaDeMinerio.Rendimento(0) == RochaDeMinerio.RendimentoMinimo
 					  && RochaDeMinerio.Rendimento(0.999999) == RochaDeMinerio.RendimentoMaximo && RochaDeMinerio.Rendimento(1) == RochaDeMinerio.RendimentoMaximo);
+			// (2026-10-27, o pedido 124a) os numeros ESCRITOS, e nao lidos da constante: e ela que o mutante muda
+			AfirmarRo("**A ROCHA RENDE DEZ VEZES A DE ANTES** (o pedido 124a): 400 na ponta de baixo, 1.600 na de cima, 1.000 no meio do sorteio",
+					  RochaDeMinerio.Rendimento(0) == 400 && RochaDeMinerio.Rendimento(0.5) == 1000 && RochaDeMinerio.Rendimento(0.999999) == 1600,
+					  $"{RochaDeMinerio.Rendimento(0)} / {RochaDeMinerio.Rendimento(0.5)} / {RochaDeMinerio.Rendimento(0.999999)}");
 			RochaDeMinerio.IgnoraAReservaDeTeste = true;
 			try { AfirmarRo("(defeito injetado: a reserva nao entra na conta) o planeta ZERADO continua com alvo cheio -- a regua sabe reprovar", RochaDeMinerio.Alvo(100, 0) == 100); }
 			finally { RochaDeMinerio.IgnoraAReservaDeTeste = false; }
@@ -243,13 +247,13 @@ public partial class GameServer
 			mineiro.Ficha.KO = false;
 			AfirmarRo("NOCAUTEADO nao colhe", RochasDeTeste(terra).Contains(alvo) && reservaT.Atual == antesReserva && Disse(falas, "condição"), Ultimos(falas));
 
-			RendimentoDaRochaDeTeste = 0.5;   // 40 + piso(0,5 x 121) = 100
+			RendimentoDaRochaDeTeste = 0.5;   // 400 + piso(0,5 x 1201) = 1000 (o pedido 124a; com a rocha de antes eram 100)
 			EscutaDeRochas.Clear();
 			falas = Ouvir(() => Verbo(mineiro, RochaDeMinerio.Verbo, ""));
-			AfirmarRo("**A COLETA TIRA DA RESERVA DO PLANETA E PAGA AO JOGADOR** a mesma quantia (100, com o sorteio da bancada)",
-					  Math.Abs(antesReserva - reservaT.Atual - 100) < 1e-6 && Math.Abs(mineiro.Ficha.Recursos - antesSaldo - 100) < 1e-6,
+			AfirmarRo("**A COLETA TIRA DA RESERVA DO PLANETA E PAGA AO JOGADOR** a mesma quantia (1000, com o sorteio da bancada)",
+					  Math.Abs(antesReserva - reservaT.Atual - 1000) < 1e-6 && Math.Abs(mineiro.Ficha.Recursos - antesSaldo - 1000) < 1e-6,
 					  $"reserva {antesReserva:0} -> {reservaT.Atual:0}, saldo {antesSaldo:0} -> {mineiro.Ficha.Recursos:0}");
-			AfirmarRo("...o aviso diz quanto veio", Disse(falas, "100 de recursos"), Ultimos(falas));
+			AfirmarRo("...o aviso diz quanto veio", Disse(falas, "1000 de recursos"), Ultimos(falas));
 			AfirmarRo("**E A ROCHA SOME**: do planeta e do mapa de colisao (a celula volta a ser chao)",
 					  !RochasDeTeste(terra).Contains(alvo) && !mapaT.TemRocha(alvo.X, alvo.Y) && !mapaT.BlockedCell(alvo.X, alvo.Y));
 			List<byte[]> aoColher = Fios(mineiro);
@@ -257,7 +261,7 @@ public partial class GameServer
 					  aoColher.Count == 1 && aoColher[0].Length == 14 && Ler(aoColher[0]) is { Modo: Protocol.RochasSumiu } s1 && s1.Zona == terra.Hash && s1.Celulas[0] == alvo,
 					  $"{aoColher.Count} pacote(s), {(aoColher.Count > 0 ? aoColher[0].Length : 0)} bytes");
 			falas = Ouvir(() => Verbo(mineiro, RochaDeMinerio.Verbo, ""));
-			AfirmarRo("uma coleta por rocha: de novo no mesmo lugar, nao ha mais o que colher", Disse(falas, "por perto") && Math.Abs(mineiro.Ficha.Recursos - antesSaldo - 100) < 1e-6, Ultimos(falas));
+			AfirmarRo("uma coleta por rocha: de novo no mesmo lugar, nao ha mais o que colher", Disse(falas, "por perto") && Math.Abs(mineiro.Ficha.Recursos - antesSaldo - 1000) < 1e-6, Ultimos(falas));
 
 			// A reserva quase seca: o que resta e o que sai.
 			(int X, int Y) segunda = RochasDeTeste(terra).OrderBy(c => Math.Abs(c.X - alvo.X) + Math.Abs(c.Y - alvo.Y)).First();
@@ -266,7 +270,7 @@ public partial class GameServer
 			mineiro.Pos = NaCelula(segunda.X + 1, segunda.Y);
 			double saldo2 = mineiro.Ficha.Recursos;
 			falas = Ouvir(() => Verbo(mineiro, RochaDeMinerio.Verbo, ""));
-			AfirmarRo("**PLANETA QUASE SECO: A ROCHA RENDE SO O QUE RESTAVA** (pediu 100, a reserva tinha 30) -- `Tirar` e a porta unica",
+			AfirmarRo("**PLANETA QUASE SECO: A ROCHA RENDE SO O QUE RESTAVA** (pediu 1000, a reserva tinha 30) -- `Tirar` e a porta unica",
 					  reservaT.Atual == 0 && Math.Abs(mineiro.Ficha.Recursos - saldo2 - 30) < 1e-6 && Disse(falas, "restava") && !RochasDeTeste(terra).Contains(segunda),
 					  Ultimos(falas));
 			(int X, int Y) terceira = RochasDeTeste(terra).OrderBy(c => Math.Abs(c.X - segunda.X) + Math.Abs(c.Y - segunda.Y)).First();

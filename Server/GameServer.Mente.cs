@@ -52,7 +52,8 @@ public sealed class FotoDaMente
 ///   |-------------------------------|--------------------------------------|-------------------------------|
 ///   | o corpo fica pra tras         | `mob/npc/mind_dummy`                 | `LargarOCorpo` (Camada 1)     |
 ///   | o reflexo                     | `mob/npc/MindClone`                  | `CriarClone`                  |
-///   | ele se reergue derrotado      | `clone_watch()` + `MIND_CLONE_REVIVE`| `DerrubadoNaMente`/`ReerguerOOponente` |
+///   | quem enfrentar                | -- (o reflexo, sempre)                | a LISTA (pedido 124c, `GameServer.MenteLista.cs`) |
+///   | derrubado, ele NAO se reergue | `clone_watch()` + `MIND_CLONE_REVIVE`| a VITORIA da lista (pedido 124c) |
 ///   | ele tem o SEU poder           | `mind_seed_bp` = `expressedBP`       | `EspelharODono` + `ServerPlayer.BpDaMente` |
 ///   | e o poder dele nao infla      | `ai_no_powerup` + `NPCTicker()`      | o re-pino do `TicarUmCorpo`   |
 ///   | o visitante ao lado           | `oview(1)` + `datum/mind_session`    | <see cref="GameServer.MenteAoLado"/> |
@@ -244,6 +245,10 @@ public partial class GameServer
 		// E ELA GANHOU UM SEGUNDO EMPREGO COM A ONDA: quem ANDA durante a ondulacao deixa de meditar
 		// (o cliente manda `Parado`, o servidor zera o `med`), e o mergulho se cancela sozinho. Nao
 		// foi preciso escrever "andar cancela": ja estava dito.
+		// (2026-10-27, o pedido 124c) QUEM PERDEU NA MENTE fica um tempo sem mergulhar: o foco abalado. Ver `GameServer.MenteLista.cs`.
+		if (pl.Ficha.mergulho_bloqueado_ate > NowMs())
+			return $"a derrota na mente ainda abala o seu foco: voce so mergulha de novo em "
+				 + $"{Math.Ceiling((pl.Ficha.mergulho_bloqueado_ate - NowMs()) / 60_000.0):0} min.";
 		if (!pl.Ficha.med) return "e preciso estar MEDITANDO (tecla M) pra mergulhar na mente.";
 
 		// DENTRO DE UM MAJIN NAO SE MERGULHA. O `TickDoMajin` soltava o preso que saisse do interior (a zona
@@ -340,7 +345,11 @@ public partial class GameServer
 			// =========================================================================
 			ServerPlayer? dono = _players.GetValueOrDefault(DimensaoMental.Anfitriao(mente));
 			if (dono != null)
-				DesfazerOOponente(dono, "o seu reflexo se desfaz -- outra consciencia ocupa o lugar dele.");
+			{
+				// (2026-10-27, o pedido 124c) a lembranca pode ser qualquer uma da lista, e a lista do dono fecha: com visita nada se ergue
+				DesfazerOOponente(dono, "a lembranca se desfaz -- outra consciencia ocupa o lugar dela.");
+				MandarOponentesDaMente(dono, abrir: false);
+			}
 
 			// AVISA QUEM JA ESTAVA LA -- todos, e nao so o vizinho: com tres pessoas no bolso, contar
 			// so pra uma seria a mesma "linha nova em dois dos tres lugares" de sempre.
@@ -354,12 +363,12 @@ public partial class GameServer
 			return;
 		}
 
-		ServerPlayer clone = CriarClone(pl, mente);
-		pl.CloneId = clone.Id;
-
-		Avisar(pl, "voce fecha os olhos. Diante de voce, VOCE -- e ele conhece cada golpe seu. "
-				 + "Pra acordar: a tecla de meditar de novo, ou o botao no alto da tela.");
-		GD.Print($"[server] {pl.Name} entrou na propria mente (clone id {clone.Id}, BP {clone.Ficha.BP:N0})");
+		// (2026-10-27, o pedido 124c) NINGUEM NASCE SOZINHO NA MENTE: a lista de quem enfrentar abre, e o oponente e escolhido nela -- o
+		// reflexo virou uma das opcoes. Ver `GameServer.MenteLista.cs`.
+		MandarOponentesDaMente(pl, abrir: true);
+		Avisar(pl, "voce fecha os olhos e a sua mente se abre: escolha quem enfrentar. Uma luta aqui so acaba quando um dos dois cai. "
+				 + "Pra acordar sem lutar: a tecla de meditar de novo, ou o botao no alto da tela.");
+		GD.Print($"[server] {pl.Name} entrou na propria mente (a lista de oponentes abriu)");
 	}
 
 	/// <summary>
@@ -389,9 +398,10 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// SAI DA MENTE. Chamado pelo jogador, pela MORTE do oponente (e nao pela queda dele -- caido, ele
-	/// se reergue: ver `DerrubadoNaMente`), por um golpe no corpo la fora
-	/// (<see cref="VoltarDeOndeEstiver"/>), pela morte, pelo nocaute e pelo logout.
+	/// SAI DA MENTE. Chamado pelo jogador (sem luta de pe), pela derrota na mente (o nocaute com a lembranca
+	/// de pe -- a marca e daqui, ver `MarcarADerrotaNaMente`), por um golpe no corpo la fora
+	/// (<see cref="VoltarDeOndeEstiver"/>), pela morte, pelo nocaute e pelo logout. VENCER NAO TIRA DAQUI desde
+	/// o pedido 124c (2026-10-27): a lista de quem enfrentar volta.
 	///
 	/// A PERGUNTA DE ENTRADA E O LUGAR e nao o `CloneId`: o visitante nunca teve clone, e o anfitriao
 	/// perde o dele no instante em que o visitante chega. Com a pergunta antiga, os dois teriam saido
@@ -402,7 +412,13 @@ public partial class GameServer
 	{
 		if (!NaMente(pl)) return;
 
+		// (2026-10-27, o pedido 124c) QUEM SAI CAIDO COM A LEMBRANCA DE PE PERDEU: em jogo a borda do corpo largado o tira daqui antes do
+		// tique da lembranca, entao a marca da derrota (o foco abalado) e desta porta. Ver `GameServer.MenteLista.cs`.
+		if (pl.Ficha.KO && LutandoNaMente(pl)) motivo = MarcarADerrotaNaMente(pl);
+
 		DesfazerOOponente(pl, "");
+		// (2026-10-27, o pedido 124c) E A LISTA DA MENTE FECHA, por qualquer porta que tenha sido
+		MandarOponentesDaMente(pl, abrir: false);
 		ZoneKey mente = pl.Zone;
 
 		// A REGRA 1, COBRADA AQUI: o corpo volta EXATAMENTE como entrou. Antes do `VoltarProCorpo`
@@ -426,6 +442,13 @@ public partial class GameServer
 		// exatamente com quem sobrou.
 		foreach (ServerPlayer o in ZoneList(mente.Hash))
 			if (o.Peer != null) Avisar(o, $"a presenca de {pl.Name} se desfaz da sua mente...");
+
+		// (2026-10-27, o pedido 124c) O DONO QUE FICOU SOZINHO volta a ter a lista: a chegada da visita tinha desfeito a luta dele, e sem isto
+		// ele so escolheria de novo saindo e mergulhando outra vez.
+		if (_players.GetValueOrDefault(DimensaoMental.Anfitriao(mente)) is { } anfitriao && anfitriao != pl
+			&& anfitriao.Zone.Hash == mente.Hash && !LutandoNaMente(anfitriao)
+			&& !ZoneList(mente.Hash).Any(o => o != anfitriao && EhPessoa(o)))
+			MandarOponentesDaMente(anfitriao, abrir: true);
 	}
 
 	/// <summary>
@@ -827,6 +850,9 @@ public partial class GameServer
 				return;
 			}
 
+		// (2026-10-27, o pedido 124c) A LUTA NAO SE ENCERRA NO MEIO: com a lembranca de pe, nao se chama outra
+		if (LutandoNaMente(pl)) { Avisar(pl, "a luta de agora ainda nao acabou -- uma lembranca por vez."); return; }
+
 		if (!pl.ChefesVistos.Contains(moldeId)) { Avisar(pl, "voce nunca viu esse inimigo."); return; }
 
 		MoldeDeNpc? molde = _moldes?.Get(moldeId);
@@ -872,8 +898,8 @@ public partial class GameServer
 
 		// ============================ AS DUAS LINHAS QUE FAZEM DELE UMA LEMBRANCA ============================
 		//   * `DonoDoClone` o poe no ramo do REFLEXO no `TicarUmCorpo`: ele vem atras de VOCE, some se
-		//     voce sair do bolso, **se reergue 15 s depois de cair** (o `clone_watch`) e so a MORTE
-		//     dele encerra o transe. Sem isso ele cairia no ramo de chefe comum (`PresaDaFera`), que
+		//     voce sair do bolso, e cair ou morrer e a VITORIA de quem sonha (a lista do pedido 124c --
+		//     ate ali ele se reerguia, o `clone_watch`). Sem isso ele cairia no ramo de chefe comum (`PresaDaFera`), que
 		//     caca o corpo mais proximo -- e o corpo mais proximo do mundo, pra ele, seria voce de
 		//     qualquer jeito, mas nem a queda nem a morte dele significariam nada;
 		//   * `Letal = false` e a mesma linha do clone: a mente nao decepa membro nem mata. E treino.
@@ -885,6 +911,7 @@ public partial class GameServer
 		Avisar(pl, $"a lembranca toma forma: {chefe.Name} esta diante de voce.");
 		GD.Print($"[server] {pl.Name} convocou '{moldeId}' na mente (id {chefe.Id}, BP {chefe.Ficha.BP:N0}, etapa {indice + 1})");
 		MandarEscolhas(pl, EtapasDaMente.Verbo, []);
+		MandarOponentesDaMente(pl, abrir: false);   // (2026-10-27, o pedido 124c) a luta comecou: a lista da mente fecha, venha a escolha dela ou do menu P
 	}
 
 	/// <summary>

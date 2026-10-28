@@ -718,17 +718,21 @@ public partial class TelaDeTecnicas : CanvasLayer
 
 		// ---------------------------------------------------------------- as compras
 		_corpo.AddChild(new HSeparator());
-		Degrau("Potência", $"{m.BaseDano:0.0}", Compra.DanoMais, Compra.DanoMenos,
-			   "Multiplica o dano inteiro. +0,1 por ponto.");
+		// (2026-10-27) CADA COMPRA DIZ O QUE FAZ NO JOGO, com os numeros deste corpo (o pedido 116 do dono) -- a dica ao lado e o preco.
+		Degrau("Potência", $"{m.BaseDano:0.0}", Compra.DanoMais, Compra.DanoMenos, "+0,1 de potência por ponto.");
+		OQueFaz(OQueAPotenciaFaz(m));
 		Degrau("Custo de energia", $"{m.CustoKi:0}", Compra.KiMenos, Compra.KiMais,
 			   "Baratear custa 1 ponto; encarecer devolve 1. Passo de 40, mínimo 20 — o padrão já é o mínimo.");
+		OQueFaz(OQueAEnergiaFaz(m, GameClient.Instance?.DrenoDeKiDaMesa ?? 0, GameClient.Instance?.Sheet.MaxKi ?? 0));
 		Degrau("Velocidade", $"{m.Velocidade:0.#}", Compra.VelocidadeMais, Compra.VelocidadeMenos,
 			   "De 1 pra cima anda de 1 em 1 até 5; de 1 pra baixo, de 0,2 em 0,2 até 0,2.");
+		OQueFaz(OQueAVelocidadeFaz(m));
 
 		if (m.Tipo == TipoDeProjetil.Beam)
 		{
 			Degrau("Tempo de carga", $"{m.CargaMinima:0.#}s", Compra.CargaMenos, Compra.CargaMais,
 				   "Encurtar custa 1 ponto; alongar devolve 1. Passo de 0,4s, mínimo 0,2s.");
+			OQueFaz(OQueACargaFaz(m, GameClient.Instance?.CargaDaMesa ?? 0));
 
 			Interruptor($"Sai sozinho quando termina de carregar ({TecnicaCustomizada.PrecoDoInstantaneo} pontos)",
 						m.Instantaneo, null,
@@ -745,6 +749,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 			Numero($"Alcance: {m.Alcance:0} tiles", (int)m.Alcance, TecnicaCustomizada.AlcancePiso, 60,
 				   "1 ponto por tile, nos dois sentidos. Mínimo 5, padrão 20.",
 				   v => GameClient.Instance?.SendVerbo("ca_comprar", $"{nameof(Compra.Alcance)}/{v}"));
+			OQueFaz($"O que faz: o raio vai até {m.Alcance:0} tiles (um tile é um quadrado do chão) e se apaga.");
 
 			Numero($"Força pela distância: {m.DistanciaMod:0.0}× por tile",
 				   (int)Math.Round(m.DistanciaMod * 10), (int)(TecnicaCustomizada.DistModPiso * 10), 20,
@@ -752,6 +757,8 @@ public partial class TelaDeTecnicas : CanvasLayer
 				   + "o texto do jogo antigo dizia 2, mas a conta dele sempre foi essa. (valor × 10)",
 				   v => GameClient.Instance?.SendVerbo("ca_comprar",
 						$"{nameof(Compra.DistanciaMod)}/{(v / 10.0).ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+			OQueFaz($"O que faz: a cada tile andado o dano é multiplicado por {m.DistanciaMod:0.0#}: no fim do alcance ({m.Alcance:0} tiles) "
+					+ $"o raio chega com {Math.Pow(m.DistanciaMod, m.Alcance):0.##}x do dano da saída.");
 		}
 
 		// ---------------------------------------------------------------- folego
@@ -770,8 +777,12 @@ public partial class TelaDeTecnicas : CanvasLayer
 						() => GameClient.Instance?.SendVerbo("ca_comprar",
 							m.UsaStamina ? nameof(Compra.StaminaDesligar) : nameof(Compra.StaminaLigar)));
 		if (vendeFolego && m.UsaStamina)
+		{
 			Degrau("Fôlego gasto", $"{m.CustoStamina:0}", Compra.StaminaMenos, Compra.StaminaMais,
 				   "Cada ponto de fôlego a mais devolve 1 ponto de criação. Mínimo 1.");
+			OQueFaz($"O que faz: cada tiro tira {m.CustoStamina:0} do seu vigor (o fôlego: você tem {GameClient.Instance?.Sheet.VigorMax ?? 0:0} "
+					+ "no máximo, e ele cansa o corpo); sem vigor bastante a técnica não sai.");
+		}
 
 		// ---------------------------------------------------------------- fechar
 		_corpo.AddChild(new HSeparator());
@@ -822,6 +833,51 @@ public partial class TelaDeTecnicas : CanvasLayer
 
 		linha.AddChild(Nota(dica, Tema.TextoFraco, 11));
 	}
+
+	/// <summary>
+	/// (2026-10-27) O QUE ESTE NUMERO FAZ NO JOGO, numa linha visivel embaixo da compra -- o pedido 116 do dono: *"na tela de customizar os
+	/// ataques de ki, mostre oq cada opção realmente faz, oq a potencia faz, oq significa os valores de vigor e ki etc"*. A dica ao lado da
+	/// compra continua dizendo o preco em pontos.
+	/// </summary>
+	private void OQueFaz(string texto) => _corpo.AddChild(Nota(texto, Tema.Texto, 11));
+
+	/// <summary>
+	/// A POTENCIA: ela entra DUAS vezes no dano (no `mods` do tiro e no dano cru, `DanoDeKi.BrutoContra`), entao o dano cresce com o
+	/// QUADRADO dela -- e e isso que o jogador precisa saber pra comparar com as tecnicas prontas.
+	/// </summary>
+	internal static string OQueAPotenciaFaz(TecnicaCustomizada m) =>
+		$"O que faz: o dano cresce com o QUADRADO da potência — {m.BaseDano:0.0} bate "
+		+ $"{Math.Pow(m.BaseDano / TecnicaCustomizada.DanoPadrao, 2):0.##}x o padrão ({TecnicaCustomizada.DanoPadrao:0.0}). Também contam o "
+		+ "seu ataque e a sua perícia de ki contra a defesa de ki do alvo, e a diferença de BP. Para comparar: Kamehameha 2,3 a 3,0; Death Beam 5.";
+
+	/// <summary>
+	/// A ENERGIA: o tiro gasta `CustoKi` vezes o dreno de Ki do corpo (`Fighter.BaseDrain`, que vem do servidor no pacote da mesa); o raio
+	/// gasta isso pra comecar e `custo / 40 x dreno` a cada ciclo de 0,2 s segurado (o `CustoPorCiclo` do `Canalizar`).
+	/// </summary>
+	internal static string OQueAEnergiaFaz(TecnicaCustomizada m, double dreno, double maxKi)
+	{
+		if (dreno <= 0)
+			return "O que faz: cada tiro gasta este número vezes o seu dreno de Ki, que sobe com o seu Ki máximo e cai com a perícia de eficiência de Ki.";
+		double tiro = m.CustoKi * dreno;
+		double pct = tiro / Math.Max(maxKi, 1) * 100;
+		return m.Tipo == TipoDeProjetil.Beam
+			? $"O que faz: começar o raio gasta {m.CustoKi:0} × o seu dreno de Ki ({dreno:0.##} agora: ele sobe com o seu Ki máximo e cai com "
+			  + $"a perícia de eficiência) = {tiro:N0} de Ki ({pct:0.#}% do seu Ki máximo), e segurá-lo gasta mais {tiro / 40 * dreno:N0} a cada 0,2 s."
+			: $"O que faz: cada tiro gasta {m.CustoKi:0} × o seu dreno de Ki ({dreno:0.##} agora: ele sobe com o seu Ki máximo e cai com a "
+			  + $"perícia de eficiência) = {tiro:N0} de Ki ({pct:0.#}% do seu Ki máximo).";
+	}
+
+	/// <summary>A VELOCIDADE em tiles por segundo, pela mesma conta do disparo (`Projetil.AtrasoDeRaio` / `AtrasoDeBola`).</summary>
+	internal static string OQueAVelocidadeFaz(TecnicaCustomizada m) =>
+		$"O que faz: o tiro anda {1 / (m.Tipo == TipoDeProjetil.Beam ? Projetil.AtrasoDeRaio(m.Velocidade) : Projetil.AtrasoDeBola(m.Velocidade)):0.#} "
+		+ "tiles por segundo.";
+
+	/// <summary>A CARGA de verdade: o numero da mesa vezes o que as pericias de raio e de carga deixam (`Projetil.SegundosDeCarga`).</summary>
+	internal static string OQueACargaFaz(TecnicaCustomizada m, double cargaPorSegundo) =>
+		cargaPorSegundo <= 0
+			? "O que faz: o tempo que você fica parado reunindo energia antes de o raio poder sair; a perícia de raio e de carga o encurta."
+			: $"O que faz: com a sua perícia de raio e de carga de agora, você fica {Math.Max(m.CargaMinima * cargaPorSegundo, 0.05):0.##} s parado "
+			  + "reunindo energia antes de o raio poder sair (o número da mesa é a base, que a perícia encurta).";
 
 	/// <summary>Uma caixinha de liga/desliga. `acao` nula = alternar um grito (que e livre).</summary>
 	private void Interruptor(string rotulo, bool ligado, string? grito, Action? acao = null)

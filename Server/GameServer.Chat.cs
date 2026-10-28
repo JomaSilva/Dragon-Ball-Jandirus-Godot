@@ -81,6 +81,21 @@ public partial class GameServer
 		long agora = NowMs();
 		if (_ultimaFala.TryGetValue(a.Id, out long antes) && agora - antes < MsEntreFalas) return;
 		_ultimaFala[a.Id] = agora;
+
+		// (2026-10-27) A GAGUEIRA (o pedido 119): quem fala CAIDO com o tronco ferido tropeca nas palavras -- so a fala de boca (o say e o
+		// sussurro) e so a DIGITADA (a frase automatica do jogo tem que continuar casando com o dicionario de ingles). Ver
+		// `Core/Combat/Gagueira.cs`.
+		// (2026-10-27, o pedido 127) ...a CABECA ferida tambem gagueja (vale a pior das duas, `Gagueira.FracaoQueFala`); e com o CEREBRO em 40% ou
+		// menos, de pe ou caido, as palavras de conteudo viram nonsense ANTES (a ideia do jogador gingo -- `Core/Combat/FalaSemSentido.cs`).
+		if (digitada && canal is Protocol.Fala.Diz or Protocol.Fala.Sussurro && a.Combate?.Corpo is { } corpoQueFala)
+		{
+			if (corpoQueFala.Achar("Cerebro") is { } cerebro && Jandirus.Core.Combat.FalaSemSentido.Confunde(cerebro.Decepado ? 0 : cerebro.Fracao))
+				texto = Jandirus.Core.Combat.FalaSemSentido.Embaralhar(texto, NomesQueAFalaGuarda());
+			if (a.Ficha.KO)
+				texto = Jandirus.Core.Combat.Gagueira.Gaguejar(texto, Jandirus.Core.Combat.Gagueira.FracaoQueFala(corpoQueFala));
+			// A FALA TROPECADA CRESCE, e o cliente le no maximo `MaxFala` letras (`GameClient`, `GetString`): acima disso ela chegava VAZIA.
+			if (texto.Length > Protocol.MaxFala) texto = texto[..Protocol.MaxFala];
+		}
 		EscutaDeFalas?.Add((a.Id, canal, texto));
 
 		// (2026-10-18) QUEM ESTA AO LEME DA NAVE GRANDE, OU A OBSERVANDO DE FORA, FALA TAMBEM LA DENTRO -- pela boca do corpo que ficou na
@@ -109,8 +124,11 @@ public partial class GameServer
 			case Protocol.Fala.Diz:
 			{
 				float raio = texto.Contains('!') ? RaioDoGrito : RaioDaVista;
-				if (!soDentro) PorPerto(a, a, raio, canal, texto, excetoEste: null, marca);
-				if (daPonte != null) PorPerto(a, daPonte, raio, canal, texto, excetoEste: soDentro ? null : daPonte, marca);
+				// (2026-10-27) A LINGUA DO SAY (o pedido 118): so a fala DIGITADA de uma pessoa, e so quando ela escolheu outra lingua que nao a
+				// Galactica -- cada ouvinte a le pela maestria dele (`Mandar`).
+				string? lingua = digitada && EhPessoa(a) && LinguaDaFala(a) is { } l && l != Jandirus.Core.Races.Linguas.Galactica ? l : null;
+				if (!soDentro) PorPerto(a, a, raio, canal, texto, excetoEste: null, marca, lingua);
+				if (daPonte != null) PorPerto(a, daPonte, raio, canal, texto, excetoEste: soDentro ? null : daPonte, marca, lingua);
 				break;
 			}
 
@@ -130,14 +148,15 @@ public partial class GameServer
 	/// pro balao (ver o parametro `boca` do <see cref="Mandar"/>). Com os tres vindo do mesmo objeto, a frase de quem pilota nao tem como
 	/// sair do corpo da ponte e ir parar no balao do piloto, que nem esta naquela zona.
 	/// </summary>
-	private void PorPerto(ServerPlayer a, ServerPlayer boca, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste, byte marca)
+	private void PorPerto(ServerPlayer a, ServerPlayer boca, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste, byte marca,
+						  string? lingua = null)
 	{
 		float raio2 = raio * raio;
 		foreach (ServerPlayer o in ZoneList(boca.Zone.Hash))
 		{
 			if (o == excetoEste || EhOlhoDeFora(o)) continue;
 			Vec2 dd = o.Pos - boca.Pos;
-			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a, boca.Id, marca);
+			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a, boca.Id, marca, lingua);
 		}
 	}
 
@@ -202,12 +221,27 @@ public partial class GameServer
 	/// vem do <see cref="Falar"/>, que sabe se alguem a digitou.
 	/// </param>
 	private void Mandar(ServerPlayer para, Protocol.Fala canal, string autor, string texto,
-						ServerPlayer? falante, int boca = 0, byte marca = Protocol.MarcaDeFalaAutomatica)
+						ServerPlayer? falante, int boca = 0, byte marca = Protocol.MarcaDeFalaAutomatica, string? lingua = null)
 	{
 		// (2026-10-18) O CORPO DA PONTE OUVE PELO DONO: a fala (e o aviso) que chega no boneco de quem esta ao leme da nave grande, ou a
 		// observando de fora, chega NELE -- *"enquanto vc pilota, deveria dar pra escutar e ver o chat q rola dentro da nave"*. Ver
 		// `DonoQueOuvePeloBoneco`, `GameServer.NaveObservar.cs`.
 		if (para.Peer == null && DonoQueOuvePeloBoneco(para) is { } dono) para = dono;
+
+		// (2026-10-27) A LINGUA DO SAY (o pedido 118): quem nao a sabe inteira le EMBARALHADO pela maestria dele -- e aprende um pouco ouvindo
+		// (so pessoa aprende; quem fala se ouve inteiro). A etiqueta diz a lingua. Ver `Core/Races/Linguas.cs`.
+		if (lingua != null && falante != null)
+		{
+			double m = para == falante ? 1 : Jandirus.Core.Races.Linguas.Maestria(para.Ficha, lingua);
+			if (para != falante && m < 1 && EhPessoa(para))
+			{
+				double antes = m;
+				double depois = Jandirus.Core.Races.Linguas.Ouvir(para.Ficha, lingua);
+				// o cartao da aba Stats anda a cada ponto inteiro de maestria, e nao a cada frase
+				if (Math.Floor(depois * 100) > Math.Floor(antes * 100)) MandarLinguas(para);
+			}
+			texto = $"[{Jandirus.Core.Races.Linguas.Rotulo(lingua)}] " + Jandirus.Core.Races.Linguas.Embaralhar(texto, lingua, m);
+		}
 		EscutaDeEntregas?.Add((para.Id, autor, texto));
 
 		if (falante != null) Ouviu(para, falante);
@@ -269,5 +303,11 @@ public partial class GameServer
 		if (s.Length > Protocol.MaxFala) s = s[..Protocol.MaxFala];
 		s = s.Replace('\n', ' ').Replace('\r', ' ').Replace('\t', ' ');
 		return s.Trim();
+	}
+
+	/// <summary>(2026-10-27, o pedido 127) Os nomes que a fala sem sentido deixa no lugar: os de quem esta no mundo agora, jogador e NPC.</summary>
+	private IEnumerable<string> NomesQueAFalaGuarda()
+	{
+		foreach (ServerPlayer p in _players.Values) yield return p.Name;
 	}
 }

@@ -142,7 +142,25 @@ public sealed partial class GameServer
 			// (2026-10-23) O DESMAIO QUE ESTE DANO FIZER E DA GRAVIDADE: quem cai AQUI se arrasta ate levantar (dono) -- e so quem estava
 			// de pe: o que ja estava no chao continua desmaiado pelo motivo de antes. Ver `GameServer.Rastejo.cs`.
 			bool dePe = !f.KO;
-			if (dano > 0) EspalharDanoG3(pl, pl, dano, letal: true);
+			// (2026-10-28, o pedido 143) ACIMA DE 5x A MAESTRIA O NOCAUTE E NA HORA -- e o dano de 20/s zera o corpo caido em cinco segundos.
+			// Pelo `Blindado`, a mesma pergunta do funil sem algoz: o corpo que o dano nao alcanca nao cai. E so em quem tem uma morte a
+			// sofrer (`OCorpoSeDesfazNoChao`): o cadaver que ficou com o corpo (`KeepsBody`) o funil de dano ja recusa, e cair nao e com ele.
+			// Ver `Esmagamento.NocauteiaNaHora`.
+			if (dePe && Esmagamento.NocauteiaNaHora(f) && OCorpoSeDesfazNoChao(pl) && pl.Combate is { Blindado: false } preso)
+				preso.Nocautear(Jandirus.Core.Combat.MeleeResolver.TetoDoNocaute, porVital: false);
+			// (2026-10-28, o pedido 143) e a gravidade MATA quem regenera (o coma e o "se desfazer" nao valem aqui): o dono, "Todas essas tambem"
+			bool mortoAntes = f.dead, porPeso = Esmagamento.PorPeso(f);
+			Jandirus.Core.World.ZoneKey zonaAntes = pl.Zone;
+			if (dano > 0) EspalharDanoG3(pl, pl, dano, letal: true, mataQuemRegenera: !GravidadePoupaQuemRegeneraDeTeste);
+			// O CORPO QUE ESTE DANO MATOU (o vivo virou cadaver; o morto de pe "morreu de novo" e acordou na mesa do Enma) ja nao esta aqui:
+			// le a causa (a frase do corpo que se desfaz, logo abaixo -- com os degraus, o dano chega antes dele) e nada mais de dreno, de
+			// estouro nem de aviso de esmagamento pra quem acabou de sair do chao pesado.
+			if (f.dead != mortoAntes || !pl.Zone.Equals(zonaAntes))
+			{
+				Avisar(pl, porPeso ? "o peso vence o que restava do seu corpo." : "a gravidade vence o que restava do seu corpo.");
+				_avisoDeEsmagamento.Remove(pl.Id);
+				continue;
+			}
 			if (dePe && f.KO) MarcarODesmaioDaGravidade(pl);
 
 			f.stamina = Math.Max(0, f.stamina - Esmagamento.DrenoDeVigorPorSegundo(f));
@@ -213,4 +231,10 @@ public sealed partial class GameServer
 
 	/// <summary>O corpo foi embora: esquece o relogio do aviso dele. Ver `EsquecerParalisia`.</summary>
 	private void EsquecerEsmagamento(int id) => _avisoDeEsmagamento.Remove(id);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--gravmetateste`, familia M): a gravidade volta a poupar quem regenera -- o coma, e o Majin que se desfaz
+	/// e volta, o jogo de antes do pedido 143. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GravidadePoupaQuemRegeneraDeTeste;
 }

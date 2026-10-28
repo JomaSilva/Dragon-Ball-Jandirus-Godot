@@ -164,8 +164,9 @@ public sealed partial class GameServer
 	/// `beamspeed = 0.5`, `powmod = 4`, `wavemult = 2`, `maxdistance = 30`, `chargedelay = 5`.
 	///
 	/// QUINZE VEZES O CUSTO DE MANUTENCAO do Ki Wave, e essa e a assinatura dele: barato de comecar,
-	/// impagavel de segurar. O `wavemult = 2` poe o dobro do seu proprio poder por tras do feixe --
-	/// e o que faz ele GANHAR embate de quem tem o mesmo BP que voce. Ver `Projetil.MultDeOnda`.
+	/// impagavel de segurar. O `wavemult = 2` punha o dobro do seu proprio poder por tras do feixe -- (2026-10-27) e
+	/// NAO POE MAIS: o pedido 115 do dono, *"N permita nenhum beam aumentar o bp do usuario"*. Ficou so a metade do
+	/// desenho (`A.transform *= wavemult`): o raio continua o dobro de grosso. Ver `Projetil.MultDeOnda`.
 	/// </summary>
 	private void RaioColossalG5(ServerPlayer pl)
 	{
@@ -182,7 +183,7 @@ public sealed partial class GameServer
 			PressaSobreODm = Projetil.BeamspeedLidoComoSpeedDeTeste ? 0
 				: Projetil.PressaSobreORaioDoDm(Projetil.VelocidadeDeRaioNomeado(0.5)),
 			AlcanceTiles = 30,
-			MultDeOnda = 2,
+			EscalaVisual = 2,        // o `wavemult` 2 so no TAMANHO (2026-10-27): nenhum raio multiplica o BP de quem atira
 			CargaMinima = 5,
 			Nome = "Raio Colossal",
 		}, custoPorTiro: 150 * pl.Ficha.BaseDrain());
@@ -190,7 +191,7 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// FINAL FLASH (`beams/FinalFlash.dm:29`). `kireq = 25*BaseDrain`, `beamspeed = 0.6`,
-	/// `wavemult = 4`, e QUATRO DEGRAUS por `beamskill`:
+	/// `wavemult = 4` (que SAIU -- ver o bloco do pedido 114 logo abaixo), e QUATRO DEGRAUS por `beamskill`:
 	///
 	///     beamskill &lt; 30   -> custo x1    powmod 2.5   alcance 80
 	///     beamskill &lt; 70   -> custo x10   powmod 2.8   alcance 90
@@ -206,6 +207,17 @@ public sealed partial class GameServer
 	/// Ou seja, no jogo antigo o mestre absoluto de raio PERDIA o Final Flash. Aqui o ultimo degrau
 	/// e `>= 100`. O que se perdeu: nada. O que se ganhou: a tecnica continua existindo pra quem
 	/// mais treinou pra ter ela.
+	/// ============================================================================================
+	///
+	/// ============================ O PEDIDO 114 DO DONO (2026-10-27) ============================
+	/// *"da uma nerfada no finalflash, ele ta MUITO grande, deveria ser 4x maior q um beam normal, atualmente ele cobre a tela toda,
+	/// alem disso ele ta triplicando o bp, ele deveria so ter uma potencia alta e nao multiplicar bp"*. O `wavemult` 4 fazia as duas
+	/// coisas: o tiro saia com QUATRO VEZES o BP de quem atirava (o que quadruplicava o dano pelo `BpModulus`, ganhava todo embate e
+	/// escapava da deflexao) e o desenho engordava 4x numa folha que ja e de 64 px -- 216 px de tronco, contra os 10 do Ki Wave. Agora:
+	///   * o BP do tiro e o de quem atira (sem `MultDeOnda`, como todo raio -- o pedido 115);
+	///   * a potencia e o `powmod` do degrau VEZES <see cref="PotenciaSobreODmG5"/> -- raiz de 3, que da 3x no dano (a escolha do dono, ver
+	///     o campo);
+	///   * o tronco e QUATRO VEZES o de um raio comum (<see cref="EscalaDoFinalFlashG5"/>), e ele continua sem crescer com o poder.
 	/// ============================================================================================
 	/// </summary>
 	private void FinalFlashG5(ServerPlayer pl)
@@ -226,18 +238,34 @@ public sealed partial class GameServer
 		Canalizar(pl, "Final_Flash", kireq, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Beam,
-			BaseDano = powmod,
+			BaseDano = powmod * PotenciaSobreODmG5,   // (2026-10-27) a potencia alta no lugar do BP 4x -- ver o bloco acima
 			// `beamspeed = 0.6` (`FinalFlash.dm:45`), nivelado como todo raio nomeado: 24 tiles por segundo, o mais
 			// lento deles. Ate 2026-10-08 voava a 12 -- ver `Projetil.VelocidadeDeRaioNomeado`.
 			Velocidade = Projetil.VelocidadeDeRaioNomeado(0.6),
 			PressaSobreODm = Projetil.BeamspeedLidoComoSpeedDeTeste ? 0
 				: Projetil.PressaSobreORaioDoDm(Projetil.VelocidadeDeRaioNomeado(0.6)),
 			AlcanceTiles = alcance,
-			MultDeOnda = 4,          // *"makes the FinalFlash BP 4x greater than your own. Oof."*
+			EscalaVisual = EscalaDoFinalFlashG5,   // (2026-10-27) o tronco 4x o de um raio comum -- e o BP o de quem atira
 			CargaMinima = 1,         // o verb nao mexe no `chargedelay`: fica o padrao
 			Nome = "Final Flash",
 		}, custoPorTiro: kireq * mult);
 	}
+
+	/// <summary>
+	/// (2026-10-27) A POTENCIA DO FINAL FLASH SOBRE O `powmod` DO DM: o lugar do `wavemult` 4 (o pedido 114). RAIZ DE 3, e nao 3: a potencia
+	/// entra DUAS vezes no dano (no `mods` do tiro, `GameServer.Disparar`, e no dano cru, `DanoDeKi.BrutoContra`), entao o dano vai pelo
+	/// QUADRADO dela -- raiz de 3 na potencia e 3x no dano, os 3/4 do BP 4x de antes, que e o que a escolha do dono descrevia ("bem abaixo do
+	/// dano de hoje", e ainda o raio mais forte no topo). A primeira versao (3) dava 9x no dano: 2,25x o de antes.
+	/// </summary>
+	internal static readonly double PotenciaSobreODmG5 = Math.Sqrt(3);
+
+	/// <summary>
+	/// (2026-10-27) O TAMANHO DO FINAL FLASH: o tronco QUATRO VEZES o de um raio comum (o do Ki Wave, `Beam3`) -- o pedido 114, *"deveria ser
+	/// 4x maior q um beam normal"*. Sai da tabela das artes (`ArteDeProjetil.MeiaEspessuraDoTronco`), que e a mesma que o servidor encosta e o
+	/// cliente desenha: 27 px de meia espessura na folha de 64 px, 5 no Ki Wave -- uma escala de ~0,74.
+	/// </summary>
+	internal static double EscalaDoFinalFlashG5 =>
+		4 * ArteDeProjetil.MeiaEspessuraDoTronco(ArteDeKi.Beam3) / ArteDeProjetil.MeiaEspessuraDoTronco(ArteDeKi.BeamBigFire);
 
 	// =====================================================================
 	// AS BOLAS -- `Code/Modules/Skills/Ki/blasts.dm` e vizinhos

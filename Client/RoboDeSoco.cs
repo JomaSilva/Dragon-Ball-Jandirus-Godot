@@ -34,6 +34,7 @@ public partial class RoboDeSoco : Node
         // relatorio de 74 golpes e ZERO acertos que parecia regressao de combate e nao era.
         // Com alvo marcado a investida vai atras dele, entao a briga acontece de verdade.
         cli.SnapshotReceived += Avistou;
+        cli.OponentesDaMenteMudaram += AoAbrirAListaDaMente;   // (2026-10-27, o pedido 124c) o reflexo e escolhido na lista
         cli.SkillsMudaram += () => GD.Print($"[robo] skills: {cli.SkillsAprendidas.Count} | marcos {cli.MarcosLivres}/{cli.MarcosTotais}");
         cli.FormaMudou += (quem, de, para, degrau, dominada) =>
         {
@@ -58,6 +59,17 @@ public partial class RoboDeSoco : Node
         cli.Golpe -= AoGolpe;
         cli.Falou -= Ouviu;
         cli.SnapshotReceived -= Avistou;
+        cli.OponentesDaMenteMudaram -= AoAbrirAListaDaMente;
+    }
+
+    /// <summary>
+    /// (2026-10-27, o pedido 124c) A LISTA DA MENTE ABRIU (na entrada e depois de cada vitoria): o robo escolhe o reflexo, o oponente que
+    /// antes nascia sozinho na porta e se reerguia pra sempre. So depois do mergulho do `--mente`.
+    /// </summary>
+    private void AoAbrirAListaDaMente(bool abrir)
+    {
+        if (abrir && _meditou)
+            GameClient.Instance?.SendHabilidade(Jandirus.Core.Npc.MenteOponentes.Pedido(Jandirus.Core.Npc.MenteOponentes.Tipo.Reflexo, ""));
     }
 
     /// <summary>

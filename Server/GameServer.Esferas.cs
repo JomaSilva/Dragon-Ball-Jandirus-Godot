@@ -1273,6 +1273,12 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// (2026-10-27) AS ESFERAS DE NAMEK SO ATENDEM QUEM FALA A LINGUA DOS NAMEKUSEIJINS: 75% dela (o pedido 121). As de Namek sao as do set
+		// daquele mundo -- o Porunga eterno e qualquer set criado la. Ver `PorQueNaoFalaComOPorunga`, `GameServer.Linguas.cs`.
+		// Num processo de bancada so vale quando a familia pede (as cenas antigas invocam com corpos forjados), como a zona segura.
+		if (s.ZonaNome == "Namek" && (!ProcessoDeBancada.Value || LinguaDeNamekNaBancadaDeTeste)
+			&& PorQueNaoFalaComOPorunga(pl) is { Length: > 0 } semALingua) { Avisar(pl, semALingua); return; }
+
 		if (!SetAtivo(s))
 		{
 			// As duas mortes tem mensagens diferentes de proposito: uma passa, a outra pede alguem.

@@ -262,7 +262,8 @@ public partial class RoboDasMaquinas : Node
 			{
 				if (E is not { NaTela: true } && _t < 2) return;
 				List<string> botoes = E?.BotoesDesenhados() ?? [];
-				Conferir(E is { NaTela: true } && botoes.SequenceEqual(["Ligar / desligar", "Melhorar...", "Ver estado", "Aparafusar / soltar"]),
+				// (2026-10-27, o pedido 140) ...e o "Pegar", que faltava: o tanque montado no chao nao voltava pra mochila
+				Conferir(E is { NaTela: true } && botoes.SequenceEqual(["Ligar / desligar", "Melhorar...", "Ver estado", "Aparafusar / soltar", "Pegar"]),
 					$"a tecla E abre o menu do tanque com os botoes novos: {string.Join(" | ", botoes)}");
 				Conferir(Apertar("Aparafusar / soltar"), "apertei \"Aparafusar / soltar\"");
 				Sub(2);
@@ -458,7 +459,8 @@ public partial class RoboDasMaquinas : Node
 	// ---------------------------------------------------------------------
 	// PAGAR UMA MELHORIA COM RECURSOS, PELO MENU
 	// ---------------------------------------------------------------------
-	private static readonly string[] RaizDoTanque = ["Ligar / desligar", "Melhorar...", "Ver estado", "Aparafusar / soltar"];
+	// (2026-10-27, o pedido 140) com o "Pegar" no fim
+	private static readonly string[] RaizDoTanque = ["Ligar / desligar", "Melhorar...", "Ver estado", "Aparafusar / soltar", "Pegar"];
 
 	private static readonly string[] MelhoriasDoTanque =
 		["< Voltar", "Recarregar a bateria", "Bateria maior", "Velocidade de cura", "Tratar ferimentos", "Regeneração de nanites"];

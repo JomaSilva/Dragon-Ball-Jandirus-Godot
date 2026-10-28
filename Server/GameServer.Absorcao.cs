@@ -150,7 +150,7 @@ public partial class GameServer
 			return;
 		}
 		Jandirus.Core.Combat.CombatState? c = alvo.Combate;
-		if (c == null || c.Intocavel || CaidoPelaMorte(alvo)) return;
+		if (c == null || c.IntocavelPara(pl.Combate) || CaidoPelaMorte(alvo)) return;   // (2026-10-27, o pedido 129) `IntocavelPara`
 		if (Jandirus.Core.Races.BioAndroids.MembroDaEstocada(c.Corpo) is not { } membro)
 		{
 			Avisar(pl, $"não sobrou nada em {alvo.Name} pra cauda beber.");

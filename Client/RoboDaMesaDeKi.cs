@@ -24,6 +24,10 @@ namespace Jandirus.Client;
 ///   0. (dono, 2026-10-12) A MESA ABRE POR PARTES: o personagem novo, que nao sabe soltar ki, ve o botao de
 ///      inventar APAGADO com o motivo escrito, e o `ca_criar` mandado na mao e recusado pelo servidor. So entao
 ///      o palco lhe da as tres genericas e o resto do roteiro segue.
+///   2b. (dono, 2026-10-27, o pedido 116) CADA NUMERO DIZ O QUE FAZ: embaixo de cada compra, a linha "O que faz" com os numeros deste
+///      corpo -- a potencia (o dano pelo QUADRADO dela), a energia (o Ki do tiro pelo dreno que o servidor manda, conferido contra o
+///      `BaseDrain` dele), a velocidade (tiles por segundo), a carga (os segundos de verdade), o alcance, a forca pela distancia e o
+///      folego (passos 41 e 42: duas compras de potencia, o folego ligado, a linha, e tudo desfeito);
 ///   4. (dono, 2026-10-19) QUEM NUNCA CANSA NAO VENDE FOLEGO: no fim do roteiro o corpo vira MAJIN; o fato do vigor
 ///      infinito chega pelo tique dos fatos, a caixinha do folego SOME (a frase do porque no lugar dela, e a nota do
 ///      orcamento sem o folego na lista), e o `ca_comprar StaminaLigar` mandado na mao e recusado pelo servidor --
@@ -66,6 +70,9 @@ public partial class RoboDaMesaDeKi : Node
 
 	/// <summary>Onde o passo 10 esta: 0 = esperando o fato do vigor infinito, 1 = a coluna se medindo, 2 = rolada (a foto).</summary>
 	private int _faseDoFolego;
+
+	/// <summary>(2026-10-27) Onde o passo 41 esta: 0 = mandar as compras, 1 = conferir a linha do folego.</summary>
+	private int _faseDoFolegoNaMesa;
 
 	/// <summary>
 	/// O pedaco da nota do orcamento intacto que lista o folego entre as desvantagens. Nao e so "gastar fôlego": a frase de quem
@@ -113,9 +120,11 @@ public partial class RoboDaMesaDeKi : Node
 		{
 			case 0: Abrir(tela, srv, cli, mundo); break;
 			case 1: AGradeDoRaio(tela, cli); break;
-			case 2: AArteEscolhida(tela, cli); break;
+			case 2: AArteEscolhida(tela, srv, cli); break;
 			case 3: ARecusaDaBolaNoRaio(tela, cli); break;
 			case 4: AGradeDaBola(tela, cli); break;
+			case 41: OFolegoNaMesa(tela, cli); break;      // (2026-10-27) o pedido 116
+			case 42: OFolegoDesfeito(tela, cli); break;
 			case 5: OSeletorDeCor(tela, srv, cli); break;
 			case 6: ACorAplicada(tela, srv, cli, mundo); break;
 			case 7: ACorRecusada(tela, srv, cli); break;
@@ -207,7 +216,7 @@ public partial class RoboDaMesaDeKi : Node
 	// =====================================================================
 	// 2) A ARTE ESCOLHIDA
 	// =====================================================================
-	private void AArteEscolhida(TelaDeTecnicas tela, GameClient cli)
+	private void AArteEscolhida(TelaDeTecnicas tela, Jandirus.Server.GameServer srv, GameClient cli)
 	{
 		if (_t < 1.0) return;
 
@@ -216,6 +225,23 @@ public partial class RoboDaMesaDeKi : Node
 		var artes = tela.ArtesNaGrade();
 		Conferir(artes.Count(a => a.Marcada) == 1 && artes.First(a => a.Marcada).Arte == ArteDeKi.BeamMasenko,
 				 "...e so a miniatura do Masenko esta marcada");
+
+		// (2026-10-27) O QUE CADA NUMERO FAZ (o pedido 116): as linhas embaixo das compras, com os numeros deste corpo
+		if (cli.Mesa is { } raio)
+		{
+			double drenoLa = srv.DrenoDeKiDeTeste(cli.LocalId);
+			Conferir(drenoLa > 0 && Math.Abs(cli.DrenoDeKiDaMesa - drenoLa) <= 1e-4 * drenoLa
+					 && tela.TemTexto(TelaDeTecnicas.OQueAEnergiaFaz(raio, cli.DrenoDeKiDaMesa, cli.Sheet.MaxKi)) && tela.TemTexto("segurá-lo gasta mais"),
+					 $"(116) a linha da ENERGIA diz quanto Ki o raio gasta neste corpo -- o dreno veio do servidor ({cli.DrenoDeKiDaMesa:0.###} no fio, {drenoLa:0.###} la)");
+			Conferir(tela.TemTexto("o dano cresce com o QUADRADO da potência") && tela.TemTexto(TelaDeTecnicas.OQueAPotenciaFaz(raio)),
+					 "(116) a linha da POTENCIA diz que o dano cresce com o QUADRADO dela, e compara com as tecnicas prontas");
+			Conferir(tela.TemTexto(TelaDeTecnicas.OQueAVelocidadeFaz(raio)), "(116) a linha da VELOCIDADE diz quantos tiles por segundo o raio anda");
+			Conferir(cli.CargaDaMesa > 0 && tela.TemTexto(TelaDeTecnicas.OQueACargaFaz(raio, cli.CargaDaMesa)) && tela.TemTexto("s parado reunindo energia"),
+					 $"(116) a linha da CARGA diz os segundos de verdade, com as pericias deste corpo ({cli.CargaDaMesa:0.###} s por segundo da mesa)");
+			Conferir(tela.TemTexto($"O que faz: o raio vai até {raio.Alcance:0} tiles") && tela.TemTexto("o raio chega com"),
+					 "(116) as linhas do ALCANCE e da FORCA PELA DISTANCIA");
+		}
+		else Conferir(false, "(116) a mesa do raio estava aberta pra ler as linhas");
 
 		Fotografar("user://mesa-1-raio.png", "a mesa aberta num RAIO, com o Masenko escolhido");
 
@@ -255,6 +281,11 @@ public partial class RoboDaMesaDeKi : Node
 		Conferir(tela.Previa is { Tipo: TipoDeProjetil.Blast, Arte: ArteDeKi.Blast12, Vestido: true },
 				 "a previa virou uma bola na arte padrao do custom (12.dmi, o `CustomMakeBlast` do DM)");
 
+		// (2026-10-27) na BOLA a linha da energia e a do tiro, sem o "segurar" do raio (o pedido 116)
+		Conferir(cli.Mesa is { } bola && tela.TemTexto(TelaDeTecnicas.OQueAEnergiaFaz(bola, cli.DrenoDeKiDaMesa, cli.Sheet.MaxKi))
+				 && !tela.TemTexto("segurá-lo gasta mais") && tela.TemTexto(TelaDeTecnicas.OQueAVelocidadeFaz(bola)),
+				 "(116) na BOLA a linha da energia diz o Ki de cada tiro (sem o 'segurar' do raio), e a da velocidade os tiles por segundo");
+
 		Fotografar("user://mesa-2-bola.png", "a mesa aberta numa BOLA");
 
 		// O DEFEITO INJETADO: a grade sem o recorte por tipo. A regra tem que ficar VERMELHA.
@@ -273,6 +304,42 @@ public partial class RoboDaMesaDeKi : Node
 		}
 		Conferir(TelaDeTecnicas.GradeRespeitaOTipo(tela.ArtesNaGrade().Select(a => a.Arte), TipoDeProjetil.Blast),
 				 "(controle) com o filtro de volta, a grade da bola passa de novo");
+		Virar(41);
+	}
+
+	// =====================================================================
+	// 41-42) (2026-10-27) A LINHA DO FOLEGO -- o pedido 116
+	// =====================================================================
+	/// <summary>
+	/// O degrau do folego so aparece com a caixinha ligada, e ligar exige dois pontos ja gastos: duas compras de potencia, o folego ligado, a
+	/// linha "O que faz" conferida -- e tudo desfeito no 42 (o resto do roteiro quer o orcamento intacto).
+	/// </summary>
+	private void OFolegoNaMesa(TelaDeTecnicas tela, GameClient cli)
+	{
+		if (_faseDoFolegoNaMesa == 0)
+		{
+			if (_t < 0.6) return;
+			cli.SendVerbo("ca_comprar", nameof(Compra.DanoMais));
+			cli.SendVerbo("ca_comprar", nameof(Compra.DanoMais));
+			cli.SendVerbo("ca_comprar", nameof(Compra.StaminaLigar));
+			_faseDoFolegoNaMesa = 1;
+			_t = 0;
+			return;
+		}
+		if (_t < 1.2) return;
+		Conferir(cli.Mesa is { UsaStamina: true } m
+				 && tela.TemTexto($"O que faz: cada tiro tira {m.CustoStamina:0} do seu vigor (o fôlego: você tem {cli.Sheet.VigorMax:0} no máximo"),
+				 $"(116) com o folego ligado, a linha diz quanto vigor cada tiro tira, contra o vigor maximo do corpo ({cli.Sheet.VigorMax:0})");
+		cli.SendVerbo("ca_comprar", nameof(Compra.StaminaDesligar));
+		cli.SendVerbo("ca_comprar", nameof(Compra.DanoMenos));
+		cli.SendVerbo("ca_comprar", nameof(Compra.DanoMenos));
+		Virar(42);
+	}
+
+	private void OFolegoDesfeito(TelaDeTecnicas tela, GameClient cli)
+	{
+		if (_t < 1.2) return;
+		Conferir(cli.Mesa is { Gasto: 0, UsaStamina: false }, "(116, montagem) ...e o orcamento volta intacto, sem o folego, pro resto do roteiro");
 		Virar(5);
 	}
 

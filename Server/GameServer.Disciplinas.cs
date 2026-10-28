@@ -909,7 +909,7 @@ public partial class GameServer
 		int pegos = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || EhCadaver(o) || o.Combate is not { Intocavel: false }) continue;
+			if (o == pl || EhCadaver(o) || o.Combate is not { } oc || oc.IntocavelPara(pl.Combate)) continue;   // (2026-10-27, o pedido 129) `IntocavelPara`
 			if (Fusao.DistanciaEmTilesDoDm(o.Pos, pl.Pos, ZoneCollision.TileSize) > Disciplinas.ExplosaoRaioTiles) continue;
 
 			// `murderToggle` no DM: a explosao mata se a luta for letal. Aqui a letalidade e do
@@ -1061,7 +1061,7 @@ public partial class GameServer
 		float percorrido = Vec2.Distance(origem, destino);
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
-			if (o == pl || EhCadaver(o) || o.Combate is not { Intocavel: false }) continue;
+			if (o == pl || EhCadaver(o) || o.Combate is not { } oc || oc.IntocavelPara(pl.Combate)) continue;   // (2026-10-27, o pedido 129) `IntocavelPara`
 			if (!AlcancaPelaAltura(pl, o)) continue;
 
 			Vec2 d = o.Pos - origem;

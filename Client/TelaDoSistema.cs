@@ -438,6 +438,7 @@ public partial class TelaDoSistema : Control
 
 		for (int k = 0; k < _sis.Orbitas; k++)
 		{
+			if (!_sis.NaCarta(k)) continue;   // (2026-10-27) o Yardrat e secreto: nao se clica (o pedido 109)
 			PlanetaNoEspaco p = _sis.Planeta(k);
 			float d = ParaTela(Local(p.Pos)).DistanceTo(tela);
 			// ALVO GENEROSO: o disco pode ter 2 px no tamanho real, e ninguem acerta 2 px.
@@ -474,7 +475,7 @@ public partial class TelaDoSistema : Control
 		DesenharZonaHabitavel();
 		DesenharAneis();
 		DesenharEstrela();
-		for (int k = 0; k < _sis.Orbitas; k++) DesenharPlaneta(k);
+		for (int k = 0; k < _sis.Orbitas; k++) if (_sis.NaCarta(k)) DesenharPlaneta(k);   // (2026-10-27) sem o Yardrat, o secreto
 		DesenharEu();
 		DesenharTitulo();
 		DesenharLegenda();
@@ -506,6 +507,7 @@ public partial class TelaDoSistema : Control
 		Vector2 c = ParaTela(Vector2.Zero);
 		for (int k = 0; k < _sis.Orbitas; k++)
 		{
+			if (!_sis.NaCarta(k)) continue;   // (2026-10-27) nem o anel do Yardrat, o secreto (o pedido 109)
 			float r = (float)_sis.Semieixo(k) * _escala;
 			if (r < 2f) continue;
 			bool marcado = _alvo == k;

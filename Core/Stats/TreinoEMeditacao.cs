@@ -35,7 +35,8 @@ namespace Jandirus.Core.Stats;
 ///     `Train()` nao pergunta por selo, e o participante do torneio ja entra na espera com a atividade que tinha.
 ///   * **O ESMAGAMENTO NAO BARRA**: treinar sob gravidade pesada e o proposito dela (na mineracao ele barra). (2026-10-23) O que
 ///     barra e o PESO DEMAIS -- acima de 8x o limite do corpo (dono: *"vc nem conseguiria treinar assim"*, `Fighter.PesoDemaisPraTreinar`);
-///     gravidade alta sem peso nenhum continua sendo treino.
+///     gravidade alta sem peso nenhum continua sendo treino. (2026-10-27) ATE 4x A MAESTRIA: acima disso barra tambem (o pedido 117 do dono,
+///     `Fighter.GravidadeDemaisPraTreinar`).
 ///   * `Swim()` tambem chama `Deoccupy()` uma vez (`Swim.dm:8`), mas o `Train()` nao pergunta `swim`: no DM se
 ///     volta a treinar dentro d'agua na tecla seguinte. Aqui nadar so barra a MEDITACAO, que e o que o verbo diz.
 ///   * O raio na mao (`charging`/`beaming`) nao barra: no DM e ao contrario -- treinar ou meditar SOLTA o raio
@@ -67,9 +68,10 @@ public static class TreinoEMeditacao
 	/// <param name="emBriga">Trocou golpe com outro corpo nos ultimos segundos.</param>
 	/// <param name="saiuDoLugar">Andando, ou fora do ponto em que a atividade comecou.</param>
 	/// <param name="pesoDemais">(2026-10-23) Com o peso acima de 8x o limite do corpo (`Fighter.PesoDemaisPraTreinar`): nada rende.</param>
+	/// <param name="gravidadeDemais">(2026-10-27) Com a gravidade acima de 4x a maestria (`Fighter.GravidadeDemaisPraTreinar`): nada rende.</param>
 	public static string PorQueNao(bool meditar, bool emCurso, bool ko, bool cadaver, bool possuido, bool fera,
 								   bool agarrado, bool voando, bool nadando, bool atirando, bool emBriga,
-								   bool saiuDoLugar, bool pesoDemais)
+								   bool saiuDoLugar, bool pesoDemais, bool gravidadeDemais = false)
 	{
 		string o = meditar ? "meditar" : "treinar";
 		string fim = meditar ? "você para de meditar." : "você para de treinar.";
@@ -81,6 +83,10 @@ public static class TreinoEMeditacao
 		if (pesoDemais)
 			return emCurso ? $"o peso passou de {GainKnobs.RazaoQueImpedeOTreino:0.#}x o que o seu corpo aguenta: {fim}"
 						   : $"com esse peso você não consegue {o}: ele passa de {GainKnobs.RazaoQueImpedeOTreino:0.#}x o que o seu corpo aguenta. Tire peso (menu P, aba Equip).";
+		// (2026-10-27) A GRAVIDADE DEMAIS, logo depois do peso e pelo mesmo motivo: a saida e baixar a gravidade ou ir pra um chao mais leve
+		if (gravidadeDemais)
+			return emCurso ? $"a gravidade daqui passou de {GainKnobs.RazaoDaGravidadeQueImpedeOTreino:0.#}x a sua maestria: {fim}"
+						   : $"nessa gravidade você não consegue {o}: ela passa de {GainKnobs.RazaoDaGravidadeQueImpedeOTreino:0.#}x a sua maestria. Baixe a gravidade ou vá pra um lugar mais leve.";
 		if (agarrado) return emCurso ? $"preso num agarrão você não se concentra: {fim}" : "preso num agarrão você não se concentra.";
 		if (voando) return emCurso ? $"no ar não dá: {fim}" : $"pouse antes: não dá pra {o} no ar.";
 		if (meditar && nadando) return emCurso ? $"dentro d'água não dá: {fim}" : "não dá pra meditar dentro d'água.";

@@ -482,7 +482,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
 			if (pegos >= 3) break;
-			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.IntocavelPara(pl.Combate)) continue;   // (2026-10-27, o pedido 129) `IntocavelPara`
 			if (Vec2.Distance(o.Pos, pl.Pos) > ColadoG7) continue;
 			if (!AlcancaPelaAltura(pl, o)) continue;
 

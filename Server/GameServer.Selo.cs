@@ -358,6 +358,14 @@ public sealed partial class GameServer
 			// `SealStrength` e a variavel que o DM DECLARA E NUNCA PREENCHE (`:194`) -- entra zero, e
 			// zero vira o teto duro de 40 bilhoes. Ver `Selo.TetoDuro`, onde a escolha de manter o
 			// defeito esta justificada.
+			// (2026-10-27, o pedido 132) O NPC DE SAGA NAO SAI DO PLANETA DA SAGA -- nem pro pote (`EhDeSaga`): a fita se desfaz nele.
+			if (EhDeSaga(alvo))
+			{
+				if (_players.TryGetValue(f.Dono, out ServerPlayer? quemLancou))
+					Avisar(quemLancou, $"a fita do Mafuba se desfaz em {alvo.Name}: ele não sai do planeta da saga.");
+				_fitas.RemoveAt(i);
+				continue;
+			}
 			Selar(alvo, 0, 1, f.PoteId);
 			foreach (ServerPlayer o in ZoneList(f.Zona.Hash))
 				Avisar(o, $"{alvo.Name} foi selado pelo Mafuba!");
@@ -413,7 +421,8 @@ public sealed partial class GameServer
 
 			foreach (ServerPlayer alvo in ZoneList(p.Zona.Hash).ToList())
 			{
-				if (alvo.Selo.Preso || alvo.Ficha.dead) continue;
+				// (2026-10-27, o pedido 132) ...e o NPC de saga a fenda nao suga: ele nao sai do planeta da saga (`EhDeSaga`)
+				if (alvo.Selo.Preso || alvo.Ficha.dead || EhDeSaga(alvo)) continue;
 
 				float dist = Vec2.Distance(alvo.Pos, p.Pos);
 

@@ -154,6 +154,20 @@ public partial class GameServer
 	{
 		UsarHabilidade(pl, "mente");
 		AdiantarAOndaDaMenteNoTeste();
+		// (2026-10-27, o pedido 124c) O REFLEXO NAO NASCE MAIS NA PORTA: a lista abre, e ele e escolhido nela, pelo mesmo canal do botao. As
+		// familias daqui medem a mente COM o reflexo (a de sempre); a lista e da `--mentelistateste`. Na mente alheia (a visita) nao se escolhe.
+		if (NaMente(pl) && pl.CloneId == 0 && DimensaoMental.Anfitriao(pl.Zone) == pl.Id)
+			UsarHabilidade(pl, Jandirus.Core.Npc.MenteOponentes.Pedido(Jandirus.Core.Npc.MenteOponentes.Tipo.Reflexo, ""));
+	}
+
+	/// <summary>
+	/// (2026-10-27, o pedido 124c) ACORDAR POR VONTADE, NA BANCADA: com a lembranca de pe nao se acorda (a luta nao se encerra no meio), entao
+	/// o reflexo que a porta da bancada escolheu se desfaz antes -- pelo `DesfazerOOponente`, o caminho de quando chega um visitante.
+	/// </summary>
+	private void AcordarDaMenteNaBancada(ServerPlayer pl)
+	{
+		DesfazerOOponente(pl, "");
+		UsarHabilidade(pl, "sairdamente");
 	}
 
 	/// <summary>
@@ -209,7 +223,7 @@ public partial class GameServer
 			OCorpoQueFica(a, b, fora);
 			BaterAcordaEODanoVale(a, b, fora);
 			OGanhoAUmQuarto(a, fora);
-			OReflexoVoltaEDaPraLutar(a, b, fora);
+			AVitoriaDevolveALista(a, b, fora);
 			OBonecoApanhaMasNaoConta(a, b, fora, carrasco);
 			OVisitante(a, b, fora, carrasco);
 			OLemeDaNave(a, b, fora);
@@ -694,7 +708,7 @@ public partial class GameServer
 
 		// E A SAIDA LIMPA O 0,25 -- "ligar e esquecer de desligar" e o modo de falha nomeado no
 		// cabecalho do `RitmoDaZona`, e ele seria um castigo silencioso de 0,25x na Terra pra sempre.
-		UsarHabilidade(a, "sairdamente");
+		AcordarDaMenteNaBancada(a);
 		AfirmarMvv("sair da mente devolve o ritmo a 1x (nao ha 0,25 preso no bolso)",
 				   !NaMente(a) && Math.Abs(a.Ficha.zoneGainMult - 1) < 1e-9, $"{a.Ficha.zoneGainMult}");
 
@@ -704,38 +718,25 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 10) O REFLEXO SE REERGUE -- COM O CORPO NO CHAO LA FORA
+	// 10) A VITORIA NA MENTE -- COM O CORPO NO CHAO LA FORA (o pedido 124c, 2026-10-27)
 	// =====================================================================
 	/// <summary>
-	/// *"o clone volta depois de 15 s e da pra lutar de novo -- e a sessao NAO acabou."*
+	/// *"Vitoria e escolhe outro"* -- o dono, pro documento de um jogador. Ate 2026-10-27 esta familia media o `clone_watch` do DM: o reflexo
+	/// derrubado se reerguia em 15 s, e a sessao nao acabava. Agora derrubar a lembranca e VITORIA: ela se desfaz, o BP entra pela forca dela,
+	/// a lista volta -- e a sessao continua nao acabando. As regras da lista sao da `--mentelistateste`.
 	///
-	/// ============================ O QUE ESTA FAMILIA TEM QUE A `--menteteste` NAO PODE TER ============================
-	/// A familia 6 de la mede o `clone_watch` inteiro (o prazo, a cura, o ciclo, a morte que encerra) com
-	/// um dono FORJADO -- e um dono forjado nao tem `Peer`, logo **nao tem corpo largado**: a mente dele
-	/// e um bolso que ninguem alcanca. Tudo o que aquela familia diz sobre o reflexo continua verdade
-	/// aqui e nao e repetido.
+	/// ============================ O QUE SO DAQUI SE VE ============================
+	/// A OUTRA PONTA DA MESMA SESSAO: enquanto a lembranca cai dentro da cabeca de A, **o corpo de A continua deitado no mapa, meditando, na
+	/// tela de B**. As duas metades sao independentes no codigo (uma e o `TicarUmCorpo`, a outra e a `ZoneList` da zona de fora), e um
+	/// `SairDaMente` disparado pela vitoria -- o que a MORTE da lembranca fazia antes da lista -- derrubaria as duas de uma vez.
 	///
-	/// O QUE SO DAQUI SE VE E A OUTRA PONTA DA MESMA SESSAO: enquanto o reflexo esta no chao dentro da
-	/// cabeca de A, **o corpo de A continua deitado no mapa, meditando, na tela de B**. As duas metades
-	/// sao independentes no codigo (uma e o `TicarUmCorpo`, a outra e a `ZoneList` da zona de fora) e o
-	/// que o dono pediu foi que as duas valessem ao mesmo tempo. Um `SairDaMente` disparado pela queda
-	/// -- que era o comportamento ANTIGO -- derrubaria as duas de uma vez, e so uma bancada com os dois
-	/// lados no ar percebe.
-	///
-	/// ============================ O REFLEXO E ENFRAQUECIDO, E O PINO E ENFRAQUECIDO JUNTO ============================
-	/// Ele nasce com o BP EXPRESSO do dono (`EspelharODono`), entao um reflexo em pe de igualdade
-	/// derrubaria A durante os 15 s de medida -- e o que estaria sendo medido seria a borda de KO do
-	/// jogador, nao a volta do reflexo. A `--menteteste` ja usa o mesmo recurso.
-	///
-	/// **E NAO BASTA BAIXAR O `Ficha.BP`**: o `TicarUmCorpo` REPINA o reflexo no `BpDaMente` a cada tique
-	/// (o `NPCTicker()` do `MindClone`), entao o poder voltaria sozinho no tique seguinte e a bancada
-	/// mediria uma briga entre iguais achando que enfraqueceu alguem. Os dois numeros descem juntos --
-	/// que e, de quebra, a prova de que o pino existe e esta ligado.
-	/// ============================================================================================================
+	/// O REFLEXO E ENFRAQUECIDO, E O PINO JUNTO: ele nasce com o BP EXPRESSO do dono, e o `TicarUmCorpo` o REPINA no `BpDaMente` a cada
+	/// tique -- baixar so o `Ficha.BP` deixaria uma briga entre iguais.
+	/// ==========================================================================
 	/// </summary>
-	private void OReflexoVoltaEDaPraLutar(ServerPlayer a, ServerPlayer b, ZoneKey fora)
+	private void AVitoriaDevolveALista(ServerPlayer a, ServerPlayer b, ZoneKey fora)
 	{
-		GD.Print("[menteviva] -- 10) o reflexo cai, se reergue em 15 s, e da pra lutar de novo");
+		GD.Print("[menteviva] -- 10) derrubar a lembranca e VITORIA: a lista volta, e da pra lutar de novo");
 
 		MoveToZone(a.Id, fora, new Vec2(4000, 4000));
 		MoveToZone(b.Id, fora, new Vec2(4096, 4000));
@@ -749,134 +750,71 @@ public partial class GameServer
 
 		PortaDaMenteNaBancada(a);
 		if (!NaMente(a) || !_players.TryGetValue(a.CloneId, out ServerPlayer? reflexo))
-		{ AfirmarMvv("A entrou na propria mente com o reflexo de pe", false, $"{a.Zone} / {a.CloneId}"); return; }
+		{ AfirmarMvv("A entrou na propria mente e escolheu o reflexo na lista", false, $"{a.Zone} / {a.CloneId}"); return; }
 		if (a.BonecoLargado is not { } corpoDeA)
 		{ AfirmarMvv("o corpo de A ficou no chao pra esta familia", false); return; }
 
-		// O ENFRAQUECIMENTO -- os DOIS numeros, ver o cabecalho.
-		void Enfraquecer()
+		void Enfraquecer(ServerPlayer r)
 		{
-			reflexo.Ficha.BP = 100;
-			reflexo.Ficha.Statify();
-			reflexo.Ficha.PowerLevel();
-			reflexo.BpDaMente = 100;
-			reflexo.SigAtributos = "";
+			r.Ficha.BP = 100;
+			r.Ficha.Statify();
+			r.Ficha.PowerLevel();
+			r.BpDaMente = 100;
+			r.SigAtributos = "";
 		}
-		Enfraquecer();
-
 		void UmTique()
 		{
 			TickCombate(Protocol.TickSeconds);
 			TickDosCorposSemDono(Protocol.TickSeconds);
 		}
-		void Rodar(double segundos)
+		// A QUEDA VEM DO SOCO DE A, pelo resolvedor de sempre -- e nao de um `KO = true` escrito aqui.
+		int Socar(ServerPlayer r)
 		{
-			int n = (int)Math.Round(segundos / Protocol.TickSeconds);
-			for (int i = 0; i < n; i++) UmTique();
+			int socos = 0;
+			while (socos < 60 && !r.Ficha.KO && !r.Ficha.dead)
+			{
+				r.Pos = a.Pos + new Vec2(24, 0);
+				a.Facing = MoveRules.FacingFrom(r.Pos - a.Pos, a.Facing);
+				a.Combate.Recarga = 0;
+				Atacar(a, Protocol.Golpe.Pesado);
+				socos++;
+			}
+			return socos;
 		}
 
-		// A QUEDA VEM DO SOCO DE A, pelo resolvedor de sempre -- e nao de um `KO = true` escrito aqui:
-		// e justamente o relogio que aquele caminho arma (12 s) que o mecanismo tem que reescrever.
-		int socos = 0;
-		while (socos < 60 && !reflexo.Ficha.KO)
-		{
-			reflexo.Pos = a.Pos + new Vec2(24, 0);
-			a.Facing = MoveRules.FacingFrom(reflexo.Pos - a.Pos, a.Facing);
-			a.Combate.Recarga = 0;
-			Atacar(a, Protocol.Golpe.Pesado);
-			socos++;
-		}
+		Enfraquecer(reflexo);
+		double bpAntes = a.Ficha.BP;
+		int socos = Socar(reflexo);
 		AfirmarMvv($"A derruba o proprio reflexo a soco, pelo resolvedor de sempre ({socos} golpe(s))",
-				   reflexo.Ficha.KO, $"KO={reflexo.Ficha.KO}");
+				   reflexo.Ficha.KO || reflexo.Ficha.dead, $"KO={reflexo.Ficha.KO}");
 
 		UmTique();
-		AfirmarMvv("no primeiro tique caido o mecanismo assume a queda (o `clone_watch`)",
-				   reflexo.CaiuNaMente, "o bit nao foi escrito");
-		// A DESIGUALDADE INVERTEU -- ver a mesma afirmacao em `GameServer.MenteTeste.cs`: o nocaute comum
-		// deixou de ser 12 s e virou o coma do DM com teto de 225, entao o prazo do reflexo agora e o
-		// MENOR dos dois. A pergunta continua sendo "e o relogio dele?", so que medida contra o numero
-		// dele.
-		AfirmarMvv($"...e o relogio do nocaute foi REESCRITO pro prazo do DM ({SegundosAteOReflexoSeReerguer:0}s)",
-				   reflexo.Combate.NocauteRestante <= SegundosAteOReflexoSeReerguer
-				   && reflexo.Combate.NocauteRestante > SegundosAteOReflexoSeReerguer - 1
-				   && !reflexo.Combate.NocautePorVital,
-				   $"{reflexo.Combate.NocauteRestante:0.00} (teto comum {MeleeResolver.TetoDoNocaute})");
-		AfirmarMvv("...e a QUEDA nao encerrou o transe (era o comportamento antigo)",
-				   NaMente(a) && a.CloneId == reflexo.Id, $"{a.Zone} / {a.CloneId}");
+		AfirmarMvv("no primeiro tique caido, a queda e VITORIA: a lembranca se desfaz (nao se reergue mais) e o BP entra",
+				   a.CloneId == 0 && !_players.ContainsKey(reflexo.Id) && a.Ficha.BP > bpAntes,
+				   $"lembranca {a.CloneId}, BP {bpAntes:N2} -> {a.Ficha.BP:N2}");
+		AfirmarMvv("...e a VITORIA nao encerrou o transe", NaMente(a), a.Zone.ToString());
 
 		// ============================ A OUTRA PONTA DA MESMA SESSAO ============================
-		// So esta bancada consegue afirmar isto: com o reflexo no chao la dentro, o corpo continua
-		// deitado la fora, na lista de zona que vira o snapshot de B, e MEDITANDO no byte do fio.
-		// ==================================================================================
 		AfirmarMvv("...e la fora o corpo de A continua no chao da zona, na lista que vira a tela de B",
 				   ZoneList(fora.Hash).Contains(corpoDeA) && ZoneList(fora.Hash).Contains(b),
 				   corpoDeA.Zone.ToString());
 		AfirmarMvv("...e no BYTE do snapshot ele continua MEDITANDO",
 				   NoFio(corpoDeA).Pose == Protocol.Pose.Meditando, NoFio(corpoDeA).Pose.ToString());
 
-		// AOS 13 S ELE AINDA TEM QUE ESTAR NO CHAO: 13 > 12, entao um verde aqui so e possivel se o
-		// nocaute comum tiver sido de fato substituido.
-		Rodar(13);
-		AfirmarMvv("aos 13 s (mais que os 12 do nocaute comum) ele CONTINUA no chao",
-				   reflexo.Ficha.KO && reflexo.CaiuNaMente, $"KO={reflexo.Ficha.KO}");
-		AfirmarMvv("...e A nao foi expulso da propria mente nesse meio tempo",
-				   NaMente(a) && a.BonecoLargado == corpoDeA, a.Zone.ToString());
-
-		Rodar(3);
-		AfirmarMvv("passados os 15 s ele esta de PE de novo", !reflexo.Ficha.KO);
-		AfirmarMvv("...e e o MESMO corpo (ele nao foi refeito, ele se reergueu)",
-				   _players.ContainsKey(reflexo.Id) && a.CloneId == reflexo.Id, $"{a.CloneId}");
-		AfirmarMvv("...INTEIRO, e com o Ki cheio (`SpreadHeal(150,1,1)` + `Ki = MaxKi`)",
-				   Math.Abs(reflexo.Combate.Corpo.Vida() - 100) < 1e-6
-				   && reflexo.Ficha.MaxKi > 0
-				   && Math.Abs(reflexo.Ficha.Ki - reflexo.Ficha.MaxKi) < 1e-6,
-				   $"vida {reflexo.Combate.Corpo.Vida():0.##}, ki {reflexo.Ficha.Ki:0}/{reflexo.Ficha.MaxKi:0}");
-		AfirmarMvv("...e a queda foi dada por encerrada (o bit nao fica preso pro proximo KO)",
-				   !reflexo.CaiuNaMente);
-		AfirmarMvv("...e o poder dele voltou a ser o do DONO (a reancoragem do `EspelharODono`)",
-				   Math.Abs(reflexo.Ficha.BP - a.Ficha.expressedBP) < 1,
-				   $"{reflexo.Ficha.BP:N0} x {a.Ficha.expressedBP:N0}");
-
-		// ============================ E A SESSAO NAO ACABOU ============================
-		// As tres coisas que a definem, medidas juntas: a pessoa continua no bolso, o corpo continua
-		// no mapa e o oponente continua de pe.
-		// ===========================================================================
-		AfirmarMvv("A SESSAO NAO ACABOU: A na mente, o corpo dele no mapa, e o oponente de pe",
-				   NaMente(a) && a.BonecoLargado == corpoDeA
-				   && ZoneList(fora.Hash).Contains(corpoDeA) && !reflexo.Ficha.KO,
-				   $"{a.Zone} / corpo {(a.BonecoLargado == null ? "sumiu" : "no chao")}");
-
-		// ============================ E DA PRA LUTAR DE NOVO ============================
-		// O ciclo inteiro outra vez, pelo mesmo caminho: enfraquece (o reerguer reancorou no dono, ver
-		// acima), soca, e o mecanismo tem que reabrir a queda. Um bit que nao se limpasse daria verde na
-		// primeira volta e travaria o reflexo no chao pra sempre na segunda.
-		// ============================================================================
-		Enfraquecer();
-		double vidaDoReflexo = reflexo.Combate.Corpo.Vida();
-		int socos2 = 0;
-		while (socos2 < 60 && !reflexo.Ficha.KO)
-		{
-			reflexo.Pos = a.Pos + new Vec2(24, 0);
-			a.Facing = MoveRules.FacingFrom(reflexo.Pos - a.Pos, a.Facing);
-			a.Combate.Recarga = 0;
-			Atacar(a, Protocol.Golpe.Pesado);
-			socos2++;
-		}
-		AfirmarMvv($"DA PRA LUTAR DE NOVO: o mesmo reflexo torna a apanhar e a cair ({socos2} golpe(s))",
-				   reflexo.Ficha.KO && reflexo.Combate.Corpo.Vida() < vidaDoReflexo - 1e-9,
-				   $"vida {vidaDoReflexo:0.##} -> {reflexo.Combate.Corpo.Vida():0.##}");
-
+		// ============================ E DA PRA LUTAR DE NOVO: a lista devolve outra lembranca ============================
+		UsarHabilidade(a, Jandirus.Core.Npc.MenteOponentes.Pedido(Jandirus.Core.Npc.MenteOponentes.Tipo.Reflexo, ""));
+		if (!_players.TryGetValue(a.CloneId, out ServerPlayer? segundo) || segundo.Id == reflexo.Id)
+		{ AfirmarMvv("a lista devolve outra lembranca (um corpo NOVO)", false, $"{a.CloneId}"); return; }
+		Enfraquecer(segundo);
+		double bpAntes2 = a.Ficha.BP;
+		int socos2 = Socar(segundo);
 		UmTique();
-		AfirmarMvv("...e a segunda queda reabre o ciclo, com o prazo do DM outra vez",
-				   reflexo.CaiuNaMente
-				   && reflexo.Combate.NocauteRestante <= SegundosAteOReflexoSeReerguer
-				   && reflexo.Combate.NocauteRestante > SegundosAteOReflexoSeReerguer - 1,
-				   $"{reflexo.CaiuNaMente} / {reflexo.Combate.NocauteRestante:0.00}");
-		AfirmarMvv("...e o transe continua aberto (parceiro de treino infinito)",
-				   NaMente(a) && a.BonecoLargado != null, a.Zone.ToString());
+		AfirmarMvv($"DA PRA LUTAR DE NOVO: a lista ergue outra lembranca, ela apanha, cai ({socos2} golpe(s)) e paga de novo",
+				   a.CloneId == 0 && !_players.ContainsKey(segundo.Id) && a.Ficha.BP > bpAntes2 && NaMente(a) && a.BonecoLargado == corpoDeA,
+				   $"lembranca {a.CloneId}, BP {bpAntes2:N2} -> {a.Ficha.BP:N2}, {a.Zone}");
 
 		UsarHabilidade(a, "sairdamente");
-		AfirmarMvv("e quem encerra a sessao continua sendo a VONTADE de A",
+		AfirmarMvv("e quem encerra a sessao continua sendo a VONTADE de A (sem luta de pe, acordar e livre)",
 				   !NaMente(a) && a.CloneId == 0 && a.BonecoLargado == null
 				   && !ZoneList(fora.Hash).Any(p => p.DonoDoCorpoLargado != 0), a.Zone.ToString());
 
@@ -1447,6 +1385,12 @@ public partial class GameServer
 		TickDeQuemVolta();
 		AfirmarMvv("...e A esta de volta no corpo, caido, e nao preso na mente",
 				   !NaMente(a) && a.BonecoLargado == null, a.Zone.ToString());
+		// (2026-10-27, o pedido 124c) E CAIR COM O REFLEXO DE PE E DERROTA: o foco abalado barra o mergulho. Medido aqui porque e a bancada
+		// com corpo largado de verdade -- a borda que tira o caido e a dele. Depois o foco volta, pra seguir medindo as bordas.
+		AfirmarMvv("...e cair com o reflexo de pe e DERROTA: o foco abalado barra o mergulho por 30 min (o pedido 124c)",
+				   a.Ficha.mergulho_bloqueado_ate > NowMs() + 29 * 60_000,
+				   $"{(a.Ficha.mergulho_bloqueado_ate - NowMs()) / 60_000.0:0.#} min");
+		a.Ficha.mergulho_bloqueado_ate = 0;
 
 		a.Ficha.KO = false;
 		a.Combate.NocauteRestante = 0;
@@ -1571,7 +1515,7 @@ public partial class GameServer
 					   (boneco.Pos - onde).LengthSquared < 1e-6 && boneco.Cerebro == null);
 		}
 
-		UsarHabilidade(a, "sairdamente");
+		AcordarDaMenteNaBancada(a);
 		a.Ficha.med = false;
 		MoveToZone(a.Id, fora, new Vec2(4000, 4000));
 		CurarPorInteiro(a);
@@ -1653,7 +1597,7 @@ public partial class GameServer
 		PortaDaMenteNaBancada(a);
 		AfirmarMvv("...e o corpo volta a ficar pra tras, como em qualquer meditacao",
 				   NaMente(a) && a.BonecoLargado != null, a.Zone.ToString());
-		UsarHabilidade(a, "sairdamente");
+		AcordarDaMenteNaBancada(a);
 		a.Ficha.med = false;
 	}
 

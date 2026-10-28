@@ -78,8 +78,9 @@ public sealed partial class GameServer
 	{
 		if (ObraQueAceita(pl, "kaioh_falar") == null) { Avisar(pl, "o Sr. Kaioh não está ao alcance -- chegue mais perto dele."); return; }
 
-		// O KAIO-KEN: coracao limpo E forca de verdade (`:208-211`)
-		if (pl.Karma >= NpcsDeConversa.KarmaDoKaioken && pl.Ficha.BP >= NpcsDeConversa.BpDoKaioken
+		// O KAIO-KEN: coracao limpo E forca de verdade (`:208-211`) -- e, desde 2026-10-27 (o pedido 124d), so pra quem CORREU A SNAKE WAY
+		// (`Fighter.SnakeWayFeita`, o mesmo pra Genkidama). Ver `GameServer.SnakeWay.cs`.
+		if (pl.Ficha.SnakeWayFeita && pl.Karma >= NpcsDeConversa.KarmaDoKaioken && pl.Ficha.BP >= NpcsDeConversa.BpDoKaioken
 			&& LicaoDeNpc(pl, NpcsDeConversa.SkillDoKaioken))
 		{
 			Avisar(pl, "Sr. Kaioh ajeita os óculos: \"Um coração puro E força de verdade... muito bem! Vou te ensinar a minha "
@@ -87,7 +88,7 @@ public sealed partial class GameServer
 			return;
 		}
 		// A GENKIDAMA: o coracao no maximo (`:212-215`)
-		if (pl.Karma >= NpcsDeConversa.KarmaDaGenkidama && LicaoDeNpc(pl, NpcsDeConversa.SkillDaGenkidama))
+		if (pl.Ficha.SnakeWayFeita && pl.Karma >= NpcsDeConversa.KarmaDaGenkidama && LicaoDeNpc(pl, NpcsDeConversa.SkillDaGenkidama))
 		{
 			Avisar(pl, "Sr. Kaioh sorri, solene: \"O seu coração brilha sem uma única sombra... Você é digno da GENKIDAMA! "
 						   + "Erga as mãos e peça emprestada a energia de todos os seres vivos!\"");
@@ -101,7 +102,9 @@ public sealed partial class GameServer
 		}
 		Avisar(pl, "Sr. Kaioh: \"Bem-vindo ao meu pequeno planeta! A gravidade aqui é dez vezes a da Terra -- treine duro e "
 					  + "você volta à vida mais forte do que nunca. Cuidado pra não pisar no Bubbles!\"");
-		if (!pl.Livro.Sabe(NpcsDeConversa.SkillDoKaioken))
+		if (!pl.Ficha.SnakeWayFeita)
+			Avisar(pl, "Sr. Kaioh: \"Quer aprender comigo? Então corra a SNAKE WAY -- a pé, desde a mesa do Enma! É só falar com ele.\"");
+		else if (!pl.Livro.Sabe(NpcsDeConversa.SkillDoKaioken))
 			Avisar(pl, $"Sr. Kaioh: \"Mantenha esse coração LIMPO (karma {pl.Karma}/{NpcsDeConversa.KarmaDoKaioken}) e fique forte, "
 						   + "e talvez eu te ensine alguma coisinha...\"");
 		else if (!pl.Livro.Sabe(NpcsDeConversa.SkillDaGenkidama))

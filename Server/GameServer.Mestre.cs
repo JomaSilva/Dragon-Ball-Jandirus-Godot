@@ -386,6 +386,8 @@ public partial class GameServer
 		aluno.PedidoDoMestre = null;
 		ServerPlayer? mestre = CorpoDaAssinatura(p.SigMestre);
 		if (mestre == null) { Avisar(aluno, $"{p.NomeDoMestre} nao esta mais por aqui."); return; }
+		// (2026-10-27) nem mestre e aluno, nem o despertar assistido, entre personagens do mesmo IP (o pedido 110) -- ver `GameServer.MesmoIp.cs`
+		if (aceitou && MesmoIp(mestre, aluno)) { Avisar(aluno, FraseDoMesmoIp); Avisar(mestre, FraseDoMesmoIp); return; }
 
 		if (!aceitou)
 		{

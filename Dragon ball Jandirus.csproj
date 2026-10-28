@@ -9,6 +9,28 @@
     <RootNamespace>Jandirus</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!--
+      AS PASTAS QUE O BUILD NAO VARRE (2026-10-27, o pedido 122: "antigamente eram apenas alguns segundos, agr pode levar
+      ate 2 mins"). O SDK procura **/*.cs, e mais onze padroes (imagens, xaml, resw, resx...), a partir da raiz, e o
+      MSBuild 18 percorre a arvore inteira pra CADA padrao, mesmo os de condicao falsa. A exclusao generica de pasta oculta
+      (**/.*/**) nao poda nada: so a pasta excluida PELO NOME e pulada inteira. E a Trailer/bruto/appdata guarda uma pasta
+      de dados do Godot por bancada (165 mil subpastas de shader_cache em 2026-10-27, e cresce a cada agente novo): so
+      AVALIAR o projeto levava ~4 min com a maquina ocupada, e 0,8 s com estas exclusoes. Nenhuma delas tem codigo do jogo
+      (o codigo e Client/, Server/ e Net/; o Core entra por ProjectReference). Bancada: `ag/podabuild/avaliacao.py`.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Trailer/**;.claude/**;.godot/**;.git/**;Assets/**;logs/**;bat/**;.idea/**;.tools/**;Core/**;Tools/**;ServidorLinux/**</DefaultItemExcludes>
+
+    <!--
+      SEM A ANALISE DE NULOS no build do jogo (o mesmo pedido): ela so produz os avisos CS86xx, e custava um terco da
+      compilacao: o GameServer e UMA classe parcial de ~330 mil linhas, e o compilador so paraleliza por classe. Medido
+      com o codigo parado: 68,4 s -> 45,6 s, e a DLL sai IDENTICA byte a byte (o `Nullable` continua ligado: as anotacoes
+      e os atributos sao os mesmos). O rascunho dos agentes (`_rascunho_6199e7/rascunho.py`) compila com ela, entao os
+      avisos de nulo continuam aparecendo pra quem escreve o codigo.
+    -->
+    <Features>$(Features);run-nullable-analysis=never</Features>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- as regras do jogo (sem Godot dentro): mesma DLL usada pelo cliente e pelo servidor -->
     <ProjectReference Include="Core\Jandirus.Core.csproj" />

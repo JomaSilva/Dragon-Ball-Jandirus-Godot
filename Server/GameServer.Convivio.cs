@@ -170,6 +170,13 @@ public partial class GameServer
 		// SEM A CLASSE, de proposito: ela nunca aparece pra ninguem (`GameServer.Sigilo.cs`, regra 2), e o que
 		// a foto nao guarda nao tem como vazar. Ver o cabecalho do `Conhecido`.
 		bool novo = eu.Social.Fotografar(outro.Assinatura, outro.Name, outro.Race, outro.Genero, outro.Idade, agora);
+		// (2026-10-27, o pedido 124c) E O PODER E A CARA DE QUANDO EU O VI, so quando a foto foi tirada AGORA (o prazo de um minuto dela): a
+		// lembranca dele na minha mente nasce com eles -- ver `GameServer.CriarClone`.
+		if (eu.Social.Conhecidos.TryGetValue(outro.Assinatura, out Jandirus.Core.Social.Conhecido? foto) && foto.VistoEm == agora)
+		{
+			foto.PoderVisto = outro.Ficha.expressedBP;
+			foto.AparenciaVista = outro.Visual.Copiar();
+		}
 		AprenderDetalhes(eu, outro, agora);
 		return novo;
 	}
@@ -367,6 +374,9 @@ public partial class GameServer
 		{
 			if (o == vitima || o == algoz) continue;              // (2)
 			if (!EhPessoa(o)) continue;
+			// (2026-10-27) QUEM ASSISTE NAO SE ENFURECE por um corpo da propria conexao -- nem pelo que caiu, nem pelo que derrubou (o
+			// pedido 110: o alt que apanha na frente do principal nao acende a raiva dele). Ver `GameServer.MesmoIp.cs`.
+			if (MesmoIp(o, vitima) || MesmoIp(o, algoz)) continue;
 
 			Jandirus.Core.World.Vec2 d = o.Pos - vitima.Pos;      // (3)
 			if (d.X * d.X + d.Y * d.Y > raio2) continue;
@@ -514,6 +524,10 @@ public partial class GameServer
 			if (!morreu) BichoCaiu(vitima);
 			return;
 		}
+
+		// (2026-10-27) DO MESMO IP A DERROTA NAO RENDE NADA (o pedido 110): nem Zenkai, nem o luto de quem viu, nem o do aliado, nem convivio,
+		// nem sucessao -- o resto deste funil. A fusao ja se desfez acima, que e do corpo e nao um ganho. Ver `GameServer.MesmoIp.cs`.
+		if (MesmoIp(vitima, algoz)) return;
 
 		ZenkaiPorDerrota(vitima, algoz, morreu);
 		LutoNaVizinhanca(vitima, algoz, morreu);

@@ -247,6 +247,10 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// (2026-10-27) A SALA FECHADA NO COMECO DO MUNDO (o pedido 112): culpa da porta, antes da lotacao e da chave -- a chave do Guardiao
+		// nao se gasta numa porta que ainda nao abriu.
+		if (!SalaDoTempoAberta(NowMs())) { Avisar(pl, FraseDaSalaFechada(NowMs())); return; }
+
 		// A LOTACAO ANTES DA AUTORIZACAO: gastar a chave do Guardiao numa porta cheia seria queimar
 		// uma autorizacao que ele so da uma vez.
 		int dentro = QuantosNaSala();
@@ -373,6 +377,11 @@ public sealed partial class GameServer
 		// =============================================================================================
 		Avisar(pl, "  preso e sem ninguém pra soltar, só resta MORRER pra sair -- e morrer cobra o");
 		Avisar(pl, "  preço de sempre (karma, o julgamento do Enma, o revive por Zeni, idade).");
+		// (2026-10-27) a porta fechada no comeco do mundo (o pedido 112): a regra, e o estado deste mundo
+		long agoraDaRegra = NowMs();
+		Avisar(pl, SalaDoTempoAberta(agoraDaRegra)
+			? "  num mundo novo ela fica fechada nos 2 primeiros dias reais (ou até alguém chegar a 20 milhões de BP base) -- neste, já abriu."
+			: "  " + FraseDaSalaFechada(agoraDaRegra));
 
 		string dono = DonoDoCargo("guardian");
 		Avisar(pl, dono.Length > 0
@@ -677,4 +686,61 @@ public sealed partial class GameServer
 	private string DonoDoCargo(string chave) =>
 		// (2026-10-26) o PERSONAGEM que sentou no trono -- no jogo ou fora --, e nao "alguem da conta"
 		_tronos.TryGetValue(chave, out string? conta) && conta.Length > 0 ? NomeDoTrono(chave) : "";
+
+	// =====================================================================
+	// (2026-10-27) A SALA FECHADA NO COMECO DO MUNDO -- o pedido 112 do dono
+	// =====================================================================
+	// *"sala do tempo deveria ter q esperar 2 dias da vida real pra poder entrar pela primeira vez, ou somente quando um player batesse 20m
+	// bp"*, e a escolha dele nas perguntas: o que vier primeiro.
+	//   * O RELOGIO E O DO MUNDO: dois dias reais desde que ele nasceu (o `Nascido` do `universo.json` -- o primeiro boot ou a ultima limpeza).
+	//   * O PODER: a primeira PESSOA (um personagem de conta, nao um NPC) com 20 milhoes de BP base abre a Sala pra todo mundo, com um anuncio
+	//     -- no passe de 5 Hz (`Treinar`), gravado no `universo.json` (sobrevive ao reinicio), e a limpeza o apaga junto com o mundo.
+	//   * Aberta, a porta e a de sempre: a chave do Guardiao, a lotacao e a recarga de 24 h. Vale pra Sala da Terra e pras dos mundos
+	//     sorteados, que o relogio da recarga ja trata como uma so (`FimDaRecargaDasSalas`).
+	// NUM PROCESSO DE BANCADA A SALA NASCE ABERTA, como a zona segura (`ProcessoDeBancada`): as cenas que ja entravam nela continuam medindo
+	// o que mediam, a familia que mede a porta fechada a pede (`SalaFechadaNaBancadaDeTeste`), e nenhuma bancada grava a abertura no
+	// `universo.json` do mundo local.
+
+	/// <summary>Os dois dias reais desde o nascimento do mundo (o pedido 112).</summary>
+	internal const long MsAteASalaAbrir = 2L * 24 * 60 * 60 * 1000;
+
+	/// <summary>O BP base que abre a Sala antes do prazo: a primeira pessoa que chega nele (o pedido 112).</summary>
+	internal const double BpQueAbreASala = 20_000_000;
+
+	/// <summary>(`--salateste`) A SALA FECHADA VALE NESTE PROCESSO DE BANCADA -- a familia dela a pede. O jogo de verdade nao le isto.</summary>
+	internal static bool SalaFechadaNaBancadaDeTeste;
+
+	/// <summary>Quando o mundo nasceu -- e "agora" enquanto a limpeza ainda nao gravou o mundo novo.</summary>
+	private long NascimentoDoMundo(long agora) => _nascimentoDoMundo > 0 ? _nascimentoDoMundo : agora;
+
+	/// <summary>A SALA DO TEMPO JA ABRIU NESTE MUNDO? O prazo do mundo ou o poder de alguem, o que vier primeiro.</summary>
+	private bool SalaDoTempoAberta(long agora) =>
+		(ProcessoDeBancada.Value && !SalaFechadaNaBancadaDeTeste)
+		|| _salaAbertaPor.Length > 0 || agora - NascimentoDoMundo(agora) >= MsAteASalaAbrir;
+
+	/// <summary>A frase da porta fechada: quanto falta, em tempo real, e a outra saida.</summary>
+	private string FraseDaSalaFechada(long agora)
+	{
+		long falta = Math.Max(0, NascimentoDoMundo(agora) + MsAteASalaAbrir - agora);
+		long d = falta / 86_400_000, h = falta % 86_400_000 / 3_600_000, m = falta % 3_600_000 / 60_000;
+		return $"a Sala do Tempo ainda está fechada neste mundo: ela abre em {d}d{h:00}h{m:00}m (tempo real), ou antes, quando alguém "
+			   + "chegar a 20 milhões de BP base.";
+	}
+
+	/// <summary>
+	/// A PRIMEIRA PESSOA COM 20 MILHOES DE BP BASE ABRE A SALA pra todo mundo, enquanto ela esta fechada -- grava no `universo.json` e
+	/// anuncia. Chamada do `Treinar` (o passe de 5 Hz de todo corpo, o mesmo laco do marco de ascensao), entao a conta barata vem
+	/// primeiro. Num processo de bancada so vale quando a familia pede (nenhuma bancada grava no mundo local).
+	/// </summary>
+	private void AbrirASalaPeloPoder(ServerPlayer pl)
+	{
+		if (pl.Ficha.BP < BpQueAbreASala || _salaAbertaPor.Length > 0 || !EhPessoa(pl)) return;
+		if (ProcessoDeBancada.Value && !SalaFechadaNaBancadaDeTeste) return;
+		long agora = NowMs();
+		if (agora - NascimentoDoMundo(agora) >= MsAteASalaAbrir) return;
+		_salaAbertaPor = pl.Name;
+		SalvarSemente();
+		AnunciarNoMundo($"{pl.Name} chegou a 20 milhões de BP: a Sala do Tempo está aberta.");
+		GD.Print($"[server] a Sala do Tempo abriu: {pl.Name} chegou a {pl.Ficha.BP:N0} de BP base");
+	}
 }

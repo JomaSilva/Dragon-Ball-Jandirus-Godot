@@ -43,6 +43,19 @@ namespace Jandirus.Server;
 /// rugido em quem foi marcado como agredido no mesmo quadro (o `MarcarAgressao` chama o <see cref="PagarOGestoSemTiro"/>).
 /// Sem ninguem pego, nada.
 /// ======================================================================================
+///
+/// ============================ LUTAR DE VERDADE RENDE MAIS QUE O SPAR RELAXADO (dono, 2026-10-28, o pedido 148) ============================
+/// *"Atualmente o meta de treinar é ficar relaxed e mirar nos braços pro spar durar mais e desligar knock back, vamos fazer com q lutar com
+/// 100% de poder, kock back ligado etc, deem mais bp em um treino do q um relaxed se socando"*. Duas pecas, so entre jogadores numa troca:
+///   - O GOLPE: o ganho de cada golpe da troca leva a barra de QUEM GANHA (`PoderEmUso.FatorDaTroca`, pelo <see cref="FatorDaLuta"/>): 1x
+///     com o poder inteiro, uma reta ate <see cref="GainKnobs.TrocaNoPiso"/> a 1% -- e relaxado e o piso. Cada lado do golpe com a sua barra.
+///   - A RESERVA (o *"bp invisivel"*): a 5 Hz, enquanto a troca vive e a luta esta quente (golpe entre jogadores nos ultimos
+///     <see cref="GainKnobs.SegundosDeLutaQuente"/> s), cada um guarda `PoderEmUso.ReservaPorSegundo` -- pela barra, e nada relaxado ou com o
+///     knockback desligado. A troca seguinte a paga; sem troca na janela, ela se perde (<see cref="CuidarDaReservaDaLuta"/>).
+/// O dono perguntou se havia jeito melhor sem a reserva. O que pensei foi pagar no golpe o tempo desde a troca anterior, sem guardar nada --
+/// e isso deixaria relaxar entre as trocas e ficar pronto so no instante do soco (ficar pronto e na hora). A reserva enche tique a tique,
+/// com a barra de cada tique, e fecha essa porta.
+/// ==========================================================================================================================================
 /// </summary>
 public partial class GameServer
 {
@@ -62,6 +75,8 @@ public partial class GameServer
 		if (agressor.Id == vitima.Id) return;
 		long agora = NowMs();
 		_ultimoAtaque[(agressor.Id, vitima.Id)] = agora;
+		// (2026-10-28, o pedido 148) GOLPE ENTRE JOGADORES ESQUENTA A LUTA dos dois -- e so com ela quente a reserva enche
+		if (EhJogador(agressor) && EhJogador(vitima)) agressor.GolpeNaTrocaEm = vitima.GolpeNaTrocaEm = agora;
 		// So a janela importa: o que passou dela nao responde mais nada, e sai daqui pra a memoria nao crescer com toda
 		// briga que o servidor ja viu.
 		if (_ultimoAtaque.Count > 512)
@@ -77,14 +92,46 @@ public partial class GameServer
 	/// lados do golpe. Com um NPC no meio: 1, como sempre foi (apanhar de NPC inclusive). Entre dois jogadores: a troca
 	/// se o ALVO atacou o ATACANTE na janela, e zero se nao. E o *"precisa ter uma luta"*: bater em quem nao revida nao
 	/// rende, e apanhar sem revidar tambem nao.
+	///
+	/// (2026-10-28, o pedido 148) NA TROCA, O GANHO LEVA A BARRA DE QUEM GANHA (`PoderEmUso.FatorDaTroca`): o atacante, ou o alvo quando
+	/// <paramref name="quemGanha"/> diz que o ganho e dele (quem apanha). E a troca fica marcada nos dois, pra a reserva da luta se pagar.
 	/// </summary>
-	private double FatorDaLuta(ServerPlayer atacante, ServerPlayer alvo)
+	private double FatorDaLuta(ServerPlayer atacante, ServerPlayer alvo, ServerPlayer? quemGanha = null)
 	{
 		// (2026-10-24) O TREINO COM O WHIS E O BILLS RENDE MUITO (o dono: *"igual no anime"*) -- os dois lados de todo golpe, enquanto a aula
 		// durar. Ver `BillsEWhis.GanhoDoTreino`.
 		if (!Jandirus.Core.Npc.BillsEWhis.TreinoRendeOComumDeTeste && TreinoDivinoEntre(atacante, alvo)) return Jandirus.Core.Npc.BillsEWhis.GanhoDoTreino;
+		// (2026-10-27) DO MESMO IP NAO RENDE NADA (o pedido 110): dois personagens da mesma conexao nao treinam um no outro -- os dois lados do
+		// golpe, soco, ki e tecnica. Ver `GameServer.MesmoIp.cs`.
+		if (MesmoIp(atacante, alvo)) return 0;
 		if (GainKnobs.PvpSemTrocaDeTeste || !EhJogador(atacante) || !EhJogador(alvo)) return 1;
-		return AtacouHaPouco(alvo, atacante) ? GainKnobs.GanhoDaTrocaPvp : 0;
+		if (!AtacouHaPouco(alvo, atacante)) return 0;
+		atacante.TrocouEm = alvo.TrocouEm = NowMs();
+		return GainKnobs.GanhoDaTrocaPvp * PoderEmUso.FatorDaTroca((quemGanha ?? atacante).Ficha);
+	}
+
+	/// <summary>
+	/// (2026-10-28, o pedido 148) A RESERVA DA LUTA, no laco das fichas (5 Hz): enquanto a troca vive (<see cref="GainKnobs.SegundosDaTroca"/>)
+	/// e a luta esta quente, ela enche pela barra e pelo knockback (`PoderEmUso.ReservaPorSegundo`); a troca seguinte a paga pelo funil do
+	/// soco (`AttackGain`: a gravidade do lugar, o banco do potencial, o peso); fora da troca, o que sobrou se perde.
+	/// </summary>
+	private void CuidarDaReservaDaLuta(ServerPlayer pl)
+	{
+		if (!EhJogador(pl)) return;
+		long agora = NowMs();
+		if (agora - pl.TrocouEm > JanelaDaTrocaMs)
+		{
+			pl.ReservaDaLuta = 0;   // *"se passar mt tempo e acabarem saindo do combate, esse bp invisivel por tick é descartado"*
+			return;
+		}
+		if (agora - pl.GolpeNaTrocaEm <= (long)(GainKnobs.SegundosDeLutaQuente * 1000))
+			pl.ReservaDaLuta += PoderEmUso.ReservaPorSegundo(pl.Ficha, pl.Knockback) * SegundosPorFicha;
+		if (pl.TrocouEm > pl.ReservaPagaEm && pl.ReservaDaLuta > 0)
+		{
+			pl.Ficha.AttackGain(_rng, pl.ReservaDaLuta, soOBp: true);   // *"ao trocarem golpe esse bp invisivel vira bp ganho no treino"*
+			pl.ReservaDaLuta = 0;
+			pl.ReservaPagaEm = agora;
+		}
 	}
 
 	// ---------------------------------------------------------------- o ganho do ki

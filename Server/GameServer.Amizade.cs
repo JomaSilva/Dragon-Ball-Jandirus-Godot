@@ -238,6 +238,8 @@ public sealed partial class GameServer
 		public required ServerPlayer Jogador, Npc;
 		public double Ate;
 		public bool LetalAntes;
+		/// <summary>(2026-10-27, o pedido 124b) Desde quando (relogio dos aliados) os dois estao longe demais; -1 = perto.</summary>
+		public double LongeDesde = -1;
 	}
 
 	/// <summary>Os treinos em curso, pelo id do HABITANTE (o ramo dele no `TicarUmCorpo` pergunta por aqui).</summary>
@@ -373,7 +375,14 @@ public sealed partial class GameServer
 		if (n.Ficha.KO || (metade && n.Ficha.HP / 100.0 <= Amizade.VidaQueEncerraOTreino))
 		{ EncerrarOTreinoDeAmizade(t, FimDoTreinoDeAmizade.HabitanteCedeu); return; }
 		if (_relogioDosAliados >= t.Ate) { EncerrarOTreinoDeAmizade(t, FimDoTreinoDeAmizade.Tempo); return; }
-		if ((p.Pos - n.Pos).Length > Amizade.TilesDoTreino * ZoneCollision.TileSize) { EncerrarOTreinoDeAmizade(t, FimDoTreinoDeAmizade.Saiu); return; }
+		// (2026-10-27, o pedido 124b) LONGE DEMAIS SO ENCERRA DEPOIS DE `SegundosLongeQueEncerram` SEGUIDOS: o documento de um jogador, *"The
+		// range limit of the spars is also too low, causing them to forcibly be ended as soon as either of you is hit by a knockback punch"*.
+		if ((p.Pos - n.Pos).Length > Amizade.TilesDoTreino * ZoneCollision.TileSize)
+		{
+			if (t.LongeDesde < 0) t.LongeDesde = _relogioDosAliados;
+			else if (_relogioDosAliados - t.LongeDesde >= Amizade.SegundosLongeQueEncerram) { EncerrarOTreinoDeAmizade(t, FimDoTreinoDeAmizade.Saiu); return; }
+		}
+		else t.LongeDesde = -1;
 
 		if (p.Combate.Letal) p.Combate.Letal = false;
 	}
@@ -383,6 +392,26 @@ public sealed partial class GameServer
 	/// cacando ninguem); quem caiu e posto de pe; os dois ganham o folego do fim -- e o fim que vale (o tempo, ou a metade da vida de um
 	/// dos dois) paga a amizade, com o retorno decrescente do dia.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-27, o pedido 124b) O TREINO QUE CHEGA AO FIM PAGA -- o documento de um jogador: *"this option should have a decent bp reward
+	/// for completing a sparring session successfully, and put you into a state called inspired, where you gain a 1.5x training boost for a
+	/// duration"*. O BP de `Amizade.SegundosDeTreinoDaRecompensa` de treino AQUI (os mesmos passes do `Treinar`, com a gravidade, o teto e o
+	/// banco de cada um -- quem nao pode treinar no lugar nao ganha), e o estado INSPIRADO, que o `Treinar` le (`Inspiracao`).
+	/// </summary>
+	private void PagarOTreinoDeAmizade(ServerPlayer p)
+	{
+		double antes = p.Ficha.BP;
+		int passes = (int)Math.Round(Amizade.SegundosDeTreinoDaRecompensa / SegundosPorFicha);
+		for (int i = 0; i < passes; i++) p.Ficha.TrainGain(_rng, 6.0 / (1 + Math.Log(2)));   // o fator do passe do T, o mesmo do `Treinar`
+		p.Ficha.inspirado_ate = NowMs() + (long)(Amizade.MinutosDoInspirado * 60_000);
+		MandarFicha(p);
+		Avisar(p, $"o treino rendeu {p.Ficha.BP - antes:N0} de BP -- e você está INSPIRADO: treino {Amizade.MultiplicadorDoInspirado:0.#}x por "
+				 + $"{Amizade.MinutosDoInspirado:0} min.");
+	}
+
+	/// <summary>(2026-10-27, o pedido 124b) O fator do estado INSPIRADO no passe do treino (`Treinar`): o multiplicador enquanto dura, 1 fora dele.</summary>
+	private double Inspiracao(ServerPlayer pl) => pl.Ficha.inspirado_ate > NowMs() ? Amizade.MultiplicadorDoInspirado : 1;
+
 	private void EncerrarOTreinoDeAmizade(TreinoDeAmizade t, FimDoTreinoDeAmizade fim)
 	{
 		if (!_treinosDeAmizade.TryGetValue(t.Npc.Id, out TreinoDeAmizade? deFato) || !ReferenceEquals(deFato, t)) return;
@@ -422,6 +451,7 @@ public sealed partial class GameServer
 			Avisar(p, $"o treino com {n.Name} acabou. Amizade {l.Pontos:0}/{Amizade.Cheia:0} (+{ganho:0.#}).");
 			if (!estavaCheio && Amizade.Cheio(l)) AvisarQueConfia(p, n);
 		}
+		if (vale && jogadorNoMundo && npcNoMundo) PagarOTreinoDeAmizade(p);   // (2026-10-27) o pedido 124b
 		else if (jogadorNoMundo)
 			Avisar(p, fim switch
 			{

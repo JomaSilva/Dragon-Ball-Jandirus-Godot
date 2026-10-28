@@ -246,6 +246,9 @@ public partial class RoboDoTuffle : Node
 		Conferir(vestiu && viu,
 				 "N3. o Vegeta de pe, de cabelo do Vegeta e armadura, e do lado o Baby -- o Neo Tuffle de palco, na folha do Baby, de fraque por cima e "
 				 + $"sem os olhos de gente [Baby {baby}: {Contar(Desenho(baby))}]");
+		// (2026-10-28, o pedido 144) o cabelo do Vegeta ANTES da posse, na tela dele -- e a regua do N6b
+		var cabeloDoVegetaAntes = VisualDe(eu)?.TintaDoCabeloDeTeste;
+		string arquivoDoCabeloAntes = VisualDe(eu)?.CabeloDeTeste ?? "";
 
 		// ---------------------------------------------------------- N4. a posse
 		// (Possuido, o corpo e o do Vegeta: a folha da raca dele, o cabelo e a armadura -- e nao a folha do Baby, que e a do Neo Tuffle no proprio
@@ -291,6 +294,14 @@ public partial class RoboDoTuffle : Node
 				 "N6. O CORPO POSSUIDO CAI E O BABY E EXPULSO: ele volta ao proprio corpo (a folha do Baby, careca), de pe ao lado, e o Vegeta volta a "
 				 + $"aparecer caido onde o corpo caiu -- e o chat diz que o Tuffle saiu [possuido por {cli.PossuidoPor}; robo {srv.PalcoN_Robo(eu)}; "
 				 + $"ouvi: {UltimasDitas()}]");
+
+		// (2026-10-28, o pedido 144) *"ao sair do corpo n faz o cabelo do personagem invadido voltar a cor original"*: o boneco do Vegeta, na tela
+		// dele, volta com o MESMO cabelo de antes da posse -- o arquivo e a tinta (a do Saiyajin e nenhuma) -- e nao o branco do Tuffle.
+		bool cabeloDeSempre = await Ate(() => VisualDe(eu) is { TemCabeloDeTeste: true } meu && meu.CabeloDeTeste == arquivoDoCabeloAntes
+															  && !CabeloBranco(eu) && Equals(meu.TintaDoCabeloDeTeste, cabeloDoVegetaAntes), 6);
+		Conferir(cabeloDeSempre,
+				 "N6b. O VEGETA VOLTA COM O CABELO DE SEMPRE (o pedido 144): o arquivo e a tinta de antes da posse, e nao o branco do Tuffle "
+				 + $"[antes {arquivoDoCabeloAntes.Split('/')[^1]} {cabeloDoVegetaAntes}; agora {Cabelo(eu)}]");
 	}
 
 	/// <summary>A TECLA E DE VERDADE: um evento de teclado empurrado no viewport (o caminho do `_UnhandledInput`) -- como a `--diagdrill`.</summary>

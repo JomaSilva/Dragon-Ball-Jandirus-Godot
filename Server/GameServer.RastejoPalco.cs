@@ -61,6 +61,16 @@ public partial class GameServer
 		return true;
 	}
 
+	/// <summary>
+	/// (2026-10-28, o pedido 143) O PRESO DE PE BLINDADO PELA CARENCIA: acima de 5x a maestria o nocaute e na hora, e a razao 8 da cena A
+	/// derrubaria o corpo no primeiro segundo (e o mataria no quinto). Com a carencia (o `Blindado` do funil sem algoz) o chao continua
+	/// prendendo, avisando e cansando -- so o dano e o nocaute ficam de fora. Zero tira a carencia: a cena B precisa do tique que derruba.
+	/// </summary>
+	internal void CarenciaNaCenaDoRastejo(int id, double segundos)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl) && pl.Combate != null) pl.Combate.Carencia = segundos;
+	}
+
 	/// <summary>O que o SERVIDOR sabe do corpo da cena: o desmaio e a marca dele, o rastejo, o passo, a razao, o campo, onde esta, quantas
 	/// correcoes ja levou, se corre e pra onde a cabeca deitada aponta.</summary>
 	internal (bool Existe, bool Ko, bool DaGravidade, bool SoRasteja, float Passo, double Razao, double Campo, Vec2 Pos, int Correcoes,

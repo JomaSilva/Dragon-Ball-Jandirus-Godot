@@ -372,6 +372,10 @@ public sealed partial class GameServer
 			bool ringOutTestado = false, woTestado = false, woVenceu = false, reconexaoTestada = false, voadorDevolvido = false;
 			string ultimoPar = "", nomeDoVoador = "-";
 			int maiorAndar = 0, tiquesAltoDemais = 0, tiquesAltoSobreOChao = 0, tiquesPresoNoAr = 0;
+			// (2026-10-27, o pedido 124e) a vida de entrada de cada luta: NPC contra NPC com 1/4, a do host cheia
+			int lutasDeNpcMedidas = 0, lutasDoHostMedidas = 0;
+			bool vidaDeNpcUmQuarto = true, vidaDoHostCheia = true;
+			string vidaDeNpcDetalhe = "", vidaDoHostDetalhe = "";
 			const int teto = 90_000;   // 50 min de mundo: o dobro do pior caso (32 lutas de 20 s + folgas)
 			var censoTerra = new CensoDaArena();
 			int[] participantesTerra = [.. npcs, pl.Id];
@@ -386,6 +390,23 @@ public sealed partial class GameServer
 				(int a, int b) = LutadoresDeTeste;
 				string par = $"{a}x{b}";
 				if (par != ultimoPar) { ultimoPar = par; if (a == pl.Id || b == pl.Id) lutasDoHost++; }
+				// (2026-10-27, o pedido 124e) A VIDA DE ENTRADA, no primeiro tique de cada luta (antes de qualquer soco do host)
+				if (lutaAtualEmTiques == 1 && _players.TryGetValue(a, out ServerPlayer? entraA) && _players.TryGetValue(b, out ServerPlayer? entraB))
+				{
+					string vidas = $"{entraA.Name} {entraA.Ficha.HP:0.#} / {entraB.Name} {entraB.Ficha.HP:0.#}";
+					if (a == pl.Id || b == pl.Id)
+					{
+						lutasDoHostMedidas++;
+						if (entraA.Ficha.HP < 90 || entraB.Ficha.HP < 90) { vidaDoHostCheia = false; vidaDoHostDetalhe = vidas; }
+						else if (vidaDoHostDetalhe.Length == 0) vidaDoHostDetalhe = vidas;
+					}
+					else
+					{
+						lutasDeNpcMedidas++;
+						if (entraA.Ficha.HP is < 10 or > 40 || entraB.Ficha.HP is < 10 or > 40) { vidaDeNpcUmQuarto = false; vidaDeNpcDetalhe = vidas; }
+						else if (vidaDeNpcDetalhe.Length == 0) vidaDeNpcDetalhe = vidas;
+					}
+				}
 				// INVARIANTES: os dois da vez soltos, todo o resto da chave preso
 				if (PresosDeTeste.Contains(a) || PresosDeTeste.Contains(b)) invariantesOk = false;
 				if (chave != null)
@@ -494,6 +515,10 @@ public sealed partial class GameServer
 				  maiorAndar <= 1 && tiquesAltoDemais == 0 && tiquesAltoSobreOChao == 0,
 				  $"maior andar {maiorAndar}, alto demais {tiquesAltoDemais}, alto sobre o chao {tiquesAltoSobreOChao}");
 			Checa("SONDA DA ALTURA: quem espera a vez fica no chao (a espera pousa e nao sobe)", tiquesPresoNoAr == 0, $"{tiquesPresoNoAr} tique(s) no ar");
+			Checa("(o pedido 124e) LUTA DE NPC CONTRA NPC comeca com 1/4 da vida (medida no primeiro tique de cada uma)",
+				  lutasDeNpcMedidas > 0 && vidaDeNpcUmQuarto, $"{lutasDeNpcMedidas} luta(s); {vidaDeNpcDetalhe}");
+			Checa("...e a luta do HOST (fora dos NPCs) comeca com a vida CHEIA -- o contra-exemplo",
+				  lutasDoHostMedidas > 0 && vidaDoHostCheia, $"{lutasDoHostMedidas} luta(s); {vidaDoHostDetalhe}");
 			Checa($"o torneio de 32 roda ate o fim sem travar ({tiques} tiques = {tiques * Protocol.TickSeconds / 60:0.0} min de mundo)", !TorneioAtivo && tiques < teto, $"{tiques} tiques, fase {FaseDoTorneioDeTeste}");
 			Checa("a chave fechou: campeao, vice e terceiro definidos, 32 lutas decididas (16+8+4+2 + 3o lugar + final)",
 				  chave is { Acabou: true } && chave.Campeao.Length > 0 && chave.Vice.Length > 0 && chave.Terceiro.Length > 0 && chave.LutasDecididas == 32,
@@ -911,15 +936,138 @@ public sealed partial class GameServer
 					Checa("**O CLIENTE ATRASADO NAO TIRA O LUTADOR DA ARENA**: a contagem inteira de pacotes ainda dizendo \"estou na cadeira\" depois da chamada, e no \"COMECEM!\" o host esta DENTRO, sem ring-out",
 						  chamado && dentro && !ringOut, onde);
 					TransporteComJanelaCurtaDeTeste = true;
+					// (2026-10-27, o pedido 128) e a trava da contagem desligada JUNTO: com ela o host nem anda na contagem, e o arrasto que esta
+					// secao mede nao teria como acontecer -- o defeito do transporte ficaria escondido atras da trava nova (a 4d mede a trava).
+					ContagemDoJogadorSoltaDeTeste = true;
 					try
 					{
 						(bool chamado2, bool dentro2, bool ringOut2, string onde2) = LutaComClienteAtrasado();
 						Checa("(defeito injetado: o transporte abre so o meio segundo de todo salto) os pacotes velhos arrastam o host de volta pra cadeira na contagem, e o \"COMECEM!\" o pega fora -- RING-OUT, o relato do dono",
 							  chamado2 && !dentro2 && ringOut2, onde2);
 					}
-					finally { TransporteComJanelaCurtaDeTeste = false; }
+					finally { TransporteComJanelaCurtaDeTeste = false; ContagemDoJogadorSoltaDeTeste = false; }
 				}
 				finally { cfg.ContagemSegundos = contagemDaBancada; }
+			}
+
+			// =====================================================================
+			// 4d) A CONTAGEM TRAVA O JOGADOR DA VEZ (o pedido 128) E A ARENA E SO DOS DOIS (o pedido 129) -- 2026-10-27
+			// =====================================================================
+			// O dono: *"faça com q player tb n consiga se mover nem nada quando tiver na contagem do torneio no inicio da luta"* e *"n permita
+			// jogadores de fora entrarem na arena ou conseguir bater nos participantes da luta"*. A primeira metade e a luta do HOST chamada, na
+			// contagem de producao (os pacotes de andar e de subir forjados no `AplicarInput` de producao, como na 4c); a segunda e o host DE FORA
+			// de uma luta de NPC contra NPC -- inscrito, mas solto da cadeira --, na contagem dela (os dois NPCs parados: nenhum golpe alheio).
+			GD.Print("[torneio] -- 4d) a contagem trava o jogador da vez, e a arena e so dos dois --");
+			{
+				double contagemDaBancada = cfg.ContagemSegundos;
+				List<(int Quem, string Id, long Ms)>? efeitosAntes = EscutaDeEfeitos;
+				var efeitos = new List<(int Quem, string Id, long Ms)>();
+				try
+				{
+					cfg.ContagemSegundos = original.ContagemSegundos;
+					EscutaDeEfeitos = efeitos;
+
+					// ---- (o pedido 128) a luta do host chamada
+					ComandoDeTorneio(pl, "trn_iniciar", "alem");
+					ComandoDeTorneio(pl, "trn_participar", "");
+					PularSegundos(6);
+					Tiques(2);
+					for (int i = 0; i < 400 && TorneioAtivo && LutadoresDeTeste.A != pl.Id && LutadoresDeTeste.B != pl.Id; i++)
+					{
+						ComandoDeTorneio(pl, "trn_avancar", "");
+						Tiques(1);
+					}
+					bool chamado = FaseDoTorneioDeTeste == "Contagem" && (LutadoresDeTeste.A == pl.Id || LutadoresDeTeste.B == pl.Id);
+					bool travou = efeitos.Any(e => e.Quem == pl.Id && e.Id == "torneio_contagem" && e.Ms == -1);
+					bool recusaNaContagem = NaContagemDoTorneio(pl) && RecusaOComandoDeCorpo(pl);
+					Vec2 noPonto = pl.Pos;
+					for (int i = 0; i < 10 && FaseDoTorneioDeTeste == "Contagem"; i++)
+					{
+						AplicarInput(pl, pl.SeqInput + 1, (uint)NowMs(), pl.Pos + new Vec2(6, 0), (byte)(Protocol.InputAndando | Protocol.InputSubir));
+						Tiques(1);
+					}
+					float andouNaContagem = Vec2.Distance(pl.Pos, noPonto);
+					bool subiu = pl.QuerSubir;
+					Checa("PRECONDICAO 4d: a chave chamou a luta do host, na contagem de producao", chamado, FaseDoTorneioDeTeste);
+					Checa("**(o pedido 128) NA CONTAGEM O JOGADOR DA VEZ NAO SE MOVE NEM AGE**: o passo e recusado, a tecla de subir nao vale, os comandos de corpo (soco, guarda, carga, tecnica) morrem no despacho, e o cliente recebe a trava (`torneio_contagem`)",
+						  chamado && travou && recusaNaContagem && andouNaContagem < 1 && !subiu,
+						  $"efeito {travou}, recusa {recusaNaContagem}, andou {andouNaContagem:0.#} px, subir {subiu}");
+
+					// ...e o "COMECEM!" solta
+					for (int i = 0; i < 400 && FaseDoTorneioDeTeste == "Contagem"; i++) Tiques(1);
+					bool soltou = efeitos.Any(e => e.Quem == pl.Id && e.Id == "torneio_contagem" && e.Ms == 0);
+					Vec2 noComecem = pl.Pos;
+					for (int i = 0; i < 10; i++)
+					{
+						AplicarInput(pl, pl.SeqInput + 1, (uint)NowMs(), pl.Pos + new Vec2(6, 0), Protocol.InputAndando);
+						Tiques(1);
+					}
+					float andouNaLuta = Vec2.Distance(pl.Pos, noComecem);
+					Checa("...e no \"COMECEM!\" a trava sai: o passo anda, os comandos passam e o cliente e solto",
+						  FaseDoTorneioDeTeste == "Luta" && soltou && !NaContagemDoTorneio(pl) && !RecusaOComandoDeCorpo(pl) && andouNaLuta > 4,
+						  $"fase {FaseDoTorneioDeTeste}, efeito solto {soltou}, andou {andouNaLuta:0.#} px");
+					if (TorneioAtivo) ComandoDeTorneio(pl, "trn_cancelar", "");
+					Tiques(1);
+
+					// ---- (o pedido 129) o host DE FORA de uma luta de NPC contra NPC, na contagem dela
+					ComandoDeTorneio(pl, "trn_iniciar", "alem");
+					ComandoDeTorneio(pl, "trn_participar", "");
+					PularSegundos(6);
+					Tiques(2);
+					for (int i = 0; i < 400 && TorneioAtivo
+						 && !(FaseDoTorneioDeTeste == "Contagem" && LutadoresDeTeste.A is not 0 && LutadoresDeTeste.B is not 0
+							  && LutadoresDeTeste.A != pl.Id && LutadoresDeTeste.B != pl.Id); i++)
+					{
+						ComandoDeTorneio(pl, "trn_avancar", "");
+						Tiques(1);
+					}
+					(int ia, int ib) = LutadoresDeTeste;
+					bool deNpc = FaseDoTorneioDeTeste == "Contagem" && ia != pl.Id && ib != pl.Id && _players.ContainsKey(ia) && _players.ContainsKey(ib);
+					Checa("PRECONDICAO 4d: uma luta de NPC contra NPC na contagem, com o host inscrito e fora dela", deNpc, $"{FaseDoTorneioDeTeste} {ia} x {ib}");
+					if (deNpc && _torneio is { } tv)
+					{
+						ServerPlayer a = _players[ia], b = _players[ib];
+						Soltar(tv, pl);   // o host sai da cadeira: e um jogador DE FORA da luta, livre pra andar
+						Arena arena = tv.Arena;
+
+						// A ARENA FECHADA: o host posto no meio dela
+						Avisos();
+						pl.Pos = arena.Centro;
+						Tiques(1);
+						List<string> avisosDaArena = Avisos();
+						bool posto = !arena.ContemEm(pl.Pos) && avisosDaArena.Any(x => x.Contains("A arena é só dos dois", StringComparison.Ordinal));
+						Checa("**(o pedido 129) O JOGADOR DE FORA NAO FICA NA ARENA**: o host posto no meio dela, na contagem de uma luta alheia, sai pelo lado mais perto, avisado",
+							  posto, $"host em ({MathF.Floor(pl.Pos.X / ZoneCollision.TileSize)},{MathF.Floor(pl.Pos.Y / ZoneCollision.TileSize)}), arena {arena}; {string.Join(" | ", avisosDaArena)}");
+
+						// QUEM BATE: o jogador de fora nao, o adversario sim -- e o NPC de fora fica de fora da regra (a letra do dono: jogadores)
+						bool deForaNao = a.Combate.IntocavelPara(pl.Combate) && b.Combate.IntocavelPara(pl.Combate);
+						bool adversarioSim = !a.Combate.IntocavelPara(b.Combate) && !b.Combate.IntocavelPara(a.Combate);
+						ServerPlayer? npcDeFora = PresosDeTeste.Select(id => _players.GetValueOrDefault(id)).FirstOrDefault(c => c != null && !EhJogador(c));
+						bool npcSim = npcDeFora != null && !a.Combate.IntocavelPara(npcDeFora.Combate);
+						GolpeResultado soco = MeleeResolver.Resolver(pl.Combate, a.Combate, 0, new Random(7));
+						Checa("**(o pedido 129) O JOGADOR DE FORA NAO ACERTA OS DOIS DA VEZ**: pros dois ele e intocavel, o adversario continua acertando, e o soco dele nem se resolve (o `Resolver`); o NPC de fora nao entra na regra",
+							  deForaNao && adversarioSim && npcSim && soco.Desfecho == Desfecho.Errou && soco.Dano == 0,
+							  $"de fora {deForaNao}, adversario {adversarioSim}, NPC de fora {npcSim} ({npcDeFora?.Name}), soco {soco.Desfecho}/{soco.Dano:0.##}");
+
+						// O TIRO DE KI, pelo caminho de producao (`Disparar` + o tique dos tiros): o de fora atravessa o lutador, o do adversario acerta.
+						// Alcance curto (4 tiles a partir de 3 tiles ao lado): o tiro que atravessa apaga antes de chegar em mais alguem.
+						var bola = new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast, BaseDano = 0.05, Velocidade = 1, AlcanceTiles = 4, Deflectivel = false };
+						Projetil tiroDeFora = Disparar(pl, bola, rumoDado: new Vec2(-1, 0), deOnde: a.Pos + Tiles(3, 0));
+						for (int i = 0; i < 60 && tiroDeFora.Vivo; i++) Tiques(1);
+						Projetil tiroDoAdversario = Disparar(b, bola, rumoDado: new Vec2(-1, 0), deOnde: a.Pos + Tiles(3, 0));
+						for (int i = 0; i < 60 && tiroDoAdversario.Vivo; i++) Tiques(1);
+						Checa("...e o TIRO DE KI do jogador de fora atravessa o lutador sem acertar; o do adversario, pelo mesmo caminho, acerta",
+							  !tiroDeFora.Vivo && tiroDeFora.Fim != FimDeProjetil.Acertou && tiroDoAdversario.Fim == FimDeProjetil.Acertou,
+							  $"de fora: {tiroDeFora.Fim}, adversario: {tiroDoAdversario.Fim}, fase {FaseDoTorneioDeTeste}");
+					}
+					if (TorneioAtivo) ComandoDeTorneio(pl, "trn_cancelar", "");
+					Tiques(1);
+				}
+				finally
+				{
+					cfg.ContagemSegundos = contagemDaBancada;
+					EscutaDeEfeitos = efeitosAntes;
+				}
 			}
 
 			// =====================================================================
@@ -1150,6 +1298,104 @@ public sealed partial class GameServer
 				if (pl.Voando) AlternarVoo(pl);
 				EscutaDeEfeitos = null;
 				EscutaDeChaves = null;
+			}
+
+			// =====================================================================
+			// 9) (2026-10-27, o pedido 124e) SAIR DO TORNEIO -- o documento de um jogador: *"Please let me leave tournaments please I
+			// tried leaving the game and everything and those bastards kept me hostage for 30 minutes"*. Dois inscritos FORJADOS (corpo
+			// com conta e sem `Peer`) fazem o sair do jogo: um volta na metade do prazo do W.O., o outro nao volta; o host usa o verbo.
+			// =====================================================================
+			GD.Print("[torneio] -- 9) sair do torneio: o sair do jogo, o verbo, o relogar e a vez de quem saiu (o pedido 124e) --");
+			{
+				const int idBaseDoSairDeTeste = 992_700;
+				var forjados = new List<ServerPlayer>();
+				ZoneKey terra = ZoneKey.Premade(cfg.Terra.Zona);
+				ServerPlayer ForjarInscrito(int i, string nome)
+				{
+					var p = new ServerPlayer
+					{
+						Id = idBaseDoSairDeTeste + i, Peer = null, Name = nome, Race = "Human", Genero = "Male", Idade = 25, Zone = terra,
+						Pos = pl.Pos, Conta = $"bancada_torneio_sair_{i}", Slot = 0,
+						Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 10_000 }, Livro = new Jandirus.Core.Skills.SkillBook(),
+					};
+					p.Ficha.Class = "Normal";
+					PorNoMundo(p);
+					forjados.Add(p);
+					return p;
+				}
+				void Sumir(ServerPlayer p) { _players.Remove(p.Id); ZoneList(p.Zone.Hash).Remove(p); }
+				try
+				{
+					EscutaDeEfeitos = [];
+					ComandoDeTorneio(pl, "trn_iniciar", "terra");
+					ComandoDeTorneio(pl, "trn_participar", "");
+					ServerPlayer fujao = ForjarInscrito(1, "bancada: o que sai do jogo");
+					ServerPlayer volta = ForjarInscrito(2, "bancada: o que volta a tempo");
+					TorneioVivo vivo = _torneio!;
+					vivo.Inscritos[fujao.Assinatura] = fujao.Name;
+					vivo.Inscritos[volta.Assinatura] = volta.Name;
+					ComandoDeTorneio(pl, "trn_avancar", "");   // fecha as inscricoes: a chave e montada, todo mundo na espera
+					Chave ch = vivo.Chave;
+					Checa("9. PRECONDICAO: a chave tem o host e os dois forjados (fora dos NPCs), e o host esta preso na espera",
+						  new[] { pl, fujao, volta }.All(h => ch.Quem(h.Assinatura) is { Npc: false }) && PresosDeTeste.Contains(pl.Id),
+						  $"fase {FaseDoTorneioDeTeste}, {ch.Competidores.Count} competidores");
+
+					// 9a/9b) O SAIR DO JOGO: os dois somem; um volta na metade do prazo do W.O., o outro nao volta
+					Sumir(fujao);
+					Sumir(volta);
+					Tiques(1);
+					PularSegundos(cfg.WoSegundos / 2);
+					Tiques(1);
+					PorNoMundo(volta);
+					Tiques(1);
+					PularSegundos(cfg.WoSegundos / 2 + 1);
+					Ouvidos();
+					Tiques(1);
+					List<string> ditos = Ouvidos();
+					Checa("9a. quem SAI DO JOGO e nao volta no prazo do W.O. esta FORA do torneio de vez",
+						  vivo.Sairam.Contains(fujao.Assinatura), string.Join(" | ", ditos.Where(x => x.Contains(fujao.Name)).Take(3)));
+					Checa("9b. ...e quem volta DENTRO do prazo continua nele (o contra-exemplo)", !vivo.Sairam.Contains(volta.Assinatura));
+
+					// 9c) O VERBO
+					bool estavaPreso = PresosDeTeste.Contains(pl.Id);
+					EscutaDeEfeitos = [];
+					Ouvidos();
+					ComandoDeTorneio(pl, "trn_sair", "");
+					List<string> saida = Ouvidos();
+					Checa("9c. o SAIR DO TORNEIO (`trn_sair`) solta o host: fora da espera, o corpo anda, e o anuncio sai",
+						  vivo.Sairam.Contains(pl.Assinatura) && !PresosDeTeste.Contains(pl.Id) && PodeMexerOCorpo(pl)
+						  && (!estavaPreso || EscutaDeEfeitos.Any(e => e.Quem == pl.Id && e.Id == "torneio_espera" && e.Ms == 0))
+						  && saida.Any(x => x.Contains("saiu do torneio")),
+						  $"estava preso {estavaPreso}, preso agora {PresosDeTeste.Contains(pl.Id)}, anda {PodeMexerOCorpo(pl)}; {string.Join(" | ", saida.Take(2))}");
+
+					// 9d) O RELOGAR
+					AoEntrarNoTorneio(pl);
+					Tiques(1);
+					Checa("9d. quem saiu do torneio e RELOGA nao volta pra espera (era o 'refem' de meia hora)",
+						  !PresosDeTeste.Contains(pl.Id) && PodeMexerOCorpo(pl));
+
+					// 9e) A VEZ DE QUEM SAIU: a organizacao pula as fases ate a primeira luta dos tres estar decidida
+					Luta? DoHumano(ServerPlayer h) => ch.Rodadas.Count > 0 ? ch.Rodadas[0].Lutas.Find(l => l.A == h.Assinatura || l.B == h.Assinatura) : null;
+					bool hostLutou = false;
+					for (int i = 0; i < 3000 && TorneioAtivo && !new[] { pl, fujao, volta }.All(h => DoHumano(h) is { Acabou: true }); i++)
+					{
+						if (FaseDoTorneioDeTeste is "Preparando" or "Intervalo" or "Contagem" or "Luta") ComandoDeTorneio(pl, "trn_avancar", "");
+						Tiques(1);
+						if (FaseDoTorneioDeTeste is "Contagem" or "Luta" && (LutadoresDeTeste.A == pl.Id || LutadoresDeTeste.B == pl.Id)) hostLutou = true;
+					}
+					// (os dois que sairam na MESMA luta: um deles "vence" por W.O. -- a chave precisa de um pra seguir)
+					bool WoCerto(ServerPlayer h) => DoHumano(h) is { Acabou: true } l && l.Como.StartsWith("W.O.")
+													 && (l.Vencedor != h.Assinatura || vivo.Sairam.Contains(l.Perdedor));
+					Checa("9e. a vez de quem SAIU e W.O. na hora: o host (pelo verbo) e o que nao voltou perdem a 1a luta por W.O., e o host nao e chamado pra arena",
+						  WoCerto(pl) && WoCerto(fujao) && !hostLutou,
+						  $"host: {DoHumano(pl)?.Como} (vencedor {ch.NomeDe(DoHumano(pl)?.Vencedor ?? "")}); o que saiu do jogo: {DoHumano(fujao)?.Como}; host lutou {hostLutou}");
+					if (TorneioAtivo) ComandoDeTorneio(pl, "trn_cancelar", "");
+				}
+				finally
+				{
+					foreach (ServerPlayer p in forjados) Sumir(p);
+					EscutaDeEfeitos = null;
+				}
 			}
 		}
 		catch (Exception ex) { Checa("a bancada rodou ate o fim sem excecao", false, ex.ToString()); }

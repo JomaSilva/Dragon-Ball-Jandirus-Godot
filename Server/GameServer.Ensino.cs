@@ -109,6 +109,8 @@ public partial class GameServer
 		// o port escolhe um corpo so, e "ele ja sabe isso" diz mais que uma lista vazia.
 		ServerPlayer? aluno = alvo ?? QuemEstaNaFrente(mestre, _ => true);
 		if (aluno == null) { Avisar(mestre, "nao ha ninguem na sua frente."); return; }
+		// (2026-10-27) nem licao entre personagens do mesmo IP (o pedido 110) -- ver `GameServer.MesmoIp.cs`
+		if (MesmoIp(mestre, aluno)) { Avisar(mestre, FraseDoMesmoIp); return; }
 
 		Skill? s = _skills.Get(path);
 		long agora = NowMs();
@@ -162,7 +164,8 @@ public partial class GameServer
 			mesmaPessoa: mestre == aluno,
 			distanciaTiles: mestre.Zone.Hash != aluno.Zone.Hash
 				? double.MaxValue : Vec2.Distance(mestre.Pos, aluno.Pos) / ZoneCollision.TileSize,
-			naRecarga: naRecarga, eMeuAluno: eMeuAluno, doAlunoSozinho: sozinho);
+			naRecarga: naRecarga, eMeuAluno: eMeuAluno, doAlunoSozinho: sozinho,
+			alunoAlcancaOKaiKai: EnsinoDeSkill.AlcancaOKaiKai(aluno.Race, aluno.Ficha));
 	}
 
 	/// <summary>
@@ -185,6 +188,9 @@ public partial class GameServer
 		// (2026-10-23) A regra inteira, como a do cargo logo acima: quem aperta descobre o caminho que sobrou.
 		RecusaDeLicao.SoPeloRitual =>
 			"o Potential Unleashed não se ensina: só o Ritual Místico do Velho Kaiohshin o desperta, feito por um Kaioshin.",
+		// (2026-10-27) Idem: a regra inteira, pra quem nao e Kai saber que o caminho e despertar o ki divino.
+		RecusaDeLicao.SemKiDivino =>
+			$"o Kai Kai só se ensina a quem é Kai ou já despertou o ki divino (God Ki) -- {aluno.Name} não tem nenhum dos dois.",
 		RecusaDeLicao.NaoEDoCorpoDele => s != null && Jandirus.Core.Skills.SkillsFechadas.De(s.Path) is { } fechada
 			? $"{s.Nome} ainda nao existe neste jogo (falta {fechada.Falta}): nem um mestre a ensina."
 			: $"{s?.Nome ?? "isso"} nao e do corpo de {aluno.Name}: nem um mestre ensina o que a raca ou a classe dele nao alcanca.",
@@ -310,6 +316,7 @@ public partial class GameServer
 										   bool conferirRecarga)
 	{
 		t = mestre.Customizadas.Find(x => x.Id == id && x.Criada);
+		if (MesmoIp(mestre, aluno)) return FraseDoMesmoIp;   // (2026-10-27) o pedido 110 -- ver `GameServer.MesmoIp.cs`
 		if (!EhMeuMestre(aluno, mestre)) return "a tecnica que voce inventou so se ensina a um aluno seu.";
 		if (t == null) return "voce nao tem essa tecnica.";
 		if (t.Ensinada) return $"{t.Nome} foi ENSINADA a voce, e quem aprendeu de um mestre nao repassa.";

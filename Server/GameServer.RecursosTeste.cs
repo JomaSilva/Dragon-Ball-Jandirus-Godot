@@ -1413,8 +1413,8 @@ public partial class GameServer
 	private void RcDoEnmaSoEmZeni(Func<ServerPlayer, string, int, Obra> noChao, Action tirarDoChao)
 	{
 		Interacoes.Acao[] doEnma = Interacoes.De(Alem.TipoDoEnma);
-		AfirmarRc("O ENMA SO EM ZENI (decisao do dono): o menu dele tem as quatro acoes (ouvir, a volta, e as duas da v0.3.0: o passe e a reencarnacao), e NENHUMA carrega a palavra de uma moeda",
-				  doEnma.Select(a => a.Verbo).SequenceEqual(["enma_ouvir", "enma_reviver", "enma_passe", "enma_reencarnar"])
+		AfirmarRc("O ENMA SO EM ZENI (decisao do dono): o menu dele tem as cinco acoes (ouvir, a volta, as duas da v0.3.0 -- o passe e a reencarnacao -- e a corrida da Snake Way, de 2026-10-27), e NENHUMA carrega a palavra de uma moeda",
+				  doEnma.Select(a => a.Verbo).SequenceEqual(["enma_ouvir", "enma_reviver", "enma_passe", "enma_reencarnar", SnakeWay.Verbo])
 				  && doEnma[2].Rotulo.Contains("zeni", StringComparison.OrdinalIgnoreCase)
 				  && doEnma.All(a => a.Arg.Length == 0 && !a.Rotulo.Contains(Recurso.PalavraDeRecursos, StringComparison.OrdinalIgnoreCase))
 				  && doEnma[1].Rotulo.Contains("zeni", StringComparison.OrdinalIgnoreCase),

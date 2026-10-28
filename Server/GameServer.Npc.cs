@@ -202,7 +202,11 @@ public partial class GameServer
 	/// (2026-10-23) A MEDIA DE BP que escala o molde de `bpRelativo`. Nula = a do servidor inteiro (<see cref="MediaDoServidor"/>), como
 	/// sempre foi pra todo chamador. So o vilao avulso passa outra: a dos jogadores vivos do planeta onde ele nasce (`NascerVilao`).
 	/// </param>
-	private ServerPlayer? NascerNpc(string moldeId, ZoneKey zona, Vec2 pos, ulong lugar, double? media = null)
+	/// <param name="planeta">
+	/// (2026-10-27) O PLANETA QUE DA A RACA, quando nao e o da zona. Nulo = a zona, como sempre foi. So a lista da mente passa outro: o
+	/// habitante lembrado nasce na mente (que nao e berco de ninguem) com a raca do planeta onde foi visto (`ChamarOponenteDaMente`).
+	/// </param>
+	private ServerPlayer? NascerNpc(string moldeId, ZoneKey zona, Vec2 pos, ulong lugar, double? media = null, string? planeta = null)
 	{
 		MoldeDeNpc? molde = _moldes?.Get(moldeId);
 		if (molde == null)
@@ -246,7 +250,7 @@ public partial class GameServer
 		// ==================================================================================
 		ulong semente = SorteioDeNpc.SementeDe(
 			SeedDoUniverso, molde.Id, Espaco.Misturar(zona.Hash, lugar, 0));
-		FichaSorteada s = SorteioDeNpc.Sortear(molde, semente, _racas, _skills, zona.Name, media ?? MediaDoServidor());
+		FichaSorteada s = SorteioDeNpc.Sortear(molde, semente, _racas, _skills, planeta ?? zona.Name, media ?? MediaDoServidor());
 
 		// (2026-10-16) O NOME QUE NAO SE REPETE, se o molde pede (`nomesUnicos`): os cinco Supremos Kaiohs do Ceu sao cinco pessoas.
 		string nome = molde.NomesUnicos ? NomeLivre(molde, s.Raca, s.Nome) : s.Nome;

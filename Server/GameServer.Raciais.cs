@@ -253,6 +253,9 @@ public partial class GameServer
 				// Ver `GameServer.Mente.cs`.
 				if (id.StartsWith("mente_chefe:", StringComparison.Ordinal))
 				{ ChamarChefe(pl, id["mente_chefe:".Length..]); break; }
+				// (2026-10-27, o pedido 124c) A ESCOLHA DA LISTA DA MENTE -- ver `GameServer.MenteLista.cs`
+				if (id.StartsWith(Jandirus.Core.Npc.MenteOponentes.Prefixo, StringComparison.Ordinal))
+				{ ChamarOponenteDaMente(pl, id[Jandirus.Core.Npc.MenteOponentes.Prefixo.Length..]); break; }
 				if (id.StartsWith("nucleo:", StringComparison.Ordinal))
 				{ EscolherNucleo(pl, id["nucleo:".Length..]); break; }
 				// (2026-10-17) AS SKILLS DO DNA DO BIO (o adendo do dono): `dna:<skill>` escolhe uma. Ver `GameServer.SkillsDoDna.cs`.
@@ -289,6 +292,8 @@ public partial class GameServer
 				if (UsarVerboDoJuiz(pl, id)) break;
 				// (2026-10-23) O RITUAL MISTICO DO VELHO KAIOHSHIN: tambem e do trono. Ver `GameServer.RitualDoKaioshin.cs`.
 				if (UsarVerboDoRitual(pl, id)) break;
+				// (2026-10-27) AS LINGUAS -- o botao do chat e o ensino: nao sao skill. Ver `GameServer.Linguas.cs`.
+				if (UsarVerboDeLingua(pl, id)) break;
 				// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca, e nao do livro. Ver `GameServer.Passivas.cs`.
 				if (UsarAtivaRacial(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");

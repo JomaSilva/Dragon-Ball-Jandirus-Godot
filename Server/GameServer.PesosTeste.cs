@@ -18,7 +18,8 @@ namespace Jandirus.Server;
 ///      `PesoDeTreino.EstadoForaDoIdDeTeste` (o item sem estado -- o jogo de antes, em que tudo morava na ficha).
 ///   M. A MIGRACAO -- o save de antes (o maximo e a arte na ficha) entra com os pesos de fabrica levando o que a ficha tinha, o vestido
 ///      continua vestido, e os campos da ficha zeram; o save sem nada fica como estava.
-///   G. A GRAVIDADE COM PESO -- numa gravidade 10x acima da maestria, com o peso no teto do ganho (8x), o treino cansa em segundos
+///   G. A GRAVIDADE COM PESO -- numa gravidade 4x acima da maestria (10x contra 2,5: o limite em que ainda se treina, o pedido 117), com o
+///      peso no teto do ganho (8x), o treino cansa em segundos
 ///      (o vigor pelo QUADRADO do peso, `Train.dm:88`) -- e a maestria sobe do mesmo jeito, a cada passe, como no DM. E parado tambem. Contra:
 ///      `MaestriaSoNoTreinoDeTeste` (a maestria so no passe do treino -- o jogo de antes, em que o peso a travava).
 /// </summary>
@@ -209,13 +210,15 @@ public sealed partial class GameServer
 		Fighter f = pl.Ficha;
 		double maestriaGuardada = f.GravMastered, gravGuardada = f.Planetgrav, gmultGuardado = f.gravmult;
 
-		// UM PASSE DE FICHA (o `Treinar` de producao, 5 Hz) por vez, `passes` vezes, numa gravidade 10x com a maestria em 1. Devolve quanto
+		// UM PASSE DE FICHA (o `Treinar` de producao, 5 Hz) por vez, `passes` vezes, numa gravidade 10x com a maestria em 2,5 -- a razao 4, o
+		// limite em que ainda se treina (2026-10-27, o pedido 117: acima de 4x a maestria nem se treina; com 1, o treino cairia no primeiro
+		// passe pela GRAVIDADE e a familia mediria outra coisa). Devolve quanto
 		// a maestria subiu, e em quantos passes o treino ainda estava ligado.
 		(double Subiu, int Treinando) Passes(int passes, bool treinar, bool comPeso)
 		{
 			f.Planetgrav = 10;
 			f.gravmult = 0;
-			f.GravMastered = 1;
+			f.GravMastered = 2.5;
 			pl.Combate.LutandoDeVerdade = pl.Combate.EmCombate = pl.Combate.BrigandoComAlguem = 0;
 			f.IsInFight = false;
 			f.Tick(agoraMs: NowMs());

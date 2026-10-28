@@ -447,6 +447,17 @@ public sealed partial class GameServer
 				GD.Print($"[verbs]     VE | {nome} | {ve.Count} de {tabela.Count} | {string.Join("; ", ve)}");
 			}
 
+			// (2026-10-28) O NEO TUFFLE DENTRO DE OUTRO CORPO ve o "Sair do corpo" (`Fatos.DentroDeOutroCorpo`, o pedido 144) -- e ninguem mais. Fora
+			// do elenco: a varredura da secao 4 apertaria cada verbo com a posse por cima, e o corpo de outra pessoa recusa varios por outra frase.
+			// O disfarce da posse sem hospede de verdade basta, porque o que esta linha prova e a VISTA (a ficha e a do hospede: Saiyajin, sem a
+			// marca de Neo Tuffle).
+			ServerPlayer tuffleDentro = Gente("NeoTuffleDentro", "Saiyan", "Elite");
+			tuffleDentro.CorpoDaPosse = new DisfarceG12 { Nome = "Hospede", Raca = "Saiyan" };
+			Checa("O NEO TUFFLE DENTRO DE OUTRO CORPO ve o \"Sair do corpo\" (e nao o \"Possuir\") -- e ninguem do elenco o ve, nem o Neo Tuffle no proprio corpo",
+				  VeChave(tuffleDentro, "hab:tuffle_sair") && !VeChave(tuffleDentro, "hab:tuffle_possuir")
+				  && elenco.All(e => !VeChave(e.Corpo, "hab:tuffle_sair")));
+			tuffleDentro.CorpoDaPosse = null;
+
 			// ---- o caso do dono, palavra por palavra ----
 			// (2026-10-17) A LARVA (o adendo do dono): o bio de LABORATORIO ve a forma de larva, so a LARVA ve o enterrar, e o bio que nao saiu de
 			// um tanque nao ve nenhum dos dois.

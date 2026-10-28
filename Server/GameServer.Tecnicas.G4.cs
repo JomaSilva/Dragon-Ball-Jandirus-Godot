@@ -496,11 +496,20 @@ public partial class GameServer
 	/// se ha a energia que o salto pede. Separada do <see cref="SaltarDePlaneta"/> (2026-10-23) porque o Kai Kai com tela pergunta o
 	/// mesmo ANTES de abrir a lista (o `input()` do DM so abre com Ki cheio, `kai.dm:115`) e de novo no clique -- uma copia destas
 	/// linhas la seria a segunda nocao de "Ki cheio" do jogo. Fala o motivo quando recusa.
+	///
+	/// (2026-10-27, o pedido 135) COM <paramref name="custoFixo"/> (o Kai Kai), o pedagio e esse preco -- e nao o tanque cheio.
 	/// </summary>
-	private bool PortaDoSaltoDePlaneta(ServerPlayer pl, bool kiCheio)
+	private bool PortaDoSaltoDePlaneta(ServerPlayer pl, bool kiCheio, double? custoFixo = null)
 	{
 		if (!PodeSaltarDePlaneta(pl, out string porque)) { Avisar(pl, porque); return false; }
 		if (EmEspera(pl, _saltoPronto, "o espaco em volta de voce ainda esta se recompondo")) return false;
+
+		if (custoFixo is { } preco)
+		{
+			if (pl.Ficha.Ki >= preco) return true;
+			Avisar(pl, $"o Kai Kai pede {preco:0} de Ki, e você tem {pl.Ficha.Ki:0}.");
+			return false;
+		}
 
 		// `usr.Ki >= usr.MaxKi` -- KI CHEIO, com meio ponto de folga: o Ki do port e float recalculado
 		// por tique, e exigir igualdade exata recusaria quem esta com 99,9999% por arredondamento.
@@ -517,13 +526,15 @@ public partial class GameServer
 
 	/// <summary>
 	/// O PAGAMENTO de um salto ja decidido: quem vai de carona (colhido ANTES do primeiro `MoveToZone`, ver
-	/// <see cref="LevarCaronas"/>), o emote, o Ki e a recarga. Devolve as caronas.
+	/// <see cref="LevarCaronas"/>), o emote, o Ki e a recarga. Devolve as caronas. (2026-10-27, o pedido 135) Com
+	/// <paramref name="custoFixo"/> (o Kai Kai), desconta esse preco -- e nao zera.
 	/// </summary>
-	private List<ServerPlayer> PagarOSaltoDePlaneta(ServerPlayer pl, bool kiCheio, bool comCarona, string emote)
+	private List<ServerPlayer> PagarOSaltoDePlaneta(ServerPlayer pl, bool kiCheio, bool comCarona, string emote, double? custoFixo = null)
 	{
 		List<ServerPlayer> caronas = comCarona ? LevarCaronas(pl) : [];
 		Falar(pl, Protocol.Fala.Emote, emote);
-		pl.Ficha.Ki = kiCheio ? 0 : pl.Ficha.Ki / 2;   // `usr.Ki = 0` -- ZERA, nao desconta; o Atalho paga metade
+		pl.Ficha.Ki = custoFixo is { } preco ? Math.Max(0, pl.Ficha.Ki - preco)
+			: kiCheio ? 0 : pl.Ficha.Ki / 2;   // `usr.Ki = 0` -- ZERA, nao desconta; o Atalho paga metade
 		_saltoPronto[pl.Id] = NowMs() + RecargaDoSaltoMs;
 		return caronas;
 	}

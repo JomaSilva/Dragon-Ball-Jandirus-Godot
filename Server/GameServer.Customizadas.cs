@@ -717,6 +717,14 @@ public sealed partial class GameServer
 		w.Put(pl.Mesa != null);
 		if (pl.Mesa != null) CustomWire.Escrever(w, pl.Mesa);
 
+		// (2026-10-27) O DRENO DE KI E A CARGA DESTE CORPO AGORA, no fim do pacote: a tela diz o que cada numero da mesa faz nele (o pedido
+		// 116). A carga vai como o tempo de UM segundo de mesa (`SegundosDeCarga` e linear nela, fora o piso).
+		w.Put((float)pl.Ficha.BaseDrain());
+		w.Put((float)Projetil.SegundosDeCarga(1, pl.Ficha));
+
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
+
+	/// <summary>(robo `--diagmesa`) O dreno de Ki de um corpo agora, lido do servidor do mesmo processo. Zero sem o corpo.</summary>
+	internal double DrenoDeKiDeTeste(int id) => _players.TryGetValue(id, out ServerPlayer? pl) ? pl.Ficha.BaseDrain() : 0;
 }

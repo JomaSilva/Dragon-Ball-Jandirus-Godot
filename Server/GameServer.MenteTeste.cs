@@ -100,7 +100,7 @@ public partial class GameServer
 			SemZenkaiESemRaivaNaMente(Forjar, fora);
 			OVisitanteAchaAMenteAoLado(Forjar, fora);
 			OChefeJaVisto(Forjar, fora);
-			OReflexoSeReergue(Forjar);
+			AQuedaEVitoria(Forjar);
 			OReflexoEODonoDeAgora(Forjar);
 		}
 		catch (Exception e)
@@ -428,11 +428,12 @@ public partial class GameServer
 			AfirmarMnt("o BP dela esta pinado no vetor do papel",
 					   corpo.Papel!.BpsPinados.Length > 0, "vetor vazio");
 
-			// UM POR VEZ: convocar de novo desfaz o anterior.
+			// UM POR VEZ, E A LUTA NAO SE ENCERRA NO MEIO (2026-10-27, o pedido 124c): com a lembranca de pe, outra convocacao e RECUSADA.
+			// Ate ali convocar de novo desfazia a anterior -- era a saida de uma luta perdida pela porta da lista.
 			int antes = corpo.Id;
 			ChamarChefe(dono, molde.Id);
-			AfirmarMnt("convocar de novo desfaz a lembranca anterior (um corpo por mente)",
-					   dono.CloneId != antes && !_players.ContainsKey(antes), $"{dono.CloneId} / {antes}");
+			AfirmarMnt("com a lembranca de pe, convocar outra e RECUSADO -- a luta nao se encerra no meio (o pedido 124c)",
+					   dono.CloneId == antes && _players.ContainsKey(antes), $"{dono.CloneId} / {antes}");
 		}
 
 		// **SO NA PROPRIA MENTE**: um visitante nao chama lembranca na cabeca dos outros.
@@ -457,59 +458,28 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 6. O REFLEXO SE REERGUE -- o `clone_watch()` (`MindMeditate.dm:288-306`)
+	// 6. A QUEDA E VITORIA -- o pedido 124c (2026-10-27), no lugar do `clone_watch()` do DM
 	// =====================================================================
 	/// <summary>
-	/// *"o NPC MENTAL VOLTANDO DPS DE UM TEMPO"* -- o pedido do dono.
+	/// *"Vitoria e escolhe outro"* -- a escolha do dono pro documento de um jogador. Ate 2026-10-27 esta familia media o `clone_watch()` do DM
+	/// (`MindMeditate.dm:288-306`): o reflexo se reerguia 15 s depois de cada queda, inteiro, e so a MORTE encerrava o transe. Agora as duas
+	/// quedas sao a mesma VITORIA (`VencerNaMente`): a lembranca se desfaz, o BP entra pela forca dela, a lista volta -- e o transe CONTINUA
+	/// (sai-se pela porta, ou pela derrota). A lista inteira e da `--mentelistateste`; aqui fica o que esta familia media e mudou de lado:
+	///   1. o NOCAUTE nao se reergue mais (o corpo sai no tique da queda);
+	///   2. a MORTE tambem e vitoria, e nao encerra o transe -- nem depois da onda de 1,8 s que a volta antiga levava.
 	///
-	/// ============================ AS QUATRO MANEIRAS DE ISTO DAR ERRADO ============================
-	///   1. **nao voltar** -- a queda encerra o transe, que era o estado anterior deste port;
-	///   2. **voltar na hora ERRADA** -- e o modo silencioso, e o unico que so uma medida pega. Ja foi
-	///      "cedo demais" (o nocaute comum eram 12 s e o reflexo, 15); hoje o nocaute comum e o COMA do
-	///      DM, com teto de 225 s (`MeleeResolver.TetoDoNocaute`), entao o risco virou **TARDE demais**:
-	///      sem a REESCRITA daquele relogio o reflexo ficaria quase quatro minutos no chao. A bancada
-	///      cerca os dois lados -- caido aos 13 s, de pe aos 16;
-	///   3. **voltar MACHUCADO** -- o `Levantar()` quase nao cura (`SpreadHeal(25,1,1)` do `Un_KO`: 25
-	///      pontos, so nos vitais abaixo de 70%). Um parceiro de treino que volta a 8% de vida cai no
-	///      primeiro soco, e em tres rodadas o treino infinito virou saco de pancada;
-	///   4. **voltar e nao encerrar nunca** -- se a MORTE tambem se reerguesse, nao haveria saida por
-	///      vitoria nenhuma.
-	///
-	/// O RELOGIO E O DO MUNDO SIMULADO: a bancada chama os DOIS lacos de producao, na ordem em que o
-	/// `Tick()` os chama (`TickCombate` conta o nocaute; `TickDosCorposSemDono` decide). Nao ha
-	/// `Task.Delay` nem relogio de parede -- um `sleep` aqui mediria o agendador do sistema.
-	/// ==========================================================================================
+	/// O RELOGIO E O DO MUNDO SIMULADO (os dois lacos de producao, na ordem do `Tick()`), salvo a espera da onda: o prazo dela e `NowMs()`, e
+	/// so o relogio de verdade a vence.
 	/// </summary>
-	private void OReflexoSeReergue(Func<int, string, ZoneKey, Vec2, double, ServerPlayer> forjar)
+	private void AQuedaEVitoria(Func<int, string, ZoneKey, Vec2, double, ServerPlayer> forjar)
 	{
-		GD.Print("[mente] --- 6. o reflexo se reergue (o `clone_watch`) ---");
+		GD.Print("[mente] --- 6. a queda e vitoria (o pedido 124c) ---");
 
 		ZoneKey mente = DimensaoMental.De(IdBaseDaMenteDeTeste + 50);
 		ServerPlayer dono = forjar(50, "bancada: quem medita", mente, PosMental, 100_000);
-
-		// PELO CAMINHO DE PRODUCAO: o mesmo `CriarClone` que a porta da mente chama.
-		ServerPlayer reflexo = CriarClone(dono, mente);
-		dono.CloneId = reflexo.Id;
-
-		// O REFLEXO FICA FRACO DE PROPOSITO. Ele copia a ficha do dono, entao com o BP original os dois
-		// se derrubariam durante os 15 s de medida -- e o que estaria sendo medido seria a borda de KO
-		// do jogador (familia de outra bancada), nao a volta do reflexo.
-		reflexo.Ficha.BP = 100;
-		reflexo.Ficha.Statify();
-
-		AfirmarMnt("o reflexo nasce de pe e sem queda pendente",
-				   !reflexo.Ficha.KO && !reflexo.CaiuNaMente);
-
-		// O ESTRAGO ANTES DA QUEDA: e ele que prova a CURA la embaixo. Um membro quase zerado e o Ki
-		// no chao -- exatamente o estado em que um reflexo derrotado fica.
-		BodyPart membro = reflexo.Combate.Corpo.Partes.First(p => p.Nome != "Rabo");
-		membro.Vida = membro.VidaMax * 0.05;
-		reflexo.Ficha.Ki = 0;
-		reflexo.Combate.SincronizarVida();
-
-		// A QUEDA VEM PELO FUNIL COMUM (12 s), e nao escrevendo `KO = true`: e justamente esse relogio
-		// que o mecanismo tem que reescrever.
-		reflexo.Combate.Nocautear(MeleeResolver.TetoDoNocaute);
+		// O TETO DE TREINO (`relBPmax`) que o tique de status escreve em jogo: o premio da vitoria e o ganho do T (`TrainGain`), que so rende
+		// abaixo dele -- e o corpo forjado nascia com o teto em zero (a rodada r3 do agente `mentelista`: "BP 100.000 -> 100.000").
+		dono.Ficha.PowerLevel();
 
 		void UmTique()
 		{
@@ -517,101 +487,41 @@ public partial class GameServer
 			TickDosCorposSemDono(Jandirus.Net.Protocol.TickSeconds);
 		}
 
-		void Rodar(double segundos)
-		{
-			int n = (int)Math.Round(segundos / Jandirus.Net.Protocol.TickSeconds);
-			for (int i = 0; i < n; i++) UmTique();
-		}
+		// PELO CAMINHO DE PRODUCAO: a escolha da lista, pelo canal de habilidade -- o reflexo nao nasce mais sozinho na porta.
+		UsarHabilidade(dono, MenteOponentes.Pedido(MenteOponentes.Tipo.Reflexo, ""));
+		ServerPlayer? reflexo = _players.GetValueOrDefault(dono.CloneId);
+		AfirmarMnt("o reflexo nasce pela escolha da lista, de pe", reflexo is { Ficha.KO: false }, $"{dono.CloneId}");
+		if (reflexo == null) return;
 
+		// FRACO DE PROPOSITO, como antes: a medida e a queda dele, nao a troca de golpes.
+		reflexo.Ficha.BP = 100;
+		reflexo.Ficha.Statify();
+
+		double antes = dono.Ficha.BP;
+		int primeiro = reflexo.Id;
+		reflexo.Combate.Nocautear(MeleeResolver.TetoDoNocaute);   // o funil comum, e nao `KO = true`
 		UmTique();
-		AfirmarMnt("no primeiro tique caido o mecanismo assume a queda",
-				   reflexo.CaiuNaMente, "o bit nao foi escrito");
-		// ============================ A COMPARACAO VIROU DO AVESSO, E O MOTIVO E O NOCAUTE NOVO ============================
-		// Isto afirmava `NocauteRestante > MeleeResolver.TetoDoNocaute`, quando aquele numero era 12 e o
-		// reflexo levava 15: o reflexo ficava MAIS tempo no chao que o padrao. Agora o nocaute comum e o
-		// COMA do DM com teto de 225 s, entao o reflexo fica MENOS -- e a mesma pergunta ("o relogio foi
-		// reescrito?") tem que ser feita contra o numero do reflexo, e nao contra uma desigualdade cujo
-		// lado forte mudou de mao. Confere as duas pontas: e o prazo dele, e nao e o teto comum.
-		// ============================================================================================================
-		AfirmarMnt($"...e o relogio do nocaute foi REESCRITO pro prazo do DM ({SegundosAteOReflexoSeReerguer:0}s)",
-				   reflexo.Combate.NocauteRestante <= SegundosAteOReflexoSeReerguer
-				   && reflexo.Combate.NocauteRestante > SegundosAteOReflexoSeReerguer - 1
-				   && !reflexo.Combate.NocautePorVital,
-				   $"{reflexo.Combate.NocauteRestante:0.00} (teto comum {MeleeResolver.TetoDoNocaute}, "
-				   + $"porVital={reflexo.Combate.NocautePorVital})");
-		AfirmarMnt("...e a queda NAO encerrou o transe (era o comportamento antigo)",
-				   NaMente(dono) && dono.CloneId == reflexo.Id, $"{dono.Zone} / {dono.CloneId}");
+		AfirmarMnt("o NOCAUTE e vitoria: a lembranca sai no tique da queda (nao se reergue mais), e o BP entra",
+				   dono.CloneId == 0 && !_players.ContainsKey(primeiro) && dono.Ficha.BP > antes,
+				   $"lembranca {dono.CloneId}, corpo {_players.ContainsKey(primeiro)}, BP {antes:N2} -> {dono.Ficha.BP:N2}");
+		AfirmarMnt("...e o transe continua (escolhe-se o proximo)", NaMente(dono), $"{dono.Zone}");
 
-		// AOS 13 S ELE AINDA TEM QUE ESTAR NO CHAO -- e agora quem discrimina e o Rodar(3) logo abaixo.
-		// Enquanto o nocaute comum eram 12 s, este 13 era A afirmacao da familia. Com o teto em 225 s a
-		// pergunta inverteu: ficar caido aos 13 e o que qualquer corpo faria; o que so o reflexo faz e
-		// ESTAR DE PE aos 16 -- duzentos e nove segundos antes do teto. Os dois continuam aqui porque
-		// juntos cercam o prazo pelos dois lados.
-		Rodar(13);
-		AfirmarMnt("aos 13 s ele CONTINUA no chao (o prazo dele nao venceu antes)",
-				   reflexo.Ficha.KO && reflexo.CaiuNaMente, $"KO={reflexo.Ficha.KO}");
-		AfirmarMnt("...e continua ferido (o `Levantar` nao cura, e ninguem curou por fora)",
-				   membro.Vida < membro.VidaMax, $"{membro.Vida}/{membro.VidaMax}");
-
-		Rodar(3);
-		AfirmarMnt($"passados os 15 s ele esta de PE de novo -- {MeleeResolver.TetoDoNocaute - 16:0} s "
-				   + "antes do teto do nocaute comum, que e o que prova a reescrita",
-				   !reflexo.Ficha.KO);
-		AfirmarMnt("...e o corpo e o MESMO (ele nao foi refeito, ele se reergueu)",
-				   _players.ContainsKey(reflexo.Id) && dono.CloneId == reflexo.Id, $"{dono.CloneId}");
-		AfirmarMnt("...e a queda foi dada por encerrada (o bit nao fica preso pro proximo KO)",
-				   !reflexo.CaiuNaMente);
-		AfirmarMnt("...INTEIRO: o membro esmagado voltou cheio (`SpreadHeal(150,1,1)`)",
-				   Math.Abs(membro.Vida - membro.VidaMax) < 1e-6, $"{membro.Vida}/{membro.VidaMax}");
-		AfirmarMnt("...e com o Ki cheio (`Ki = MaxKi`)",
-				   reflexo.Ficha.MaxKi > 0 && Math.Abs(reflexo.Ficha.Ki - reflexo.Ficha.MaxKi) < 1e-6,
-				   $"{reflexo.Ficha.Ki}/{reflexo.Ficha.MaxKi}");
-		AfirmarMnt("...e o transe continua aberto (parceiro de treino infinito)",
-				   NaMente(dono), $"{dono.Zone}");
-
-		// ============================ A SEGUNDA QUEDA, pra provar que o ciclo se repete ============================
-		// Um bit que nao se limpasse daria verde na primeira volta e travaria o reflexo no chao pra
-		// sempre na segunda -- e a bancada que so medisse um ciclo nao veria.
-		// ======================================================================================================
-		reflexo.Combate.Nocautear(MeleeResolver.TetoDoNocaute);
+		// A MORTE: a mesma vitoria. MATA PELO FUNIL DE VERDADE (`Morrer`), que arma o relogio da morte no gancho `CombatState.AoMorrer`.
+		UsarHabilidade(dono, MenteOponentes.Pedido(MenteOponentes.Tipo.Reflexo, ""));
+		ServerPlayer? segundo = _players.GetValueOrDefault(dono.CloneId);
+		AfirmarMnt("a lista devolve outra lembranca (um corpo NOVO)", segundo != null && segundo.Id != primeiro, $"{dono.CloneId}");
+		if (segundo == null) return;
+		segundo.Ficha.BP = 100;
+		segundo.Ficha.Statify();
+		double antesDaMorte = dono.Ficha.BP;
+		segundo.Combate.Morrer(ignorarSeguro: true);
 		UmTique();
-		AfirmarMnt("uma SEGUNDA queda reabre o ciclo", reflexo.CaiuNaMente);
-		Rodar(16);
-		AfirmarMnt("...e ele se reergue de novo", !reflexo.Ficha.KO && !reflexo.CaiuNaMente);
-
-		// ============================ A OUTRA METADE: MORRER ENCERRA ============================
-		// Sem ela, "ele sempre volta" nao teria saida por vitoria -- e a bancada de cima estaria
-		// medindo um transe do qual nao se sai lutando.
-		// ===================================================================================
-		// MATA PELO FUNIL DE VERDADE, e nao escrevendo `dead = true` na ficha: quem arma o relogio da
-		// morte e o gancho `CombatState.AoMorrer` (ver `GameServer.Alem.cs`), e um corpo com prazo
-		// ZERO seria despachado pelo `TickCombate` -- que roda ANTES do laco dos corpos dirigidos --
-		// antes de a mente sequer perceber a morte. A bancada mediria um estado que o jogo nao produz.
-		// `ignorarSeguro: true` porque o reflexo nao tem por que negociar com nenhum seguro.
-		reflexo.Combate.Morrer(ignorarSeguro: true);
-		UmTique();
-
-		// ============================ A ONDA PRECISA DRENAR, E ELA LEVA 1,8 s ============================
-		// **VERMELHA ENCONTRADA, E ELA NAO E DA CURA.** Este ponto media a saida UM tique depois da
-		// morte, e a saida deixou de ser seca: `ComecarAVoltaDaMente` (`GameServer.Mente.cs:516`) zera
-		// o `CloneId` na hora mas **enfileira** a viagem -- *"a tela ondula 1,8 s e SO ENTAO o mundo
-		// real volta"*. Quem drena a fila e o `TickDaOndaDaMente`, de dentro do `TickCombate`, no tique
-		// SEGUINTE. Ou seja: a prova pedia o resultado antes de a onda existir, e ficava vermelha com o
-		// sistema certo -- o detalhe que ela imprimia (`CloneId` ja em 0, zona ainda na mente) e
-		// exatamente a assinatura disso.
-		//
-		// E A ESPERA TEM QUE SER NO RELOGIO DE VERDADE, e nao em tiques. Foi a segunda tentativa aqui:
-		// `Rodar(2)` roda 60 tiques em microssegundos de relogio real, e o prazo da onda e
-		// `NowMs()`-- ou seja **nenhum tempo de parede passa** e a fila nunca vence. Toda bancada de
-		// tique simulado que encostar num sistema de relogio real cai nisso; a saida e esperar pelo
-		// MESMO relogio que o sistema le, com um teto pra nao travar a rodada.
-		// ============================================================================================
-		long limiteDaOnda = NowMs() + 3000;
-		while (NaMente(dono) && NowMs() < limiteDaOnda) UmTique();
-		AfirmarMnt("MORRER (golpe letal) encerra o transe -- e a unica vitoria que termina a sessao",
-				   !NaMente(dono) && dono.CloneId == 0, $"{dono.Zone} / {dono.CloneId}");
-		AfirmarMnt("...e o corpo do reflexo saiu do mundo junto",
-				   !_players.ContainsKey(reflexo.Id));
+		// A VOLTA ANTIGA ONDULAVA 1,8 s de relogio REAL antes de tirar o dono da mente: o "continua" so vale depois desse prazo.
+		long fimDaOnda = NowMs() + DimensaoMental.MsDaOnda + 700;
+		while (NowMs() < fimDaOnda) UmTique();
+		AfirmarMnt("a MORTE tambem e vitoria: o corpo saiu, o BP entrou -- e o transe NAO acabou (nem depois da onda de 1,8 s)",
+				   NaMente(dono) && dono.CloneId == 0 && !_players.ContainsKey(segundo.Id) && dono.Ficha.BP > antesDaMorte,
+				   $"{dono.Zone} / lembranca {dono.CloneId} / BP {antesDaMorte:N2} -> {dono.Ficha.BP:N2}");
 	}
 
 	// =====================================================================
@@ -747,70 +657,10 @@ public partial class GameServer
 				   GainKnobs.TopBP <= Math.Max(topoAntes, 1e14), $"{GainKnobs.TopBP:N0}");
 		reflexo.Ficha.BP = pinado;
 
-		// ============================ O DONO CRESCE, E A VOLTA O ALCANCA ============================
-		// A ordem e a do jogo: o dono treina DENTRO da mente (a um quarto), o reflexo cai, e quando ele
-		// se reergue e o dono de agora que esta na frente. Sem a reancoragem, quinze minutos de treino
-		// deixariam um saco de pancada no lugar do oponente.
-		// ========================================================================================
-		dono.Ficha.BP *= 3;
-		dono.Ficha.Statify();
-		dono.Ficha.PowerLevel();
-		double alvo = dono.Ficha.expressedBP;
-
-		reflexo.Combate.Nocautear(MeleeResolver.TetoDoNocaute);
-		UmTique();
-		AfirmarMnt("caido, o reflexo AINDA nao acompanhou (a reancoragem e na VOLTA, nao na queda)",
-				   Math.Abs(reflexo.Ficha.BP - alvo) > 1, $"{reflexo.Ficha.BP:N0}");
-
-		Rodar(16);
-
-		// ============================ A BANDA DE 1% E DELIBERADA ============================
-		// O poder expresso do dono nao e uma constante nem com ele parado: folego, barriga e Ki mexem
-		// no `expressedBP` a cada tique de ficha, e a ancora e um INSTANTANEO do momento da volta --
-		// nao um fio ligado. Exigir igualdade exata mediria o relogio, nao a reancoragem.
-		//
-		// O que a afirmacao cobra e a unica coisa que importa: o reflexo esta no poder de AGORA (1%) e
-		// nao no de quinze segundos atras, que era TRES VEZES menor. Nenhum erro plausivel deste
-		// mecanismo cai dentro dessa banda.
-		// ================================================================================
-		double agoraDoDono = dono.Ficha.expressedBP;
-		double banda = Math.Max(1, agoraDoDono * 0.01);
-		AfirmarMnt("ao se reerguer, o reflexo esta no poder do dono de AGORA",
-				   !reflexo.Ficha.KO && reflexo.Ficha.BP > pinado * 2.5
-				   && Math.Abs(reflexo.Ficha.BP - agoraDoDono) <= banda,
-				   $"{reflexo.Ficha.BP:N0} x {agoraDoDono:N0} (era {pinado:N0}, alvo na queda {alvo:N0})");
-		AfirmarMnt("...e o PINO acompanhou junto (senao o tique o puxaria de volta pro poder antigo)",
-				   Math.Abs(reflexo.BpDaMente - reflexo.Ficha.BP) <= 0.5,
-				   $"{reflexo.BpDaMente:N0} x {reflexo.Ficha.BP:N0}");
-
-		// ============================ A LEMBRANCA DE CHEFE **NAO** E REESCRITA ============================
-		// O mesmo ramo de IA ergue os dois corpos, e o mesmo `ReerguerOOponente` os levanta -- mas a
-		// ficha do chefe e DELE (degraus, gatilho, BP pinado pelo `TickDoRoteiro`). Reancora-la no dono
-		// apagaria o Freeza e poria voce no lugar dele, com o nome dele. A pergunta que separa os dois e
-		// a mesma que ja escolhe a frase do anuncio.
-		// ============================================================================================
-		MoldeDeNpc? moldeChefe = _moldes?.Todos.FirstOrDefault(m => m.EhChefe);
-		if (moldeChefe == null) AfirmarMnt("ha molde de chefe pra medir a lembranca", false, "nenhum");
-		else
-		{
-			// O ESTADO DE PRODUCAO DE UMA LEMBRANCA: ficha de chefe e `BpDaMente` ZERO -- o pino dela e
-			// o `Papel.BpsPinados`, do `TickDoRoteiro`. Deixar o pino do reflexo ligado aqui faria a
-			// afirmacao passar pelo motivo errado (o BP ficaria parado por causa do pino velho, e nao
-			// porque o espelho recusou reescreve-lo).
-			reflexo.Papel = new PapelDeNpc(moldeChefe, 1UL);
-			reflexo.BpDaMente = 0;
-			double bpDaLembranca = reflexo.Ficha.BP;
-			dono.Ficha.BP *= 7;
-			dono.Ficha.Statify();
-			dono.Ficha.PowerLevel();
-
-			reflexo.Combate.Nocautear(MeleeResolver.TetoDoNocaute);
-			UmTique();
-			Rodar(16);
-			AfirmarMnt("a lembranca de CHEFE se reergue, mas com a ficha DELA (nao a sua)",
-					   !reflexo.Ficha.KO && Math.Abs(reflexo.Ficha.BP - bpDaLembranca) < 1,
-					   $"{reflexo.Ficha.BP:N0} x {bpDaLembranca:N0}");
-			reflexo.Papel = null;
-		}
+		// ============================ (2026-10-27, o pedido 124c) A VOLTA QUE REANCORAVA SAIU JUNTO COM A VOLTA ============================
+		// Aqui o dono crescia, o reflexo caia, e na volta (15 s) ele estava no poder do dono de AGORA -- e a lembranca de chefe se reerguia
+		// com a ficha DELA. Derrubar a lembranca virou VITORIA (ela se desfaz, paga e a lista volta: a familia 6 e a `--mentelistateste`),
+		// entao nao ha volta pra reancorar: a proxima escolha nasce no dono de agora, pelo mesmo `EspelharODono` medido acima.
+		// ========================================================================================================================
 	}
 }

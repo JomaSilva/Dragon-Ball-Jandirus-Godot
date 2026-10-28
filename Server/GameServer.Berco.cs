@@ -180,6 +180,10 @@ public partial class GameServer
 	///   * quem esta dentro NAO FERE ninguem: o soco e o agarrao sao recusados (com a frase), o tiro nasce sem pegar em corpo
 	///     (`Projetil.DaZonaSegura`, a explosao dele tambem) e o dano de tecnica dele nao encosta (`EspalharDanoG3`, `FerirUmMembroG10`).
 	/// Vale pra jogador, habitante, vilao e chefe -- ninguem e excecao.
+	///
+	/// (2026-10-27) E SO ISSO: o pedido 113 do dono, *"safe zone deveria so proteger de npc e pvp nada mais"*. O dano SEM ALGOZ cobra la
+	/// dentro como em qualquer lugar -- a gravidade esmaga, o Kaio-ken drena, a sobrecarga e o preco de uma tecnica machucam --, porque
+	/// ele pergunta pelo `CombatState.Blindado`, que nao tem a zona. O veneno de outro corpo continua golpe, ate com o dono fora do jogo.
 	/// </summary>
 	internal const float TilesDaZonaSegura = 10;
 

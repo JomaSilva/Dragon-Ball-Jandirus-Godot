@@ -487,6 +487,8 @@ public partial class GameServer
 		ZoneKey zonaDoCorpo = pl.Zone;
 
 		EntrarNaMente(pl);
+		// (2026-10-27, o pedido 124c) O REFLEXO NAO NASCE MAIS NA PORTA: ele e escolhido na lista, pelo mesmo canal do botao.
+		UsarHabilidade(pl, MenteOponentes.Pedido(MenteOponentes.Tipo.Reflexo, ""));
 
 		ServerPlayer? boneco = pl.BonecoLargado;
 		ServerPlayer? clone = _players.GetValueOrDefault(pl.CloneId);

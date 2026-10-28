@@ -357,6 +357,10 @@ public partial class GameServer
 		// (2026-10-26) E QUEM RESPONDE "ESTE CORPO ESTA NA ZONA SEGURA DO BERCO?" -- derivada como as de cima. Ver `NaZonaSegura`.
 		pl.Combate.NaZonaSegura = () => NaZonaSegura(pl);
 
+		// (2026-10-27, o pedido 129) E QUEM RESPONDE "ESTE CORPO APANHA DAQUELE?" -- o lutador da vez no torneio so apanha do adversario, e o
+		// jogador de fora passa sem efeito. Ver `ForaDaLutaDoTorneio` (`GameServer.Torneio.cs`).
+		pl.Combate.BarraQuemBate = atacante => ForaDaLutaDoTorneio(pl, atacante);
+
 		// E QUEM RESPONDE "ESTE CORPO ESTA SENDO ARREMESSADO AGORA?" -- o `canfight -= 1` do efeito de
 		// knockback do DM (`Movement Effects.dm:40`), lido pelo `testAttack()` (`attack_bck.dm:175`).
 		//
@@ -692,6 +696,9 @@ public partial class GameServer
 			// O NIVEL VAI JUNTO porque ele e o que escolhe o baque: um soco leve na parede soa
 			// pequeno e um pesado soa grande, igual a bater num corpo. Sem combo -- nao ha combo
 			// contra cenario.
+			// (2026-10-27) O SACO DE PANCADA DO DU (o pedido 111): o soco no saco da frente rende o ganho de luta -- ver `GameServer.SacoDoDu.cs`
+			if (SocarOSaco(a)) return;
+
 			if (SocarCenario(a, (int)Math.Min(3, tipo)))
 			{
 				a.Ficha.AttackGain(_rng, GainKnobs.GanhoDeObjeto);
@@ -786,7 +793,9 @@ public partial class GameServer
 		double luta = FatorDaLuta(a, alvo);
 		if (luta > 0) a.Ficha.AttackGain(_rng, luta * a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo), EhColegaDeMestre(a, alvo)));
 		// (MENOS QUEM APANHA DE BICHO: um lobo que nao cansa nao e parceiro de treino -- ver `GolpeDeBichoNaoTreina`.)
-		if (luta > 0 && r.Encostou && !GolpeDeBichoNaoTreina(a)) alvo.Ficha.AttackGain(_rng, luta * alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a), EhColegaDeMestre(alvo, a)));
+		// (2026-10-28, o pedido 148) quem apanha ganha pela PROPRIA barra de poder (`quemGanha`), e nao pela de quem bateu.
+		if (luta > 0 && r.Encostou && !GolpeDeBichoNaoTreina(a))
+			alvo.Ficha.AttackGain(_rng, FatorDaLuta(a, alvo, quemGanha: alvo) * alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a), EhColegaDeMestre(alvo, a)));
 
 		// O contra-ataque devolve o golpe: quem bloqueou na hora certa acerta de volta.
 		if (r.Desfecho == Desfecho.Contra)
@@ -1969,6 +1978,9 @@ public partial class GameServer
 			byte v = (byte)Math.Clamp(Math.Round(p.Fracao * 100), 0, 100);
 			partes.Add(new Protocol.ParteState { Nome = p.Nome, Vida = v, Decepado = p.Decepado });
 			sb.Append(p.Decepado ? 'L' : (char)('0' + v / 4));   // 4% de resolucao: nao remanda por ruido
+			// (2026-10-27, o pedido 127) ...MENOS NOS NUCLEOS, que vao com 1%: a barra VIDA do HUD e a pior deles (`Body.VidaQueDerruba`), e com o
+			// degrau de 4% ela ficava parada em 23% com a cabeca ja a 20 -- a um ponto do desmaio.
+			if (p.Papel == Vitalidade.Nucleo && !p.Decepado) sb.Append('.').Append(v % 4);
 		}
 
 		string sig = sb.ToString();

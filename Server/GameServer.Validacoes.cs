@@ -256,12 +256,27 @@ public sealed partial class GameServer
 	/// O ADMIN CONTINUA MOVENDO QUEM QUISER: os verbs dele (`admin_ir`, `admin_trazer`, `admin_sala_soltar`) nao
 	/// passam por aqui, e a valvula da prisao e justamente ele.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-27, o pedido 132) ESTE CORPO E DE SAGA? O chefe que uma saga pos no mundo (`PapelDeNpc.DaSaga` -- e tambem o vilao do Inferno e o
+	/// campeao do wipe), ou um soldado da tropa dela. O dono: *"n deixe nenhum npc de saga pode sair do planeta q a saga acontece pq isso causa
+	/// bugs"* -- o Freeza que seguia um jogador ate a orbita fazia a tropa fugir e as esferas cairem, e a tropa renascia mais forte na volta.
+	/// Eles nascem no planeta da saga (`NascerNpc` na zona dela) e nunca viajam por conta propria: o corpo de saga simplesmente nao troca de
+	/// zona -- nem de carona, nem por teleporte, nem selado (`PorQueNaoSaiDaqui`, `MoveToZone`, `Selar`).
+	/// </summary>
+	private bool EhDeSaga(ServerPlayer pl) =>
+		!SagaSaiDoPlanetaDeTeste && pl.Peer == null && pl.Papel is { } papel && (papel.DaSaga || papel.Tipo == Jandirus.Core.Npc.TipoDeNpc.Soldado);
+
+	/// <summary>DEFEITO INJETADO (bancada `--espacovooteste`, familia S): o corpo de saga volta a sair do planeta. Lido pelo <see cref="EhDeSaga"/>. Falso em jogo, sempre.</summary>
+	internal static bool SagaSaiDoPlanetaDeTeste;
+
 	private string PorQueNaoSaiDaqui(ServerPlayer pl)
 	{
 		if (TeleporteFuraPrisaoDeTeste) return "";
 		// (2026-10-24) O BILLS E O WHIS NAO SAEM DO PLANETA (o dono) -- nem de carona, nem por teleporte. A rede e o `MoveToZone`.
 		if (!Jandirus.Core.Npc.BillsEWhis.DivinoSaiDoPlanetaDeTeste && DivinoDe(pl) is { } divino)
 			return divino.Quem == Jandirus.Core.Npc.QuemFala.Whis ? "o Whis não sai deste planeta." : "o Bills não sai deste planeta.";
+		// (2026-10-27, o pedido 132) NEM O NPC DE SAGA -- o chefe, a tropa, o vilao do Inferno. A rede e o `MoveToZone`. Ver `EhDeSaga`.
+		if (EhDeSaga(pl)) return $"{pl.Name} não sai do planeta da saga.";
 		if (pl.SalaPreso && NaSala(pl))
 			return "você está preso na Sala do Tempo: só o Guardião da Terra (ou um administrador) solta.";
 		if (PresoQueEsteCorpoCarrega(pl) is { } carga)

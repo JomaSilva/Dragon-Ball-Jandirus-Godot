@@ -326,7 +326,8 @@ public partial class GameServer
 
 		_missoes[vaga] = nova;
 		// (2026-10-24) tres linhas, e o texto mora no Core -- ver `MissoesDeCargo.AvisoDeTarefaNova`
-		foreach (string linha in MissoesDeCargo.AvisoDeTarefaNova(r.Nome, nova, r.DoOutroMundo, r.Maligno)) Avisar(portador, linha);
+		foreach (string linha in MissoesDeCargo.AvisoDeTarefaNova(r.Nome, nova, r.DoOutroMundo, r.Maligno, MissoesDeCargo.AlmaNpcEAtendida(r.Chave)))
+			Avisar(portador, linha);
 		return true;
 	}
 
@@ -408,10 +409,14 @@ public partial class GameServer
 
 		float alcance = MissoesDeCargo.TilesDoServico * ZoneCollision.TileSize;
 		int pts = 0;
+		// (2026-10-27, o pedido 137) na escada divina a ALMA NPC (o habitante do alem, `"alma": true`) tambem e atendida -- ver
+		// `MissoesDeCargo.AlmaNpcEAtendida`. O resto dos NPCs continua fora pelo crivo de `SortearAlvoDeCaca`.
+		bool almaNpcConta = MissoesDeCargo.AlmaNpcEAtendida(r.Chave);
 
 		foreach (ServerPlayer o in ZoneList(portador.Zone.Hash))
 		{
-			if (o == portador || !EhPessoa(o)) continue;   // ver o crivo em `SortearAlvoDeCaca`
+			if (o == portador) continue;
+			if (!EhPessoa(o) && !(almaNpcConta && o.Papel is { Molde.Alma: true })) continue;   // ver o crivo em `SortearAlvoDeCaca`
 			if ((o.Pos - portador.Pos).Length > alcance) continue;
 			if (!MissoesDeCargo.ContaComoServico(r.DoOutroMundo, o.Ficha.dead, o.Ficha.train)) continue;
 			if (++pts >= MissoesDeCargo.TetoDoServico) break;
@@ -623,7 +628,7 @@ public partial class GameServer
 			return;
 		}
 
-		Avisar(pl, $"tarefa: {MissoesDeCargo.Descricao(f, r.DoOutroMundo)}");
+		Avisar(pl, $"tarefa: {MissoesDeCargo.Descricao(f, r.DoOutroMundo, MissoesDeCargo.AlmaNpcEAtendida(r.Chave))}");
 		Avisar(pl, $"prazo restante: {MissoesDeCargo.TextoDeTempo(f.Prazo - agora)} | "
 				 + $"falhas: {f.Falhas}/{MissoesDeCargo.FalhasQueDestituem} (com {MissoesDeCargo.FalhasQueDestituem}, você perde o cargo)");
 

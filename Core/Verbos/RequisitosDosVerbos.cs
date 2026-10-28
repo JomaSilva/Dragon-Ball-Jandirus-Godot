@@ -335,6 +335,9 @@ public static class RequisitosDosVerbos
 		// (2026-10-18) O NEO TUFFLE -- entrar no corpo de um jogador nocauteado. Ver `GameServer.NeoTuffle.cs`.
 		new("hab:tuffle_possuir", "Possuir um nocauteado", AbaOther, Fato(Fatos.NeoTuffle, "é um Neo Tuffle, no próprio corpo"),
 			"não é um Neo Tuffle"),
+		// (2026-10-28, o pedido 144) ...e sair dele quando quiser.
+		new("hab:tuffle_sair", "Sair do corpo", AbaOther, Fato(Fatos.DentroDeOutroCorpo, "está dentro do corpo de outro jogador"),
+			"não está dentro de outro corpo"),
 
 		// ---------------------------------------------------------- Learning
 		new("hab:mst_aceitar", "Aceitar", AbaLearning, ConviteDeMestre, "ninguem te ofereceu nada"),

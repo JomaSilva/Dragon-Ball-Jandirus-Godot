@@ -137,8 +137,19 @@ public static class Idioma
 	{
 		if (!EmIngles || texto.Length == 0) return texto;
 		bool recado = canal >= Protocol.Fala.Sistema;
-		if (!recado && !automatica && !TraduzODigitadoDeTeste) return texto;
+		if (!recado && !automatica && !TraduzODigitadoDeTeste) return ComAEtiquetaDaLingua(texto);
 		return Tradutor.Traduzir(texto);
+	}
+
+	/// <summary>
+	/// (2026-10-27) A ETIQUETA DA LINGUA DO SAY (o pedido 118): a fala digitada passa crua, mas o "[língua Saiyajin] " que o servidor poe
+	/// na frente dela (`Linguas.Rotulo`) e dele -- e sai na lingua desta tela ("[Saiyan language] ").
+	/// </summary>
+	private static string ComAEtiquetaDaLingua(string texto)
+	{
+		int fim = texto.IndexOf("] ", StringComparison.Ordinal);
+		if (fim < 0 || !texto.StartsWith("[língua ", StringComparison.Ordinal)) return texto;
+		return "[" + Tradutor.Traduzir(texto[1..fim]) + texto[fim..];
 	}
 
 	/// <summary>

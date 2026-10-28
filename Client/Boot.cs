@@ -1134,6 +1134,9 @@ public partial class Boot : Node2D
 		// (2026-10-23) A TELA DO KAI KAI: os planetas conhecidos, aberta pela lista que o servidor manda ao verbo sem destino. Vive montada
 		// e invisivel. Ver `TelaDoKaiKai`.
 		AddChild(new TelaDoKaiKai { Name = "KaiKai" });
+		// (2026-10-27) A TELA DO ESTUDO: os minijogos da Research Station (o pedido 120), aberta pelo `S2C.Estudo`. Vive montada e
+		// invisivel. Ver `TelaDoEstudo`.
+		AddChild(new TelaDoEstudo { Name = "Estudo" });
 		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
 		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
@@ -1165,8 +1168,12 @@ public partial class Boot : Node2D
 		// invisivel, como o QTE do embate e pelo mesmo motivo -- ela nasce de um pacote que chega no
 		// pior momento possivel (voce acabou de morrer), e montar tela nessa hora e perder o prazo.
 		AddChild(new TelaDeRefugio { Name = "Refugio" });
+		// (2026-10-27, o pedido 124d) A CONFIRMACAO DO "MORRER" do menu P > Other -- montada e invisivel, como a do refugio. Ver `TelaDeMorrer`.
+		AddChild(new TelaDeMorrer { Name = "Morrer" });
 		// (v0.3.0) A ESCOLHA DO MULTIPLICADOR DO KAIO-KEN -- montada e invisivel pelo mesmo motivo: ela abre no meio da briga.
 		AddChild(new TelaDeKaioken { Name = "Kaioken" });
+		// (2026-10-27, o pedido 124c) A LISTA DA MENTE: quem enfrentar, com a foto de cada um -- montada e invisivel. Ver `TelaDaMente`.
+		AddChild(new TelaDaMente { Name = "Mente" });
 
 		// ============================ A TELA DE TECLAS E A DE PAUSA JA EXISTEM -- ELAS SO VAO PRO FIM DA FILA ============================
 		// As duas nascem no `_Ready`, no lobby (ver o campo `_pause`). O que se faz aqui e devolver a
@@ -1478,6 +1485,15 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagaguasagrada") >= 0)
 			AddChild(new RoboDaAguaSagrada { Name = "RoboDaAguaSagrada" });
 
+		// --diagestudo: (2026-10-27) OS MINIJOGOS DE ESTUDO NA TELA -- a conta, o simbolo do elemento e a molecula montada na bancada, com o
+		// bonus subindo e caindo. Modo host + JANELA. Ver RoboDoEstudo. (Aqui no meio, e nao no fim da lista: o fim e de todo mundo.)
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagestudo") >= 0)
+			AddChild(new RoboDoEstudo { Name = "RoboDoEstudo" });
+		// --diagmorrer (2026-10-27, o pedido 124d): o botao Morrer na tela -- a confirmacao aberta pelo verbo, o Cancelar que nao mata e o
+		// Morrer que mata; fotos. Modo host + JANELA. Ver RoboDoMorrer.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmorrer") >= 0)
+			AddChild(new RoboDoMorrer { Name = "RoboDoMorrer" });
+
 		// --diaginferno: O OUTRO MUNDO POVOADO E O VILAO DO INFERNO, NA TELA (2026-10-16) -- as almas de aureola no Outro Mundo e no
 		// Inferno, e o vilao de saga que escapa e cai. Modo host + JANELA. Ver RoboDoInferno.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaginferno") >= 0)
@@ -1488,6 +1504,12 @@ public partial class Boot : Node2D
 		// RoboDaGravMeta. (Aqui no meio, e nao no fim da lista: o fim e de todo mundo.)
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggravmeta") >= 0)
 			AddChild(new RoboDaGravMeta { Name = "RoboDaGravMeta" });
+
+		// --diagcabeca: (2026-10-27) A CABECA NA TELA -- a visao turva da cabeca ferida, o desmaio pela cabeca (a tela preta com o corpo por
+		// cima), a gagueira de quem fala caido com o tronco ferido e o adendo do soco na cabeca de quem caiu pelo tronco. Modo host +
+		// JANELA. Ver RoboDaCabeca. (Aqui no meio, e nao no fim da lista: o fim e de todo mundo.)
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcabeca") >= 0)
+			AddChild(new RoboDaCabeca { Name = "RoboDaCabeca" });
 
 		// --diagmaquinas: O REGENERADOR E A MAQUINA DE GRAVIDADE NA TELA -- o tanque ligado pelo menu da tecla E
 		// (a campanula, a vida subindo), a gravidade ajustada no teclado numerico, e a tinta do campo com a forma
@@ -1909,6 +1931,10 @@ public partial class Boot : Node2D
 		// embates de verdade de pe. Ver RoboDeMudez.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmudez") >= 0)
 			AddChild(new RoboDeMudez { Name = "RoboDeMudez" });
+		// --diagmentelista (2026-10-27, o pedido 124c): a LISTA DA MENTE na tela -- as categorias com as fotos, a escolha, a vitoria que
+		// devolve a lista. Modo host + JANELA. Ver RoboDaMenteLista.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmentelista") >= 0)
+			AddChild(new RoboDaMenteLista { Name = "RoboDaMenteLista" });
 		// --diagaprendiz (2026-10-19): o APRENDIZ DE KAIOSHIN na tela -- o cartao do convite, a arvore na aba Learning, a lista do
 		// Dismiss Apprentice e o fim do vinculo; fotos. Ver RoboDoAprendiz.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagaprendiz") >= 0)

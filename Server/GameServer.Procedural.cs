@@ -223,6 +223,9 @@ public partial class GameServer
 			// `GameServer.MundoFrio.cs`.
 			VestirOMundoQueNasceu(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed));
 
+			// (2026-10-27) O YARDRAT NASCE POVOADO (o pedido 109) -- ver `GameServer.Yardrat.cs`
+			PovoarOYardrat(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed));
+
 			// A ASSINATURA VAI NO LOG DE PROPOSITO. E o unico jeito barato de descobrir que cliente e
 			// servidor divergiram: o numero daqui tem que bater com o que o cliente imprime ao entrar.
 			//

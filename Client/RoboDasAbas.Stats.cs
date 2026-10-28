@@ -100,7 +100,9 @@ public partial class RoboDasAbas
 		Checa("a barra de Ki tem o TRILHO do teto de carga (MaxValue = TrilhoDeKi da ficha), como a do HUD",
 			  bKi != null && Math.Abs(bKi.MaxValue - f.TrilhoDeKi) < 0.01, $"max {bKi?.MaxValue:0.##} / ficha {f.TrilhoDeKi:0.##}");
 		ProgressBar? bVida = barras.FirstOrDefault(b => b.GetMeta("barra").AsString() == "Vida");
-		Checa("a barra de Vida esta cheia na razao da ficha", bVida != null && Math.Abs(bVida.Value - f.HP / 100) < 0.02, $"{bVida?.Value:0.##} / ficha {f.HP / 100:0.##}");
+		// (2026-10-27, o pedido 127) a Vida do menu e a do HUD: a pior parte que derruba (`Hud.VidaNaTela`)
+		double vidaNaTela = Hud.VidaNaTela(f) / 100;
+		Checa("a barra de Vida esta na razao da pior parte vital (a mesma do HUD)", bVida != null && Math.Abs(bVida.Value - vidaNaTela) < 0.02, $"{bVida?.Value:0.##} / tela {vidaNaTela:0.##}");
 
 		// ---- as pilulas ----
 		List<string> pilulas = PilulasDaAba(pg);

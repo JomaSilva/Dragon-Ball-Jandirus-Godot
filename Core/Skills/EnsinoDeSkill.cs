@@ -32,6 +32,11 @@ public enum RecusaDeLicao
 	/// Ritual Mistico do Velho Kaiohshin o desperta. Ver <see cref="EnsinoDeSkill.SoPeloRitual"/>.
 	/// </summary>
 	SoPeloRitual,
+
+	/// <summary>
+	/// (dono, 2026-10-27) O Kai Kai so se ensina a quem e Kai ou ja despertou o ki divino. Ver <see cref="EnsinoDeSkill.AlcancaOKaiKai"/>.
+	/// </summary>
+	SemKiDivino,
 }
 
 /// <summary>
@@ -227,6 +232,29 @@ public static class EnsinoDeSkill
 		!MisticoSeEnsinaComoAntesDeTeste
 		&& string.Equals(s.Path, Ranks.RitualDoKaioshin.SkillDoMistico, StringComparison.OrdinalIgnoreCase);
 
+	// =====================================================================
+	// O KAI KAI SO PRA QUEM E KAI OU TEM O KI DIVINO -- regra do dono (2026-10-27), e ela DIVERGE do DM de olho aberto
+	// =====================================================================
+	// Os jogadores: *"kai kai shouldnt be teachable to non god ki mortals"*; o dono: *"racas sem serem kai, q nao tem god ki n poderiam
+	// aprender kai kai, kai sem god ki podem tranquilamente"*. No DM o `kai/Teleport` nasce `teacher = TRUE` e todo Kai o mostrava a quem
+	// estivesse colado nele. Agora a licao olha o ALUNO: o Kai aprende como antes; de outra raca, so com o ki divino DESPERTO
+	// (`DespertarDivino.JaDespertou`). Vale pras tres portas daqui -- o verbo `ens_ensinar`, o cartao do aluno e a licao de mestre, todas
+	// pelo `Avaliar` --, e quem ja aprendeu fica com ela. A pergunta e pela RACA do aluno: o Demigod e o mestico de pai Kai contam como
+	// outra raca.
+
+	/// <summary>O Kai Kai, da arvore racial dos Kai (`/datum/skill/tree/kai`).</summary>
+	public const string KaiKai = "/datum/skill/kai/Teleport";
+
+	/// <summary>A raca que aprende o Kai Kai sem o ki divino.</summary>
+	public const string RacaDoKaiKai = "Kai";
+
+	/// <summary>A skill e o Kai Kai -- a unica licao que pergunta pelo ki divino do aluno (o bloco acima).</summary>
+	public static bool PedeKiDivino(Skill s) => string.Equals(s.Path, KaiKai, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>QUEM APRENDE O KAI KAI: o Kai, ou quem ja despertou o ki divino (o bloco acima).</summary>
+	public static bool AlcancaOKaiKai(string raca, Stats.Fighter f) =>
+		string.Equals(raca, RacaDoKaiKai, StringComparison.Ordinal) || Forms.DespertarDivino.JaDespertou(f);
+
 	/// <summary>
 	/// ESTE LIVRO PODE REPASSAR ESTA SKILL? As tres condicoes do `Teach_Skill` (`:9-10`), e a
 	/// terceira e a regra inteira do sistema:
@@ -273,10 +301,12 @@ public static class EnsinoDeSkill
 	/// O que o livro do aluno responde se ELE fosse comprar esta skill (`SkillBook.PodeAprender`). So e lido na licao
 	/// do mestre, e so pra saber se a skill e do corpo dele (<see cref="ForaDoCorpo"/>).
 	/// </param>
+	/// <param name="alunoAlcancaOKaiKai">O <see cref="AlcancaOKaiKai"/> de quem recebe. So o Kai Kai o le.</param>
 	public static RecusaDeLicao Avaliar(SkillBook doMestre, SkillBook doAluno, Skill? s,
 										bool mestreTemAssinatura, bool alunoTemAssinatura,
 										bool mesmaPessoa, double distanciaTiles, bool naRecarga,
-										bool eMeuAluno = false, Recusa doAlunoSozinho = Recusa.Pode)
+										bool eMeuAluno = false, Recusa doAlunoSozinho = Recusa.Pode,
+										bool alunoAlcancaOKaiKai = true)
 	{
 		if (s == null || s.Arvore) return RecusaDeLicao.NaoExiste;
 		if (!doMestre.Sabe(s.Path)) return RecusaDeLicao.NaoSabe;
@@ -290,6 +320,8 @@ public static class EnsinoDeSkill
 		if (mesmaPessoa) return RecusaDeLicao.EleMesmo;
 		if (doAluno.Sabe(s.Path)) return RecusaDeLicao.AlunoJaSabe;
 		if (LicaoDeMestre(s, eMeuAluno) && ForaDoCorpo(doAlunoSozinho)) return RecusaDeLicao.NaoEDoCorpoDele;
+		// (dono, 2026-10-27) o Kai Kai so pra quem e Kai ou ja despertou o ki divino -- em toda porta, a do mestre tambem.
+		if (PedeKiDivino(s) && !alunoAlcancaOKaiKai) return RecusaDeLicao.SemKiDivino;
 		if (distanciaTiles >= 0 && distanciaTiles > TilesDaLicao) return RecusaDeLicao.Longe;
 		if (naRecarga) return RecusaDeLicao.Recarga;
 

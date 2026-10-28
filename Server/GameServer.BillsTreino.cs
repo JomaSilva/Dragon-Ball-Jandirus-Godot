@@ -174,6 +174,8 @@ public partial class GameServer
 			(int corpo, string tipo, string nome) = haCorpo ? DivinoAoAlcance(pl) : (0, "", "");
 			// (2026-10-19) O GRANDE PATRIARCA DE NAMEK e o terceiro corpo com menu, pelo mesmo pacote -- ver `GameServer.Patriarca.cs`.
 			if (corpo == 0) (corpo, tipo, nome) = PatriarcaAoAlcance(pl);
+			// (2026-10-27) E O MESTRE DO YARDRAT, antes do habitante comum -- ver `GameServer.Yardrat.cs`.
+			if (corpo == 0) (corpo, tipo, nome) = MestreYardratAoAlcance(pl);
 			// (2026-10-21) E O HABITANTE COMUM: o presente, o treino e o recrutamento da amizade -- ver `GameServer.Amizade.cs`.
 			if (corpo == 0) (corpo, tipo, nome) = HabitanteAoAlcance(pl);
 			if (_divinoApontado.TryGetValue(pl.Id, out (ServerPlayer Quem, int Corpo, string Tipo) visto)

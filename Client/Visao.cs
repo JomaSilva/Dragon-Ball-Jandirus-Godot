@@ -219,7 +219,13 @@ public partial class Visao : Node2D
 	/// </summary>
 	public ulong CegoAte;
 
-	public bool Cego => Time.GetTicksMsec() < CegoAte;
+	/// <summary>
+	/// (2026-10-27) O DESMAIO PELA CABECA (o pedido 119): a mesma cortina preta da cegueira, enquanto o corpo estiver desmaiado pela
+	/// cabeca -- so que o proprio corpo fica ACIMA dela (quem sobe o z dele e o `CabecaNaTela`): *"n ve nada alem do seu personagem"*.
+	/// </summary>
+	public bool Desmaiado;
+
+	public bool Cego => Desmaiado || Time.GetTicksMsec() < CegoAte;
 
 	/// <summary>Estava cego no quadro passado? E o que deixa o <see cref="_Process"/> ver a cegueira ACABAR.</summary>
 	private bool _estavaCego;
