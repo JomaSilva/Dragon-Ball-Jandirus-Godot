@@ -255,7 +255,7 @@ public partial class GameServer
 			finally { AlmaVaiAoEnmaDeTeste = false; }
 			if (perdida != null)
 			{
-				perdida.Combate.Morrer();
+				_ = perdida.Combate.Morrer();
 				Checa("(defeito injetado: a segunda morte do jogador) a alma do Inferno vai parar na mesa do Enma, no Outro Mundo -- a regua de cima REPROVA",
 					  perdida.Zone.Equals(alem), perdida.Zone.Name);
 			}

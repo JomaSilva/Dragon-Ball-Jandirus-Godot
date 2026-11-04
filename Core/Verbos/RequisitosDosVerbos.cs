@@ -266,6 +266,8 @@ public static class RequisitosDosVerbos
 		// (2026-10-23) A FAMILIA DO C DUPLO so tem o que escolher em quem tem forma DIVINA a alcancar -- e forma divina e a que pede ki
 		// divino desperto, de qualquer raca (o Ultra Instinct e de todas). Como os graus, o servidor guarda a de qualquer um: sem recusa.
 		new(ChaveDoVerbo("divinas_c"), "Toggle C: Mortal/Divine Forms", AbaOther, Fato(Fatos.GodKiDesperto, "God Ki desperto")),
+		// (2026-10-29, o pedido 153) o irmao dele: o Potential Unleashed dentro ou fora do C duplo
+		new(ChaveDoVerbo("mistico_c"), "Toggle C: Potential Unleashed", AbaOther, Fato(Fatos.MisticoLiberado, "Potential Unleashed liberado")),
 
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM, de todo Frost Demon (`fd_login_check`,
 		// `IcerTransform.dm:148`). Quem recusa quem nao e um e o servidor (`GameServer.Frost.ComandoDasFormasDoFrost`).
@@ -335,6 +337,10 @@ public static class RequisitosDosVerbos
 		// (2026-10-18) O NEO TUFFLE -- entrar no corpo de um jogador nocauteado. Ver `GameServer.NeoTuffle.cs`.
 		new("hab:tuffle_possuir", "Possuir um nocauteado", AbaOther, Fato(Fatos.NeoTuffle, "é um Neo Tuffle, no próprio corpo"),
 			"não é um Neo Tuffle"),
+		// (2026-10-29, o pedido 159) ...e o HOSPEDEIRO PERMANENTE: o mesmo portao -- so no proprio corpo (*"ele tem q estar sem hospedeiros pra
+		// isso"*). Ver `GameServer.HospedarDeVez`.
+		new("hab:tuffle_hospedar", "Hospedeiro permanente", AbaOther, Fato(Fatos.NeoTuffle, "é um Neo Tuffle, no próprio corpo"),
+			"não é um Neo Tuffle"),
 		// (2026-10-28, o pedido 144) ...e sair dele quando quiser.
 		new("hab:tuffle_sair", "Sair do corpo", AbaOther, Fato(Fatos.DentroDeOutroCorpo, "está dentro do corpo de outro jogador"),
 			"não está dentro de outro corpo"),
@@ -402,6 +408,9 @@ public static class RequisitosDosVerbos
 			Raca(Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm).E(Tecnica(Combat.AbsorcaoMajin.Verbo)),
 			"só o bio-androide com sangue Majin|ainda nao sabe absorver"),
 		new("hab:expelir", "Expelir todos", AbaSkills, Tecnica(Combat.AbsorcaoMajin.Verbo), "nao ha ninguem dentro de voce"),
+		// (2026-11-01, o pedido 219) A GOSMA (a `Goo Trap` do DU, que todo Majin ganha no login): *"pros majins (todos)"* -- pela raca, e so por
+		// ela. Ver `Races.GosmaDoMajin` e `GameServer.GosmaDoMajin.cs`.
+		new("hab:gosma", "Gosma", AbaSkills, Raca("Majin"), "só os Majins põem gosma"),
 		// (2026-10-17) A LARVA DO BIO-ANDROIDE (o adendo do dono): a forma de barata que o bio de laboratorio veste quando quer, e o enterrar,
 		// que e so dela -- e o unico jeito de sair dela (5 min enterrada). Ver `GameServer.Larva.cs`.
 		new("hab:larva", "Forma de larva", AbaSkills, Fato(Fatos.BioDeLaboratorio, "bio-androide de laboratório"), "não tem forma de larva"),
@@ -438,6 +447,9 @@ public static class RequisitosDosVerbos
 		// barra. No DM o `ReadyUp` e de todo corpo (`Power Control.dm:39`). Ver `GameServer.AlternarProntidao`.
 		new("hab:prontidao", "Relaxar / ficar pronto", AbaSkills, Tecnica(Stats.PoderEmUso.VerboDoControle),
 			"não sabe controlar o próprio poder"),
+		// (2026-10-29, o pedido 162) IGUALAR O PODER AO DO ALVO, pela mesma barra -- o mesmo controle de ki. Ver `GameServer.IgualarAoAlvo`.
+		new("hab:" + Stats.PoderEmUso.VerboDeIgualar, "Igualar ao alvo", AbaSkills, Tecnica(Stats.PoderEmUso.VerboDoControle),
+			"não sabe controlar o próprio poder"),
 
 		// O KIT DO DEUS DA DESTRUICAO (`GodOfDestruction.dm:119-133`, o `god_apply_powers`): os verbs sao do
 		// TITULO -- aparecem pra quem carrega o cargo e somem com ele, na hora. O servidor confere o trono em cada
@@ -468,6 +480,9 @@ public static class RequisitosDosVerbos
 		new(PrefixoDeHabilidade + Ranks.RitualDoKaioshin.Verbo, Ranks.RitualDoKaioshin.Nome, AbaSkills,
 			Cargo(Ranks.RitualDoKaioshin.Cargo).Ou(Fato(Fatos.RitualDoKaioshin, "no meio de um Ritual Místico")),
 			"só o Kaioshin"),
+		// (2026-10-29, o pedido 149) O KAIOSHIN RESTAURA UM MUNDO DESTRUIDO -- do trono, como o ritual. Ver `GameServer.UsarVerboDeRestaurar`.
+		new(PrefixoDeHabilidade + Ranks.MissoesDeCargo.VerboDeRestaurar, Ranks.MissoesDeCargo.NomeDeRestaurar, AbaSkills,
+			Cargo(Ranks.MissoesDeCargo.CargoQueReconstroi), "só o Kaioshin"),
 
 		// ---------------------------------------------------------- Tecla E: o mainframe de androides
 		// A MAQUINA E DE HUMANO: instalar o laboratorio e converter o proprio corpo pedem a raca

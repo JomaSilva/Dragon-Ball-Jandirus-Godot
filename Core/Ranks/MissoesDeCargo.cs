@@ -57,6 +57,12 @@ public enum TipoDeTarefa : byte
 
 	/// <summary>PODER, o Lorde do Gelo: destruir um mundo (`"planeta"`).</summary>
 	Planeta = 6,
+
+	/// <summary>
+	/// (2026-10-29, o pedido 149) SABEDORIA, o Kaioshin: um mundo foi destruido -- reconstrua-o (`"reconstruir"`). So com algum mundo
+	/// destruido; sem nenhum, o servico de sempre (ver <see cref="MissoesDeCargo.Escolher"/>).
+	/// </summary>
+	Reconstruir = 7,
 }
 
 /// <summary>
@@ -209,6 +215,21 @@ public static class MissoesDeCargo
 	/// </summary>
 	public static IEnumerable<RankDef> ComDeveres => Cargos.Todos.Where(r => r.TemDeveres);
 
+	/// <summary>(2026-10-29, o pedido 149) O cargo que reconstroi os mundos destruidos: o Kaioshin (as cinco vagas).</summary>
+	public const string CargoQueReconstroi = "kaioshin";
+
+	/// <summary>(2026-10-29) Este cargo recebe a tarefa de reconstruir?</summary>
+	public static bool Reconstroi(RankDef r) => string.Equals(r.Chave, CargoQueReconstroi, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>(2026-10-29, o pedido 149) O botao do Kaioshin que traz de volta um mundo destruido -- o canal de habilidade e o nome.</summary>
+	public const string VerboDeRestaurar = "kai_restaurar", NomeDeRestaurar = "Restaurar Planeta";
+
+	/// <summary>
+	/// (2026-10-29, o pedido 150) QUANTOS MUNDOS DESTRUIDOS FAZEM DE ALGUEM UMA AMEACA pro Deus da Destruicao -- o dono: *"destruir jogadores
+	/// q destruiram muitos planetas"*. ESCOLHA minha: tres. Ver `GameServer.EhAmeacaAoEquilibrio` e `Fighter.planetasDestruidos`.
+	/// </summary>
+	public const int MundosDoDestruidor = 3;
+
 	/// <summary>
 	/// O PLANETA DE UM CARGO -- `myplanet` (`:497`). Vazio = o cargo nao e de lugar nenhum.
 	///
@@ -255,8 +276,13 @@ public static class MissoesDeCargo
 	/// <param name="meuPlanetaDominado">
 	/// O planeta deste cargo tem dono, e o dono NAO e ele. (Vazio/sem dono = falso.)
 	/// </param>
-	public static TipoDeTarefa Escolher(RankDef r, bool meuPlanetaDominado)
+	/// <param name="haMundoDestruido">(2026-10-29) Ha algum mundo destruido agora -- a porta da tarefa de reconstruir do Kaioshin.</param>
+	public static TipoDeTarefa Escolher(RankDef r, bool meuPlanetaDominado, bool haMundoDestruido = false)
 	{
+		// (2026-10-29, o pedido 149) O KAIOSHIN RECONSTROI -- o dono: *"as quests de cargo deles servem pra reconstruir planetas q foram
+		// destruidos"*, e *"claro q kaioshin so recebe missao de reconstruir planeta, se tiver algum destruido"*. Sem mundo destruido, o
+		// servico de sempre. Os outros cargos de Kai continuam no servico.
+		if (haMundoDestruido && Reconstroi(r)) return TipoDeTarefa.Reconstruir;
 		if (r.Sabedoria) return TipoDeTarefa.Servico;
 		if (meuPlanetaDominado) return TipoDeTarefa.Libertar;
 		if (string.Equals(r.Chave, "president", StringComparison.OrdinalIgnoreCase)) return TipoDeTarefa.Verba;
@@ -369,6 +395,8 @@ public static class MissoesDeCargo
 		TipoDeTarefa.Heroi => $"ESMAGAR o herói {f.AlvoNome}: mate-o enquanto ele estiver online (se ele sair do jogo, a tarefa é "
 							+ "cancelada sem falha)",
 		TipoDeTarefa.Planeta => $"DESTRUIR o planeta {f.Planeta}",
+		TipoDeTarefa.Reconstruir => $"RECONSTRUIR o planeta {f.Planeta}: ele foi destruído -- traga-o de volta com o botão {NomeDeRestaurar} "
+								  + "(aba Skills)",
 		TipoDeTarefa.Verba => $"FINANCIAR a Terra: deposite {VerbaDoPresidente:N0} zeni no cofre dela com o botão Fund Earth (aba Other)",
 		// `ContaComoServico`: o Outro Mundo atende ALMAS; o mestre, quem TREINA -- e mestre morto nao da aula (`PodeServir`)
 		TipoDeTarefa.Servico when doOutroMundo && almaNpcConta =>
@@ -390,6 +418,7 @@ public static class MissoesDeCargo
 		TipoDeTarefa.Vilao => $"caçar o vilão {f.AlvoNome}",
 		TipoDeTarefa.Heroi => $"esmagar o herói {f.AlvoNome}",
 		TipoDeTarefa.Planeta => $"destruir o planeta {f.Planeta}",
+		TipoDeTarefa.Reconstruir => $"reconstruir o planeta {f.Planeta}",
 		TipoDeTarefa.Verba => "financiar a Terra",
 		TipoDeTarefa.Servico => doOutroMundo ? "atender almas" : "ensinar quem treina",
 		_ => "nenhuma",

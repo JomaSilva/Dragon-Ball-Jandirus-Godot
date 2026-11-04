@@ -173,7 +173,7 @@ public sealed partial class GameServer
 			double vivo0 = Exp(Efusao);
 			BasicBlast(pl);
 			double daBolaViva = Exp(Efusao) - vivo0;
-			pl.Combate.Morrer();
+			_ = pl.Combate.Morrer();
 			IrProAlem(pl);
 			bool dePe = f.dead && pl.MortoDePe && Alem.EhOAlem(pl.Zone) && !EhCadaver(pl) && EhJogador(pl);
 			AfirmarNv("(montagem) morto pela porta (`Combate.Morrer`) e levado ao Outro Mundo pela porta (`IrProAlem`): de pe la, e jogador",

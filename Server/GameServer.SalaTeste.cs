@@ -187,6 +187,8 @@ public sealed partial class GameServer
 			OClimaDaSalaFica();
 			OGuardiaoEASuaChave(a, kami, lookout);
 			ASalaFechadaNoComecoDoMundo(a, b, lookout, sala);   // (2026-10-27) o pedido 112
+			AChaveDaSala(a, lookout, sala);   // (2026-10-31) o pedido 196
+			OPisoDosVinteMilhoes(a, lookout, sala);   // (2026-11-01) o pedido 222
 		}
 		catch (Exception e) { AfirmarSala($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -1723,6 +1725,125 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
+	// (2026-10-31, o pedido 196) A CHAVE DA SALA DO TEMPO
+	// =====================================================================
+	/// <summary>
+	/// A "HTC Key" do dono: faz as vezes da autorizacao do Guardiao, uma vez, e quebra na entrada. Pela porta de producao
+	/// (`ComandoDaSalaDoTempo` -> `EntrarNaSala`), com a chave na mochila e sem a autorizacao:
+	///   K1. a sala FECHADA no comeco do mundo continua recusando, e a chave NAO se gasta (*"mas ainda segue as regras de so liberar sala do
+	///       tempo 2 dias apos wipe ou quando alguém bater 20m"*);
+	///   K2. a RECARGA continua recusando, e a chave NAO se gasta;
+	///   K3. aberta e sem recarga, o corpo atravessa SEM o Guardiao -- e a chave QUEBRA (some da mochila, e o jogador le); contra-exemplo
+	///       `PortaIgnoraAChaveDeTeste`;
+	///   K4. com a autorizacao E a chave, a autorizacao e que se gasta: a chave fica;
+	///   K5. sem as duas, a barreira de sempre; K6. as regras da porta falam da chave.
+	/// </summary>
+	private void AChaveDaSala(ServerPlayer a, ZoneKey lookout, ZoneKey sala)
+	{
+		GD.Print("[sala] -- (2026-10-31, o pedido 196) A CHAVE DA SALA DO TEMPO: entra sem o Guardiao, uma vez, e quebra --");
+		long nascimentoGuardado = _nascimentoDoMundo;
+		string abertaGuardada = _salaAbertaPor;
+		const long UmDia = 24L * 3_600_000;
+		string chave = Jandirus.Core.Items.CatalogoDeItens.ChaveDaSala;
+		SalaFechadaNaBancadaDeTeste = true;
+
+		// EM FRENTE A PORTA, com (ou sem) a autorizacao e com tantas chaves na mochila -- o molde da `ASalaFechadaNoComecoDoMundo`
+		void NaPorta(ServerPlayer p, bool autorizada, int chaves)
+		{
+			_naSala.Clear();
+			ZoneList(p.Zone.Hash).Remove(p);
+			p.Zone = lookout;
+			ZoneList(lookout.Hash).Add(p);
+			p.Pos = new Vec2(124 * ZoneCollision.TileSize + 16, 81 * ZoneCollision.TileSize + 16);
+			p.SalaAutorizada = autorizada;
+			p.SalaPreso = false;
+			p.SalaUltimaEntrada = 0;
+			p.SalaDiasDaSessao = 0;
+			p.SalaJanelaAte = 0;
+			p.Ficha.dead = p.Ficha.KO = false;
+			p.Voando = false;
+			p.Mochila.Tirar(chave, 99);
+			if (chaves > 0) p.Mochila.Guardar(chave, chaves);
+			EscutaDeAvisos?.Clear();
+		}
+		int Chaves(ServerPlayer p) => p.Mochila.Quantos(chave);
+		bool Dentro(ServerPlayer p) => p.Zone.Hash == sala.Hash;
+
+		try
+		{
+			// ---- K1) o mundo nascido agora: a sala fechada
+			_salaAbertaPor = "";
+			_nascimentoDoMundo = NowMs();
+			NaPorta(a, autorizada: false, chaves: 1);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("(o pedido 196) K1. **COM A CHAVE, A SALA FECHADA NO COMECO DO MUNDO CONTINUA FECHADA** (os 2 dias ou os 20M) -- e a chave NAO se gasta",
+						!Dentro(a) && UltimoAviso().Contains("ainda está fechada neste mundo") && Chaves(a) == 1,
+						$"{a.Zone.Name} / {Chaves(a)} chave(s) / {UltimoAviso()}");
+
+			// a sala aberta dai em diante: 2 dias e um minuto depois
+			_nascimentoDoMundo = NowMs() - (2 * UmDia + 60_000);
+
+			// ---- K2) a recarga
+			NaPorta(a, autorizada: false, chaves: 1);
+			a.SalaUltimaEntrada = NowMs();
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("(o pedido 196) K2. **COM A CHAVE, A RECARGA CONTINUA RECUSANDO** -- e a chave NAO se gasta",
+						!Dentro(a) && UltimoAviso().Contains("tempo real") && Chaves(a) == 1, $"{a.Zone.Name} / {Chaves(a)} chave(s) / {UltimoAviso()}");
+
+			// ---- K3) aberta, sem recarga e sem a autorizacao: a chave abre e quebra
+			NaPorta(a, autorizada: false, chaves: 1);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			string disse = string.Join(" | ", EscutaDeAvisos ?? []);
+			AfirmarSala("(o pedido 196) K3. **A CHAVE ABRE A PORTA SEM O GUARDIAO**: sem a autorizacao e com a chave, o corpo atravessa pra Sala",
+						Dentro(a), $"{a.Zone.Name} / {disse}");
+			AfirmarSala("(o pedido 196) K3b. **...E A CHAVE QUEBRA**: some da mochila na entrada, e o jogador le que ela se partiu",
+						Chaves(a) == 0 && disse.Contains("se parte em pedaços"), $"{Chaves(a)} chave(s) / {disse}");
+
+			NaPorta(a, autorizada: false, chaves: 1);
+			PortaIgnoraAChaveDeTeste = true;
+			try { ComandoDaSalaDoTempo(a, "sala_entrar", ""); }
+			finally { PortaIgnoraAChaveDeTeste = false; }
+			AfirmarSala("   DEFEITO INJETADO (a porta ignora a chave, o jogo de antes): com a chave, a barreira recusa -- a regua K3 reprovaria",
+						!Dentro(a) && UltimoAviso().Contains("barreira"), $"{a.Zone.Name} / {UltimoAviso()}");
+
+			// ---- K4) a autorizacao E a chave: a autorizacao e que se gasta
+			NaPorta(a, autorizada: true, chaves: 1);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("(o pedido 196) K4. **QUEM TEM A AUTORIZACAO DO GUARDIAO E A CHAVE GASTA A AUTORIZACAO**: entra, e a chave fica na mochila",
+						Dentro(a) && Chaves(a) == 1 && !a.SalaAutorizada, $"{a.Zone.Name} / {Chaves(a)} chave(s)");
+
+			// ---- K5) nem a chave nem a autorizacao
+			NaPorta(a, autorizada: false, chaves: 0);
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("(o pedido 196) K5. sem a chave e sem a autorizacao, a barreira de sempre", !Dentro(a) && UltimoAviso().Contains("barreira"), UltimoAviso());
+
+			// ---- K6) as regras da porta
+			NaPorta(a, autorizada: false, chaves: 0);
+			ComandoDaSalaDoTempo(a, "sala_regras", "");
+			AfirmarSala("(o pedido 196) K6. as regras da porta dizem que a Chave da Sala do Tempo abre a barreira sem o Guardiao, uma vez",
+						EscutaDeAvisos?.Any(s => s.Contains("Chave da Sala do Tempo também abre a barreira")) == true, string.Join(" | ", EscutaDeAvisos ?? []));
+		}
+		finally
+		{
+			PortaIgnoraAChaveDeTeste = false;
+			SalaFechadaNaBancadaDeTeste = false;
+			_nascimentoDoMundo = nascimentoGuardado;
+			_salaAbertaPor = abertaGuardada;
+			a.Mochila.Tirar(chave, 99);
+			_naSala.Clear();
+			RecolherComidaDaSala();
+			a.SalaUltimaEntrada = 0;
+			a.SalaDiasDaSessao = 0;
+			a.SalaJanelaAte = 0;
+			a.SalaAutorizada = false;
+			ZoneList(a.Zone.Hash).Remove(a);
+			a.Zone = lookout;
+			ZoneList(lookout.Hash).Add(a);
+			AplicarGravidade(a);
+		}
+	}
+
+	// =====================================================================
 	// 16) O `Goto Spawn` SAIU DAS MAOS DO JOGADOR -- e continua na do admin
 	// =====================================================================
 	/// <summary>
@@ -2193,6 +2314,63 @@ public sealed partial class GameServer
 			RecolherComidaDaSala();
 			NoTemplo(kami);
 			AplicarGravidade(kami);
+		}
+	}
+
+	// =====================================================================
+	// (2026-11-01, o pedido 222) O PISO DE 20 MILHOES DE PODER BASE
+	// =====================================================================
+	/// <summary>
+	/// *"so pode entrar na sala do tempo quem tiver NO MINIMO 20 milhoes de bp base"*. Ligado SO aqui (`PisoDaSalaNaBancadaDeTeste`): as
+	/// familias de cima entram com corpos de 1.000. E o poder BASE: o expresso la em cima (forma, raiva) nao abre; e a recusa vem antes da
+	/// chave do Guardiao, que nao se gasta.
+	/// </summary>
+	private void OPisoDosVinteMilhoes(ServerPlayer a, ZoneKey lookout, ZoneKey sala)
+	{
+		GD.Print("[sala] -- (2026-11-01, o pedido 222) O PISO DE 20 MILHOES DE PODER BASE --");
+		double bpGuardado = a.Ficha.BP;
+		PisoDaSalaNaBancadaDeTeste = true;
+
+		// EM FRENTE A PORTA, autorizado e sem recarga -- o molde da `AChaveDaSala`
+		void NaPorta()
+		{
+			_naSala.Clear();
+			ZoneList(a.Zone.Hash).Remove(a);
+			a.Zone = lookout;
+			ZoneList(lookout.Hash).Add(a);
+			a.Pos = new Vec2(124 * ZoneCollision.TileSize + 16, 81 * ZoneCollision.TileSize + 16);
+			a.SalaAutorizada = true;
+			a.SalaPreso = false;
+			a.SalaUltimaEntrada = 0;
+			a.SalaDiasDaSessao = 0;
+			a.SalaJanelaAte = 0;
+			a.Ficha.dead = a.Ficha.KO = false;
+			a.Voando = false;
+			EscutaDeAvisos?.Clear();
+		}
+
+		try
+		{
+			NaPorta();
+			a.Ficha.BP = BpBaseMinimoDaSala - 1;
+			a.Ficha.expressedBP = BpBaseMinimoDaSala * 50;   // o expresso la em cima: nao conta
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("(o pedido 222) **UM ABAIXO DOS 20 MILHOES DE PODER BASE, A PORTA RECUSA** e diz o piso -- o expresso alto nao abre, e a chave "
+						+ "do Guardiao NAO se gasta",
+						a.Zone.Hash != sala.Hash && UltimoAviso().Contains("20 milhões", StringComparison.Ordinal) && a.SalaAutorizada,
+						$"{a.Zone.Name} / chave {a.SalaAutorizada} / {UltimoAviso()}");
+
+			NaPorta();
+			a.Ficha.BP = BpBaseMinimoDaSala;
+			ComandoDaSalaDoTempo(a, "sala_entrar", "");
+			AfirmarSala("(o pedido 222) ...e com os 20 milhoes em ponto ela abre", a.Zone.Hash == sala.Hash, $"{a.Zone.Name} / {UltimoAviso()}");
+		}
+		finally
+		{
+			PisoDaSalaNaBancadaDeTeste = false;
+			a.Ficha.BP = bpGuardado;
+			NaPorta();
+			a.SalaAutorizada = false;
 		}
 	}
 }

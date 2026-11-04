@@ -47,8 +47,31 @@ public static class DanoDeKi
 	/// `var/globalKiDamage = 2` (`objects.dm:56`) -- o irmao do `globalmeleeattackdamage`, que no
 	/// port e <see cref="CombatKnobs.DanoGlobal"/>. Botao de balanceamento: mexe no dano de TODO
 	/// ataque de ki de uma vez.
+	///
+	/// (2026-10-30, o pedido 177) DE 2 PRA 1 -- o dono: *"acho q seria bom nerfar o beam em geral um pouco, talvez abaixando o global ki dmg
+	/// pra 1 ao invés de 2 ou menos"*. Todo ataque de ki (o raio, a bola, a tecnica) sai com a METADE do dano, e so o dano muda: os dois
+	/// limiares medidos em dano acompanham o botao (<see cref="CorteDoFraco"/> e `EmbateDeKi.DanoQueAsMaosEmpatam` -- o embate de guarda fica
+	/// como era), a regua do planeta ja acompanhava (`PlanetasMortos.BrutoDeReferencia`), e as quatro bolas do DM que escrevem o botao DENTRO
+	/// da potencia ficam no 2 de la (<see cref="PotenciaDeBolaDoDm"/>), senao nelas ele valeria ao cubo.
 	/// </summary>
-	public static double DanoGlobalDeKi = 2;
+	public static double DanoGlobalDeKi = 1;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 177) O `globalKiDamage` QUE O DM ESCREVE DENTRO DO `basedamage` de quatro bolas: o 2 de la, FIXO. Ver
+	/// <see cref="PotenciaDeBolaDoDm"/>.
+	/// </summary>
+	public const double GlobalDaReceitaDoDm = 2;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 177) A POTENCIA DAS BOLAS QUE O DM ESCREVE COM O BOTAO DENTRO -- `fator * Ekioff * log10(max(blastskill,10)) *
+	/// globalKiDamage`: o Tiro Carregado (2), a Barragem e o Tiro Disperso, a Hellzone e o Campo Minado (2 ou 4) e as Balas de Energia e a
+	/// Rajada Giratoria (0,7 e 1,1, com os dois logs delas por cima). O botao entra aqui com o 2 do DM (<see cref="GlobalDaReceitaDoDm"/>) e
+	/// nao com o <see cref="DanoGlobalDeKi"/>: a potencia entra DUAS vezes na cadeia (no `mods` e no `basedamage`), e o botao de novo no
+	/// <see cref="BrutoContra"/> -- com ele aqui tambem, o nerf do pedido 177 deixaria estas bolas com um OITAVO do dano, e o pedido e "um
+	/// pouco", igual pra todo ataque de ki.
+	/// </summary>
+	public static double PotenciaDeBolaDoDm(double fator, double ekioff, double blastskill) =>
+		fator * ekioff * Log10Min(blastskill, 10) * GlobalDaReceitaDoDm;
 
 	/// <summary>
 	/// O PISO DO PISO: `if(dmg==0) dmg += basedamage*0.02`. Existe porque a divisao por
@@ -114,8 +137,12 @@ public static class DanoDeKi
 	/// ========================================================================================================================
 	///
 	/// BOTAO, E NAO CONSTANTE, como o <see cref="DanoGlobalDeKi"/>: e balanceamento.
+	///
+	/// (2026-10-30, o pedido 177) E MEDIDO EM DANO, entao ACOMPANHA O BOTAO: o 10 do DM e com o <see cref="DanoGlobalDeKi"/> em 2 -- cinco por
+	/// ponto dele, 5 com o botao em 1. Fixo em 10, o jogo de antes (o defeito injetado das bancadas de ki) cortaria o dobro dos raios, e a
+	/// janela entre ele e o empate das maos (`EmbateDeKi.DanoQueAsMaosEmpatam`, que tambem acompanha) sumiria.
 	/// </summary>
-	public static double CorteDoFraco = 10;
+	public static double CorteDoFraco = 5 * DanoGlobalDeKi;
 
 	/// <summary>
 	/// ESTE IMPACTO E FRACO DEMAIS PRA SER GOLPE? `dano final &lt; 10`, estrito -- dez cravado fere

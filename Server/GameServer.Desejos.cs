@@ -122,7 +122,8 @@ public sealed partial class GameServer
 	/// </summary>
 	internal double FatorDoDragao(SetDeEsferas s) =>
 		s.Id == Desejos.IdDoSetDoSuper ? (SuperSemMultiplicadorDeTeste ? 1 : Desejos.MultiplicadorDoSuper)
-		: Esferas.SetDeJogador(s.Id) ? (ForcaInteiraDeTeste ? 1 : ConfigDaEstatua.ForcaDeCadaPedido(s.Desejos))
+		// (2026-10-31, o pedido 195) EhSetDeJogador, e nao o id: a copia por jogador de um set de jogador divide a forca como o set dela.
+		: EhSetDeJogador(s) ? (ForcaInteiraDeTeste ? 1 : ConfigDaEstatua.ForcaDeCadaPedido(s.Desejos))
 		: FatorNegro(s);
 
 	/// <summary>
@@ -132,7 +133,7 @@ public sealed partial class GameServer
 	internal static bool ForcaInteiraDeTeste;
 
 	/// <summary>(2026-10-22) A forca de UM pedido deste set: nos de jogador, a do set dividida pelos pedidos; nos outros, a do set.</summary>
-	internal double PoderDeCadaPedido(SetDeEsferas s) => Esferas.SetDeJogador(s.Id) ? s.Poder * FatorDoDragao(s) : s.Poder;
+	internal double PoderDeCadaPedido(SetDeEsferas s) => EhSetDeJogador(s) ? s.Poder * FatorDoDragao(s) : s.Poder;
 
 	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): o Super com os numeros do Shenron. Falso em jogo, sempre.</summary>
 	internal static bool SuperSemMultiplicadorDeTeste;
@@ -280,26 +281,83 @@ public sealed partial class GameServer
 	/// ramo carrega a linha do DM ao lado, e a leitura lado a lado com a fonte e o que faz uma revisao
 	/// 1:1 ser possivel.
 	/// </summary>
-	private bool Conceder(ServerPlayer pl, SetDeEsferas s, DesejoDef d, string alvo) => d.Id switch
+	private bool Conceder(ServerPlayer pl, SetDeEsferas s, DesejoDef d, string alvo)
 	{
-		"nada" => DesejoDeNada(pl, s),
-		"dinheiro" => DesejoDeDinheiro(pl, s),
-		"marcos" => DesejoDeMarcos(pl, s),
-		"tecnologia" => DesejoDeTecnologia(pl, s),
-		"reviver" => DesejoDeReviver(pl, s, alvo),
-		"juventude" => DesejoDeJuventude(pl, s, alvo),
-		"poder" => DesejoDePoder(pl, s),
-		"inteligencia" => DesejoDeInteligencia(pl, s),
-		"juventude_alheia" => DesejoDeJuventudeAlheia(pl, s, alvo),
-		"curar_planeta" => DesejoDeCurarPlaneta(pl, s, alvo),
-		"super_saiyajin" => DesejoDeSuperSaiyajin(pl, s),
-		"potencial" => DesejoDePotencial(pl, s),
-		"reviver_todos" => DesejoDeReviverTodos(pl, s),
-		"matar" => DesejoDeMatar(pl, s, alvo),
-		"supremo" => DesejoSupremo(pl, s, pl),
-		"corpo_saiyajin" => DesejoDeCorpoSaiyajin(pl, s, alvo),
-		Desejos.IdDaDancaDaFusao => DesejoDaDancaDaFusao(pl, s),
-		_ => false,
+		// (2026-10-29, o pedido 168) O DESEJO DE SI MESMO PODE IR PRA UM CONHECIDO ONLINE -- ver `DesejosPraOutro`
+		ServerPlayer quem = pl;
+		if (DesejosPraOutro.Contains(d.Id))
+		{
+			if (QuemRecebe(pl, alvo) is not { } escolhido)
+			{
+				Avisar(pl, "essa pessoa não está online, ou você não a conhece. Nenhum pedido foi gasto.");
+				return false;
+			}
+			quem = escolhido;
+			if (quem != pl) AnunciarDesejo($"{pl.Name} faz o pedido a {s.NomeDoDragao} para {quem.Name}!");
+		}
+		bool deu = d.Id switch
+		{
+			"nada" => DesejoDeNada(pl, s),
+			"dinheiro" => DesejoDeDinheiro(quem, s),
+			"marcos" => DesejoDeMarcos(quem, s),
+			"tecnologia" => DesejoDeTecnologia(quem, s),
+			"reviver" => DesejoDeReviver(pl, s, alvo),
+			"juventude" => DesejoDeJuventude(pl, s, alvo),
+			"poder" => DesejoDePotencial(quem, s),   // (2026-10-29) o poder VIROU a liberacao do potencial (o pedido 156)
+			"inteligencia" => DesejoDeInteligencia(quem, s),
+			"juventude_alheia" => DesejoDeJuventudeAlheia(pl, s, alvo),
+			"curar_planeta" => DesejoDeCurarPlaneta(pl, s, alvo),
+			"super_saiyajin" => DesejoDeSuperSaiyajin(quem, s),
+			"reviver_todos" => DesejoDeReviverTodos(pl, s),
+			"matar" => DesejoDeMatar(pl, s, alvo),
+			"supremo" => DesejoSupremo(pl, s, pl),
+			"corpo_saiyajin" => DesejoDeCorpoSaiyajin(pl, s, alvo),
+			Desejos.IdDaDancaDaFusao => DesejoDaDancaDaFusao(quem, s),
+			// (2026-10-31, os pedidos 196 e 197) a chave da Sala do Tempo, e a sala mais perto (so das Black Star) -- `GameServer.ChaveDaSala.cs`
+			Desejos.IdDaChaveDaSala => DesejoDaChaveDaSala(quem, s),
+			Desejos.IdDaSalaMaisProxima => DesejoDaSalaMaisProxima(pl, s),
+			_ => false,
+		};
+		if (!deu && quem != pl) Avisar(pl, $"o desejo não pôde ir para {quem.Name} -- nenhum pedido foi gasto.");
+		return deu;
+	}
+
+	/// <summary>
+	/// (2026-10-29) OS DESEJOS DE SI MESMO QUE PODEM IR PRA OUTRA PESSOA -- o pedido 168, o dono: *"Permita q todas as esferas comuns e black
+	/// star vc tenha a opção de fazer o pedido ter efeito em outra pessoa, assim vai abrir uma lista dos jogadores online q vc conhece, e vc
+	/// realiza o pedido pra ela"* (e o Super Shenlong tambem, quando quem reuniu as sete faz o pedido: ele passa pelo mesmo `Conceder`). O
+	/// "pra quem?" do menu (`EntradaDoDesejo`) lista voce e os conhecidos online (`ConhecidosOnline`); o pedido viaja com o "#id" de quem
+	/// recebe. FICAM DE FORA, de proposito: o supremo (seria condenar alguem a morrer em um ano) e o corpo Saiyajin (a troca de corpo do
+	/// Zamasu) -- e a juventude e os desejos de alvo, que ja tem o seu.
+	/// </summary>
+	internal static readonly HashSet<string> DesejosPraOutro = new(StringComparer.Ordinal)
+		{ "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", Desejos.IdDaDancaDaFusao,
+		  // (2026-10-31, o pedido 196) a chave da Sala do Tempo tambem se pede pra um amigo -- e um item, como a riqueza
+		  Desejos.IdDaChaveDaSala };
+
+	/// <summary>(2026-10-29) Os jogadores ONLINE que <paramref name="pl"/> CONHECE (a aba People) -- quem pode receber o desejo dele.</summary>
+	private List<ServerPlayer> ConhecidosOnline(ServerPlayer pl) =>
+		[.. _players.Values.Where(o => o != pl && EhPessoa(o) && !EhCadaver(o) && pl.Social.Conhece(o.Assinatura))];
+
+	/// <summary>(2026-10-29) QUEM RECEBE O DESEJO: o "#id" de um conhecido online, ou quem pede. Nulo = o "#id" nao e de ninguem que ele conheca online.</summary>
+	private ServerPlayer? QuemRecebe(ServerPlayer pl, string alvo)
+	{
+		if (!alvo.StartsWith('#')) return pl;
+		if (!int.TryParse(alvo.AsSpan(1), out int id)) return null;
+		if (id == pl.Id) return pl;
+		// (2026-11-01, o pedido 212) o desejo nao vai pra um personagem da mesma conexao -- ver `GameServer.MesmoIp.cs`
+		ServerPlayer? quem = ConhecidosOnline(pl).FirstOrDefault(o => o.Id == id);
+		return RecusaPeloMesmoIp(pl, quem) ? null : quem;
+	}
+
+	/// <summary>(2026-10-29) Por que <paramref name="quem"/> nao pode receber este desejo agora -- nulo = pode. O "pra quem?" do menu apaga a escolha.</summary>
+	private string? PorQueNaoRecebe(string id, ServerPlayer quem) => id switch
+	{
+		"marcos" when JaPediuMarcos(quem) => "já pediu Marcos ao dragão (é uma vez por vida)",
+		Desejos.IdDaDancaDaFusao when SabeDancar(quem) => "já sabe a Dança da Fusão",
+		"poder" => PorQueNaoLiberaOPotencial(quem),
+		"super_saiyajin" when (quem.Ficha.Genoma?.RacePercent("Saiyan") ?? 0) < Desejos.SangueSaiyajinMinimo => "não tem sangue Saiyajin",
+		_ => null,
 	};
 
 	// =====================================================================
@@ -395,31 +453,6 @@ public sealed partial class GameServer
 		// O DM tambem soma `techcost += 50*techskill` no livro -- e o custo de LER aquele item, um campo
 		// do proprio objeto. Sem o objeto nao ha o que encarecer, e por isso ele nao tem porte: nao e um
 		// efeito no personagem.
-		return true;
-	}
-
-	/// <summary>
-	/// "Power" -- `WishTable.dm:205-213`. `originator.BP += originator.capcheck(originator.relBPmax/4)`.
-	///
-	/// O `CapCheck` E A PORTA UNICA DO BP neste port (`Fighter.Training.cs:16`: *"Nada aqui escreve `BP
-	/// +=` sem passar por..."*), e o original faz exatamente a mesma coisa -- entao o porte e literal e
-	/// de graca. O bloqueio do criador foi cobrado antes, no `PedirDesejo`.
-	/// </summary>
-	private bool DesejoDePoder(ServerPlayer pl, SetDeEsferas s)
-	{
-		double antes = pl.Ficha.BP;
-		pl.Ficha.BP += pl.Ficha.CapCheck(pl.Ficha.relBPmax * Desejos.FracaoDoDesejoDePoder) * FatorDoDragao(s);
-		pl.Ficha.Statify();
-		AplicarPoderes(pl);
-		MandarFicha(pl);
-		Persistir(pl);
-
-		AnunciarDesejo($"{pl.Name} pede PODER a {s.NomeDoDragao}!");
-		// O NUMERO SO PRA QUEM TEM SCOUTER (a regra principal do BP; ver `PoderNaFrase`): os outros ouvem o quanto
-		// cresceram -- e o `Dragonballs.dm:64` do original, que esconde ate o anuncio do upgrade.
-		Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, antes, pl.Ficha.BP))
-			? $"o seu poder de luta sobe de {antes:N0} para {pl.Ficha.BP:N0}."
-			: $"o seu poder de luta sobe: você está {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, pl.Ficha.BP)}.");
 		return true;
 	}
 
@@ -731,21 +764,26 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// "Liberar o meu potencial" -- REGRA DO DONO, em duas datas, sem par no `WishTable.dm`:
+	/// O DESEJO DE PODER -- desde 2026-10-29 a LIBERACAO DO POTENCIAL, e nada de poder bruto (o pedido 156, o dono: *"o pedido de ganho de
+	/// poder ta muito apelao da blackstar, um jogador foi de 300m pra 3B com 1 pedido, pedir poder deveria mesclar com o pedido de pedir pra
+	/// liberar o potencial entao ao pedir poder vc ganharia potential unlock, e nao so poder bruto, de nenhuma esfera"*). O "Liberar o meu
+	/// potencial", que era a regra do dono em duas datas sem par no `WishTable.dm`, entrou aqui e saiu da tabela:
 	///   * (2026-10-13) *"adicione a forma "ORANGE" pros nameks, essa forma tem o mesmo buff do beast, porem vc aprende
 	///     pedindo pras esferas pra liberar seu potencial"*;
 	///   * (2026-10-15, v0.3.0) *"shenlong poderia ter um desejo pra liberar o potencial, e caso seja feito por um namek ele
-	///     ganha alem do potential unlocked, ele ganha a forma mistica e orange. pra pedir isso ele precisa ter o poder
-	///     minimo de god ki dele (por mais q essas formas n sejam god ki) outras racas podem pedir unlock potential em
+	///     ganha alem do potential unlocked, ele ganha a forma mistica e orange. [...] outras racas podem pedir unlock potential em
 	///     qualquer momento, mas so ganham a liberacao de potencial, mais nada."*
 	///
 	/// TODA RACA PEDE, e cada uma recebe o que e dela:
-	///   * QUALQUER RACA: o banco do potencial se solta 1,5x, pela MESMA porta do Guru, da Agua e do Unlock (<see cref="LiberarOPotencial"/>;
-	///     2026-10-26, o dono -- era o despertar uma vez na vida), sem a recarga de uma hora: o desejo e o dragao;
-	///   * O NAMEKUSEIJIN, alem dele, o MISTICO (<see cref="ConcederMistico"/>) e o ORANGE (`Forma.Liberar`) -- `Liberar` e
-	///     nao `Entrar`: a estreia da forma fica pro dia em que ele apertar o C. E SO COM O PODER DO KI DIVINO DELE: o BP
-	///     base no requisito pessoal (<see cref="RequisitoDeGodKi"/>), mesmo que nenhuma das duas formas seja divina.
-	///     Abaixo dele o Namekuseijin nao pede -- e a recusa nao diz numero (a regra principal do BP).
+	///   * QUALQUER RACA: o banco do potencial se solta pelo fator DESTE dragao (`Desejos.LiberacaoDoPoder`: 1,5x no Shenlong, no Porunga e
+	///     nos sets de jogador, 2x nas Black Star, 3x no Super Shenlong), pela MESMA porta do Guru, da Agua e do Unlock
+	///     (<see cref="LiberarOPotencial"/>), sem a recarga de uma hora: o desejo e o dragao;
+	///   * O NAMEKUSEIJIN, alem dele, o MISTICO se ainda nao o tem (<see cref="ConcederMistico"/>) e o ORANGE (`Forma.Liberar`) -- `Liberar` e
+	///     nao `Entrar`: a estreia da forma fica pro dia em que ele apertar o C. O Orange e dele NA HORA com o poder do ki divino (o BP base
+	///     no requisito pessoal, <see cref="RequisitoDeGodKi"/>); abaixo dele, o Orange fica GUARDADO (`Fighter.orangeDoDragao`) e desperta
+	///     quando o poder alcancar o requisito, com o aviso no chat (<see cref="ConferirOPresenteDoDragao"/>; o pedido 157, o dono: *"se ele
+	///     tiver menos q o poder necessario pra god ki, ele libera a forma de forma escondida, e ao bater a meta de god ki o chat vai avisar q
+	///     finalmente um presente do shenlong vai poder fazer efeito"*). Ate 2026-10-29, abaixo do requisito o Namekuseijin nao pedia.
 	///
 	/// A RECUSA NAO CONSOME, e o menu do dragao apaga a linha pelo MESMO motivo (<see cref="PorQueNaoLiberaOPotencial"/>).
 	/// </summary>
@@ -759,15 +797,29 @@ public sealed partial class GameServer
 
 		bool namek = EhNamekuseijinDoDesejo(pl);
 		AnunciarDesejo(namek
-			? $"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL -- e o dragão dá muito mais!"
-			: $"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL!");
+			? $"{pl.Name} pede PODER a {s.NomeDoDragao} -- e o dragão solta o potencial dele, e dá muito mais!"
+			: $"{pl.Name} pede PODER a {s.NomeDoDragao} -- e o dragão solta o potencial que dormia nele!");
 		if (pl.Ficha.TemPotencialGuardado)
-			LiberarOPotencial(pl, pl, Jandirus.Core.Stats.GainKnobs.LiberaODesejo, autor: s.NomeDoDragao, comRecarga: false);
+			LiberarOPotencial(pl, pl, Desejos.LiberacaoDoPoder(FatorDoDragao(s)), autor: s.NomeDoDragao, comRecarga: false);
 		if (namek)
 		{
 			ConcederMistico(pl, s.NomeDoDragao);
-			pl.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdOrange);
-			Avisar(pl, "e algo a mais desperta junto: a forma ORANGE é sua. Aperte C.");
+			string orange = Jandirus.Core.Forms.Catalogo.IdOrange;
+			if (!pl.Forma.Despertou(orange) && pl.Ficha.orangeDoDragao.Length == 0)
+			{
+				bool comOKiDivino = RequisitoDoPotencialIgnoradoDeTeste || pl.Ficha.BP >= RequisitoDeGodKi(pl);
+				if (comOKiDivino)
+				{
+					pl.Forma.Liberar(orange);
+					Avisar(pl, "e algo a mais desperta junto: a forma ORANGE é sua. Aperte C.");
+				}
+				else
+				{
+					// O PRESENTE GUARDADO, sem numero na frase (a regra principal do BP): so o ponto, o poder do ki divino
+					pl.Ficha.orangeDoDragao = s.NomeDoDragao;
+					Avisar(pl, $"e {s.NomeDoDragao} deixa em você um presente que ainda dorme: a forma ORANGE desperta no dia em que o seu poder alcançar o do ki divino.");
+				}
+			}
 		}
 		Persistir(pl);
 		HabilidadesMudaram(pl);
@@ -776,30 +828,51 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// POR QUE ESTE CORPO NAO PODE PEDIR A LIBERACAO DO POTENCIAL AGORA -- nulo = pode. A recusa do desejo e a linha apagada do
-	/// menu do dragao perguntam aqui, e por isso as duas dizem a mesma coisa:
+	/// POR QUE ESTE CORPO NAO PODE PEDIR PODER AGORA -- nulo = pode. A recusa do desejo e a linha apagada do menu do dragao perguntam aqui, e
+	/// por isso as duas dizem a mesma coisa:
 	///   * quem nao e Namekuseijin: so o banco do potencial, entao so quem tem o que soltar (2026-10-26: `PorQueNaoLibera`, sem a recarga);
-	///   * o Namekuseijin: o poder do ki divino dele (sem numero), e enquanto houver banco, ou faltar o Mistico ou o Orange.
+	///   * o Namekuseijin: enquanto houver banco, ou faltar o Mistico ou o Orange (o Orange guardado conta como dado). Desde 2026-10-29 o
+	///     poder do ki divino nao e mais portao: abaixo dele o Orange fica guardado (ver <see cref="DesejoDePotencial"/>).
 	/// </summary>
 	private string? PorQueNaoLiberaOPotencial(ServerPlayer pl)
 	{
 		if (!EhNamekuseijinDoDesejo(pl))
 			return PorQueNaoLibera(pl, comRecarga: false, proprio: true);
 
-		if (!pl.Ficha.TemPotencialGuardado && pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
-			&& pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange))
+		if (pl.Ficha.TemPotencialGuardado || !pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)) return null;
+		if (pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange))
 			return "O dragão já liberou tudo o que dormia em você.";
-
-		if (!RequisitoDoPotencialIgnoradoDeTeste && pl.Ficha.BP < RequisitoDeGodKi(pl))
-			return "O dragão sente o que dorme num Namekuseijin -- mas o seu poder ainda não alcança o do ki divino. Volte mais forte.";
+		if (pl.Ficha.orangeDoDragao.Length > 0)
+			return "O presente do dragão já dorme em você: a forma ORANGE desperta quando o seu poder alcançar o do ki divino.";
 		return null;
+	}
+
+	/// <summary>
+	/// (2026-10-29) O PRESENTE DO DRAGAO QUE DORMIA DESPERTA (o pedido 157): o Namekuseijin que pediu PODER abaixo do ki divino guardou o
+	/// Orange (`Fighter.orangeDoDragao`, o nome do dragao); no tique em que o BP base dele alcanca o requisito pessoal
+	/// (<see cref="RequisitoDeGodKi"/>), a forma e dele e o chat avisa. Roda no laco de 5 Hz por jogador, pelo despertar do Super
+	/// Namekuseijin (`ConferirODespertarDoSuperNamekuseijin`, o mesmo "a forma chega quando o poder chega"), e sai na primeira pergunta pra
+	/// quem nao guarda presente.
+	/// </summary>
+	private void ConferirOPresenteDoDragao(ServerPlayer pl)
+	{
+		var f = pl.Ficha;
+		if (f.orangeDoDragao.Length == 0) return;
+		if (f.BP < RequisitoDeGodKi(pl)) return;
+		string dragao = f.orangeDoDragao;
+		f.orangeDoDragao = "";
+		pl.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdOrange);
+		Persistir(pl);
+		HabilidadesMudaram(pl);
+		Avisar(pl, $"finalmente o presente de {dragao} faz efeito: o seu poder alcançou o do ki divino, e a forma ORANGE desperta em você. Aperte C.");
+		GD.Print($"[desejo] o presente de {dragao} despertou em {pl.Name}: o Orange");
 	}
 
 	/// <summary>O desejo olha a RACA de quem pede, como o menu fazia: o Namekuseijin (`Catalogo.RacaNamekuseijin`).</summary>
 	private static bool EhNamekuseijinDoDesejo(ServerPlayer pl) =>
 		string.Equals(pl.Race, Jandirus.Core.Forms.Catalogo.RacaNamekuseijin, StringComparison.OrdinalIgnoreCase);
 
-	/// <summary>DEFEITO INJETADO (`--v030teste`): o Namekuseijin pede sem o poder do ki divino -- e ganha o Mistico e o Orange de graca.</summary>
+	/// <summary>DEFEITO INJETADO (`--v030teste`): o Namekuseijin abaixo do ki divino ganha o Orange NA HORA, sem o presente guardado.</summary>
 	internal static bool RequisitoDoPotencialIgnoradoDeTeste;
 
 	/// <summary>
@@ -1102,6 +1175,8 @@ public sealed partial class GameServer
 			Avisar(pl, nome.StartsWith('#')
 				? $"quem você escolheu não está mais na lista{rodape}. Nenhum pedido foi gasto."
 				: $"'{nome}' não está na lista. Nenhum pedido foi gasto.");
+		// (2026-11-01, o pedido 212) nem o desejo pra um personagem da mesma conexao (reviver, matar, o molde): nenhum pedido e gasto
+		if (RecusaPeloMesmoIp(pl, achado)) return null;
 		return achado;
 	}
 
@@ -1162,6 +1237,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ConferirALingua(ServerPlayer pl)
 	{
+		ConferirTodasAsLinguas(pl);   // (2026-10-29, o pedido 170) os cargos divinos falam TODAS as linguas -- `GameServer.Linguas.cs`
 		if (pl.Ficha.godtongue) return;
 
 		if (!LinguaDosDeuses.Reavaliar(false, CargoDe(pl.Conta), pl.Race, pl.Ficha.ParentRace)) return;

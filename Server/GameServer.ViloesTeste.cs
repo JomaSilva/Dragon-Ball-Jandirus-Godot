@@ -324,6 +324,63 @@ public partial class GameServer
 				  $"BP {peloServidor?.Ficha.BP:N0}; media do servidor {doServidor:N0}");
 			EncerrarOsEventos();
 
+			// ---------------------------------------------------------------- 9. (2026-10-31, o pedido 196) a Chave da Sala do Tempo
+			// O dono: *"faça com q viloes na terra tenham uma chance (bem baixa) de dropar uma "htc key" (...) Elas vao direto pro inventario da
+			// pessoa ao dropar de vilao"*. Pelo funil de producao da derrota, com o sorteio da chave na mao da bancada.
+			GD.Print("[viloes] -- 9) o vilao da TERRA deixa, as vezes, a Chave da Sala do Tempo (o pedido 196) --");
+			string chave = Jandirus.Core.Items.CatalogoDeItens.ChaveDaSala;
+			int ChavesDoHost() => pl.Mochila.Quantos(chave);
+			ServerPlayer? NovoEm(ZoneKey onde)
+			{
+				EncerrarOsEventos();
+				VencerORelogio(onde);
+				TickDosViloes();
+				return ViloesDePe().FirstOrDefault(v => v.Zone.Equals(onde));
+			}
+			pl.Mochila.Tirar(chave, 99);
+			Checa("(o pedido 196) 9. a chance da chave e BEM BAIXA: 3% por vilao derrotado", Math.Abs(ChanceDaChaveNoVilao - 0.03) < 1e-12, $"{ChanceDaChaveNoVilao}");
+
+			ServerPlayer? comSorte = NovoEm(terra);
+			SorteioDaChaveDeTeste = ChanceDaChaveNoVilao / 2;   // o sorteio que CAI
+			falas = comSorte == null ? [] : Ouvir(() => AoPerderALuta(comSorte, pl, morreu: false));
+			Checa("(o pedido 196) 9a. **O VILAO DA TERRA DEIXA A CHAVE NO SORTEIO QUE CAI**: ela vai direto pra mochila de quem o derrotou, e o jogador le",
+				  comSorte != null && ChavesDoHost() == 1 && Disse(falas, "deixou cair uma Chave da Sala do Tempo"), $"{ChavesDoHost()} chave(s); {Ultimos(falas)}");
+
+			ServerPlayer? semSorte = NovoEm(terra);
+			SorteioDaChaveDeTeste = ChanceDaChaveNoVilao * 1.5;   // o sorteio que NAO cai
+			if (semSorte != null) Ouvir(() => AoPerderALuta(semSorte, pl, morreu: false));
+			Checa("(o pedido 196) 9b. ...e no sorteio que NAO cai (acima dos 3%), nada", semSorte != null && ChavesDoHost() == 1, $"{ChavesDoHost()} chave(s)");
+
+			ServerPlayer? deVegetaComSorte = NovoEm(vegeta);
+			SorteioDaChaveDeTeste = 0;
+			if (deVegetaComSorte != null) Ouvir(() => AoPerderALuta(deVegetaComSorte, pl, morreu: false));
+			Checa("(o pedido 196) 9c. **SO O VILAO DA TERRA**: o de Vegeta, no sorteio que cairia, nao deixa a chave",
+				  deVegetaComSorte != null && ChavesDoHost() == 1, $"{ChavesDoHost()} chave(s)");
+
+			ServerPlayer? emTodoPlaneta = NovoEm(vegeta);
+			ChaveEmTodoPlanetaDeTeste = true;
+			try { if (emTodoPlaneta != null) Ouvir(() => AoPerderALuta(emTodoPlaneta, pl, morreu: false)); }
+			finally { ChaveEmTodoPlanetaDeTeste = false; }
+			Checa("   DEFEITO INJETADO (a chave do vilao de qualquer planeta): o de Vegeta tambem a deixa -- a regua 9c reprovaria",
+				  emTodoPlaneta != null && ChavesDoHost() == 2, $"{ChavesDoHost()} chave(s)");
+
+			// a MOCHILA CHEIA: a chave cai aos pes, e nao some
+			List<Jandirus.Core.Items.Pilha> pilhasGuardadas = [.. pl.Mochila.Pilhas];
+			pl.Mochila.Pilhas.RemoveAll(p => p.Id == chave);
+			while (!pl.Mochila.Cheio) pl.Mochila.Pilhas.Add(new Jandirus.Core.Items.Pilha(Jandirus.Core.Items.CatalogoDeItens.Scouter, 1));
+			int noChaoAntes = LargadosDe(terra.Hash).Count(l => l.Item == chave);
+			ServerPlayer? mochilaCheia = NovoEm(terra);
+			SorteioDaChaveDeTeste = 0;
+			falas = mochilaCheia == null ? [] : Ouvir(() => AoPerderALuta(mochilaCheia, pl, morreu: false));
+			int noChaoDepois = LargadosDe(terra.Hash).Count(l => l.Item == chave);
+			pl.Mochila.Pilhas = pilhasGuardadas;
+			Checa("(o pedido 196) 9d. **COM A MOCHILA CHEIA, A CHAVE CAI AOS PES** -- e nao some -- e o jogador le",
+				  mochilaCheia != null && noChaoDepois == noChaoAntes + 1 && Disse(falas, "caiu aos seus pés"), $"no chao {noChaoAntes} -> {noChaoDepois}; {Ultimos(falas)}");
+			foreach (Jandirus.Core.Items.Largado l in LargadosDe(terra.Hash).Where(l => l.Item == chave).ToList()) LargadosDe(terra.Hash).Remove(l);
+			pl.Mochila.Tirar(chave, 99);
+			SorteioDaChaveDeTeste = null;
+			EncerrarOsEventos();
+
 			// ---------------------------------------------------------------- 8. o mundo gerado (2026-10-23)
 			GD.Print("[viloes] -- 8) o mundo gerado: o vilao vem de fora (o sorteio estourava dentro do tique) --");
 			// UM MUNDO GERADO DE VERDADE, pelo caminho de producao (a encomenda e a colheita da thread -- os ajudantes da bancada da
@@ -368,6 +425,8 @@ public partial class GameServer
 		{
 			VilaoPagaDeNovoDeTeste = false;
 			VilaoNaoPagaZeniDeTeste = false;
+			ChaveEmTodoPlanetaDeTeste = false;
+			SorteioDaChaveDeTeste = null;
 			VilaoPelaMediaDoServidorDeTeste = false;
 			VilaoAvulso.ForasteiroSemRacaDeTeste = false;
 			pl.Ficha.Zeni = zeniDeAntes;

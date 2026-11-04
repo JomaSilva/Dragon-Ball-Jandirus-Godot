@@ -49,6 +49,8 @@ public partial class GameClient : Node
 	// jogador local nunca e criado (so os remotos, que chegam por snapshot)
 	public Vec2 LocalSpawn { get; private set; }
 	public string LocalName { get; private set; } = "";
+	/// <summary>(2026-10-31) O nome deste personagem mudou no meio da sessao (o bio-androide recem-nascido) -- ver `Protocol.S2C.MeuNome`.</summary>
+	public event Action? MeuNomeMudou;
 	public int Ping => _peer?.Ping ?? 0;
 
 	/// <summary>A aparencia que o servidor ACEITOU (pode ter sido ajustada).</summary>
@@ -1038,6 +1040,12 @@ public partial class GameClient : Node
 
 	public List<SuperInfo> Supers { get; private set; } = [];
 
+	/// <summary>(2026-10-29, o pedido 173) Uma Super Esfera que o SUPER RADAR marca no mapa do espaco: onde ela esta e se ja tem dono.</summary>
+	public readonly record struct SuperNoMapa(int Numero, Vector2 Pos, bool TemDono);
+
+	/// <summary>As sete no mapa do espaco -- so com o Super Radar na mochila (o fim do `S2C.SuperEsferas`). Vazia sem ele. Ver `MapaEstelar`.</summary>
+	public List<SuperNoMapa> SupersNoMapa { get; private set; } = [];
+
 	/// <summary>Quantas das sete Super Esferas sao minhas. E o placar da aba Nav.</summary>
 	public int MinhasSupers { get; private set; }
 
@@ -1062,6 +1070,30 @@ public partial class GameClient : Node
 	/// <summary>Os pedidos pendentes de agora: a lista inteira, trocada a cada `S2C.Pedidos`. Quem desenha e o `PainelDePedidos`.</summary>
 	public List<PedidoInfo> Pedidos { get; private set; } = [];
 	public event Action? PedidosMudaram;
+
+	/// <summary>(2026-10-31, o pedido 198) Uma noticia do Jornal Galactico: o tipo (o selo e a ordem -- `GameServer.TipoDeNoticia`) e o texto.</summary>
+	public readonly record struct NoticiaInfo(byte Tipo, string Texto);
+
+	/// <summary>(2026-10-31, o pedido 198) Uma edicao do Jornal Galactico: o dia, a data e as noticias.</summary>
+	public sealed record EdicaoInfo(long Dia, string Data, List<NoticiaInfo> Noticias);
+
+	/// <summary>A ultima edicao do Jornal Galactico (`S2C.Jornal`) -- nula antes da primeira. Quem desenha e o `JornalGalactico`.</summary>
+	public EdicaoInfo? Jornal { get; private set; }
+
+	/// <summary>Chegou uma edicao: verdadeiro = a edicao nova (o aviso no canto); falso = a pedida pelo `jornal_ler` (a janela abre).</summary>
+	public event Action<bool>? JornalChegou;
+
+	private void LerJornal(NetDataReader reader)
+	{
+		bool aviso = reader.GetBool();
+		long dia = reader.GetLong();
+		string data = reader.GetString();
+		int n = reader.GetByte();
+		var noticias = new List<NoticiaInfo>(n);
+		for (int i = 0; i < n; i++) noticias.Add(new NoticiaInfo(reader.GetByte(), reader.GetString()));
+		Jornal = new EdicaoInfo(dia, data, noticias);
+		JornalChegou?.Invoke(aviso);
+	}
 
 	/// <summary>Um dominio meu que ainda esta de pe -- uma das saidas do refugio (a opcao B1).</summary>
 	public readonly record struct RefugioDominio(string Chave, string Nome, bool Escolhido, float Minutos);
@@ -1494,6 +1526,9 @@ public partial class GameClient : Node
 	/// </summary>
 	public Jandirus.Core.Races.ModoDeRacas? ModoDeRacas { get; private set; }
 	public event Action? ModoDeRacasMudou;
+
+	/// <summary>(2026-11-01, o pedido 213) Os custos do Outro Mundo chegaram do servidor (`S2C.CustosDoAlem`): o cartao da aba Admin redesenha.</summary>
+	public event Action? CustosDoAlemMudou;
 
 	/// <summary>Um jogador online, como o painel de escolha de alvo o lista (ver <see cref="Protocol.S2C.Online"/>).</summary>
 	public readonly record struct OnlineInfo(int Id, string Nome, string Onde);
@@ -2065,6 +2100,11 @@ public partial class GameClient : Node
 				EsquecerDetalhes();
 				EsquecerMestreEAlunos();   // ...nem com o discipulado dele (o mestre, os alunos). Ver `GameClient.Alunos.cs`.
 				_minhasCopias.Clear();     // ...nem com as copias do Split Form dele: elas morrem com o dono, e o id pode ser de outro agora
+				// (2026-10-31, o pedido 208) ...NEM AO LEME DA NAVE DELE: o servidor so manda o veiculo, a barra do tanque e o olho de fora
+				// quando eles mudam, e quem sai do jogo pilotando nao desembarca pelo fio -- o personagem seguinte herdava a nave: o menu de
+				// dentro dela na tecla E, a barra, a pose sentada e a "nave pousada" que nao deixa o corpo andar. O dono: *"vc sair do jogo
+				// pilotando uma pod ou nave e entrando em outro slot, o jogo acha q vc ta em uma pod mesmo n estando no outro slot"*.
+				EsquecerANave();
 				Sheet = SheetState.Read(reader);
 				// O GOLPE DO PERSONAGEM QUE ENTROU E O DELE: o corpo nasce nao-letal no servidor, e o palpite do personagem anterior
 				// (o mesmo cliente, outro slot) nao segue. Ver `SeguirOLetalDaFicha`.
@@ -2103,6 +2143,13 @@ public partial class GameClient : Node
 				SlotsRecebidos?.Invoke(slots);
 				break;
 			}
+
+			case Protocol.S2C.MeuNome:
+				// (2026-10-31) O NOME NOVO DESTE PERSONAGEM (o bio-androide recem-nascido) -- ver `Protocol.S2C.MeuNome`. O aviso redesenha o
+				// painel do canto na hora: a ficha so chega quando muda, e um corpo parado podia ficar com o nome velho.
+				LocalName = reader.GetString(Protocol.MaxNomeNoFio);
+				MeuNomeMudou?.Invoke();
+				break;
 
 			case Protocol.S2C.PeerLook:
 			{
@@ -2552,6 +2599,15 @@ public partial class GameClient : Node
 				Supers = l;
 				MinhasSupers = reader.GetByte();
 				SinalDourado = reader.GetString(120);
+				// (2026-10-29, o pedido 173) O SUPER RADAR: as sete no mapa, no fim do pacote -- o servidor velho nao as manda
+				var noMapa = new List<SuperNoMapa>();
+				if (reader.AvailableBytes > 0)
+				{
+					int m = reader.GetByte();
+					for (int i = 0; i < m; i++)
+						noMapa.Add(new SuperNoMapa(reader.GetByte(), new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool()));
+				}
+				SupersNoMapa = noMapa;
 				SupersMudaram?.Invoke();
 				break;
 			}
@@ -2955,6 +3011,13 @@ public partial class GameClient : Node
 				ModoDeRacasMudou?.Invoke();
 				break;
 
+			// (2026-11-01, o pedido 213) OS CUSTOS DO OUTRO MUNDO deste servidor -- os botoes da mesa do Enma os escrevem. No host os dois lados
+			// leem o mesmo estado, e o pacote traz os numeros que o servidor ja pos la.
+			case Protocol.S2C.CustosDoAlem:
+				Jandirus.Core.World.CustosDoAlem.Por(reader.GetDouble(), reader.GetDouble(), reader.GetDouble(), reader.GetInt());
+				CustosDoAlemMudou?.Invoke();
+				break;
+
 			case Protocol.S2C.Limpeza:
 			{
 				string codigo = reader.GetString(16);
@@ -3048,6 +3111,10 @@ public partial class GameClient : Node
 				string nomeDoChefe = reader.GetString(64), planetaDoChefe = reader.GetString(64), fraseDoChefe = reader.GetString(512);
 				string racaDoChefe = reader.GetString(24), generoDoChefe = reader.GetString(8);
 				Jandirus.Core.Appearance.Appearance visualDoChefe = reader.GetAppearance();
+				// (2026-11-01, o adendo 210l) o byte das marcas do retrato, depois da aparencia: o bit 1 e o scouter no rosto (fora do
+				// `PutAppearance`, como no `S2C.PeerLook`). Servidor mais velho que nao o manda = sem scouter, e nada lido alem do fim.
+				byte marcasDoChefe = reader.AvailableBytes > 0 ? reader.GetByte() : (byte)0;
+				visualDoChefe.ScouterNoRosto = (marcasDoChefe & 2) != 0;
 				ChefeChegou?.Invoke(new ChegadaDeChefe(idDoChefe, nomeDoChefe, planetaDoChefe, fraseDoChefe, racaDoChefe, generoDoChefe, visualDoChefe));
 				break;
 			}
@@ -3244,6 +3311,11 @@ public partial class GameClient : Node
 
 			// (2026-10-18) O MEU CORPO FOI POSSUIDO PELO NEO TUFFLE (0 = acabou) -- ver `GameServer.NeoTuffle.cs`.
 			case Protocol.S2C.Possuido: PossuidoPor = reader.GetInt(); break;
+
+			// (2026-10-31, o pedido 198) O JORNAL GALACTICO -- a edicao do dia (o aviso no canto) ou a pedida (a janela). Ver `JornalGalactico`.
+			case Protocol.S2C.Jornal: LerJornal(reader); break;
+			// (2026-10-31, o pedido 198i) A MISSAO DA PATRULHA de quem e da Patrulha -- ver `GameClient.Patrulha.cs`.
+			case Protocol.S2C.MissaoDaPatrulha: LerMissaoDaPatrulha(reader); break;
 
 			// QUAL CORPO ESTA AOS MEUS PES -- o alvo da tecla E pra enterrar. Zero = nenhum.
 			case Protocol.S2C.Cadaver:

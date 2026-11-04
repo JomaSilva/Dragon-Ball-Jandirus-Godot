@@ -147,6 +147,16 @@ public static class Interacoes
 	private static readonly Acao MelhorarVelocidadeComRecursos =
 		new("Melhorar velocidade (com recursos)", "nave_melhorar", Economia.Recurso.PalavraDeRecursos,
 			"o mesmo degrau, por 2000 x a velocidade atual em recursos");
+	/// <summary>
+	/// (2026-10-31, o pedido 209) O TANQUE MAIOR -- a gemea da velocidade, nas mesmas paginas (o pod pousado e por dentro, o console da
+	/// Capital Ship e o leme dela), com o par "(com recursos)". Ver `GameServer.MelhorarOTanque`.
+	/// </summary>
+	private static readonly Acao MelhorarTanque =
+		new("Melhorar tanque", "nave_tanque", "",
+			$"cada degrau soma metade do tanque de fábrica, até {Combustivel.DegrausDoTanque} -- o espaço novo vem vazio; o preço sai no Ver estado");
+	private static readonly Acao MelhorarTanqueComRecursos =
+		new("Melhorar tanque (com recursos)", "nave_tanque", Economia.Recurso.PalavraDeRecursos,
+			"o mesmo degrau do tanque, pelo dobro em recursos");
 	private static readonly Acao Recondicionar =
 		new("Recondicionar", "nave_recondicionar", "", "um foguete usado só voa de novo pagando 100.000 zeni");
 	private static readonly Acao RecondicionarComRecursos =
@@ -227,8 +237,12 @@ public static class Interacoes
 		"Enma_Daioh" =>
 		[
 			new Acao("Ouvir o Enma", "enma_ouvir", "", "ele lê a sua ficha e diz o preço da volta"),
-			new Acao("Voltar à vida (200.000 zeni)", "enma_reviver", "", "você volta inteiro pro seu berço, com todo o seu poder"),
-			new Acao("Visitar os vivos (100.000 zeni, 7 dias)", "enma_passe", "",
+			// (2026-11-01, o pedido 213) OS NUMEROS SAO OS DO SERVIDOR (`World.CustosDoAlem`, que o cliente recebe no login): o admin os muda
+			// sem recompilar, e o botao diz o preco de agora.
+			new Acao($"Voltar à vida ({Jandirus.Core.World.CustosDoAlem.Zeni(Jandirus.Core.World.CustosDoAlem.PrecoDoRevive)} zeni)", "enma_reviver", "",
+					 "você volta inteiro pro seu berço, com todo o seu poder"),
+			new Acao($"Visitar os vivos ({Jandirus.Core.World.CustosDoAlem.Zeni(Jandirus.Core.World.CustosDoAlem.PrecoDoPasse)} zeni, "
+					 + $"{Jandirus.Core.World.CustosDoAlem.DiasDoPasse} dias)", "enma_passe", "",
 					 "escolha o planeta (pré-feito ou descoberto): você desce MORTO, de auréola, e volta pra cá no fim do prazo",
 					 Forma.Lista),
 			new Acao("Reencarnar (renascer com 10% do poder)", "enma_reencarnar", "",
@@ -384,7 +398,11 @@ public static class Interacoes
 					 Forma.Submenu),
 			new Acao("Converter meu corpo...", "and_menu", "androide", "só no Android Lab", Forma.Submenu),
 			new Acao("Colher DNA de um nocauteado", "colher_dna", "", "só no Bio-Android Lab"),
-			new Acao("Gestar bio-androide", "gestar", "", "leva um mês in-game"),
+			// (2026-10-31, o pedido 204) O NOME DA CRIATURA se escreve aqui -- o dono: *"Permita jogadores nomearem os bio androides feitos
+			// pelos mesmos ao começarem a produção"*. Vazio = o nome de sempre ("Bio-Androide de ..."); o teto e o da criacao (24).
+			new Acao("Gestar bio-androide", "gestar", "",
+					 "escreva o nome da criatura (de 2 a 24 letras; vazio = Bio-Androide de você) -- leva um mês in-game",
+					 Forma.Texto, 0, Jandirus.Core.Races.BioAndroids.MaxDoNome),
 			// (2026-10-18) O NEO TUFFLE: o laboratorio dos Tsufurujins -- ver `GameServer.NeoTuffle.cs`.
 			new Acao("Virar Neo Tuffle...", "tuffle_menu", "tuffle", "só no Neo Tuffle Lab", Forma.Submenu),
 		],
@@ -746,8 +764,10 @@ public static class Interacoes
 			Abastecer,
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
+			MelhorarTanque,
+			MelhorarTanqueComRecursos,
 			new Acao("Ver estado", "nave_info", "", "velocidade, combustível, o quanto ela corta a viagem, e o próximo preço"),
-			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, e de tanque cheio) -- a velocidade vai junto"),
+			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, e de tanque cheio) -- a velocidade e o tanque vão junto"),
 		],
 
 		// ============================ O FOGUETE, POUSADO ============================
@@ -789,7 +809,7 @@ public static class Interacoes
 			// custaria mais do que um cadeado de nave vale. ZERO DESTRANCA.
 			new Acao("Trancar com senha", "nave_senha", "", "um código de até 6 dígitos -- 0 destranca (o dono nunca precisa dele)",
 					 Forma.Numero, 0, 999999),
-			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, só vazia, e de tanque cheio) -- a velocidade vai junto"),
+			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, só vazia, e de tanque cheio) -- a velocidade e o tanque vão junto"),
 		],
 
 		// ============================ O COMPUTADOR DA PONTE ============================
@@ -805,6 +825,8 @@ public static class Interacoes
 			new Acao("Ver estado", "nave_info", "", "casco, dono, velocidade e combustível"),
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
+			MelhorarTanque,
+			MelhorarTanqueComRecursos,
 		],
 
 		// ============================ A PLATAFORMA DE SAIDA ============================
@@ -1041,6 +1063,8 @@ public static class Interacoes
 			new Acao("Ver estado", "nave_info", "", "casco, dono, velocidade e combustível"),
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
+			MelhorarTanque,
+			MelhorarTanqueComRecursos,
 		],
 
 		// ============================ DENTRO DE UM POD ============================
@@ -1054,6 +1078,8 @@ public static class Interacoes
 			Abastecer,
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
+			MelhorarTanque,
+			MelhorarTanqueComRecursos,
 			new Acao("Ver estado", "nave_info", "", "velocidade, combustível, o quanto ela corta a viagem, e o próximo preço"),
 		],
 

@@ -180,6 +180,14 @@ public partial class RoboDasTeclasDeForma : Node
 	// =====================================================================
 	private async Tarefa R4_ATeclaDoBlue(GameClient cli, Servidor srv)
 	{
+		// (2026-10-30, o pedido 186) o Blue pede o SSJ1 dominado -- o palco o deixa a 60% (o C duplo sem cena do R3): so aqui, e de volta no fim
+		srv.PalcoFT_Maestria(cli.LocalId, "ssj1", 100);
+		try { await R4_ATeclaDoBlueComOSsj1Dominado(cli, srv); }
+		finally { srv.PalcoFT_Maestria(cli.LocalId, "ssj1", 60); }
+	}
+
+	private async Tarefa R4_ATeclaDoBlueComOSsj1Dominado(GameClient cli, Servidor srv)
+	{
 		int id = cli.LocalId;
 		bool ligou = Teclas.Ligar(TeclaDoBlue, new Atalho("forma", Catalogo.IdBlue, "Super Saiyajin Blue"));
 		await ABase(cli, srv);

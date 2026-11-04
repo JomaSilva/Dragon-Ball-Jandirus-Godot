@@ -624,6 +624,10 @@ public partial class ClimaNaTela : Node2D
 		Receita r = Do(clima.Tipo);
 		var forca = (float)clima.Forca;
 
+		// (2026-11-02, o pedido 226) O VENTO NAS COPAS segue o clima: a brisa no ceu limpo, a tempestade no maximo. So o numero viaja
+		// daqui; o desenho e do material de cada arvore (`VentoNaVegetacao`), e ele so e reescrito quando o vento muda.
+		VentoNaVegetacao.Soprar(Vento.DoClima(clima));
+
 		if (clima.Tipo != _desenhado)
 		{
 			_desenhado = clima.Tipo;

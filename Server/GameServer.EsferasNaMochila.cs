@@ -139,11 +139,16 @@ public sealed partial class GameServer
 	// 2. O SLOT LARGA
 	// =====================================================================
 	/// <summary>
-	/// O BOTAO DO SLOT DE UMA ESFERA. So "largar" existe: a esfera vai pro chao aos pes de quem a carrega, e as outras ficam na
-	/// mochila. O id do slot so diz QUAL (set e numero); quem confere se ela esta mesmo com ele e a lista das esferas.
+	/// O BOTAO DO SLOT DE UMA ESFERA. "Largar": a esfera vai pro chao aos pes de quem a carrega, e as outras ficam na mochila. O id do
+	/// slot so diz QUAL (set e numero); quem confere se ela esta mesmo com ele e a lista das esferas. (2026-10-29) E "Invocar o dragao"
+	/// (o pedido 155): o mesmo funil do INVOCAR da aba World, que acha o set das sete juntas (ou as Black Star, em qualquer planeta) e
+	/// responde quantas faltam -- ver `EsferaNaMochila.AcaoInvocar`.
 	/// </summary>
 	private void AcaoDaEsferaNaMochila(ServerPlayer pl, string acao, EsferaNaMochila qual)
 	{
+		// ANTES do largar da Black Star (o `LargarNegraDoSlot` larga sem perguntar a acao)
+		if (acao == EsferaNaMochila.AcaoInvocar) { InvocarODragao(pl); return; }
+
 		Esfera? e = _esferas.Find(x => x.Set == qual.Set && x.Numero == qual.Numero && x.Portador == pl.Id);
 		if (e == null && LargarNegraDoSlot(pl, qual)) return;
 		string nome = Esferas.NomeDaEsfera(qual.Numero);
@@ -156,7 +161,7 @@ public sealed partial class GameServer
 		}
 		if (acao != "largar")
 		{
-			Avisar(pl, $"com a {nome} só dá pra largar no chão -- ou juntar as sete e invocar o dragão (aba World).");
+			Avisar(pl, $"com a {nome} só dá pra largar no chão -- ou juntar as sete e invocar o dragão.");
 			return;
 		}
 
@@ -248,6 +253,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private string PorQueAsEsferasPrendem(ServerPlayer pl)
 	{
+		// (2026-10-31, o pedido 198) O CAMPO DE FORCA DO PLANETA PRISAO vem antes das esferas: esta e a pergunta de TODA saida do planeta (a
+		// decolagem, as naves e os teleportes), e quem cumpre pena da Patrulha Galactica nao sai -- carregue esfera ou nao. Ver
+		// `GameServer.PatrulhaGalactica.cs`.
+		if (PorQueAPrisaoPrende(pl) is { Length: > 0 } preso) return preso;
 		if (EsferaNaoPrendeDeTeste) return "";
 		Esfera? uma = _esferas.Find(e => e.Portador == pl.Id);
 		if (uma == null) return "";

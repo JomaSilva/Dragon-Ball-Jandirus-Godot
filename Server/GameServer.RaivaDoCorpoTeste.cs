@@ -23,6 +23,13 @@ namespace Jandirus.Server;
 ///   d. o algoz amigo do host: achar o corpo nao enfurece -- a mesma regra da raiva; contra-exemplo `RaivaSoPelaVitimaDeTeste`;
 ///   e. o CADAVER que fica depois da viagem leva o registro; contra-exemplo `CadaverSemOLutoDeTeste`;
 ///   f. o amigo que ja voltou a vida: o corpo velho dele nao enfurece; contra-exemplo `AmigoVivoAindaEChoradoDeTeste`;
+///   h. (2026-10-30, o pedido 192) SO NA TELA: a 10 tiles pro lado ou 5 pra cima (dentro dos 22 da fala, fora da tela) nao acha, e o corpo
+///      continua nunca visto; ao entrar na tela, chama o nome e se enfurece -- contraprova pelo binario do agente `corpoavista`;
+///   i. (2026-10-30, o pedido 192) DA MESMA CONEXAO NADA RENDE (o pedido 110): o corpo da amiga do mesmo IP do host, e o do amigo que um
+///      personagem desse IP matou, nao enfurecem;
+///   j. (2026-10-31, o pedido 193) A MORTE SO SE VE NA TELA: a amiga que morre a 10 tiles pro lado ou 5 pra cima do host (dentro dos 22 da
+///      fala, fora da tela) nao o enfurece na hora, e o corpo dela continua nunca visto por ele -- ao entrar na tela, ele o acha; contra-exemplo
+///      `MorteVistaNosVinteEDoisDeTeste`;
 ///   g. a furia que desperta uma forma NOVA: depois dos chamados a cena e a da TRANSFORMACAO (a estreia), e a da furia nao toca.
 /// </summary>
 public partial class GameServer
@@ -76,7 +83,7 @@ public partial class GameServer
 		void Matar(ServerPlayer vitima, ServerPlayer algoz)
 		{
 			vitima.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
-			vitima.Combate.Morrer();
+			_ = vitima.Combate.Morrer();
 			AoPerderALuta(vitima, algoz, morreu: true);
 		}
 		// O AMIGO DECLARADO morre LONGE (40 tiles; a vista e 22), pelas maos de quem pra ele e o host e um estranho.
@@ -252,6 +259,105 @@ public partial class GameServer
 			checa("   DEFEITO INJETADO (o registro nao cai com a volta do amigo): o corpo velho de quem esta vivo enfurece -- a regua de cima reprovaria",
 				  DoHost().Count > 0 && Nivel() == NivelDeRaiva.Extrema, $"{string.Join(" | ", DoHost())}; {Nivel()}");
 
+			// ---------------------------------------------------------------- h. (o pedido 192) so na TELA
+			// O dono: *"esse corpo nao tenha entrado no seu campo de visao antes, ao entrar seu personagem vai gritar o nome"*. A tela do zoom de
+			// fabrica tem 6,67 tiles pra cada lado e 3,75 pra cima e pra baixo; a fala (o raio de antes) tem 22.
+			DoZero();
+			ServerPlayer uub = MorteLonge(44, "Uub", freeza);
+			MorteComCorpo? doUub = _mortesComCorpo.Find(m => m.Corpo == uub);
+			bool NuncaVisto() => DoHost().Count == 0 && _chamando.Count == 0 && doUub != null && !doUub.JaAcharam.Contains(pl.Assinatura);
+			pl.Pos = uub.Pos - new Vec2(10 * T, 0);
+			Pulso(1.0);
+			bool deLado = NuncaVisto();
+			pl.Pos = uub.Pos - new Vec2(0, 5 * T);
+			Pulso(1.0);
+			bool deCima = NuncaVisto();
+			checa("(o pedido 192) **SO NA TELA**: a 10 tiles do corpo (dentro dos 22 da fala, fora da tela) o host nao acha -- nem chamado, e o corpo continua NUNCA VISTO por ele",
+				  deLado, $"{string.Join(" | ", DoHost())}; ja acharam: {doUub?.JaAcharam.Count}");
+			checa("(o pedido 192) **...nem a 5 tiles acima dele** (a tela tem 3,75 tiles de meia altura no zoom de fabrica)",
+				  deCima, $"{string.Join(" | ", DoHost())}; ja acharam: {doUub?.JaAcharam.Count}");
+			Achar(uub);
+			checa("(o pedido 192) ...e quando o corpo ENTRA na tela (a 3 tiles) o host chama o nome e se enfurece",
+				  DoHost().Take(3).SequenceEqual(RaivaEmDegraus.ChamadosAoAcharOCorpo("Uub")) && Nivel() == NivelDeRaiva.Extrema,
+				  $"{string.Join(" | ", DoHost())}; {Nivel()}");
+
+			// ---------------------------------------------------------------- i. (o pedido 192) da mesma conexao nada rende (o pedido 110)
+			// O endereco de mentira da bancada (`IpDeTeste`) nos corpos forjados, e a regra ligada como na `--mesmoipteste`.
+			bool mesmoIpDeFora = MesmoIpNaBancadaDeTeste;
+			string? ipReal = IpDe(pl);
+			string ipDoHost = ipReal ?? "10.0.0.192";
+			var comIp = new List<int>();
+			void DarIp(ServerPlayer p) { IpDeTeste[p.Id] = ipDoHost; comIp.Add(p.Id); }
+			if (ipReal == null) DarIp(pl);
+			MesmoIpNaBancadaDeTeste = true;
+			try
+			{
+				DoZero();
+				ServerPlayer marron = Pessoa(45, "Marron", 40);
+				DarIp(marron);
+				DeclararDeTeste(pl, marron, Relacao.Bom);
+				Matar(marron, freeza);
+				Achar(marron);
+				checa("(o pedido 192) **DA MESMA CONEXAO NADA RENDE** (o pedido 110): o corpo da amiga jogada do MESMO IP do host, morta por um estranho -- nem chamado nem furia",
+					  DoHost().Count == 0 && Nivel() == NivelDeRaiva.Nenhuma, $"{string.Join(" | ", DoHost())}; {Nivel()}");
+
+				DoZero();
+				ServerPlayer capanga = Pessoa(46, "bancada: o capanga", 42);
+				DarIp(capanga);
+				ServerPlayer dende = MorteLonge(47, "Dende", capanga);
+				Achar(dende);
+				checa("(o pedido 192) **...nem o corpo que o personagem do mesmo IP matou**: o amigo do host morto por um corpo dessa conexao -- nem chamado nem furia",
+					  DoHost().Count == 0 && Nivel() == NivelDeRaiva.Nenhuma, $"{string.Join(" | ", DoHost())}; {Nivel()}");
+			}
+			finally
+			{
+				MesmoIpNaBancadaDeTeste = mesmoIpDeFora;
+				foreach (int id in comIp) IpDeTeste.Remove(id);
+			}
+
+			// ---------------------------------------------------------------- j. (o pedido 193) a MORTE so se ve na tela
+			// O dono, na pergunta do 192 (ver a morte passa a contar so pela tela?): *"Sim so dentro do campo de visao"*. A amiga morre a 10
+			// tiles do host -- dentro dos 22 da fala, fora da tela: ele nao viu, e o corpo fica pra ser achado por ele.
+			DoZero();
+			int cenasDaMorte = CenasDoHost();
+			ServerPlayer videl = Pessoa(48, "Videl", 10);
+			DeclararDeTeste(pl, videl, Relacao.Bom);
+			Matar(videl, freeza);
+			MorteComCorpo? daVidel = _mortesComCorpo.Find(m => m.Corpo == videl);
+			checa("(montagem) a amiga morreu a 10 tiles do host -- dentro dos 22 da fala, fora da tela (6,67 tiles de meia largura)",
+				  videl.Ficha.dead && (videl.Pos - pl.Pos).LengthSquared <= RaioDeTestemunha * RaioDeTestemunha && !NaVistaDe(pl, videl),
+				  $"{(videl.Pos - pl.Pos).Length / T:0.#} tiles");
+			checa("(o pedido 193) **A MORTE FORA DA TELA NAO E VISTA**: a amiga morre a 10 tiles e o host nao se enfurece na hora -- nem raiva, nem cena",
+				  Nivel() == NivelDeRaiva.Nenhuma && CenasDoHost() == cenasDaMorte, $"{Nivel()}; {CenasDoHost() - cenasDaMorte} cena(s)");
+			checa("(o pedido 193) **...E O CORPO DELA CONTINUA NUNCA VISTO POR ELE**: o registro da morte nao o anota como quem a viu",
+				  daVidel != null && !daVidel.JaAcharam.Contains(pl.Assinatura), daVidel == null ? "sem registro" : $"{daVidel.JaAcharam.Count} ja acharam");
+			falas.Clear();
+			Achar(videl);
+			checa("(o pedido 193) ...e quando o corpo ENTRA na tela o host o ACHA: chama o nome e se enfurece",
+				  DoHost().Take(3).SequenceEqual(RaivaEmDegraus.ChamadosAoAcharOCorpo("Videl")) && Nivel() == NivelDeRaiva.Extrema,
+				  $"{string.Join(" | ", DoHost())}; {Nivel()}");
+
+			// 5 tiles ACIMA: dentro dos 22 da fala, fora da tela (3,75 tiles de meia altura no zoom de fabrica)
+			DoZero();
+			cenasDaMorte = CenasDoHost();
+			ServerPlayer lime = Pessoa(49, "Lime", 0);
+			lime.Pos = pl.Pos - new Vec2(0, 5 * T);
+			DeclararDeTeste(pl, lime, Relacao.Bom);
+			Matar(lime, freeza);
+			checa("(o pedido 193) **...nem a amiga que morre 5 tiles ACIMA dele** (a tela tem 3,75 tiles de meia altura): nada na hora",
+				  Nivel() == NivelDeRaiva.Nenhuma && CenasDoHost() == cenasDaMorte, $"{Nivel()}; {CenasDoHost() - cenasDaMorte} cena(s)");
+
+			// contra-exemplo: a morte vista nos 22 tiles (o jogo de antes)
+			DoZero();
+			ServerPlayer erasa = Pessoa(50, "Erasa", 10);
+			DeclararDeTeste(pl, erasa, Relacao.Bom);
+			MorteVistaNosVinteEDoisDeTeste = true;
+			try { Matar(erasa, freeza); }
+			finally { MorteVistaNosVinteEDoisDeTeste = false; }
+			MorteComCorpo? daErasa = _mortesComCorpo.Find(m => m.Corpo == erasa);
+			checa("   DEFEITO INJETADO (a morte vista nos 22 tiles, o jogo de antes): a 10 tiles, fora da tela, o host se enfurece na hora e o corpo fica como visto -- as reguas de cima reprovariam",
+				  Nivel() == NivelDeRaiva.Extrema && daErasa != null && daErasa.JaAcharam.Contains(pl.Assinatura), $"{Nivel()}");
+
 			// ---------------------------------------------------------------- g. a furia que desperta a forma
 			DoZero();
 			EsquecerAsFormasDeTeste(pl.Id);
@@ -284,6 +390,7 @@ public partial class GameServer
 			CadaverSemOLutoDeTeste = false;
 			AmigoVivoAindaEChoradoDeTeste = false;
 			RaivaSoPelaVitimaDeTeste = false;
+			MorteVistaNosVinteEDoisDeTeste = false;
 			foreach (ServerPlayer c in cadaveres) DesfazerOCadaver(c);
 			_mortesComCorpo.Clear();
 			_chamando.Clear();
@@ -311,7 +418,7 @@ public partial class GameServer
 		ServerPlayer amigo = _palcoDaRaiva[0], algoz = _palcoDaRaiva[1];
 		CravarPosicao(host, amigo.Pos - new Vec2(tiles * ZoneCollision.TileSize, 0));
 		if (!amigo.Ficha.KO) amigo.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
-		amigo.Combate.Morrer();
+		_ = amigo.Combate.Morrer();
 		AoPerderALuta(amigo, algoz, morreu: true);
 		return amigo.Ficha.dead;
 	}

@@ -197,6 +197,23 @@ public static class Fusao
 		estragada ? BpDaFusaoEstragada(bpA, bpB) : BpDaFusao(bpA, bpB);
 
 	// =====================================================================
+	// (2026-11-01, o pedido 211) OS RIVAIS QUE SE FUNDEM
+	// =====================================================================
+	/// <summary>
+	/// O BONUS DA FUSAO DE RIVAIS -- o dono: *"faca tb com q personagens q sao rivais (rival bom) tenham um boost de poder se fizerem fusao
+	/// (em torno de uma fusao 15% mais forte) pra qualquer fusao, potara ou a danca"*. O BP base da fusao sai 15% maior quando os dois sao
+	/// rivais (<see cref="SaoRivais"/>): na Danca e na Potara, bem-feita ou estragada ("qualquer fusao"). Pedido novo, nao existe no DM.
+	/// </summary>
+	public const double BonusDosRivais = 1.15;
+
+	/// <summary>
+	/// OS DOIS SAO RIVAIS? -- cada um declarou o outro "rival amigo" (<see cref="Relacao.RivalBom"/>, a aba People). Dos DOIS lados, como o
+	/// amor que da filho (`GameServer.AmorCorrespondido`): a rivalidade que so um declarou e dele, e nao dos dois.
+	/// </summary>
+	public static bool SaoRivais(Relacao doAPeloB, Relacao doBPeloA) =>
+		doAPeloB == Relacao.RivalBom && doBPeloA == Relacao.RivalBom;
+
+	// =====================================================================
 	// OS PORTOES DO DONO -- raca e poder proximo
 	// =====================================================================
 	/// <summary>

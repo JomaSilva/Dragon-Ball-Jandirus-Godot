@@ -36,6 +36,8 @@ public sealed partial class GameServer
 		TransmissaoChegaAPeNoEspacoDeTeste = false;
 		TransmissaoSemPassagemDeTeste = false;
 		TransmissaoSemIdNoFioDeTeste = false;
+		BloqueioIgnoradoDeTeste = false;
+		Jandirus.Core.Skills.BloqueioDeTeleporte.SemOBloqueioDeTeste = false;
 		DesligarDefeitosDaMaestria();   // (2026-10-23) a familia M -- ver GameServer.MaestriaDaTransmissaoTeste.cs
 		DesligarDefeitosDaSaida();      // (2026-10-24) a familia S -- ver GameServer.SaidaDaTransmissaoTeste.cs
 	}
@@ -62,6 +64,7 @@ public sealed partial class GameServer
 			ItOIdNoFio();
 			ItOCusto();
 			ItMexerCancela();
+			ItOBloqueio();   // (2026-10-29) o pedido 158
 			// (2026-10-23) A MAESTRIA, por ultimo: os corredores das familias de cima continuam os mesmos -- ver GameServer.MaestriaDaTransmissaoTeste.cs
 			ItAMaestria();
 			// (2026-10-24) A SAIDA PISCANDO E O CLARAO DA CHEGADA, depois da maestria -- ver GameServer.SaidaDaTransmissaoTeste.cs
@@ -204,6 +207,61 @@ public sealed partial class GameServer
 	}
 
 	// ---------------------------------------------------------------- a espera no corpo
+	// ---------------------------------------------------------------- (2026-10-29, o pedido 158) o Bloqueio de Teleporte
+	private void ItOBloqueio()
+	{
+		GD.Print("[teleporte] -- B) (o pedido 158) o Bloqueio de Teleporte: a skill do tier 2 da Magia, o botao que liga e desliga, e ninguem chega --");
+		const string id = Jandirus.Core.Skills.BloqueioDeTeleporte.Verbo;
+		Jandirus.Core.Skills.Skill? s = _skills?.Get(Jandirus.Core.Skills.BloqueioDeTeleporte.Path);
+		bool naArvore = _skills?.Get(Jandirus.Core.Skills.BloqueioDeTeleporte.ArvoreDeMagia)?.Galhos
+							.Contains(Jandirus.Core.Skills.BloqueioDeTeleporte.Path, StringComparer.OrdinalIgnoreCase) == true;
+		bool portada = Jandirus.Core.Skills.Tecnicas.Get(id) is { Modo: Jandirus.Core.Skills.Modo.Sustentada };
+		AfirmarIt("B1. (o pedido 158) **A SKILL ESTA NO TIER 2 DA ARVORE DE MAGIA**, com o botao `Teleport_Block` (e o catalogo de tecnicas o conhece, de liga e desliga)",
+			s is { Tier: 2, Ligada: true } && s.Verbos.Contains(id) && naArvore && portada,
+			s == null ? "sem a skill" : $"tier {s.Tier}; verbos {string.Join(",", s.Verbos)}; na arvore {naArvore}; portada {portada}");
+
+		Vec2 chao = CorredorLivre(20);
+		ServerPlayer eu = ItCorpo("Viajante", chao, 5_000, 5, "it_bloqueio");
+		ServerPlayer alvo = ItCorpo("Selado", chao + new Vec2(6 * T, 0), 8_000, 1, "it_bloqueio_alvo");
+
+		List<string> ligou = Ouvir(() => BloqueioDeTeleporteG11(alvo, ""));
+		(bool comecou, List<string> pedido) = ItViajar(eu, "#" + alvo.Id);
+		AfirmarIt("B2. **COM O SELO LIGADO, NINGUEM SE TELEPORTA ATE ELE**: o pedido e recusado com a frase, e o viajante fica onde estava",
+			TemBuff(alvo, id) && Disse(ligou, "sela") && !comecou && Disse(pedido, "selada") && !ItPerto(eu, alvo),
+			$"selo {TemBuff(alvo, id)}; comecou {comecou}; {Ultimos(pedido)}");
+
+		// desligado, o viajante se concentra -- e o selo acende no meio
+		List<string> desligou = Ouvir(() => BloqueioDeTeleporteG11(alvo, ""));
+		Ouvir(() => TeletransporteG11(eu, "#" + alvo.Id));
+		bool armou = _transmissaoG11.TryGetValue(eu.Id, out TransmissaoG11? t);
+		BloqueioDeTeleporteG11(alvo, "");
+		List<string> chegada = [];
+		if (t != null)
+		{
+			t.QuandoMs = NowMs() - 1;
+			chegada = Ouvir(() => { TickDaTransmissaoG11(eu, t, NowMs()); TerminarATransmissaoDeTeste(eu.Id); });
+		}
+		AfirmarIt("B3. ...e LIGADO NO MEIO da concentracao de alguem, a chegada e recusada com a frase (o viajante fica)",
+			Disse(desligou, "desfaz") && armou && Disse(chegada, "selada") && !ItPerto(eu, alvo), $"armou {armou}; {Ultimos(chegada)}");
+
+		BloqueioDeTeleporteG11(alvo, "");
+		CravarPosicao(eu, chao);   // de volta ao comeco do corredor, venha de onde vier
+		(bool foi, List<string> semSelo) = ItViajar(eu, "#" + alvo.Id);
+		AfirmarIt("B4. ...e desligado pelo mesmo botao, o viajante chega ao lado dele",
+			!TemBuff(alvo, id) && foi && ItPerto(eu, alvo), $"selo {TemBuff(alvo, id)}; foi {foi}; {Ultimos(semSelo)}");
+
+		ServerPlayer outro = ItCorpo("Outro Viajante", chao + new Vec2(2 * T, 0), 5_000, 5, "it_bloqueio_dois");
+		BloqueioDeTeleporteG11(alvo, "");
+		BloqueioIgnoradoDeTeste = true;
+		bool chegouComDefeito;
+		try { chegouComDefeito = ItViajar(outro, "#" + alvo.Id).Comecou && ItPerto(outro, alvo); }
+		finally { BloqueioIgnoradoDeTeste = false; }
+		AfirmarIt("(defeito injetado: o selo nao barra ninguem -- o jogo de antes) com o selo ligado, o viajante chega -- a regua da B2 REPROVA",
+			chegouComDefeito);
+		DesligarBuff(alvo, id);
+		ItLimpar();
+	}
+
 	private void ItAEspera()
 	{
 		GD.Print("[teleporte] -- a espera no corpo: 5 s no nivel 1, Yardrat mais rapido");

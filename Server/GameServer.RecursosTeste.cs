@@ -138,9 +138,9 @@ public partial class GameServer
 		finally { Recurso.SemDobroDeTeste = false; }
 
 		// ---- o teto pelo tamanho
-		// (os numeros sao os do teto de 2026-10-11, lado^2 x 10; a secao 8 conta a troca e o defeito dela)
-		AfirmarRc("a reserva maxima sai da AREA: lado 192 guarda 368.640, lado 500 guarda 2.500.000, lado 1000 guarda 10.000.000",
-				  Recurso.MaximoDoPlaneta(192) == 368_640 && Recurso.MaximoDoPlaneta(500) == 2_500_000 && Recurso.MaximoDoPlaneta(1000) == 10_000_000,
+		// (os numeros sao os do teto de 2026-11-01, lado^2 x 100 -- o pedido 217; a secao 8 conta as trocas e o defeito delas)
+		AfirmarRc("a reserva maxima sai da AREA: lado 192 guarda 3.686.400, lado 500 guarda 25.000.000, lado 1000 guarda 100.000.000",
+				  Recurso.MaximoDoPlaneta(192) == 3_686_400 && Recurso.MaximoDoPlaneta(500) == 25_000_000 && Recurso.MaximoDoPlaneta(1000) == 100_000_000,
 				  $"{Recurso.MaximoDoPlaneta(192):N0} / {Recurso.MaximoDoPlaneta(500):N0} / {Recurso.MaximoDoPlaneta(1000):N0}");
 		AfirmarRc("...e planeta sem tamanho (lado 0 ou negativo) nao tem reserva", Recurso.MaximoDoPlaneta(0) == 0 && Recurso.MaximoDoPlaneta(-3) == 0);
 
@@ -158,6 +158,11 @@ public partial class GameServer
 						&& Recurso.PorSegundo(Recurso.MelhorFerramenta(comPa)) < Recurso.PorSegundo(Recurso.MelhorFerramenta(comAsDuas));
 		AfirmarRc("a MELHOR ferramenta da mochila manda, e a ordem e a do pedido: mao < pa < furadeira",
 				  Ordem(), $"{Recurso.PorSegundoNaMao}/s < {Recurso.PorSegundoComPa}/s < {Recurso.PorSegundoComFuradeira}/s");
+		// (2026-11-01, o pedido 217) *"a shovel e a furadeira q vc usa pessoalmente pode ter os ganhos triplicados"*: os numeros CRAVADOS --
+		// o resto desta bancada le as constantes, e sem esta linha elas voltariam aos de antes sem ninguem ver.
+		AfirmarRc("(o pedido 217) a pa rende 180 por segundo e a furadeira 360 -- o triplo dos 60 e 120 de antes; a mao continua nos 3",
+				  Recurso.PorSegundoComPa == 180 && Recurso.PorSegundoComFuradeira == 360 && Recurso.PorSegundoNaMao == 3,
+				  $"mao {Recurso.PorSegundoNaMao}, pa {Recurso.PorSegundoComPa}, furadeira {Recurso.PorSegundoComFuradeira}");
 		Recurso.FerramentaNaoContaDeTeste = true;
 		try { AfirmarRc("(defeito injetado: a ferramenta nao conta) pa e furadeira rendem o mesmo que a mao -- a cobranca acusa", !Ordem()); }
 		finally { Recurso.FerramentaNaoContaDeTeste = false; }
@@ -375,8 +380,14 @@ public partial class GameServer
 		}
 
 		var logo = Reiniciar(0);
+		// A FOLGA E UM SEGUNDO DE VOLTA DO CHAO, e nao um recurso: entre gravar e carregar passa o relogio de VERDADE, e o carregador soma o
+		// que cresceu nele. Com a reserva de 2026-11-01 (o pedido 217, lado^2 x 100) a Terra devolve 289 por segundo -- 4 ms ja sao um
+		// recurso (MEDIDO na r1 do ag/recursos10: 15.035.361 contra 15.035.360 no disco). Um segundo ainda separa "como estava" de cheia
+		// ou de zerada por milhoes.
+		double UmSegundoDe(double maximo) => Math.Max(1, maximo / (Recurso.HorasPraEncher * 3600));
 		AfirmarRc("REINICIO na hora: a Terra e o mundo gerado voltam do disco como estavam, e o carregador NAO regrava a pasta",
-				  Math.Abs(logo.Terra - terraNoDisco) < 1 && Math.Abs(logo.Gerado - geradoNoDisco) < 1 && !logo.Namek && logo.Intacto,
+				  Math.Abs(logo.Terra - terraNoDisco) < UmSegundoDe(teto)
+				  && Math.Abs(logo.Gerado - geradoNoDisco) < UmSegundoDe(doGerado?.Maximo ?? 0) && !logo.Namek && logo.Intacto,
 				  $"Terra {logo.Terra:N0} (disco {terraNoDisco:N0}), gerado {logo.Gerado:N0} (disco {geradoNoDisco:N0})");
 
 		var seisHoras = Reiniciar(6);
@@ -1453,15 +1464,16 @@ public partial class GameServer
 	/// </summary>
 	private void RcDoTetoNovo()
 	{
-		GD.Print("[recursos] -- 8) a reserva do planeta em lado^2 x 10 (dono, 2026-10-11) --");
+		GD.Print("[recursos] -- 8) a reserva do planeta em lado^2 x 10 (dono, 2026-10-11) e x 100 (o pedido 217, 2026-11-01) --");
 
 		ZoneKey terra = ZonaDaBancadaDeProjetil;
 		ZerarReservas();
 
-		static bool Novo() => Recurso.MaximoDoPlaneta(192) == 368_640 && Recurso.MaximoDoPlaneta(500) == 2_500_000
-							  && Recurso.MaximoDoPlaneta(1000) == 10_000_000;
-		AfirmarRc("\"troque o lado^2 x 2 por lado^2 x 10\": lado 192 (o menor mundo gerado) guarda 368.640, lado 500 guarda 2.500.000, lado 1000 (o maior) guarda 10.000.000",
-				  Novo() && Recurso.RecursosPorCelula == 10);
+		// (2026-11-01, o pedido 217) *"aumente em 10x os recursos nos planetas"*: o lado^2 x 10 de 2026-10-11 virou lado^2 x 100.
+		static bool Novo() => Recurso.MaximoDoPlaneta(192) == 3_686_400 && Recurso.MaximoDoPlaneta(500) == 25_000_000
+							  && Recurso.MaximoDoPlaneta(1000) == 100_000_000;
+		AfirmarRc("\"aumente em 10x os recursos nos planetas\" (sobre o lado^2 x 10 de 2026-10-11): lado 192 (o menor mundo gerado) guarda 3.686.400, lado 500 guarda 25.000.000, lado 1000 (o maior) guarda 100.000.000",
+				  Novo() && Recurso.RecursosPorCelula == 100);
 
 		// ---- os planetas que EXISTEM: os pre-feitos em que se pousa...
 		List<ZoneKey> preFeitos = [.. Espaco.PreFeitos().Select(Espaco.ZonaDe)];
@@ -1469,11 +1481,11 @@ public partial class GameServer
 		foreach (ZoneKey z in preFeitos)
 		{
 			double lado = MedidasDoPlaneta(z).Lado;
-			if (ReservaDe(z) is not { Cheia: true } r || r.Maximo != lado * lado * 10)
+			if (ReservaDe(z) is not { Cheia: true } r || r.Maximo != lado * lado * 100)
 				fora.Add($"{z.Name}: lado {lado:0}, reserva {ReservaDe(z)?.Maximo:N0}");
 		}
-		AfirmarRc($"os {preFeitos.Count} planetas pre-feitos em que se pousa nascem cheios, com lado^2 x 10 -- a Terra (500 x 500): 2.500.000",
-				  preFeitos.Count >= 5 && fora.Count == 0 && ReservaDe(terra) is { Maximo: 2_500_000 },
+		AfirmarRc($"os {preFeitos.Count} planetas pre-feitos em que se pousa nascem cheios, com lado^2 x 100 -- a Terra (500 x 500): 25.000.000",
+				  preFeitos.Count >= 5 && fora.Count == 0 && ReservaDe(terra) is { Maximo: 25_000_000 },
 				  fora.Count > 0 ? string.Join("; ", fora) : string.Join(", ", preFeitos.Select(z => $"{z.Name} {ReservaDe(z)?.Maximo:N0}")));
 
 		// ---- ...e os gerados
@@ -1482,17 +1494,17 @@ public partial class GameServer
 			double ladoMenor = MundoProcedural.DaSeed(par.Menor.Seed, par.Menor.Name).Lado,
 				   ladoMaior = MundoProcedural.DaSeed(par.Maior.Seed, par.Maior.Name).Lado;
 			AfirmarRc("...e os mundos GERADOS tambem (o menor e o maior da vizinhanca da origem)",
-					  ReservaDe(par.Menor) is { } menor && menor.Maximo == ladoMenor * ladoMenor * 10
-					  && ReservaDe(par.Maior) is { } maior && maior.Maximo == ladoMaior * ladoMaior * 10,
+					  ReservaDe(par.Menor) is { } menor && menor.Maximo == ladoMenor * ladoMenor * 100
+					  && ReservaDe(par.Maior) is { } maior && maior.Maximo == ladoMaior * ladoMaior * 100,
 					  $"{par.Menor.Name} lado {ladoMenor:0} = {ReservaDe(par.Menor)?.Maximo:N0}; {par.Maior.Name} lado {ladoMaior:0} = {ReservaDe(par.Maior)?.Maximo:N0}");
 		}
 		else AfirmarRc("achei dois mundos gerados de tamanhos diferentes na vizinhanca da origem", false, "a varredura do universo nao achou");
 
 		// ---- a regeneracao: o TEMPO e o mesmo, entao a taxa quintuplicou
 		double porSegundo = ReservaDe(terra)!.Maximo / (Recurso.HorasPraEncher * 3600);
-		AfirmarRc($"o TEMPO de encher nao mudou ({Recurso.HorasPraEncher:0} h): a Terra passa a devolver {porSegundo:0.0} por segundo, cinco vezes os 5,8 de antes "
+		AfirmarRc($"o TEMPO de encher nao mudou ({Recurso.HorasPraEncher:0} h): a Terra passa a devolver {porSegundo:0.0} por segundo, cinquenta vezes os 5,8 de antes "
 				  + "(declarado: e o que sai de trocar o x2 pelo x10 sem mexer nas horas)",
-				  Recurso.HorasPraEncher == 24 && Math.Abs(porSegundo - 28.935) < 0.01, $"{porSegundo:0.000}/s");
+				  Recurso.HorasPraEncher == 24 && Math.Abs(porSegundo - 289.35) < 0.01, $"{porSegundo:0.000}/s");
 
 		// ---- CONTRA-EXEMPLO: a celula de antes
 		Recurso.CelulaGuardaODeAntesDeTeste = true;
@@ -1543,13 +1555,13 @@ public partial class GameServer
 
 		CarregarReservas();
 		ReservaDePlaneta? t = ReservaDe(terra), n = ReservaDe(namek), v = ReservaDe(vegeta);
-		AfirmarRc("**O SAVE DE ANTES CARREGA**: a Terra gravada com 250.000 volta com 250.000 -- nem cortada, nem esticada, nem cheia -- num teto que agora e 2.500.000 (eram 50%, sao 10%)",
-				  t is { Maximo: 2_500_000, Cheia: false } && Math.Abs(t.Atual - 250_000) < 1 && Math.Abs(t.Fracao - 0.10) < 0.001,
+		AfirmarRc("**O SAVE DE ANTES CARREGA**: a Terra gravada com 250.000 volta com 250.000 -- nem cortada, nem esticada, nem cheia -- num teto que agora e 25.000.000 (eram 50%, sao 1%)",
+				  t is { Maximo: 25_000_000, Cheia: false } && Math.Abs(t.Atual - 250_000) < 1 && Math.Abs(t.Fracao - 0.01) < 0.0001,
 				  $"{t?.Atual:N0} de {t?.Maximo:N0}");
-		AfirmarRc("...Namek, que estava a UM recurso de cheia no teto de antes (499.999 de 500.000), volta com os mesmos 499.999: 20% do teto novo, e NAO \"cheia\"",
-				  n is { Cheia: false } && Math.Abs(n.Atual - 499_999) < 1 && Math.Abs(n.Fracao - 0.20) < 0.001,
+		AfirmarRc("...Namek, que estava a UM recurso de cheia no teto de antes (499.999 de 500.000), volta com os mesmos 499.999: 2% do teto novo, e NAO \"cheia\"",
+				  n is { Cheia: false } && Math.Abs(n.Atual - 499_999) < 1 && Math.Abs(n.Fracao - 0.02) < 0.0001,
 				  $"{n?.Atual:N0} de {n?.Maximo:N0}");
-		double comAsHoras = 100_000 + 2_500_000.0 * 6 / Recurso.HorasPraEncher;
+		double comAsHoras = 100_000 + 25_000_000.0 * 6 / Recurso.HorasPraEncher;
 		AfirmarRc("...e Vegeta, gravada ha 6 h, volta com o que tinha MAIS seis horas de regeneracao pela taxa de AGORA (declarado: o tempo desligado enche pelo teto novo)",
 				  v != null && Math.Abs(v.Atual - comAsHoras) < 2_500, $"{v?.Atual:N0}, esperado {comAsHoras:N0}");
 		AfirmarRc("...e o carregador nao regravou o arquivo", noDisco.AsSpan().SequenceEqual(System.IO.File.ReadAllBytes(CaminhoDasReservas)));
@@ -1567,15 +1579,15 @@ public partial class GameServer
 			double antes = t.Atual;
 			UmaVoltaDosRecursos(6 * 3600);
 			double umQuarto = t.Maximo * 6 / Recurso.HorasPraEncher;
-			AfirmarRc("...e dali a reserva VAI ENCHENDO: seis horas de tique devolvem um quarto do teto novo (625.000), sem pular pra cheia",
+			AfirmarRc("...e dali a reserva VAI ENCHENDO: seis horas de tique devolvem um quarto do teto novo (6.250.000), sem pular pra cheia",
 					  Math.Abs(t.Atual - antes - umQuarto) < t.Maximo * 0.001 && !t.Cheia, $"+{t.Atual - antes:N0} (esperado {umQuarto:N0}); {t.Fracao * 100:0}%");
 		}
 
 		// ---- CONTRAPROVA: a regua distingue "carregou" de "nasceu cheia"
 		System.IO.File.WriteAllText(CaminhoDasReservas, deAntes.Replace("\"Earth\"", "\"Mundo_Que_Nao_Existe\""));
 		CarregarReservas();
-		AfirmarRc("(contraprova) o mesmo arquivo com a chave da Terra trocada pela de um mundo que nao existe: o registro e descartado e a Terra nasce CHEIA (2.500.000) -- a regua de cima sabe a diferenca",
-				  ReservaDe(terra) is { Cheia: true, Maximo: 2_500_000 } && ReservaDe(namek) is { Cheia: false });
+		AfirmarRc("(contraprova) o mesmo arquivo com a chave da Terra trocada pela de um mundo que nao existe: o registro e descartado e a Terra nasce CHEIA (25.000.000) -- a regua de cima sabe a diferenca",
+				  ReservaDe(terra) is { Cheia: true, Maximo: 25_000_000 } && ReservaDe(namek) is { Cheia: false });
 
 		try { System.IO.File.Delete(CaminhoDasReservas); } catch { /* a caixa e temporaria */ }
 		ZerarReservas();
@@ -1684,7 +1696,9 @@ public partial class GameServer
 				  $"{naCaverna.Zone.Name} teto={SobTeto(naCaverna)} | {laFora.Zone.Name} teto={SobTeto(laFora)}");
 
 		// ------------------------------------------------------------ minerar na caverna
-		daTerra.Tirar(daTerra.Atual - 100_000);   // 100 mil no chao da Terra: 4% do teto
+		// 4% DO TETO no chao da Terra -- pelo teto, e nao em numero: os 100 mil de antes eram 4% de 2,5 milhoes, e com a reserva de
+		// 2026-11-01 (o pedido 217, 25 milhoes) viraram 0,4% e a frase dizia 0%.
+		daTerra.Tirar(daTerra.Atual - daTerra.Maximo * 0.04);
 		string nomeDaTerra = NomeDaReserva(terra);
 		List<string> falas = Ouvir(() => DefinirAtividade(naCaverna, Protocol.Activity.Minerando));
 		AfirmarRc($"**NA CAVERNA DA TERRA O VERB MINERA**, e a frase diz de quem e o chao: \"Esta caverna tira da reserva de {nomeDaTerra}\", com a fracao DELA (4%)",

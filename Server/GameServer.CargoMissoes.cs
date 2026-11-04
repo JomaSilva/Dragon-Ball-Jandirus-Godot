@@ -275,7 +275,9 @@ public partial class GameServer
 		if (meuPlaneta.Length > 0 && DominioDe(new ChaveDePlaneta(true, meuPlaneta, 0)) is { } dom)
 			dominado = !string.Equals(dom.Assinatura, portador.Assinatura, StringComparison.Ordinal);
 
-		TipoDeTarefa tipo = MissoesDeCargo.Escolher(r, dominado);
+		// (2026-10-29, o pedido 149) com algum mundo destruido, o Kaioshin reconstroi -- ver `MissoesDeCargo.Escolher`
+		List<(string Chave, string Nome, ZoneKey Zona)> destruidos = MundosMortos();
+		TipoDeTarefa tipo = MissoesDeCargo.Escolher(r, dominado, haMundoDestruido: destruidos.Count > 0);
 
 		var nova = new FichaDeMissao
 		{
@@ -301,6 +303,13 @@ public partial class GameServer
 
 			case TipoDeTarefa.Verba:
 				nova.Meta = 1;
+				break;
+
+			case TipoDeTarefa.Reconstruir:
+				// (2026-10-29, o pedido 149) um dos mundos destruidos, sorteado
+				(string Chave, string Nome, ZoneKey Zona) morto = destruidos[Random.Shared.Next(destruidos.Count)];
+				nova.Planeta = morto.Nome;
+				nova.PlanetaChave = morto.Chave;
 				break;
 
 			case TipoDeTarefa.Planeta:
@@ -463,6 +472,11 @@ public partial class GameServer
 				return ChaveDePlaneta.Ler(f.PlanetaChave, f.Planeta, out ChaveDePlaneta ch)
 					&& PlanetaMorto(ch);
 
+			// (2026-10-29, o pedido 149) o mundo voltou a existir -- pelo botao do Kaioshin ou por qualquer outra porta
+			case TipoDeTarefa.Reconstruir:
+				return ChaveDePlaneta.Ler(f.PlanetaChave, f.Planeta, out ChaveDePlaneta reconstruido)
+					&& !PlanetaMorto(reconstruido);
+
 			case TipoDeTarefa.Verba:
 				return f.Progresso >= 1;
 
@@ -476,6 +490,28 @@ public partial class GameServer
 
 	/// <summary>Este mundo ja morreu? A pergunta pela CHAVE, pro alvo que so existe como identidade.</summary>
 	private bool PlanetaMorto(ChaveDePlaneta c) => _mortos.Morto(c);
+
+	/// <summary>
+	/// (2026-10-29) O BOTAO "RESTAURAR PLANETA" DO KAIOSHIN -- o pedido 149, o dono: *"Vamos fazer com q kaioshins tenham a capacidade de
+	/// restaurar planetas"*. Traz de volta, pela porta unica (`RessuscitarPlaneta`), o mundo da tarefa de Reconstruir de quem aperta (se ele
+	/// ainda estiver destruido), ou o ultimo que foi destruido. Do trono, como o Ritual Mistico; sem recarga (ESCOLHA minha -- o dono nao
+	/// pediu custo). Devolve se o id era o dele.
+	/// </summary>
+	private bool UsarVerboDeRestaurar(ServerPlayer pl, string id)
+	{
+		if (!string.Equals(id, MissoesDeCargo.VerboDeRestaurar, StringComparison.Ordinal)) return false;
+		if (!EhKaioshinNoTrono(pl)) { Avisar(pl, "só o Kaioshin restaura um planeta destruído."); return true; }
+		List<(string Chave, string Nome, ZoneKey Zona)> mortos = MundosMortos();
+		if (mortos.Count == 0) { Avisar(pl, "nenhum planeta está destruído agora."); return true; }
+
+		string daTarefa = _missoes.Values.FirstOrDefault(f => f.Tarefa == TipoDeTarefa.Reconstruir
+			&& string.Equals(f.Dono, pl.Conta, StringComparison.OrdinalIgnoreCase))?.PlanetaChave ?? "";
+		(string Chave, string Nome, ZoneKey Zona) alvo = mortos.FirstOrDefault(m => m.Chave == daTarefa);
+		if (alvo.Chave == null) alvo = mortos[^1];
+		if (!RessuscitarPlaneta(alvo.Zona)) { Avisar(pl, $"{alvo.Nome} não volta agora."); return true; }
+		Avisar(pl, $"você estende as mãos sobre o vazio onde {alvo.Nome} estava -- e o planeta volta a existir.");
+		return true;
+	}
 
 	// =====================================================================
 	// 4. CUMPRIR E FALHAR -- `rq_complete` (`:574`) e `rq_fail` (`:603`)

@@ -218,9 +218,11 @@ public sealed partial class GameServer
 		using PalcoDeMortes palco = PalcoDeMortesDeBancada();
 		MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
 		foreach (EsferaNegra n in _negras) { n.Portador = pl.Id; n.PorZona(terra); n.PrecisaAssentar = false; }
-		InvocarODragao(pl);
-		ChecaNegra("na superficie, com as 7, o Shenlong sobe sem estatua",
-			_invocacoes.ContainsKey(EsferasNegras.IdDoSet));
+		// (2026-10-29, o pedido 155) PELO BOTAO DO SLOT: "Invocar o dragão" numa Black Star da mochila -- o mesmo funil do INVOCAR, que na aba
+		// World so nasce onde ha estatua (e o planeta procedural nao tem nenhuma)
+		Verbo(pl, "item_invocar", new EsferaNaMochila(EsferasNegras.IdDoSet, 4, !SetNegroAtivo(), false) { Negra = true }.Id);
+		ChecaNegra("na superficie, com as 7, o Shenlong sobe sem estatua -- pelo botao \"Invocar o dragão\" do slot da mochila (o pedido 155)",
+			_invocacoes.ContainsKey(EsferasNegras.IdDoSet) && _negras.All(e => e.Portador == 0));
 		bool temSupremo = MenuDaqui(pl, _setNegro).Any(d => d.Id == "supremo");
 		ChecaNegra("o Supremo nao entra na lista das Black Star", !temSupremo);
 		MutacaoNegra("com o defeito o Supremo aparece na lista",

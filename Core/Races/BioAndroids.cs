@@ -39,6 +39,12 @@ public static class BioAndroids
 	/// <summary>A grafia do DM, que ainda vive nos dados extraidos dele.</summary>
 	public const string RacaDoDm = "Bio-Android";
 
+	/// <summary>
+	/// (2026-10-31, o pedido 204) O TETO DO NOME DA CRIATURA que o criador escreve ao gestar: o mesmo da criacao de personagem (o
+	/// `GetString(24)` da ficha). Lido pelo menu da maquina (a caixa de texto) e pelo servidor (a recusa).
+	/// </summary>
+	public const int MaxDoNome = 24;
+
 	/// <summary>Esta raca usa este sistema? Aceita as duas grafias, e e a UNICA pergunta do projeto.</summary>
 	public static bool EhBio(string? raca) =>
 		string.Equals(raca, Raca, StringComparison.OrdinalIgnoreCase)

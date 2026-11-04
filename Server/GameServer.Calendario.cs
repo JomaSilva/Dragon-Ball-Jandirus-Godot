@@ -145,6 +145,12 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TickDoCalendario()
 	{
+		// (2026-10-31, o pedido 198) A PATRULHA GALACTICA carrega e pendura o tique dela daqui (o tique do ceu, uma vez por segundo): a pena de
+		// quem esta preso e a cacada valem desde o boot, e nao so depois do primeiro crime. Ver `GameServer.PatrulhaGalactica.cs`.
+		GarantirAPatrulha();
+		// ...e a REARMA: o pulso de 10 Hz se desliga sozinho quando nenhuma agenda tem trabalho (o servidor vazio do boot), e sem este
+		// religar a cacada e a prisao nunca mais andariam sozinhas -- a primeira rodada do robo mostrou isso: o procurado nocauteado nao ia preso.
+		if (PatrulhaTemTrabalho) LigarPulso();
 		long dia = DiaDoCalendario;
 		if (dia == _diaVistoNoCalendario) return;
 		bool voltou = dia < _diaVistoNoCalendario;
@@ -164,6 +170,9 @@ public sealed partial class GameServer
 			Avisar(pl, frase);
 			if (mesNovo) ContarOCalendario(pl, avisar: true);
 		}
+
+		// (2026-10-31, o pedido 198) O JORNAL GALACTICO do dia que acabou sai na virada -- ver `GameServer.JornalGalactico.cs`.
+		PublicarOJornal(dia, hoje.Extenso);
 	}
 
 	// =====================================================================

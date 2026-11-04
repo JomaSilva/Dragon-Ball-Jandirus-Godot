@@ -262,6 +262,21 @@ public sealed class ReceitaDeProjetil
 
 	/// <summary>O que este tiro faz A MAIS em quem ele fere. Ver <see cref="DomDeProjetil"/>.</summary>
 	public DomDeProjetil Dom = DomDeProjetil.Nenhum;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) ESTA ESFERA ENGOLE QUEM ACERTA -- a Destroyer Sphere do Deus da Destruicao. O dono: *"ao bater no inimigo, o
+	/// inimigo vai ficar dentro da esfera sendo levado junto com ela e tomando dano, no final recebendo o dano"*. E o arrasto da esfera grande
+	/// (<see cref="Projetil.PodeArrastar"/>) sem a escada do poder: quem ela fere vai DENTRO dela (no meio), na velocidade dela e preso, ate o
+	/// estouro do fim do alcance -- o mais forte tambem, menos quem e parede pra ela (`KiContraCorpo.EhParede`). So vale numa esfera grande.
+	/// </summary>
+	public bool Engole;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) POR QUANTO ESTE TIRO MULTIPLICA O PROPRIO PODER NUMA COLISAO DE KI -- o raio contra raio, a esfera contra o
+	/// raio e o choque de dois tiros (<see cref="Projetil.PoderDeEmbate"/>). 1 em tudo; a Destroyer Sphere tem a vantagem da energia da
+	/// destruicao (o dono: *"ter vantagem em colisao de ki"*). Nao mexe no dano nem no BP do tiro.
+	/// </summary>
+	public double VantagemNoEmbate = 1;
 }
 
 /// <summary>
@@ -972,6 +987,10 @@ public sealed class Projetil
 	public string ZonaCerta = "";
 	public DomDeProjetil Dom = DomDeProjetil.Nenhum;
 
+	/// <summary>(2026-10-30, o pedido 181) Copiados da receita no nascimento. Ver `ReceitaDeProjetil.Engole` e `ReceitaDeProjetil.VantagemNoEmbate`.</summary>
+	public bool Engole;
+	public double VantagemNoEmbate = 1;
+
 	/// <summary>Morto: sai da lista no proximo tique. Ver o motivo em <see cref="Fim"/>.</summary>
 	public bool Vivo = true;
 	public FimDeProjetil Fim;
@@ -1336,8 +1355,10 @@ public sealed class Projetil
 	/// `rangemod` menor que 1 chega FRACA no encontro se o encontro foi longe, e uma que engrossa com
 	/// a distancia chega forte. Congelar o poder no disparo apagaria o unico jeito que uma tecnica
 	/// tem de dizer "sou boa de perto".
+	///
+	/// (2026-10-30, o pedido 181) Vezes a <see cref="VantagemNoEmbate"/> do tiro: a energia da destruicao pesa mais que o ki de mesmo poder.
 	/// </summary>
-	public double PoderDeEmbate() => EmbateDeKi.PoderDoFeixe(Bp, ModsAgora(), BaseDano);
+	public double PoderDeEmbate() => EmbateDeKi.PoderDoFeixe(Bp, ModsAgora(), BaseDano) * VantagemNoEmbate;
 
 	/// <summary>
 	/// ESTE TIRO EMPURRA? `maxdistance - distance <= 2` empurra com forca cheia; ate 4 tiles,

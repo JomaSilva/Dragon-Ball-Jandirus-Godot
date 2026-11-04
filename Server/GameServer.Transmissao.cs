@@ -125,6 +125,8 @@ public partial class GameServer
 		}
 
 		if (AlvoDoPedido(pl, arg, lista) is not { } alvo) return;
+		// (2026-10-29, o pedido 158) QUEM LIGOU O BLOQUEIO DE TELEPORTE nao recebe ninguem -- ver `BloqueiaTeleporte`
+		if (BloqueiaTeleporte(alvo)) { Avisar(pl, FraseDoBloqueio(alvo)); return; }
 		if (alvo.Zone.Hash != pl.Zone.Hash && ZonaFechadaAoTeleporte(alvo.Zone))
 		{
 			Avisar(pl, "a assinatura que voce seguia entrou num lugar onde nao se chega assim.");
@@ -229,7 +231,7 @@ public partial class GameServer
 		if (arg.Length > 1 && arg[0] == '#' && int.TryParse(arg.AsSpan(1), out int id))
 		{
 			foreach ((ServerPlayer quem, byte _, string _, bool _) in lista)
-				if (quem.Id == id) return quem;
+				if (quem.Id == id) return RecusaPeloMesmoIp(pl, quem) ? null : quem;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 			Avisar(pl, "essa presenca saiu do alcance.");
 			return null;
 		}
@@ -246,7 +248,7 @@ public partial class GameServer
 			Avisar(pl, "há mais de uma pessoa com esse nome no alcance. Use o botão da aba Sense.");
 			return null;
 		}
-		return iguais[0];
+		return RecusaPeloMesmoIp(pl, iguais[0]) ? null : iguais[0];   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 	}
 
 	/// <summary>
@@ -254,6 +256,34 @@ public partial class GameServer
 	/// e o <see cref="SaltarPelaTransmissaoG11"/>, 0,2 s depois (dono, 2026-10-24: o mesmo par de atrasos do Kai Kai -- ver
 	/// `GameServer.SaidaDaTransmissao.cs`). O grupo e colhido aqui, no instante em que a viagem sai: ninguem e puxado pelo <c>MoveToZone</c>.
 	/// </summary>
+	// =====================================================================
+	// (2026-10-29) O BLOQUEIO DE TELEPORTE -- o pedido 158 (a skill: `Jandirus.Core.Skills.BloqueioDeTeleporte`)
+	// =====================================================================
+	/// <summary>
+	/// O BOTAO `Teleport_Block`: liga e desliga o selo -- um buff sem numero nenhum (a barra de efeitos o mostra), e o mesmo aperto o
+	/// desfaz. Enquanto ele dura, o Instant Transmission de todo mundo recusa este corpo (<see cref="BloqueiaTeleporte"/>).
+	/// </summary>
+	private void BloqueioDeTeleporteG11(ServerPlayer pl, string arg)
+	{
+		const string id = Jandirus.Core.Skills.BloqueioDeTeleporte.Verbo;
+		if (DesligarBuff(pl, id))
+		{
+			Avisar(pl, "você desfaz o selo: quem conhece a sua energia volta a poder se teleportar até você.");
+			return;
+		}
+		LigarBuff(pl, id, "Bloqueio de Teleporte", new());
+		Avisar(pl, "você sela a própria energia: enquanto o selo durar, ninguém se teleporta até você.");
+	}
+
+	/// <summary>Este corpo esta com o Bloqueio de Teleporte ligado? A pergunta do pedido e da chegada do Instant Transmission.</summary>
+	private bool BloqueiaTeleporte(ServerPlayer alvo) =>
+		!BloqueioIgnoradoDeTeste && TemBuff(alvo, Jandirus.Core.Skills.BloqueioDeTeleporte.Verbo);
+
+	/// <summary>DEFEITO INJETADO (`--teleporteteste`): o selo nao barra ninguem -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool BloqueioIgnoradoDeTeste;
+
+	private static string FraseDoBloqueio(ServerPlayer alvo) => $"a energia de {alvo.Name} está selada: não dá pra se teleportar até lá.";
+
 	private void ChegarPelaTransmissaoG11(ServerPlayer pl, TransmissaoG11 t)
 	{
 		if (PorQueNaoChegaPelaTransmissao(pl, t, out ServerPlayer? alvo) is { } porque) { Avisar(pl, porque); return; }
@@ -270,6 +300,8 @@ public partial class GameServer
 	private string? PorQueNaoChegaPelaTransmissao(ServerPlayer pl, TransmissaoG11 t, out ServerPlayer? alvo)
 	{
 		if (!_players.TryGetValue(t.Alvo, out alvo) || alvo.ECadaver || EhCadaver(alvo)) return "a assinatura que voce seguia se apagou.";
+		// (2026-10-29, o pedido 158) ...e quem o ligou no meio da concentracao de alguem tambem nao
+		if (BloqueiaTeleporte(alvo)) return FraseDoBloqueio(alvo);
 		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) return preso;
 		if (alvo.Zone.Hash != pl.Zone.Hash && ZonaFechadaAoTeleporte(alvo.Zone))
 			return "a assinatura que voce seguia entrou num lugar onde nao se chega assim.";
@@ -354,6 +386,7 @@ public partial class GameServer
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
 			if (o == pl || o.Id == ficouPorSerEspaco || !_players.ContainsKey(o.Id) || o.ECadaver || EhCadaver(o)) continue;
+			if (UsoNoMesmoIp(pl, o)) continue;   // (2026-11-01, o pedido 212) quem joga da mesma conexao nao vai de carona
 			if (PorQueNaoSaiDaqui(o).Length > 0) continue;
 			int tiles = DistanciaEmTiles(pl, o);
 			bool meditandoJunto = pl.Ficha.med && o.Ficha.med && tiles <= TransmissaoEmNiveis.TilesDaCarona;
@@ -363,7 +396,7 @@ public partial class GameServer
 			grupo.Add(o);
 		}
 
-		if (segura && agarrado != null && !vistos.Contains(agarrado.Id) && _players.ContainsKey(agarrado.Id)
+		if (segura && agarrado != null && !vistos.Contains(agarrado.Id) && _players.ContainsKey(agarrado.Id) && !UsoNoMesmoIp(pl, agarrado)
 			&& PorQueNaoSaiDaqui(agarrado).Length == 0 && !agarrado.ECadaver && !EhCadaver(agarrado))
 			grupo.Add(agarrado);
 		return grupo;

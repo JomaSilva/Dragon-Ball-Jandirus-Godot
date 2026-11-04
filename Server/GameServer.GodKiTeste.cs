@@ -1156,6 +1156,9 @@ public partial class GameServer
 		f.godki = null;
 		f.ExposicaoDivina = 0;
 		f.bp_milestones_done.Remove(DespertarDivino.MarcoDoDespertar);
+		// (2026-10-30, o pedido 184) ...e o marco do Blue Kaio-ken, que os 50% da familia 6 pagam ao host (Saiyajin de classe media no SSG): sem
+		// tirar a etiqueta junto com o ganho, o login (que reve o ganho pelas etiquetas, `RevisarOsMarcosNoLogin`) o devolveria a x12
+		f.bp_milestones_done.Remove(Milestones.BlueKaioken);
 		f.bp_milestone_mult = 1;
 		f.BP = bp;
 		f.dead = false;

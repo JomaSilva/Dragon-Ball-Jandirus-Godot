@@ -162,13 +162,15 @@ public sealed partial class GameServer
 		AfirmarJz("(defeito injetado: o revivido e puxado pra perto de quem o reviveu, como antes) a alma volta a vida e FICA VIVA no Outro "
 				  + "Mundo, sem porta de saida -- a regua do 4 REPROVA", !alma1.Ficha.dead && Alem.EhOAlem(alma1.Zone), Onde(alma1));
 		RemoverNpc(alma1);   // fora do caminho: o `Revive` pega o morto mais perto
+		// (2026-10-29, o pedido 165) O REVIVE DE CIMA CUSTOU A VIDA DO JUIZ: ele volta de pe a mesa antes do segundo -- morto nao revive ninguem
+		PorEm(juiz, alem, mesa);
 
 		ServerPlayer alma2 = MortoAoLado(3, "AlmaDois");
 		List<string> reviveu = Ouvir(() => RessuscitarG4(juiz));
 		AfirmarJz("4. **O REVIVE DO JUIZ LA DENTRO**: a alma volta a vida e ACORDA NO MUNDO DOS VIVOS, em casa (o funil do renascer)",
 				  !alma2.Ficha.dead && !Alem.EhOAlem(alma2.Zone) && alma2.Zone.Equals(DestinoDe(alma2).Zona), Onde(alma2));
-		AfirmarJz("...e o juiz le que a alma desceu, e continua no Outro Mundo, vivo (a primeira volta de uma alma nao cobra nada)",
-				  Disse(reviveu, "desce pro mundo dos vivos") && !juiz.Ficha.dead && Alem.EhOAlem(juiz.Zone), Ultimos(reviveu));
+		AfirmarJz("...e o juiz le que a alma desceu, e PAGA a volta com a propria vida, la no Outro Mundo (o pedido 165: todo Revive cobra)",
+				  Disse(reviveu, "desce pro mundo dos vivos") && juiz.Ficha.dead && Alem.EhOAlem(juiz.Zone), Ultimos(reviveu));
 
 		// ---------------------------------------------------------------- 5. a volta
 		PorEm(juiz, terra, p1);

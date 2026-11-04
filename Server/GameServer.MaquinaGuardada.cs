@@ -23,6 +23,9 @@ public sealed class MaquinaNaGaveta
 
 	/// <summary>A velocidade comprada, quando e uma nave (zero nas obras).</summary>
 	public int Velocidade;
+
+	/// <summary>(2026-10-31, o pedido 209) Os degraus do tanque comprados, quando e uma nave (zero nas obras e nas gavetas de antes).</summary>
+	public int DegrausDoTanque;
 }
 
 /// <summary>
@@ -39,8 +42,8 @@ public sealed class MaquinaNaGaveta
 /// O QUE VAI NA GAVETA: o estado inteiro de cada sistema (gravidade, regenerador, o saco da v0.2.1), e nao so as melhorias
 /// -- a bateria pela metade continua pela metade, e a frequencia do comunicador continua a mesma. A armadura nunca desce
 /// (a obra nasce com a de quem a assenta, e fica com a maior das duas). O que NAO vai: a Drill, que tem o caminho mais
-/// antigo dela (o nivel na ficha de quem recolhe, `AoRecolherADrill`), e da nave so a velocidade -- o tanque continua
-/// cheio pra ir pra mochila, e o casco nasce de novo de quem a assenta, como antes.
+/// antigo dela (o nivel na ficha de quem recolhe, `AoRecolherADrill`), e da nave so a velocidade e os degraus do tanque (2026-10-31) --
+/// o tanque continua cheio pra ir pra mochila, e o casco nasce de novo de quem a assenta, como antes.
 /// ===================================================================================================================
 /// </summary>
 public sealed partial class GameServer
@@ -91,11 +94,15 @@ public sealed partial class GameServer
 		}, RotuloDa(o));
 	}
 
-	/// <summary>A nave recolhida: a velocidade comprada vai numa gaveta, como o estado de uma obra.</summary>
+	/// <summary>
+	/// A nave recolhida: a velocidade comprada e os degraus do tanque (2026-10-31, o pedido 209) vao numa gaveta, como o estado de uma obra.
+	/// O rotulo e a velocidade, e o tanque quando ha degrau ("20x, tanque 3").
+	/// </summary>
 	private string IdDaNaveAoRecolher(Nave n) =>
-		n.Velocidade <= Naves.VelocidadeInicial
+		n.Velocidade <= Naves.VelocidadeInicial && n.DegrausDoTanque <= 0
 			? n.Tipo
-			: AbrirAGaveta(new MaquinaNaGaveta { Tipo = n.Tipo, Velocidade = n.Velocidade }, $"{n.Velocidade}x");
+			: AbrirAGaveta(new MaquinaNaGaveta { Tipo = n.Tipo, Velocidade = n.Velocidade, DegrausDoTanque = n.DegrausDoTanque },
+				n.DegrausDoTanque > 0 ? $"{n.Velocidade}x, tanque {n.DegrausDoTanque}" : $"{n.Velocidade}x");
 
 	/// <summary>Guarda o estado numa gaveta nova do cofre e devolve o id do item que aponta pra ela (o cru, com o defeito ligado).</summary>
 	private string AbrirAGaveta(MaquinaNaGaveta m, string rotulo)
@@ -149,11 +156,16 @@ public sealed partial class GameServer
 		return true;
 	}
 
-	/// <summary>A nave recem-assentada de um item com gaveta volta com a velocidade de antes. Devolve se voltou.</summary>
+	/// <summary>
+	/// A nave recem-assentada de um item com gaveta volta com a velocidade de antes -- e com os degraus do tanque (2026-10-31, o pedido
+	/// 209). Devolve se voltou algum dos dois.
+	/// </summary>
 	private bool DevolverAVelocidade(Nave nave, string idDoItem)
 	{
-		if (EsvaziarAGaveta(idDoItem, nave.Tipo) is not { } m || m.Velocidade <= nave.Velocidade) return false;
-		nave.Velocidade = Math.Min(m.Velocidade, Naves.VelocidadeMaxima);
-		return true;
+		if (EsvaziarAGaveta(idDoItem, nave.Tipo) is not { } m) return false;
+		bool voltou = false;
+		if (m.Velocidade > nave.Velocidade) { nave.Velocidade = Math.Min(m.Velocidade, Naves.VelocidadeMaxima); voltou = true; }
+		if (m.DegrausDoTanque > nave.DegrausDoTanque) { nave.DegrausDoTanque = Math.Min(m.DegrausDoTanque, Combustivel.DegrausDoTanque); voltou = true; }
+		return voltou;
 	}
 }

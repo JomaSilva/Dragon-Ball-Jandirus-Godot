@@ -152,6 +152,37 @@ public static class VerbosDoJogo
 			"Liga e desliga o arremesso dos SEUS golpes.",
 			() => C?.SendVerbo("knockback")));
 
+		// (2026-10-31, o pedido 198) A PATRULHA GALACTICA E O JORNAL GALACTICO -- ver `GameServer.PatrulhaGalactica.cs` e
+		// `GameServer.JornalGalactico.cs`. Os nomes dos verbos moram la (as 24 letras do fio).
+		Verbos.Registrar(new Verbo("Jornal Galactico", Verbos.Outros,
+			"Abre a ultima edicao do Jornal Galactico: quem e procurado, as prisoes, os viloes, os herois e os planetas destruidos.",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboJornal)));
+
+		Verbos.Registrar(new Verbo("Denunciar procurado", Verbos.Outros,
+			"Denuncia a Patrulha Galactica os procurados que estao neste planeta: se ela os prender em 30 minutos, 25% da recompensa e sua.",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboDenunciar)));
+
+		Verbos.Registrar(new Verbo("Entregar procurado", Verbos.Outros,
+			"Chama a Patrulha Galactica pro procurado que VOCE nocauteou, ao seu lado: ela leva o corpo, e a recompensa inteira e sua.",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboChamar)));
+
+		Verbos.Registrar(new Verbo("Ficha na Patrulha", Verbos.Outros,
+			"A sua ficha na Patrulha Galactica: se voce e procurado, o nivel, os crimes e a recompensa -- ou quanto falta da pena.",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboFicha)));
+
+		// (2026-10-31, o pedido 198i) O CARGO DA PATRULHA -- ver `GameServer.CargoDaPatrulha.cs`.
+		Verbos.Registrar(new Verbo("Entrar na Patrulha", Verbos.Outros,
+			"Entra na Patrulha Galactica: pede 50 mil de poder, karma maior que zero e nao ser procurado. Quem entra ganha um scouter (o radio da Patrulha) e missoes.",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboEntrar)));
+
+		Verbos.Registrar(new Verbo("Sair da Patrulha", Verbos.Outros,
+			"Sai da Patrulha Galactica (o scouter fica com voce).",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboSair)));
+
+		Verbos.Registrar(new Verbo("Missao da Patrulha", Verbos.Outros,
+			"A sua missao da Patrulha Galactica (sem missao, pega uma): derrotar um foragido, ou ir atras de um procurado localizado.",
+			() => C?.SendVerbo(Jandirus.Server.GameServer.VerboMissao)));
+
 		// ============================ OS GRAUS DO SUPER SAIYAJIN ============================
 		// Pedido do dono. Os dois grades sao um DESVIO da escada -- soco mais pesado, corpo mais
 		// lento e mais facil de acertar (ver `Catalogo.Grade2Mods`/`Grade3Mods`) --, e quem nao quer
@@ -175,6 +206,12 @@ public static class VerbosDoJogo
 			"Troca o C duplo entre as formas mortais e as divinas: ele sobe primeiro pela família escolhida, e a outra só "
 			+ "entra quando a escolhida não tiver forma acima de você.",
 			() => C?.SendVerbo("divinas_c")) { Requisito = Do("divinas_c") });
+
+		// (2026-10-29) O POTENTIAL UNLEASHED NO C DUPLO -- o irmao do de cima (o pedido 153). Ver `EstadoDeForma.CPeloMistico`.
+		Verbos.Registrar(new Verbo("Toggle C: Potential Unleashed", Verbos.Outros,
+			"Tira (ou devolve) o Potential Unleashed do C duplo: sem ele, o C sobe pelas outras formas (o Super Saiyajin...), e ele "
+			+ "só entra quando nenhuma outra subir. A tecla dele continua indo direto.",
+			() => C?.SendVerbo("mistico_c")) { Requisito = Do("mistico_c") });
 
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM (`icer.dm:77-83`, aba Other), que todo Frost
 		// Demon recebe (`fd_login_check`). O botao abre a tela; quem manda o verb `formas_frost` e o Salvar dela. Ver `TelaDeFormasDoFrost`.

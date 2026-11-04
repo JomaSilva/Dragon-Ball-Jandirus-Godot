@@ -236,6 +236,10 @@ public sealed partial class GameServer
 		// (v0.3.0) A TAXA E DEZ VEZES A DE ANTES (dono, 2026-10-15: *"aumente em 10x os ganhos de recursos da drill"*): as contas
 		// daqui leem a constante (`Drill.TaxaPorNivel`), e nao o 1 por segundo que estava cravado nelas.
 		double cem = 100 * Drill.TaxaPorNivel, umaHora = 3600 * Drill.TaxaPorNivel;
+		// (2026-11-01, o pedido 217) *"Drills tb vao ser 10x melhor"*: o numero CRAVADO -- as contas acima e abaixo leem a constante, e sem
+		// esta linha ela voltaria aos 10 de antes sem ninguem ver.
+		AfirmarDr("(o pedido 217) a Drill de nivel 1 tira 100 recursos por segundo, e a de nivel 10 tira 1.000 -- dez vezes os de antes",
+				  Drill.Taxa(1) == 100 && Drill.Taxa(Drill.NivelMaximo) == 1_000, $"{Drill.Taxa(1):0.###}/s e {Drill.Taxa(Drill.NivelMaximo):0.###}/s");
 		AfirmarDr($"em 100 s a Drill de nivel 1 junta {cem:0} recursos ({Drill.TaxaPorNivel:0} por segundo)", DrPerto(d.Estoque, cem), $"{d.Estoque:0.######}");
 		AfirmarDr("...e a reserva do planeta caiu EXATAMENTE isso: o que entra no estoque e o que saiu dela",
 				  DrPerto(antes - reserva.Atual, cem), $"saiu {antes - reserva.Atual:0.######}");

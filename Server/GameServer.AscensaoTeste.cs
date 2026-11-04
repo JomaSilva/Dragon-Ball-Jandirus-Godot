@@ -21,7 +21,7 @@ namespace Jandirus.Server;
 ///   D. O NPC NAO ASCENDE: um Kai sem dono, de 2 bilhoes, pelas duas portas do escritor. CONTRA-EXEMPLO `AscensaoProNpcDeTeste`.
 ///   E. A FORMA ABSOLUTA TOMA O LUGAR: o Kai de 2 bilhoes no Mistico expressa os 16x do Mistico, e nao 16 x 16 -- no MESMO instante da
 ///      troca, pelo `AplicarForma`. CONTRA-EXEMPLO `FormaAbsolutaSomaDeTeste`.
-///   F. OS MARCOS DE GANHO nas portas: x2 na do SSJ1, x3 na do SSJ2, x4 na do SSJ3, pelo `Treinar`. CONTRA-EXEMPLO
+///   F. OS MARCOS DE GANHO nas portas: x2 na do SSJ1, x4 na do SSJ2, x8 na do SSJ3 (o 2^x do pedido 188), pelo `Treinar`. CONTRA-EXEMPLO
 ///      `MarcosNoDegrauDoDmDeTeste` (os 5/10/20 do DM).
 ///   G. O FIO: a ficha lenta (`AtributosState.Ascensao`) leva o bonus de cada um, lida pelo leitor de producao.
 ///
@@ -345,10 +345,10 @@ public sealed partial class GameServer
 			AfirmarAsc("NA PORTA DO SSJ1 (BPBoost 2) o marco `asc5`: todo ganho x2, e o jogador ouve o MARCO DE PODER",
 				m1.Mult == 2 && m1.Ditos.Count == 1 && tsujin.Ficha.bp_milestones_done.Contains("asc5"), $"x{m1.Mult} | {string.Join(" | ", m1.Ditos)}");
 			var m2 = Marco(tsujin, Catalogo.PortaSsj2);
-			AfirmarAsc("NA PORTA DO SSJ2 (BPBoost 4) o `asc10`: x3", m2.Mult == 3 && tsujin.Ficha.bp_milestones_done.Contains("asc10"), $"x{m2.Mult}");
+			AfirmarAsc("NA PORTA DO SSJ2 (BPBoost 4) o `asc10`: x4", m2.Mult == 4 && tsujin.Ficha.bp_milestones_done.Contains("asc10"), $"x{m2.Mult}");
 			var m3 = Marco(tsujin, Catalogo.PortaSsj3);
-			AfirmarAsc("NA PORTA DO SSJ3 (BPBoost 16) o `asc20`: x4 -- os marcos do Saiyajin nas mesmas portas (`ssj` x2, `ssj2` x3, `ssj3` x4)",
-				m3.Mult == 4 && tsujin.Ficha.bp_milestones_done.Contains("asc20"), $"x{m3.Mult}");
+			AfirmarAsc("NA PORTA DO SSJ3 (BPBoost 16) o `asc20`: x8 -- os marcos do Saiyajin nas mesmas portas (`ssj` x2, `ssj2` x4, `ssj3` x8)",
+				m3.Mult == 8 && tsujin.Ficha.bp_milestones_done.Contains("asc20"), $"x{m3.Mult}");
 			var ms = Marco(saiyan, Catalogo.PortaSsj3);
 			AfirmarAsc("...e o Saiyajin de 2 bilhoes na base NAO ganha marco de Ascensao (o dele vem das formas)",
 				ms.Mult == 1 && !saiyan.Ficha.bp_milestones_done.Any(t => t.StartsWith("asc", StringComparison.Ordinal)), $"x{ms.Mult}");
@@ -377,6 +377,9 @@ public sealed partial class GameServer
 				chegou && Enumerable.Range(0, 3).All(i => Math.Abs((c[i].UltimaFicha?.Ascensao ?? 0) - 9.249354f) < 1e-3)
 				&& Enumerable.Range(3, 3).All(i => c[i].UltimaFicha?.Ascensao == 1f),
 				string.Join(" | ", Enumerable.Range(0, c.Length).Select(i => $"{RacasDaAscensao[i]} x{c[i].UltimaFicha?.Ascensao:0.####}")));
+
+			AAscensaoDivina(corpos[2], corpos[3], NoBp, RazaoDoExpresso, Perto);   // (2026-10-30, o pedido 183)
+			OsMarcosDaAscensaoDivina(corpos[2], corpos[3], NoBp);   // (2026-10-30, o pedido 184)
 		}
 		catch (Exception e)
 		{
@@ -392,6 +395,176 @@ public sealed partial class GameServer
 			mesa.Fecha();
 			ApagarContasDaAscensao();
 			GD.Print($"[ascensao] ================ {_ascOk} OK, {_ascFalhou} FALHA(S) ================");
+		}
+	}
+
+	// ============================================================ H) (2026-10-30, o pedido 183) A ASCENSAO DIVINA
+	/// <summary>
+	/// O PEDIDO 183, em tres mensagens do dono: *"ao pegarem god ki a ascensão delas sobe pra 22x (ssj god) e conforme vai subindo a maestria
+	/// do god ki (a qual pra elas deve subir igual uma pessoa transformada) ai atingirem o god ki pra ter o blue, a ascensão sobe pro nivel
+	/// blue [...] E com isso eles podem aprender ultra instinto ou ultra ego como raças q transformam"*; *"faça o limite do ascension ser nivel
+	/// blue"*; *"limite o kaioken pra racas de ascension pra 20x em todas os niveis de ascension"*. O Tsujin (que ascende) e o Saiyajin (que
+	/// nao), os dois jogadores da secao C, pelos funis de producao: o despertar (`DespertarOGodKi`), o tique de fichas (`NoBp`), o tique do
+	/// ki divino (`TickDoGodKi`), o ensino (`PodeAprender`) e o botao do Kaio-ken.
+	/// </summary>
+	private void AAscensaoDivina(ServerPlayer tsu, ServerPlayer sai, Action<IEnumerable<ServerPlayer>, double> NoBp,
+								 Func<ServerPlayer, double> RazaoDoExpresso, Func<double, double, double, bool> Perto)
+	{
+		GD.Print("[ascensao] -- H) (o pedido 183) a Ascensao divina: o despertar, o Blue, o teto, a maestria pelo tique, o ensino e o Kaio-ken x20 --");
+		GodKiState? kiDoTsujin = tsu.Ficha.godki, kiDoSaiyan = sai.Ficha.godki;
+		string classeDoTsujin = tsu.Ficha.Class;
+		void KiDivino(ServerPlayer p, double maestria) => p.Ficha.godki = new GodKiState { awakened = true, mastery = maestria };
+		void UmaHoraDeKiDivino() { for (int i = 0; i < 60; i++) TickDoGodKi(60); }
+		try
+		{
+			// H1. O DESPERTAR, pelo funil de producao: o nivel do SSG com qualquer BP
+			tsu.Ficha.godki = null;
+			sai.Ficha.godki = null;
+			if (tsu.Combate != null) tsu.Combate.EmCombate = 0;
+			NoBp([tsu, sai], 1_000);
+			double semKi = tsu.Ficha.BPBoost;
+			List<string> ditos = Ouvir(() => DespertarOGodKi(tsu, FonteDaExposicao.Admin));
+			KiDivino(sai, 0);
+			NoBp([tsu, sai], 1_000);
+			AfirmarAsc("(o pedido 183) **COM O KI DIVINO A ASCENSAO VAI AO NIVEL DO SSG**: o Tsujin de mil de BP, x1 sem ki divino, vai a x22 ao "
+				+ "desperta-lo -- e o Saiyajin na base, com o ki divino, fica em x1",
+				semKi == 1 && Perto(tsu.Ficha.BPBoost, 22, 1e-9) && sai.Ficha.BPBoost == 1,
+				$"Tsujin x{semKi} -> x{tsu.Ficha.BPBoost}; Saiyajin x{sai.Ficha.BPBoost}");
+			AfirmarAsc("(o pedido 183) **O DESPERTAR AVISA QUE A ASCENSAO SUBIU AO NIVEL DO SUPER SAIYAJIN GOD**",
+				ditos.Any(x => x.Contains("Ascensão sobe ao nível do Super Saiyajin God", StringComparison.Ordinal)), string.Join(" | ", ditos));
+			NoBp([tsu], 10_000_000_000);
+			AfirmarAsc("...e com 10 bilhoes (a rampa mortal no teto, 16x) tambem: o maior dos dois, x22", Perto(tsu.Ficha.BPBoost, 22, 1e-9),
+				$"x{tsu.Ficha.BPBoost}");
+
+			// H2/H3. O BLUE E O TETO
+			KiDivino(tsu, 32.9);
+			NoBp([tsu], 1_000);
+			double antesDoBlue = tsu.Ficha.BPBoost;
+			KiDivino(tsu, 33);
+			NoBp([tsu], 1_000);
+			double noBlue = tsu.Ficha.BPBoost, expresso = RazaoDoExpresso(tsu);
+			AfirmarAsc("(o pedido 183) **NA MAESTRIA DO BLUE (33%) A ASCENSAO VAI AO NIVEL DO BLUE**: x22 com 32,9%, x32 com 33% -- e o poder "
+				+ "expresso multiplicado por ele",
+				Perto(antesDoBlue, 22, 1e-9) && Perto(noBlue, 32, 1e-9) && Perto(expresso, 32, 2e-3), $"x{antesDoBlue} -> x{noBlue}, expresso x{expresso:0.###}");
+			KiDivino(tsu, 50);
+			NoBp([tsu], 1_000);
+			double em50 = tsu.Ficha.BPBoost;
+			KiDivino(tsu, 100);
+			NoBp([tsu], 1_000);
+			double em100 = tsu.Ficha.BPBoost;
+			AfirmarAsc("(o pedido 183) **O TETO E O BLUE**: com 50% (o ki do Blue Evolution) e com 100% a Ascensao continua em x32",
+				Perto(em50, 32, 1e-9) && Perto(em100, 32, 1e-9), $"50% x{em50}; 100% x{em100}");
+
+			// H4. A MAESTRIA SOBE COMO A DE QUEM ESTA TRANSFORMADO
+			KiDivino(tsu, 0);
+			KiDivino(sai, 0);
+			UmaHoraDeKiDivino();
+			double hora = 100 / DespertarDivino.HorasDeUsoPraMaestriaCheia;
+			AfirmarAsc($"(o pedido 183) **A MAESTRIA DIVINA DA ASCENSAO SOBE COMO A DE QUEM ESTA TRANSFORMADO**: uma hora na base e o Tsujin ganha "
+				+ $"{hora:0.###}% (o que o SSG da); o Saiyajin na base continua em 0",
+				Perto(tsu.Ficha.godki!.mastery, hora, 1e-6) && sai.Ficha.godki!.mastery == 0,
+				$"Tsujin {tsu.Ficha.godki?.mastery:0.####}%; Saiyajin {sai.Ficha.godki?.mastery:0.####}%");
+
+			// H5. OS 33% PELO TIQUE
+			KiDivino(tsu, 32.9);
+			ditos = Ouvir(UmaHoraDeKiDivino);
+			NoBp([tsu], 1_000);
+			AfirmarAsc("(o pedido 183) **OS 33% PELO TIQUE LEVAM A ASCENSAO AO BLUE**: o Tsujin cruza a maestria do Blue so com o ki divino aceso, e vai a x32",
+				tsu.Ficha.godki!.mastery >= 33 && Perto(tsu.Ficha.BPBoost, 32, 1e-9), $"{tsu.Ficha.godki.mastery:0.##}% x{tsu.Ficha.BPBoost}");
+			AfirmarAsc("(o pedido 183) **E O AVISO DOS 33% DIZ QUE A ASCENSAO SUBIU AO NIVEL DO BLUE** (e nao 'o degrau seguinte das formas divinas')",
+				ditos.Any(x => x.Contains("Ascensão sobe ao nível do Blue", StringComparison.Ordinal)), string.Join(" | ", ditos));
+
+			// H6. OS 50% -- na classe Normal, que ouviria a promessa do Kaio-ken por cima do Blue
+			tsu.Ficha.Class = "Normal";
+			KiDivino(tsu, 49.9);
+			ditos = Ouvir(UmaHoraDeKiDivino);
+			// (2026-10-30, o pedido 184) os 50% agora pagam o marco do Blue Kaio-ken a quem ascende (a familia I) -- o que esta regua barra e a
+			// PROMESSA do Saiyajin ("aguenta o Kaio-ken por cima do Blue"), e nao toda frase com "Kaio-ken"
+			AfirmarAsc("(o pedido 183) **OS 50% NAO PROMETEM O KAIO-KEN POR CIMA DO BLUE A QUEM ASCENDE** (a classe Normal ouviria): o aviso e o da maestria",
+				tsu.Ficha.godki!.mastery >= 50 && ditos.Any(x => x.Contains("amadurece (50%)", StringComparison.Ordinal))
+				&& !ditos.Any(x => x.Contains("por cima do Blue", StringComparison.Ordinal)),
+				string.Join(" | ", ditos));
+
+			// H7. OS 70% E O ENSINO
+			KiDivino(tsu, 69.9);
+			RecusaDeDisciplina antes70 = PodeAprender(tsu, TipoDeDisciplina.UltraInstinct);
+			ditos = Ouvir(UmaHoraDeKiDivino);
+			RecusaDeDisciplina depoisUi = PodeAprender(tsu, TipoDeDisciplina.UltraInstinct), depoisUe = PodeAprender(tsu, TipoDeDisciplina.PoderDaDestruicao);
+			AfirmarAsc("(o pedido 183) **E COM ISSO ELA APRENDE O ULTRA INSTINTO E O ULTRA EGO**: o Tsujin cruza os 70% pelo tique, ouve dos segredos dos "
+				+ "Anjos, e o ensino das duas deixa de recusar pelo ki divino",
+				antes70 == RecusaDeDisciplina.SemGodKi && depoisUi == RecusaDeDisciplina.Pode && depoisUe == RecusaDeDisciplina.Pode
+				&& ditos.Any(x => x.Contains("Ultra Instinct", StringComparison.Ordinal)),
+				$"{antes70} -> UI {depoisUi}, UE {depoisUe} | {string.Join(" | ", ditos)}");
+
+			// H8. O KAIO-KEN ATE x20 EM TODO NIVEL
+			(bool Aceso, double Vezes, List<string> Falas) Kaio(ServerPlayer p, double pedido)
+			{
+				List<string> falas = Ouvir(() => Kaioken(p, pedido));
+				bool aceso = TemBuff(p, BuffKaiokenG2);
+				double vezes = p.Ficha.KaiokenVezes;
+				if (aceso) Kaioken(p, 0);   // o mesmo botao apaga
+				return (aceso, vezes, falas);
+			}
+			tsu.Ficha.godki = null;
+			NoBp([tsu, sai], 1_000);
+			var t1 = Kaio(tsu, 50);
+			var s1 = Kaio(sai, 50);
+			AfirmarAsc("(o pedido 183) **O KAIO-KEN DE QUEM ASCENDE VAI ATE x20 EM TODO NIVEL**: o Tsujin em x1 (mil de BP, sem ki divino) pede x50, "
+				+ "acende x20 e ouve o teto; o Saiyajin na base acende os x50",
+				t1.Aceso && t1.Vezes == 20 && t1.Falas.Any(x => x.Contains("vai até x20", StringComparison.Ordinal)) && s1.Aceso && s1.Vezes == 50,
+				$"Tsujin {t1.Aceso}/x{t1.Vezes} | {string.Join(" | ", t1.Falas)}; Saiyajin {s1.Aceso}/x{s1.Vezes}");
+			KiDivino(tsu, 100);
+			NoBp([tsu], 1_000);
+			var t2 = Kaio(tsu, 100);
+			AfirmarAsc("...e no nivel do Blue (x32) tambem: x100 vira x20 -- o Blue com o Kaio-ken x20 do Saiyajin",
+				Perto(tsu.Ficha.BPBoost, 32, 1e-9) && t2.Aceso && t2.Vezes == 20, $"x{tsu.Ficha.BPBoost}; {t2.Aceso}/x{t2.Vezes}");
+		}
+		finally
+		{
+			tsu.Ficha.godki = kiDoTsujin;
+			sai.Ficha.godki = kiDoSaiyan;
+			tsu.Ficha.Class = classeDoTsujin;
+		}
+	}
+
+	// ============================================================ I) (2026-10-30, o pedido 184) OS MARCOS DA ASCENSAO DIVINA
+	/// <summary>
+	/// O PEDIDO 184 na Ascensao (*"todas as formas e ascenscoes desses niveis tb"*): no nivel do SSG (22x) o marco do ki divino (x16), no do Blue
+	/// (32x) o do Blue (x32), e aos 50% de maestria divina o do Blue Kaio-ken (x64; os 2^x do pedido 188) -- a Ascensao no Blue com o Kaio-ken x20 e o mesmo 56x. O
+	/// Tsujin sem marco nenhum e sem o `godki` do despertar (o ki divino posto direto), pra so a Ascensao pagar; o Saiyajin na base, com o ki
+	/// divino, e o controle.
+	/// </summary>
+	private void OsMarcosDaAscensaoDivina(ServerPlayer tsu, ServerPlayer sai, Action<IEnumerable<ServerPlayer>, double> NoBp)
+	{
+		GD.Print("[ascensao] -- I) (o pedido 184) os marcos da Ascensao divina: x16 no SSG, x32 no Blue, x64 aos 50% --");
+		GodKiState? kiDoTsujin = tsu.Ficha.godki, kiDoSaiyan = sai.Ficha.godki;
+		void SemMarcos(ServerPlayer p) { p.Ficha.bp_milestones_done.Clear(); p.Ficha.bp_milestone_mult = 1; }
+		try
+		{
+			SemMarcos(tsu);
+			SemMarcos(sai);
+			tsu.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
+			sai.Ficha.godki = new GodKiState { awakened = true, mastery = 33 };
+			NoBp([tsu, sai], 1_000);
+			AfirmarAsc("(o pedido 184) **A ASCENSAO NO NIVEL DO SSG ROMPE O MARCO DO KI DIVINO**: o Tsujin a x22 ganha o `asc_deus`, x16 -- e o Saiyajin na base, nada",
+				tsu.Ficha.bp_milestones_done.Contains("asc_deus") && tsu.Ficha.bp_milestone_mult == 16 && sai.Ficha.bp_milestones_done.Count == 0,
+				$"Tsujin {string.Join(",", tsu.Ficha.bp_milestones_done)} x{tsu.Ficha.bp_milestone_mult}; Saiyajin {string.Join(",", sai.Ficha.bp_milestones_done)}");
+			tsu.Ficha.godki = new GodKiState { awakened = true, mastery = 33 };
+			NoBp([tsu], 1_000);
+			AfirmarAsc("(o pedido 184) **A ASCENSAO NO NIVEL DO BLUE ROMPE O MARCO DO BLUE**: a x32 o `asc_blue`, x32",
+				tsu.Ficha.bp_milestones_done.Contains("asc_blue") && tsu.Ficha.bp_milestone_mult == 32,
+				$"{string.Join(",", tsu.Ficha.bp_milestones_done)} x{tsu.Ficha.bp_milestone_mult}");
+			tsu.Ficha.godki = new GodKiState { awakened = true, mastery = 49.9 };
+			List<string> ditos = Ouvir(() => { for (int i = 0; i < 60; i++) TickDoGodKi(60); });
+			AfirmarAsc("(o pedido 184) **E AOS 50% A ASCENSAO GANHA O DO BLUE KAIO-KEN**: o Tsujin cruza os 50% pelo tique e vai a x64, com o aviso",
+				tsu.Ficha.godki!.mastery >= 50 && tsu.Ficha.bp_milestones_done.Contains("blue_kaioken") && tsu.Ficha.bp_milestone_mult == 64
+				&& ditos.Any(x => x.Contains("Blue com Kaio-ken", StringComparison.Ordinal)),
+				$"{tsu.Ficha.godki?.mastery:0.##}% x{tsu.Ficha.bp_milestone_mult} | {string.Join(" | ", ditos)}");
+		}
+		finally
+		{
+			tsu.Ficha.godki = kiDoTsujin;
+			sai.Ficha.godki = kiDoSaiyan;
 		}
 	}
 }

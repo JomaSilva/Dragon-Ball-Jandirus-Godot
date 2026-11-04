@@ -553,9 +553,16 @@ public partial class GameServer
 			// 14. QUEM ESTA NO PLANETA VE AS ESFERAS ACENDEREM -- com defeito injetado
 			// =====================================================================
 			SecaoDeQuemAcorda(Checa, pl);
+
+			// =====================================================================
+			// 15. (2026-10-31, o pedido 195) AS ESFERAS POR JOGADOR -- com defeito injetado
+			// =====================================================================
+			SecaoDasEsferasPorJogador(Checa, pl);
 		}
 		finally
 		{
+			_esferasPorJogador = false;
+			CopiasVisiveisATodosDeTeste = RefazerComAsCopiasDeTeste = CopiaAteDeCorpoSemTelaDeTeste = false;
 			AcordarCaladoDeTeste = false;
 			_trincoSolto = false;
 			EscutaDoFioDasEsferas = null;
@@ -1107,5 +1114,179 @@ public partial class GameServer
 			  "a checagem de cima e decoracao -- ela nao sabe ficar vermelha");
 		Checa("   ...e desfeito o defeito ele volta a passar (era a causa, e nao um estrago que ficou)",
 			  criterio());
+	}
+
+	// =====================================================================
+	// 15. (2026-10-31, o pedido 195) AS ESFERAS POR JOGADOR
+	// =====================================================================
+	/// <summary>
+	/// O botao do admin -- o dono: *"faça na aba de adm tem um botao q faz esferas de namek e de jogadores se tornarem client side assim cada
+	/// um tendo seu set, ou voltando ao padrao (1 set de cada no server) , esferas como black star e super esfera nunca podem ser client side"*.
+	/// Pela chave de producao (`AdminEsferasPorJogador` -> `TrocarAsEsferasPorJogador`) e pelo tique de producao (`TickDasEsferas`), com o host
+	/// e um corpo forjado na Terra, diante de um set de jogador acordado:
+	///   P1. ligado, cada um ganha a SUA copia -- o set inteiro, com as sete dele, e a esfera do servidor que o host carregava cai;
+	///   P2. cada um so ve e so toca as suas: o pacote que CHEGA a tela do host, o radar, o pegar -- contra-exemplo `CopiasVisiveisATodosDeTeste`;
+	///   P3. os dois invocam, cada um o seu dragao, ao mesmo tempo;
+	///   P4. refazer a estatua fica desligado -- contra-exemplo `RefazerComAsCopiasDeTeste`;
+	///   P5. as Black Star nao se copiam;
+	///   P6. o disco guarda o modo e as copias;
+	///   P7. desligado, as copias somem e o set do servidor volta a ser de todos.
+	/// </summary>
+	private void SecaoDasEsferasPorJogador(ChecagemDeEsfera Checa, ServerPlayer pl)
+	{
+		GD.Print("  -- 15. (o pedido 195) as Esferas POR JOGADOR --");
+		const int T = ZoneCollision.TileSize;
+		ZoneKey terra = ZoneKey.Premade("Earth");
+		if (pl.Zone.Hash != terra.Hash) MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
+		_invocacoes.Clear();
+		foreach (SetDeEsferas velho in _sets.Where(s => !s.Eterno && s.Zona.Hash == terra.Hash).ToList())
+		{
+			_esferas.RemoveAll(e => e.Set == velho.Id);
+			_sets.Remove(velho);
+		}
+
+		// O SET DO SERVIDOR na Terra, de um pedido, acordado, com o host de criador
+		var b = new SetDeEsferas
+		{
+			Id = ProximoIdDeSet(), CriadorSig = pl.Assinatura, CriadorConta = pl.Conta, CriadorNome = pl.Name,
+			Poder = 5_000_000, Desejos = 1, Ex = pl.Pos.X, Ey = pl.Pos.Y, NomeDoDragao = Esferas.NomeDoShenlong,
+		};
+		b.PorZona(terra);
+		_sets.Add(b);
+		RefazerAsEsferas(b);
+		b.AtivoEm = TempoDoMundo - 1;
+		// o host carrega uma esfera DO SERVIDOR quando o modo liga: ela tem de cair
+		Esfera doServidorNaMao = _esferas.First(e => e.Set == b.Id && e.Numero == 1);
+		doServidorNaMao.Portador = pl.Id;
+
+		// O OUTRO CACADOR, na Terra, com a propria identidade
+		var outro = new ServerPlayer
+		{
+			Id = _nextId++, Peer = null, Name = "bancada: o outro cacador", Race = "Human", Genero = "Male", Idade = 25,
+			Zone = terra, Pos = pl.Pos + new Vec2(3 * T, 0), Conta = "bancada_esferas_outro", Slot = 0,
+			Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 100_000 },
+			Livro = new Jandirus.Core.Skills.SkillBook(),
+		};
+		outro.Ficha.Class = "Normal";
+		PorNoMundo(outro);
+		CopiaAteDeCorpoSemTelaDeTeste = true;
+		EscutaDoFioDasEsferas = [];
+		try
+		{
+			// ---- P0. o nome do verbo cabe no fio (o primeiro nao cabia: a bancada chamava a funcao direto e ficou verde com o botao mudo)
+			Checa("(o pedido 195) P0. **O VERBO DO CARTAO CABE NO FIO**: ate 24 letras -- o servidor le o nome com `GetString(24)`, e o que passa "
+				  + "disso chega VAZIO", VerboDasEsferasPorJogador.Length <= 24, $"'{VerboDasEsferasPorJogador}' tem {VerboDasEsferasPorJogador.Length}");
+
+			// ---- P1. ligado pelo verbo do admin, pelo funil de todo verbo (o mesmo `Verbo` que o pacote do botao chama)
+			Verbo(pl, VerboDasEsferasPorJogador, "ligar");
+			TickDasEsferas();
+			SetDeEsferas? minha = CopiaDe(pl, b), dele = CopiaDe(outro, b);
+			bool inteiras = minha != null && dele != null && minha.Id != dele.Id
+							&& _esferas.Count(e => e.Set == minha.Id) == Esferas.Total && _esferas.Count(e => e.Set == dele.Id) == Esferas.Total
+							&& minha.Poder == b.Poder && minha.Desejos == b.Desejos && minha.NomeDoDragao == b.NomeDoDragao && SetAtivo(minha);
+			Checa("(o pedido 195) P1. **LIGADO, CADA UM GANHA A SUA COPIA**: o host e o outro cacador tem cada um um set inteiro (o mesmo dragao, "
+				  + "poder e pedidos do servidor), com as SUAS sete, acordado como o do servidor", inteiras,
+				  $"minha #{minha?.Id}, dele #{dele?.Id}");
+			Checa("(o pedido 195) P1b. ...e a esfera DO SERVIDOR que o host carregava caiu ali mesmo (ninguem mais toca naquele set)",
+				  doServidorNaMao.Portador == 0 && doServidorNaMao.Zona.Hash == terra.Hash, $"portador {doServidorNaMao.Portador}");
+			if (minha == null || dele == null) return;
+
+			// ---- P2. cada um so ve e so toca as suas
+			MandarEsferas(terra);
+			List<CoisaNoFio> naTela = EscutaDoFioDasEsferas.FindLastIndex(x => x.Para == pl.Id) is int i && i >= 0
+				? LerOFioDasEsferas(EscutaDoFioDasEsferas[i].Fio) : [];
+			// (as Black Star ficam fora da conta: sao do servidor pra todos, com ou sem o modo, e o pacote as traz a quem esta no planeta de uma
+			// delas -- a primeira rodada achou uma na Terra, o set 1000)
+			List<int> esferasNaTela = [.. naTela.Where(c => c.Tipo == Protocol.CoisaDeEsfera.Esfera && c.Id / 10 != EsferasNegras.IdDoSet)
+				.Select(c => c.Id / 10)];
+			bool soAsMinhas() => esferasNaTela.Count == Esferas.Total && esferasNaTela.All(s => s == minha.Id);
+			Checa("(o pedido 195) P2. **A TELA DO HOST SO RECEBE AS SETE DELE**: o pacote que chega a ele traz as esferas da copia dele -- nem as do "
+				  + "outro cacador, nem as do servidor", soAsMinhas(), $"sets na tela: {string.Join(",", esferasNaTela.Distinct())}");
+			int sinais = SinaisDoRadar(pl).Count;
+			Checa("(o pedido 195) P2b. ...o RADAR dele acha as sete dele, e so elas", sinais == Esferas.Total, $"{sinais} sinal(is)");
+			// o PEGAR: em cima de uma esfera do outro, com as dele na mao, nao pega nada
+			foreach (Esfera e in _esferas.Where(x => x.Set == minha.Id)) e.Portador = pl.Id;
+			Esfera daOutra = _esferas.First(e => e.Set == dele.Id && e.Portador == 0);
+			Vec2 casa = pl.Pos;
+			pl.Pos = new Vec2(daOutra.X, daOutra.Y);
+			Esfera? pegaria = EsferaPerto(pl);
+			Checa("(o pedido 195) P2c. ...e o PEGAR, em cima de uma esfera do outro, nao a alcanca", pegaria == null, $"pegaria a do set {pegaria?.Set}");
+			pl.Pos = casa;
+
+			CopiasVisiveisATodosDeTeste = true;
+			List<int> comODefeito;
+			try
+			{
+				MandarEsferas(terra);
+				comODefeito = [.. LerOFioDasEsferas(EscutaDoFioDasEsferas[EscutaDoFioDasEsferas.FindLastIndex(x => x.Para == pl.Id)].Fio)
+					.Where(c => c.Tipo == Protocol.CoisaDeEsfera.Esfera).Select(c => c.Id / 10)];
+			}
+			finally { CopiasVisiveisATodosDeTeste = false; }
+			Checa("   DEFEITO INJETADO (todo mundo ve todas as copias): a tela do host recebe as esferas do outro -- a regua P2 reprovaria",
+				  comODefeito.Contains(dele.Id), $"sets na tela: {string.Join(",", comODefeito.Distinct())}");
+
+			// ---- P3. os dois invocam, cada um o seu dragao
+			JuntarAsSete(pl, minha);
+			JuntarAsSete(outro, dele);
+			InvocarODragao(pl);
+			InvocarODragao(outro);
+			Checa("(o pedido 195) P3. **CADA UM INVOCA O SEU DRAGAO, AO MESMO TEMPO**: o do host e o do outro de pe juntos (com um set so, o "
+				  + "segundo esbarraria no 'ja esta de pe')", _invocacoes.ContainsKey(minha.Id) && _invocacoes.ContainsKey(dele.Id),
+				  $"de pe: {string.Join(",", _invocacoes.Keys)}");
+			_invocacoes.Clear();
+
+			// ---- P4. refazer fica desligado
+			int pedidosAntes = b.Desejos;
+			EscutaDeAvisos = [];
+			RefazerOSet(pl, "2");
+			Checa("(o pedido 195) P4. **REFAZER A ESTATUA FICA DESLIGADO** com o modo: o set do servidor nao muda, e o criador le por que",
+				  b.Desejos == pedidosAntes && (EscutaDeAvisos?.Any(s => s.Contains("não se refaz")) ?? false), string.Join(" | ", EscutaDeAvisos ?? []));
+			RefazerComAsCopiasDeTeste = true;
+			try { RefazerOSet(pl, "2"); }
+			finally { RefazerComAsCopiasDeTeste = false; }
+			Checa("   DEFEITO INJETADO (refazer com as copias): a estatua se refaz -- a regua P4 reprovaria", b.Desejos == 2, $"{b.Desejos} pedido(s)");
+			b.Desejos = pedidosAntes;
+			b.AtivoEm = TempoDoMundo - 1;
+
+			// ---- P5. as Black Star nunca
+			Checa("(o pedido 195) P5. **AS BLACK STAR NAO SE COPIAM**: nenhuma copia do set negro, e ele continua o mesmo pra todos",
+				  !_sets.Any(s => s.Base == EsferasNegras.IdDoSet) && SetPorId(EsferasNegras.IdDoSet) == _setNegro);
+
+			// ---- P8. a copia de um set de jogador divide a forca como ele (o id dela passa de 999, e a forca nao pode ler o id)
+			minha.Desejos = 3;
+			double fator = FatorDoDragao(minha);
+			minha.Desejos = b.Desejos;
+			Checa("(o pedido 195) P8. **A COPIA DIVIDE A FORCA COMO O SET DE JOGADOR**: tres pedidos na copia = um terco da forca em cada, e nao "
+				  + "a forca inteira", Math.Abs(fator - ConfigDaEstatua.ForcaDeCadaPedido(3)) < 1e-9 && fator < 0.5, $"fator {fator:0.###}");
+
+			// ---- P9. a janela do dragao deste mundo e a da copia dele
+			RetratoDoDragao retrato = QueDragaoEsteJogadorVe(pl, QualDragao.Nenhum);
+			Checa("(o pedido 195) P9. **A JANELA DO DRAGAO MOSTRA O DA COPIA DELE**: na Terra, o retrato e o do set dele, e nao o do servidor",
+				  retrato.Set == minha.Id, $"retrato do set #{retrato.Set} (copia #{minha.Id}, servidor #{b.Id})");
+
+			// ---- P6. o disco
+			int copias = _sets.Count(s => s.Base != 0);
+			SalvarEsferas();
+			_esferasPorJogador = false;
+			CarregarEsferas();
+			Checa("(o pedido 195) P6. **O DISCO GUARDA O MODO E AS COPIAS**: relido o `esferas.json`, o modo volta ligado e as copias voltam com o dono",
+				  _esferasPorJogador && _sets.Count(s => s.Base != 0) == copias && CopiaDe(pl, b) != null && CopiaDe(outro, b) != null,
+				  $"modo {_esferasPorJogador}; {_sets.Count(s => s.Base != 0)} copia(s) de {copias}");
+
+			// ---- P7. desligado
+			Verbo(pl, VerboDasEsferasPorJogador, "desligar");
+			Checa("(o pedido 195) P7. **DESLIGADO, AS COPIAS SOMEM** -- com as esferas delas -- e o set do servidor volta a ser o de todos",
+				  !_sets.Any(s => s.Base != 0) && !_esferas.Any(e => e.Set >= PrimeiroIdDeCopia) && VeOSet(pl, b) && VeOSet(outro, b),
+				  $"{_sets.Count(s => s.Base != 0)} copia(s)");
+		}
+		finally
+		{
+			_esferasPorJogador = false;
+			CopiasVisiveisATodosDeTeste = RefazerComAsCopiasDeTeste = CopiaAteDeCorpoSemTelaDeTeste = false;
+			foreach (SetDeEsferas c in _sets.Where(s => s.Base != 0).ToList()) ApagarACopia(c);
+			EscutaDoFioDasEsferas = null;
+			EscutaDeAvisos = null;
+			RemoverNpc(outro);
+		}
 	}
 }

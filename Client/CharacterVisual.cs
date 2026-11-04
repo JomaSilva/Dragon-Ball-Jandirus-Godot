@@ -3387,6 +3387,8 @@ public partial class CharacterVisual : Node2D
 			return false;
 		}
 		var anim = new StringName(estado);
+		// (2026-11-01, o pedido 218) A PASSAGEM DO SUPER MAJIN NUM QUADRO DE 64 px, sem a metade rosa cortada pela borda -- ver `PassagemSemCorte`.
+		frames = PassagemSemCorte.Para(folha, anim, frames);
 		int quadros = frames.HasAnimation(anim) ? frames.GetFrameCount(anim) : 0;
 		if (quadros <= 0)
 		{
@@ -3454,6 +3456,10 @@ public partial class CharacterVisual : Node2D
 
 	/// <summary>O quadro em que a passagem esta, ou -1. Pra bancada.</summary>
 	public int QuadroDaPassagemDeTeste => _passagem != null && IsInstanceValid(_passagem) ? _passagem.Frame : -1;
+
+	/// <summary>(2026-11-01, o pedido 218) A largura do quadro da passagem acesa (0 = nenhuma) -- 64 na do Super Majin, ver `PassagemSemCorte`.</summary>
+	public int LarguraDaPassagemDeTeste =>
+		_passagem != null && IsInstanceValid(_passagem) && _passagemAnim != null ? _passagem.SpriteFrames?.GetFrameTexture(_passagemAnim, 0)?.GetWidth() ?? 0 : 0;
 
 	/// <summary>Quantas camadas coladas estao instaladas agora. Pra bancada.</summary>
 	public int ColadasDeTeste => _coladas.Count;
@@ -4653,6 +4659,13 @@ public partial class CharacterVisual : Node2D
 
 		if (doCorpo != null && f.HasAnimation(doCorpo)) return doCorpo;
 		if (f.HasAnimation($"{fam}_{dir}")) return $"{fam}_{dir}";
+		// ============================ (2026-11-01, o pedido 218) O RAIO SEM LADO PERDE PRO SOCO COM LADO ============================
+		// Seis folhas tem `blast` de UMA direcao so e `attack_*` com as quatro (Majin - Form 3 e Form 4, MajinForm11, Kai - Female,
+		// Kai - Grand, o Clothes Helmet). A linha de baixo casava o `blast` cru, e estado de uma direcao e desenhado virado pro SUL: o
+		// raio saia pro lado e o corpo olhava pra camera. Na forma 3 (o Super Boo da saga, o corpo da forma 3 do jogador) e pior -- o
+		// `Blast` dela e o vapor da cabeca, o mesmo desenho do `Enrage`. O dono: *"ele soltando kamehameha ta na animação errada"*.
+		// O soco com lado e o mesmo degrau que as 41 folhas sem `blast` ja usam, mais abaixo.
+		if (fam == "blast" && f.HasAnimation($"attack_{dir}")) return $"attack_{dir}";
 		if (f.HasAnimation(fam)) return fam;
 
 		// APELIDO `_mov`. Estado com `movement = 1` no .dmi virou `<nome>_mov` na conversao, e

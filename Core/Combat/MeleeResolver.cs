@@ -192,7 +192,7 @@ public static class MeleeResolver
 		if (!indefeso && d.Bloqueando)
 		{
 			BodyPart? guarda = EscolherGuarda(d.Corpo, rng);
-			double custoKi = d.F.MaxKi * CombatKnobs.CustoKiDaGuarda;
+			double custoKi = d.F.MaxKi * CombatKnobs.CustoKiDaGuarda * d.F.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 
 			if (guarda == null) d.Guardar(false);        // sem braco nem perna nao ha o que erguer
 			else if (d.F.Ki < custoKi) d.Guardar(false);  // sem energia a guarda cai sozinha
@@ -569,7 +569,7 @@ public static class MeleeResolver
 	private static bool TentarEsquiva(CombatState d, Random rng)
 	{
 		if (d.ChanceEsquiva <= 0) return false;
-		double custo = 0.05 * d.F.MaxKi / Math.Max(d.F.Etechnique, 0.1);
+		double custo = 0.05 * d.F.MaxKi / Math.Max(d.F.Etechnique, 0.1) * d.F.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (d.F.Ki < custo) return false;
 		if (rng.NextDouble() * 100 >= d.ChanceEsquiva) return false;
 

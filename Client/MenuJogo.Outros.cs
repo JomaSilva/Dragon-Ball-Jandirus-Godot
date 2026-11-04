@@ -43,7 +43,7 @@ public partial class MenuJogo
 	/// </summary>
 	private static readonly string[] OrdemDosGruposDeOutros =
 	[
-		"Treino e estudo", "Combate", "Sociedade", "Namek", "Aprendiz de Kaioshin", "Ofertas recebidas", "Cópias (Split Form)",
+		"Treino e estudo", "Combate", "Sociedade", "Patrulha Galáctica", "Namek", "Aprendiz de Kaioshin", "Ofertas recebidas", "Cópias (Split Form)",
 		"Genkidama", "Trono de Vegeta", "Deus da Destruição", "Sala do Tempo", Diversos,
 	];
 
@@ -76,6 +76,15 @@ public partial class MenuJogo
 		["Fund Earth"] = "Sociedade",
 		["Remember Person"] = "Sociedade",
 		["Known People"] = "Sociedade",
+
+		// (2026-10-31, o pedido 198) a policia do jogo e o jornal dela -- ver `VerbosDoJogo` e `GameServer.PatrulhaGalactica.cs`
+		["Jornal Galactico"] = "Patrulha Galáctica",
+		["Denunciar procurado"] = "Patrulha Galáctica",
+		["Entregar procurado"] = "Patrulha Galáctica",
+		["Ficha na Patrulha"] = "Patrulha Galáctica",
+		["Entrar na Patrulha"] = "Patrulha Galáctica",   // (2026-10-31, o pedido 198i) o cargo
+		["Sair da Patrulha"] = "Patrulha Galáctica",
+		["Missao da Patrulha"] = "Patrulha Galáctica",
 
 		["Appoint Elder"] = "Namek",
 		["Accept Elder Seat"] = "Namek",

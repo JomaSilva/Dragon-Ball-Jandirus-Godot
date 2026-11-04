@@ -22,10 +22,14 @@ public static class MenteOponentes
 	public const double MinutosSemMergulhoAoPerder = 30;
 
 	/// <summary>
-	/// O PREMIO DA VITORIA (escolha minha, 2026-10-27, pro "BP pela forca do oponente"): o BP de tantos segundos de treino (os passes do T,
-	/// no ritmo da mente), vezes a forca dele sobre a sua (o poder expresso de cada um), entre o piso e o teto.
+	/// O PREMIO DA VITORIA (escolha minha, 2026-10-27, pro "BP pela forca do oponente"): o BP de tantos segundos de treino (os passes do T),
+	/// vezes a forca dele sobre a sua (o poder expresso de cada um), entre o piso e o teto.
+	///
+	/// (2026-10-29, o pedido 160) O dono: *"Treino mental ta dando 1 de BP ao finalizar o treino, talvez algo tenha bugado"*. Nao era
+	/// defeito de conta, era o premio: 60 s de T cortados pra 1/4 pela mente. Agora sao os 180 s do spar com habitante
+	/// (`Amizade.SegundosDeTreinoDaRecompensa`), sem o corte da mente -- ver `GameServer.VencerNaMente`.
 	/// </summary>
-	public const double SegundosDeTreinoDaVitoria = 60;
+	public const double SegundosDeTreinoDaVitoria = 180;
 	public const double FatorMinimo = 0.25, FatorMaximo = 4;
 
 	public static double Fator(double poderDele, double meuPoder) =>

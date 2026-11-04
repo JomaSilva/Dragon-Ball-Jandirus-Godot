@@ -42,6 +42,22 @@ public partial class GameClient
 	/// <summary>A observacao comecou, acabou, ou o leme da nave observada trocou de mao.</summary>
 	public event Action? ObservacaoMudou;
 
+	/// <summary>
+	/// (2026-10-31, o pedido 208) QUEM ENTRA NO MUNDO NAO ESTA EM NAVE NENHUMA: nao pilota (o servidor so poe alguem ao leme pelo embarque),
+	/// nao observa e nao ve tanque. Chamado no `JoinAccepted`, como o radar e as copias: o que sobrou aqui e do personagem que saiu. A
+	/// marcacao da carta estelar so fica pra quem entra la dentro de uma Capital Ship (a mesma regra da troca de zona), e o piloto que
+	/// esperava a decolagem pra seguir o nav system desiste junto.
+	/// </summary>
+	private void EsquecerANave()
+	{
+		VeiculoMontado = "";
+		NomeDoVeiculo = "";
+		Tanque = default;
+		Observando = default;
+		if (!Jandirus.Core.Tech.NaveGrande.EhInterior(Zone, out _)) NaveVista = null;
+		LocalPlayer.RumoDepoisDeDecolar = null;
+	}
+
 	/// <summary>`S2C.Observando`: guarda e avisa.</summary>
 	private void LerObservacao(NetDataReader reader)
 	{

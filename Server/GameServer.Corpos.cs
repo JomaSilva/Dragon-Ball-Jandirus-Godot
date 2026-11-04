@@ -125,10 +125,16 @@ public sealed partial class GameServer
 			// andar, entao ele nao e um corpo caido -- e nao pode ser tratado como um.
 			// (2026-10-15) O MAJIN EM PEDACOS: a tela desenha os pedacos por este valor -- ver `CombatState.Desfeito`.
 			Desfeito = pl.Combate?.Desfeito == true,
+			// (2026-11-01, o pedido 219) A GOSMA DO MAJIN E QUEM VAI DENTRO DELA: a tela troca o boneco pela gosma, e some com o engolido -- ver
+			// `GameServer.GosmaDoMajin.cs`.
+			Gosma = EhGosma(pl),
+			NaGosma = NaGosma(pl.Id),
 			// (v0.3.0) O CHEFE ERGUENDO O SOL DO ULTIMATO: a tela desenha a Supernova por este valor -- ver `ComecarASupernova`.
 			Supernova = pl.SupernovaDesde != 0 && pl.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.Supernova,
 			// (2026-10-17) ...e a Death Ball do Freeza de Namek, pela mesma porta (`ComecarASupernova` com a outra esfera).
 			DeathBall = pl.SupernovaDesde != 0 && pl.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall,
+			// (2026-11-01, o pedido 218) ...e a esfera rosa do Kid Boo, pela mesma porta.
+			EsferaRosa = pl.SupernovaDesde != 0 && pl.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.EsferaRosa,
 			// (v0.4.0) A CARGA DO DEMONIC SAIYAN: a tela desenha a esfera verde por este valor -- ver `GameServer.Passivas.cs`.
 			CargaDemoniaca = pl.Racial.DemonicoCargaDesde >= 0,
 			// (2026-10-17) O GRITO DO DESABAFO: a tela desenha a esfera verde (mais furiosa) por este valor -- ver `AndarOGrito`.
@@ -193,7 +199,10 @@ public sealed partial class GameServer
 		&& !EhOlhoDeFora(pl)
 		// (2026-10-18) E O CORPO DE QUEM O NEO TUFFLE POSSUI: escondido, ele anda com o Tuffle, e o chao e do corpo que o Tuffle veste -- ver
 		// `GameServer.NeoTuffle.cs`.
-		&& pl.PossuidoPor == 0;
+		&& pl.PossuidoPor == 0
+		// (2026-11-01, o pedido 219) E A GOSMA DO MAJIN (`density = 0`: passa-se por cima dela) E QUEM VAI DENTRO DELA -- ver
+		// `GameServer.GosmaDoMajin.cs`.
+		&& !EhGosma(pl) && !NaGosma(pl.Id);
 
 	/// <summary>
 	/// A <see cref="Vizinhanca"/> DESTE CORPO -- o unico jeito de alguem no servidor pegar a grade.

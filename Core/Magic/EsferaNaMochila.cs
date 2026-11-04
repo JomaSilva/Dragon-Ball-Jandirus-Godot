@@ -57,8 +57,17 @@ public sealed record EsferaNaMochila(int Set, int Numero, bool Apagada, bool DeN
 	public string Estado => Negra ? EsferasNegras.EstadoDoSprite(Numero, Apagada) : Esferas.EstadoDoSprite(Numero, Apagada);
 
 	/// <summary>
-	/// A ficha que a tela le. Sem acao propria: "largar" a mochila acrescenta a todo item (`ItemDef.AcoesDoItem`), e e a
-	/// unica coisa que se faz com ela -- invocar e o verbo da aba World, com as sete juntas.
+	/// (2026-10-29) O BOTAO "INVOCAR O DRAGAO" DO SLOT (o pedido 155, o dono: *"colocar o botao de chamar o dragao das esferas ao clicar
+	/// nelas no inventario, se vc tiver as 7 no inventario ele chama, atualmente so da pra chamar na aba world, e em planetas q possuem
+	/// esfera, entao a black star n consegue ser chamada em planetas procedurais"*). O INVOCAR da aba World so nasce onde ha estatua
+	/// (`RequisitosDosVerbos`, `ComEstatua`), e o planeta procedural nao tem: a Black Star ficava sem botao la. O servidor passa o botao do
+	/// slot pelo MESMO funil do INVOCAR (`GameServer.InvocarODragao`), que responde quantas faltam.
+	/// </summary>
+	public const string AcaoInvocar = "invocar";
+
+	/// <summary>
+	/// A ficha que a tela le. A acao dela e o <see cref="AcaoInvocar"/> (2026-10-29); "largar" a mochila acrescenta a todo item
+	/// (`ItemDef.AcoesDoItem`).
 	/// </summary>
 	public ItemDef Ficha => new(
 		Id,
@@ -66,15 +75,15 @@ public sealed record EsferaNaMochila(int Set, int Numero, bool Apagada, bool DeN
 		Negra
 			? (Apagada ? "Uma Esfera de Estrela Negra -- APAGADA: pedra até o ano do dragão passar. "
 					   : "Uma Esfera de Estrela Negra. ")
-			  + "Ela sai do planeta com você. Com as sete, INVOCAR (aba World) chama o Shenlong. Um desejo só, bem mais forte."
+			  + "Ela sai do planeta com você. Com as sete, \"Invocar o dragão\" (aqui, em qualquer planeta) chama o Shenlong. Um desejo só, bem mais forte."
 			: (Apagada ? "Uma das sete Esferas do Dragão -- APAGADA: virou pedra até o set se refazer. "
 					   : "Uma das sete Esferas do Dragão. ")
-			  + "Com as sete na mochila, INVOCAR (aba World) as tira daqui e chama o dragão. Ela não sai do planeta: nave, espaço e "
+			  + "Com as sete na mochila, \"Invocar o dragão\" (aqui ou na aba World) as tira daqui e chama o dragão. Ela não sai do planeta: nave, espaço e "
 			  + "teleporte recusam quem a carrega (caverna e Lookout, não). Nocauteado ou morto, você a derruba.",
 		ArteDaFolha(Folha),
 		Estado,
 		Empilhavel: false,
-		Acoes: []);
+		Acoes: [AcaoInvocar]);
 
 	/// <summary>
 	/// Desmonta um id de esfera. Nulo pra qualquer outro id -- e a porta do <see cref="CatalogoDeItens.Get"/>, e a do servidor

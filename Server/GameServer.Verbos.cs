@@ -177,6 +177,7 @@ public sealed partial class GameServer
 		// titulo) e nao meia duzia de `case`.
 		if (ComandoDeCargo(pl, cmd, arg)) return;
 		if (ComandoDosServicosDoAlem(pl, cmd, arg)) return;   // (2026-10-19) os servicos do Outro Mundo: pedir, entregar, desistir -- ver GameServer.ServicosDoAlem.cs
+		if (ComandoDaPatrulha(pl, cmd, arg)) return;   // (2026-10-31, o pedido 198) denunciar, entregar o procurado, a ficha e o jornal -- ver GameServer.PatrulhaGalactica.cs
 		// AS ORDENS DAS COPIAS DO SPLIT FORM E A RESPOSTA A GENKIDAMA (lote G12).
 		if (ComandoG12(pl, cmd, arg)) return;
 		if (ComandoDeTreinoFocado(pl, cmd, arg)) return;   // o treino focado e a meditacao focada -- ver GameServer.TreinoFocado.cs
@@ -264,6 +265,8 @@ public sealed partial class GameServer
 			case "graus": VerboGrades(pl); break;
 			// (2026-10-23) a familia do C duplo -- as formas divinas primeiro, ou as mortais; o irmao do `graus`. Ver `VerboFamiliaDoC`.
 			case "divinas_c": VerboFamiliaDoC(pl); break;
+			// (2026-10-29, o pedido 153) e o Potential Unleashed dentro ou fora do C duplo. Ver `VerboMisticoNoC`.
+			case "mistico_c": VerboMisticoNoC(pl); break;
 
 			// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON, RE-ESCOLHIDOS EM JOGO -- o `Icer_Form_Settings` do DM. Ver
 			// `GameServer.Frost.ComandoDasFormasDoFrost`: quem confere a raca e a lista e ele.

@@ -250,6 +250,12 @@ public sealed class Gestacao
 	/// </summary>
 	public string DonoAssinatura = "";
 
+	/// <summary>
+	/// (2026-10-31, o pedido 204) O NOME QUE A CRIATURA VAI TER, escrito por quem fecha o tanque (a caixa do "Gestar bio-androide").
+	/// Vazio = o de sempre, "Bio-Androide de ..." (e a fornada gravada antes do pedido 204). Conferido de novo no parto.
+	/// </summary>
+	public string Nome = "";
+
 	// =====================================================================
 	// O QUE A FORNADA CONSOLIDOU (so depois de `GestarBio`)
 	// =====================================================================
@@ -871,6 +877,13 @@ public partial class GameServer
 			Avisar(pl, LugarDeObra.NaoEntraNaSala);
 			return;
 		}
+		// (2026-10-29, o pedido 164) NA ZONA SEGURA DE QUEM NASCE NADA SE ASSENTA -- maquina, movel ou semente; a nave e veiculo e nao obra, e
+		// assenta. Ver `NaZonaSeguraDoNascimento`.
+		if (!Naves.EhNave(c.Id) && NaZonaSeguraDoNascimento(pl.Zone, new Vec2(x, y)))
+		{
+			Avisar(pl, FraseDaObraNaZonaSegura);
+			return;
+		}
 
 		// UMA NAVE NAO CABE DENTRO DE OUTRA (2026-10-18). Ela tem casco, piloto e decolagem proprios, e um interior nao e planeta de onde
 		// se suba; o que a nave grande aceita sao as maquinas.
@@ -1349,9 +1362,10 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// COMECA A GESTACAO. Um mes in-game, e destruir o laboratorio cancela.
+	/// COMECA A GESTACAO. Um mes in-game, e destruir o laboratorio cancela. (2026-10-31, o pedido 204) <paramref name="nome"/> e o nome
+	/// da criatura, escrito na caixa do menu -- vazio, o de sempre.
 	/// </summary>
-	private void GestarBio(ServerPlayer pl)
+	private void GestarBio(ServerPlayer pl, string nome = "")
 	{
 		Obra? lab = LabDeBio(pl);
 		if (lab != null && LabTrancadoPra(pl, lab)) return;
@@ -1361,6 +1375,15 @@ public partial class GameServer
 		{
 			double falta = (lab.Fornada.PrometidaEm - NowMs()) / 1000.0;
 			Avisar(pl, $"ja esta gestando. Faltam {falta / 60:0.#} minutos.");
+			return;
+		}
+
+		// (2026-10-31, o pedido 204) O NOME DA CRIATURA, antes de o tanque fechar: um nome que nao serve recusa a gestacao inteira (o tanque
+		// continua aberto pra tentar de novo), e nao vira o nome de sempre calado.
+		string nomeDaCriatura = (nome ?? "").Trim();
+		if (nomeDaCriatura.Length > 0 && PorQueONomeDoBioNaoServe(nomeDaCriatura, pl) is { Length: > 0 } recusa)
+		{
+			Avisar(pl, recusa);
 			return;
 		}
 
@@ -1397,6 +1420,7 @@ public partial class GameServer
 		// so a conta: ver `Gestacao.DonoAssinatura`.
 		g.DonoConta = pl.Conta;
 		g.DonoAssinatura = pl.Assinatura;
+		g.Nome = nomeDaCriatura;
 
 		g.PrometidaEm = NowMs() + (long)(GestacaoSegundosReais * 1000);
 		GravarMundo();
@@ -1407,6 +1431,7 @@ public partial class GameServer
 
 		Avisar(pl, $"o tanque se fecha. A criatura leva um mes pra ficar pronta "
 				   + $"({GestacaoSegundosReais / 60:0} minutos reais). Nao deixe destruirem o laboratorio.");
+		if (g.Nome.Length > 0) Avisar(pl, $"a criatura vai se chamar {g.Nome} -- e é com esse nome que ela desperta.");
 		Avisar(pl, g.TemSaiyajin
 			? "no meio da sopa de celulas ha DNA SAIYAJIN -- o que sair dali vai poder ir alem."
 			: "nenhuma das amostras tem sangue Saiyajin. O que sair dali sera forte, mas nao vai passar da perfeicao.");
@@ -1489,6 +1514,34 @@ public partial class GameServer
 	private static string SangueDe(Amostra a) =>
 		a.RacaDoPai.Length > 0 && !string.Equals(a.RacaDoPai, a.Raca, StringComparison.OrdinalIgnoreCase)
 			? $"{a.Raca}/{a.RacaDoPai}" : a.Raca;
+
+	/// <summary>
+	/// (2026-10-31) O NOME NOVO DE QUEM JOGA, pro proprio cliente (`S2C.MeuNome`) -- so no renome de verdade (o parto do bio-androide). Sem
+	/// isto o painel do canto mostrava o nome do login (o do criador) ate relogar.
+	/// </summary>
+	private static void MandarMeuNome(ServerPlayer pl)
+	{
+		if (pl.Peer == null) return;
+		var w = Protocol.Begin(Protocol.S2C.MeuNome);
+		w.Put(pl.Name);
+		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// (2026-10-31, o pedido 204) POR QUE ESTE NOME NAO SERVE PRA CRIATURA (vazio = serve) -- as regras da criacao de personagem: de 2 a
+	/// <see cref="Jandirus.Core.Races.BioAndroids.MaxDoNome"/> letras e ninguem em jogo com ele (o `CreateChar`). O proprio criador nao
+	/// conta: a persona dele morre no parto.
+	/// </summary>
+	private string PorQueONomeDoBioNaoServe(string nome, ServerPlayer criador)
+	{
+		if (nome.Length < 2) return "o nome da criatura precisa de pelo menos 2 letras.";
+		if (nome.Length > Jandirus.Core.Races.BioAndroids.MaxDoNome)
+			return $"o nome da criatura vai até {Jandirus.Core.Races.BioAndroids.MaxDoNome} letras.";
+		if (nome.Any(char.IsControl)) return "o nome da criatura tem um caractere que não se escreve.";
+		if (_players.Values.Any(o => o != criador && string.Equals(o.Name, nome, StringComparison.OrdinalIgnoreCase)))
+			return "já tem alguém em jogo com esse nome -- escolha outro pra criatura.";
+		return "";
+	}
 
 	/// <summary>
 	/// INSTALA UM LABORATORIO no mainframe aparafusado. E o passo do meio que o original tem e
@@ -1608,7 +1661,13 @@ public partial class GameServer
 		pl.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);   // `Revert()`
 		DerrubarBuffs(pl);                                      // `clearbuffs()`
 
-		pl.Name = $"Bio-Androide de {antes}";
+		// (2026-10-31, o pedido 204) O NOME QUE O CRIADOR ESCOLHEU AO GESTAR -- conferido de novo agora: alguem pode ter entrado em jogo
+		// com ele durante o mes do tanque. Sem nome, ou com ele tomado, o de sempre.
+		string escolhido = g.Nome.Trim();
+		bool tomado = escolhido.Length > 0 && PorQueONomeDoBioNaoServe(escolhido, pl).Length > 0;
+		pl.Name = escolhido.Length > 0 && !tomado ? escolhido : $"Bio-Androide de {antes}";
+		if (tomado) Avisar(pl, $"o nome {escolhido} foi tomado enquanto a criatura gestava -- ela desperta como {pl.Name}.");
+		MandarMeuNome(pl);   // (2026-10-31) o painel do canto do cliente dele lia o nome do login (o do criador) ate relogar
 		// (2026-10-25) ...e a tech do humano que ele era passa pro nome novo -- ver `PassarATechProNomeNovo`
 		PassarATechProNomeNovo(pl, antes);
 		pl.Race = Jandirus.Core.Races.BioAndroids.Raca;
@@ -2268,7 +2327,7 @@ public partial class GameServer
 			case "lab_tuffle": InstalarLab(pl, LabDoNeoTuffle); break;
 			case "virar_tuffle": VirarNeoTuffle(pl, Recurso.LerPedidoPago(arg).Moeda); break;
 			case "colher_dna": ColherDna(pl); break;
-			case "gestar": GestarBio(pl); break;
+			case "gestar": GestarBio(pl, arg); break;   // (o pedido 204) `arg` = o nome da criatura escrito na caixa (vazio = o de sempre)
 			default: Avisar(pl, $"comando de tecnologia desconhecido: {cmd}"); break;
 		}
 

@@ -342,15 +342,15 @@ public partial class GameServer
 
 				a.Ficha.BP = Jandirus.Core.Forms.Catalogo.PortaSsj3;
 				Treinar(a);
-				Checa("...e na porta do SSJ3 (BPBoost 16) sobe pro `asc20` (x4)",
-					  Math.Abs(a.Ficha.bp_milestone_mult - 4) < 1e-9,
-					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} com BPBoost {a.Ficha.BPBoost:0.###} (esperado 4)");
+				Checa("...e na porta do SSJ3 (BPBoost 16) sobe pro `asc20` (x8, o 2^x do pedido 188)",
+					  Math.Abs(a.Ficha.bp_milestone_mult - 8) < 1e-9,
+					  $"bp_milestone_mult = {a.Ficha.bp_milestone_mult} com BPBoost {a.Ficha.BPBoost:0.###} (esperado 8)");
 
 				// O MARCO TEM QUE CHEGAR NA BASE DO GANHO, senao ele e so um numero guardado.
 				Checa("...e o marco MULTIPLICA a base de ganho (`BpGainBase`)",
 					  a.Ficha.BpGainBase() > 0
 					  && Math.Abs(a.Ficha.BpGainBase()
-								  - Jandirus.Core.Stats.GainKnobs.LinearGainBase * Math.Max(a.Ficha.BPMod, 0.1) * 4) < 1e-6,
+								  - Jandirus.Core.Stats.GainKnobs.LinearGainBase * Math.Max(a.Ficha.BPMod, 0.1) * 8) < 1e-6,   // o `asc20`: x8 desde o pedido 188
 					  $"BpGainBase = {a.Ficha.BpGainBase():0.####}");
 			}
 

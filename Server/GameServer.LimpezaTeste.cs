@@ -821,6 +821,12 @@ public partial class GameServer
 		// OS APRENDIZES DE KAIOSHIN (2026-10-20): em producao o livro vai pro disco quando um vinculo nasce ou cai; aqui e a mesma
 		// antecipacao (a r6 do `aprendiz` voltou pela falta dela: o arquivo declarado nao estava no disco depois de jogar).
 		SalvarAprendizes();
+		// A PATRULHA GALACTICA E O JORNAL GALACTICO (2026-10-31, o pedido 198): em producao vao pro disco no primeiro crime e na primeira
+		// noticia; aqui e a mesma antecipacao (a r3 do `patrulha` voltou pela falta dela).
+		SalvarAPatrulha();
+		SalvarOJornal();
+		// (2026-10-31, o pedido 198g) os viloes de saga soltos: em producao vao pro disco quando um chefe vence; a mesma antecipacao.
+		SalvarOsSoltos();
 		// AS CONTAS NAO TEM ESCRITOR COLETIVO -- cada uma e gravada por `Persistir`/`_store.Gravar`,
 		// e o `Persistir` esta medido na secao 3. Quem semeia conta aqui grava na hora.
 	}
@@ -1025,6 +1031,14 @@ public partial class GameServer
 		// ---------------------------------------------------------- 8. um dever de cargo em curso
 		_missoes["Guardian"] = new Jandirus.Core.Ranks.FichaDeMissao { Dono = "assinatura_do_wipe" };
 		_cofreDaTerra = 1234;
+
+		// ---------------------------------------------------------- 8b. (2026-10-31, o pedido 198) um procurado da Patrulha e uma noticia do dia
+		GarantirAPatrulha();
+		_patrulha["assinatura_do_wipe"] = new FichaDaPatrulha { Assinatura = "assinatura_do_wipe", Nome = "JogadorDoWipe", Pontos = 20 };
+		Noticiar(TipoDeNoticia.Procurado, "JogadorDoWipe é PROCURADO pela Patrulha Galáctica (nível 2): bancada do wipe.");
+		// ...e um vilao de saga solto (2026-10-31, o pedido 198g)
+		GarantirOsSoltos();
+		_soltos.Add(new VilaoSolto { Elo = "freeza_namek", Molde = "freeza_namek", Nome = "Freeza", ZonaTipo = ZoneKey.KindPremade, ZonaNome = "Arlia" });
 
 		// ---------------------------------------------------------- 9 a 12. os quatro de texto
 		_tronos["Guardian"] = "assinatura_do_wipe";

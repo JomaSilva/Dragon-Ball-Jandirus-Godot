@@ -181,7 +181,7 @@ public sealed partial class GameServer
 		if (pl.Selo.Preso) { Avisar(pl, "daqui de dentro nao."); return; }
 
 		// `if(usr.Ki>=MaxKi/1.1)` (`:243`) -- 90,9% do tanque, e nao "quase tudo" arredondado.
-		double custo = pl.Ficha.MaxKi / 1.1;
+		double custo = pl.Ficha.MaxKi / 1.1 * pl.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (pl.Ficha.Ki < custo)
 		{
 			Avisar(pl, $"energia de menos: a fenda pede {custo:0} e voce tem {pl.Ficha.Ki:0}.");

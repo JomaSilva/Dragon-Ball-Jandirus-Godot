@@ -54,7 +54,7 @@ public partial class Chat : CanvasLayer
 		("Fala", [Protocol.Fala.Diz, Protocol.Fala.Sussurro]),
 		("RP", [Protocol.Fala.Emote, Protocol.Fala.Pensa]),
 		("OOC", [Protocol.Fala.Ooc, Protocol.Fala.Looc]),
-		("Sistema", [Protocol.Fala.Sistema, Protocol.Fala.AvisoDeRaiva, Protocol.Fala.AvisoDeZenkai]),
+		("Sistema", [Protocol.Fala.Sistema, Protocol.Fala.AvisoDeRaiva, Protocol.Fala.AvisoDeZenkai, Protocol.Fala.AvisoUrgente]),
 	];
 
 	private int _filtro;
@@ -474,6 +474,11 @@ public partial class Chat : CanvasLayer
 			Protocol.Fala.AvisoDeZenkai =>
 				$"{hora}[color=#{CorDoZenkai}]» {oque}[/color]",
 
+			// (2026-11-01, o pedido 216) O AVISO URGENTE, em negrito no vermelho-rosado (longe do vermelho-fogo da raiva): o Deus da
+			// Destruicao sabendo que alguem mata os Kaioshins. O cartao da tela sai junto (`AvisoUrgenteNaTela`).
+			Protocol.Fala.AvisoUrgente =>
+				$"{hora}[b][color=#{CorDoUrgente}]» {oque}[/color][/b]",
+
 			Protocol.Fala.Ooc =>
 				$"{hora}[color=#6fb6e8](OOC) {quem}:[/color] [color=#dfe4f0]{oque}[/color]",
 
@@ -508,6 +513,9 @@ public partial class Chat : CanvasLayer
 
 	/// <summary>A cor do aviso de zenkai (2026-10-15). Publica pra bancada (`--diagv030`).</summary>
 	public const string CorDoZenkai = "ffcf4a";
+
+	/// <summary>(2026-11-01, o pedido 216) A cor do aviso urgente -- a do chat e a do cartao (`AvisoUrgenteNaTela`). Publica pra bancada.</summary>
+	public const string CorDoUrgente = "ff3b6b";
 
 	/// <summary>A LINHA COMO ELA SAI NO PAINEL, pra uma fala do servidor sem autor. SO PRA BANCADA (`--diagv030`).</summary>
 	public static string FormatarDeTeste(Protocol.Fala canal, string texto) => Formatar(new Linha(canal, "", texto, "00:00"));

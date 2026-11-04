@@ -35,11 +35,14 @@ public partial class SupernovaDesenhada : Node2D
 	/// <summary>Qual esfera esta e -- o servidor diz pela ocupacao do corpo (`Ocupacao.Supernova` / `DeathBallDoUltimato`).</summary>
 	public AtaqueDoUltimato Ataque = AtaqueDoUltimato.Supernova;
 
-	/// <summary>A folha DESTA esfera.</summary>
-	public string Folha => Ataque == AtaqueDoUltimato.DeathBall ? FolhaDaDeathBall : FolhaDoSol;
+	/// <summary>
+	/// A folha DESTA esfera. (2026-11-01, o pedido 218) Na esfera rosa do Kid Boo a folha da Death Ball so marca o lugar e o tamanho, escondida:
+	/// o desenho e o shader da Death Ball da tecnica, rosa (<see cref="EsferaRosaDoKid"/>).
+	/// </summary>
+	public string Folha => Ataque is AtaqueDoUltimato.DeathBall or AtaqueDoUltimato.EsferaRosa ? FolhaDaDeathBall : FolhaDoSol;
 
 	/// <summary>A largura de um quadro da folha -- e por ela que o diametro vira escala.</summary>
-	private float LadoDaFolha => Ataque == AtaqueDoUltimato.DeathBall ? 98f : 348f;
+	private float LadoDaFolha => Ataque is AtaqueDoUltimato.DeathBall or AtaqueDoUltimato.EsferaRosa ? 98f : 348f;
 
 	/// <summary>O sol no fim da carga: seis tiles de diametro -- maior que qualquer corpo, e ainda sobre a cabeca.</summary>
 	public const float DiametroNoFimDaCarga = 6 * 32f;
@@ -69,6 +72,9 @@ public partial class SupernovaDesenhada : Node2D
 	internal static int EstourosDeTeste { get; private set; }
 
 	private AnimatedSprite2D _sol = null!;
+
+	/// <summary>(2026-11-01, o pedido 218) A Death Ball da tecnica, rosa, no lugar da folha -- so na esfera do Kid Boo.</summary>
+	private EsferaRosaDoKid? _rosa;
 	private double _t, _tDoSolto, _apagando;
 	private Vector2 _cabeca, _soltoEm;
 	private bool _solto, _estourou, _cancelada;
@@ -79,6 +85,9 @@ public partial class SupernovaDesenhada : Node2D
 	/// <summary>O centro do sol agora (bancada).</summary>
 	internal Vector2 CentroDeTeste => _sol.Position;
 
+	/// <summary>(2026-11-01, o pedido 218) A esfera esta com a tinta rosa? (bancada: o robo `--diagbuu`)</summary>
+	internal bool PintadaDeRosaDeTeste => _rosa is { Vestida: true } && !_sol.Visible;
+
 	/// <summary>O sol ja saiu da mao? (bancada)</summary>
 	internal bool SoltoDeTeste => _solto;
 
@@ -87,6 +96,7 @@ public partial class SupernovaDesenhada : Node2D
 		// NA FRENTE DOS CORPOS E DO ESTOURO COMUM (40): e o maior objeto da tela, e ele tapa quem esta embaixo dele.
 		ZIndex = 41;
 		_sol = new AnimatedSprite2D { Name = "Sol", SpriteFrames = ResourceLoader.Load<SpriteFrames>(Folha) };
+		if (Ataque == AtaqueDoUltimato.EsferaRosa) VestirARosa();   // (2026-11-01, o pedido 218) o shader da Death Ball, rosa
 		AddChild(_sol);
 		_sol.Play("default");
 		if (Onde() is { } c) _cabeca = c;
@@ -158,5 +168,21 @@ public partial class SupernovaDesenhada : Node2D
 		}
 		_sol.Scale = Vector2.One * (diametro / LadoDaFolha);
 		_sol.Position = centro;
+		if (_rosa != null)
+		{
+			_rosa.Position = centro;
+			_rosa.Diametro = diametro;
+		}
+	}
+
+	/// <summary>
+	/// (2026-11-01, o pedido 218) A ESFERA DO KID BOO: a folha some (ela continua marcando o lugar e o tamanho, pelos mesmos prazos), e quem
+	/// aparece e a Death Ball da tecnica, rosa -- o dono: *"N é q death ball sprite nao é a deathball shaders"*.
+	/// </summary>
+	private void VestirARosa()
+	{
+		_sol.Visible = false;
+		_rosa = new EsferaRosaDoKid { Name = "EsferaRosa" };
+		AddChild(_rosa);
 	}
 }

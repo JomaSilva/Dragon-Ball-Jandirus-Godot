@@ -723,8 +723,12 @@ public partial class GameServer
 			inv.Mortos++;
 
 			if (inv.Nativa && inv.TemPovo && matador != null)
+			{
 				SomarReputacao(inv.Planeta, matador,
 					lider ? Conquista.RepPorMatarLider : Conquista.RepPorMatarDefensor, "matou-defensor");
+				// (2026-10-31, o pedido 198) o defensor NATIVO tambem e gente do planeta: a Patrulha Galactica anota.
+				CrimeContraOPovo(matador, inv.Planeta, lider);
+			}
 			return;
 		}
 
@@ -743,5 +747,9 @@ public partial class GameServer
 		// que a sua alma virou e te segue ate a mesa do Enma. Ver `GameServer.Karma.cs`. E o karma NAO separa
 		// a realeza: o `lose_npc_kill_karma` (SkyNPCs.dm:120-122) e o mesmo pra qualquer cidadao.
 		KarmaPorMatarHabitante(matador);
+
+		// (2026-10-31, o pedido 198) E A PATRULHA GALACTICA ANOTA: *"jogadores q matam muitos npcs de um planeta (...) vao ganhando niveis
+		// de procurado na galaxia"*. Ver `GameServer.PatrulhaGalactica.cs`.
+		CrimeContraOPovo(matador, planeta, realeza);
 	}
 }

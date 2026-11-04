@@ -383,6 +383,8 @@ public sealed class SkillCatalog
 		SenseEmNiveis.Aplicar(cat);
 		// ...E O INSTANT TRANSMISSION, na mesma escada de cinco (dono, 2026-10-21).
 		TransmissaoEmNiveis.Aplicar(cat);
+		// ...E O BLOQUEIO DE TELEPORTE, a skill do port no tier 2 da Magia (dono, 2026-10-29, o pedido 158).
+		BloqueioDeTeleporte.Aplicar(cat);
 		return cat;
 	}
 

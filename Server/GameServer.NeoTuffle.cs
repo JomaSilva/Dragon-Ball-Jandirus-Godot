@@ -27,6 +27,13 @@ public sealed class PosseDoTuffle
 	public string RacaDoTuffle = "", ClasseDoTuffle = "";
 	public Jandirus.Core.Skills.SkillBook LivroDoTuffle = null!;
 	public Jandirus.Core.Forms.EstadoDeForma FormaDoTuffle = null!;
+
+	/// <summary>
+	/// (2026-10-29, o pedido 159) O HOSPEDEIRO PERMANENTE: o hospede MORREU na entrada (e joga do Outro Mundo), e o Tuffle anda numa COPIA
+	/// do corpo dele. A posse mora so pelo id do Tuffle -- nao ha corpo de verdade pra esconder nem pra arrastar. Ver `HospedarDeVez`.
+	/// (2026-10-30, o pedido 180) E ela atravessa o logout: o save leva a copia (`CharacterSave.Hospedeiro`) e o login a devolve.
+	/// </summary>
+	public bool Permanente;
 }
 
 /// <summary>
@@ -148,6 +155,7 @@ public sealed partial class GameServer
 		{
 			case "tuffle_possuir": Possuir(pl); return true;
 			case "tuffle_sair": SairDoCorpo(pl); return true;   // (2026-10-28) o pedido 144
+			case "tuffle_hospedar": HospedarDeVez(pl); return true;   // (2026-10-29) o pedido 159
 			default: return false;
 		}
 	}
@@ -160,6 +168,8 @@ public sealed partial class GameServer
 	private void SairDoCorpo(ServerPlayer a)
 	{
 		if (PosseDoTuffleDe(a.Id) is not { } p || p.Tuffle != a) { Avisar(a, "você não está dentro de outro corpo."); return; }
+		// (2026-10-29, o pedido 159) do hospedeiro permanente a copia fica no chao, morta -- ver `DeixarOHospedeiro`
+		if (p.Permanente) { DeixarOHospedeiro(p, $"você sai da cópia de {p.Corpo.Nome}, e ela cai morta no chão.", morreJunto: false); return; }
 		Expulsar(p, $"você sai do corpo de {p.Corpo.Nome}.");
 	}
 
@@ -244,6 +254,160 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-10-31, o pedido 201) O PODER DA COPIA COMECA EM 10% do BP que o corpo tinha (era 90%, o pedido 159) -- o dono: *"vc começa com
+	/// 10% do bp original desse corpo, enquanto vc vai masterizando o uso desse corpo mais % do poder original vc consegue liberar , ate
+	/// 100%, vc n consegue fazer esse corpo ganhar mais poder do q quando ele foi roubado"*.
+	/// </summary>
+	internal const double FracaoInicialDoHospedeiro = 0.10;
+
+	/// <summary>
+	/// (o pedido 201) O DOMINIO DO CORPO sobe no ritmo da maestria da escada de formas (`Catalogo.MaestriaPorSegundo`: 100% em 3 h dentro
+	/// dele) -- e no DOBRO lutando. Escolha minha, a confirmar com o dono.
+	/// </summary>
+	internal const double DominioLutando = 2;
+
+	/// <summary>
+	/// (2026-10-31, o adendo 201d) O CORPO DOMINADO POR INTEIRO RENDE 110% do BP que tinha -- o dono: *"ao domionar completamente o corpo
+	/// atual, ele pode o poder do corpo dominado dele é 110% do poder do corpo original, ou seja, ao dominar o corpo ele acessa mais
+	/// poder do q o corpo original tinha (uma forma de compensar invadir corpos)"*. E o fim da LINHA RETA que sai dos 10%: o dono
+	/// escolheu *"Linha reta até 110%"* -- com 90% de dominio o corpo ja rende o que tinha, e nao ha salto no fim.
+	/// </summary>
+	internal const double FracaoNoDominioCompleto = 1.10;
+
+	/// <summary>(o pedido 201) Quanto do BP roubado a copia rende com este dominio (0-100): de 10% a 110%, em linha reta (o adendo
+	/// 201d, a escolha do dono).</summary>
+	internal static double FracaoDoHospedeiro(double dominio) =>
+		FracaoInicialDoHospedeiro + (FracaoNoDominioCompleto - FracaoInicialDoHospedeiro) * Math.Clamp(dominio, 0, 100) / 100;
+
+	/// <summary>(o pedido 201) O BP da copia agora: o roubado vezes a fracao do dominio -- nunca acima de 110% do roubado (o dominio
+	/// completo, o adendo 201d).</summary>
+	internal static double BpDoHospedeiro(Fighter copia) => copia.tuffle_bp_roubado * FracaoDoHospedeiro(copia.tuffle_dominio);
+
+	/// <summary>
+	/// (2026-10-29, o pedido 159) O HOSPEDEIRO PERMANENTE -- o dono: *"ao entrar no corpo de alguem desmaiado, essa pessoa vai morrer e ir
+	/// pro outro mundo normalmente, porem o neotuffle vai ficar controlando uma copia do corpo dessa pessoa com 90% do bp original dela
+	/// [(2026-10-31, o pedido 201) agora 10%, e o dominio do corpo libera ate 110%, em linha reta -- o adendo 201d]
+	/// (mantendo o cabelo branco etc) ate ele morrer nesse corpo ou querer sair por vontade propria"*; *"ele n consegue entrar em um
+	/// hospedeiro ja estando em um, ele tem q estar sem hospedeiros pra isso"*. As portas sao as do <see cref="Possuir"/>; o corpo e o
+	/// <see cref="CorpoEmprestado"/> (com 90% do BP), a raca, a classe e a copia do livro e das formas; e o hospede MORRE pela porta unica
+	/// (`Combate.Morrer`, o Outro Mundo de sempre). A morte da copia leva o Tuffle junto, e sair dela a deixa morta no chao --
+	/// <see cref="DeixarOHospedeiro"/>.
+	/// </summary>
+	/// <param name="alvoDoPalco">(2026-10-31) so o palco do robo `--diagtuffle` (a cena N7 do pedido 201): o corpo caido que ele tomou,
+	/// sem dono na tela -- o `HospedeAoAlcance` so aceita jogador conectado. Nulo em jogo: o verbo pergunta ao alcance, como sempre.</param>
+	private void HospedarDeVez(ServerPlayer a, ServerPlayer? alvoDoPalco = null)
+	{
+		if (PosseDoTuffleDe(a.Id) != null) { Avisar(a, "você já está dentro de outro corpo: saia dele antes de tomar outro."); return; }
+		if (!a.Ficha.NeoTuffle) { Avisar(a, "você não é um Neo Tuffle."); return; }
+		if (a.Ficha.KO || a.Ficha.dead) { Avisar(a, "caído, você não entra em corpo nenhum."); return; }
+		if (EstaFundido(a.Id) || a.BonecoLargado != null || EhOlhoDeFora(a))
+		{ Avisar(a, "agora não: você não está inteiro no próprio corpo."); return; }
+		if ((alvoDoPalco ?? HospedeAoAlcance(a)) is not { } b) { Avisar(a, "não há nenhum jogador nocauteado ao seu alcance."); return; }
+
+		// (2026-10-30, o pedido 180) OS BUFFS ACESOS SAO DO CORPO QUE OS ACENDEU: apagam aqui, na ficha DELE, antes da troca. A posse vai pro
+		// disco (`SaveDoHospedeiro`) e o registro dos buffs e por id: com um buff dele de pe, o save o tiraria da copia, que nunca o teve, e o
+		// numero dele ficaria preso na ficha do Tuffle pra sempre (o Kaio-ken preso de 2026-10-16, ver `FichaSemOsBuffs`).
+		DerrubarBuffs(a);
+
+		(Fighter copia, CombatState corpo) = CorpoEmprestado(a, b);
+		// (2026-10-31, o pedido 201) A COPIA GUARDA O BP DO ROUBO (o teto) e comeca com 10% dele: o dominio libera o resto.
+		copia.tuffle_bp_roubado = b.Ficha.BP;
+		copia.tuffle_dominio = 0;
+		copia.BP = BpDoHospedeiro(copia);
+		var posse = new PosseDoTuffle
+		{
+			Tuffle = a, Hospede = b, FichaDoTuffle = a.Ficha, CombateDoTuffle = a.Combate, Permanente = true,
+			Corpo = new DisfarceG12 { Nome = NomeVisivel(b), Raca = b.Race, Genero = b.Genero, Visual = VisualVisivel(b).Copiar() },
+			RacaDoTuffle = a.Race, ClasseDoTuffle = a.Class, LivroDoTuffle = a.Livro, FormaDoTuffle = a.Forma,
+		};
+		a.Ficha = copia;
+		a.Combate = corpo;
+		a.CorpoDaPosse = posse.Corpo;
+		a.Facing = b.Facing;
+		a.Race = b.Race;
+		a.Class = b.Class;
+		a.Livro = CopiaDoLivro(b.Livro);
+		a.Forma = CopiaDasFormas(b.Forma);
+		CravarPosicao(a, b.Pos);
+		_posses[a.Id] = posse;
+
+		a.Ficha.Statify();
+		a.SigAtributos = "";
+		AplicarPoderes(a);
+		AplicarEfeitos(a);
+		MandarSkills(a, forcar: true);
+		MandarFicha(a);
+		MandarAtributos(a);
+		TrocarAparencias(a);
+
+		// O HOSPEDE MORRE, e pela porta (o relogio da morte, a aureola, o cadaver e o funil de derrota) -- como o Revive que cobra a vida
+		Avisar(b, "um Neo Tuffle tomou o seu corpo de vez: você morre, e ele fica com uma cópia de você.");
+		b.Combate.Morrer(ignorarSeguro: true);
+
+		Avisar(a, $"você toma o corpo de {posse.Corpo.Nome} de vez: ele morre, e você fica com uma cópia dele -- que começa com "
+				  + $"{FracaoInicialDoHospedeiro * 100:0}% do poder dele. Dominando o corpo, você libera o resto, e dominado por inteiro ele rende "
+				  + $"{FracaoNoDominioCompleto * 100:0}% (mais do que ele tinha) -- até morrer nela (e você morre junto) ou sair dela.");
+		Falar(a, Protocol.Fala.Emote, $"toma o corpo de {posse.Corpo.Nome}, que se levanta com o cabelo branco-acinzentado.");
+		GD.Print($"[server] NEO TUFFLE: {a.Name} tomou de vez o corpo de {b.Name} (hospedeiro permanente)");
+	}
+
+	/// <summary>
+	/// (2026-10-29, o pedido 159) O FIM DO HOSPEDEIRO PERMANENTE -- saindo (pelo verb; o logout guarda a posse, o pedido 180) ou morrendo nele. A COPIA CAI MORTA no
+	/// chao, com a cara do hospede (*"Quando ele sai o corpo do hospedeiro copiado cai morto no chao"*: o `DeixarOCadaver` de um corpo de
+	/// passagem com a aparencia da posse), e o Tuffle volta pro proprio corpo -- vivo, um tile ao lado; ou, se a copia morreu, MORTO com ela
+	/// (*"Se o corpo do neotuffle hospedeiro morrer o neotuffle morre junto"*: a porta unica, `SumiuAbsorvido` pra nao deixar um segundo
+	/// corpo -- o dele nao estava no mundo).
+	/// </summary>
+	private void DeixarOHospedeiro(PosseDoTuffle posse, string praOTuffle, bool morreJunto)
+	{
+		ServerPlayer a = posse.Tuffle;
+		_posses.Remove(a.Id);
+		// (2026-10-30, o pedido 180) ...e os que ele acendeu na copia apagam NELA, antes da volta: desfeitos depois, cairiam na ficha dele
+		DerrubarBuffs(a);
+
+		// ---- a copia cai morta onde estava ----
+		DeixarOCadaver(new ServerPlayer
+		{
+			Id = -1, Peer = null, Name = posse.Corpo.Nome, Race = posse.Corpo.Raca, Genero = posse.Corpo.Genero,
+			Zone = a.Zone, Pos = a.Pos, Altitude = a.Altitude, Facing = a.Facing, Planeta = a.Planeta,
+			Visual = posse.Corpo.Visual.Copiar(), Ficha = a.Ficha, Combate = a.Combate,
+		});
+		Vec2 onde = a.Pos;
+		ZoneKey zona = a.Zone;
+
+		// ---- o Tuffle volta pro proprio corpo ----
+		a.Ficha = posse.FichaDoTuffle;
+		a.Combate = posse.CombateDoTuffle;
+		a.CorpoDaPosse = null;
+		a.Race = posse.RacaDoTuffle;
+		a.Class = posse.ClasseDoTuffle;
+		a.Livro = posse.LivroDoTuffle;
+		a.Forma = posse.FormaDoTuffle;
+		a.Ficha.Statify();
+		a.SigAtributos = "";
+		if (!morreJunto)
+		{
+			Vec2 ao = onde + new Vec2(ZoneCollision.TileSize, 0);
+			CravarPosicao(a, MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(ao) ?? ao);
+		}
+
+		AplicarPoderes(a);
+		AplicarEfeitos(a);
+		MandarSkills(a, forcar: true);
+		MandarFicha(a);
+		MandarAtributos(a);
+		TrocarAparencias(a);
+		Avisar(a, praOTuffle);
+		if (morreJunto)
+		{
+			a.SumiuAbsorvido = true;
+			a.Combate.Morrer(ignorarSeguro: true);
+		}
+		GD.Print($"[server] NEO TUFFLE: {a.Name} deixou a copia de {posse.Corpo.Nome}{(morreJunto ? " (morreu nela, e morre junto)" : "")}");
+	}
+
+
+	/// <summary>
 	/// O NOCAUTEADO QUE PODE SER POSSUIDO, o mais perto ao alcance de uso: um jogador (o NPC nao -- o pedido e de jogadores), vivo, no proprio
 	/// corpo (sem fusao, sem transe, sem olho de nave) e que ninguem possui.
 	/// </summary>
@@ -275,14 +439,137 @@ public sealed partial class GameServer
 			p.Decepado = real.Decepado;
 			p.Vida = real.Decepado ? 0 : p.VidaMax;
 		}
-		corpo.AoDecepar = (_, caiu) => SoltarPecas(tuffle, caiu);
-		corpo.SendoArremessado = () => tuffle.TiquesDeVoo > 0;
-		corpo.EmCinematica = () => EmCena(tuffle);
-		corpo.RitmoDaRecarga = () => RitmoDaRecargaDe(tuffle);
+		LigarAoTuffle(corpo, tuffle);
 		corpo.SincronizarVida();
 		copia.Statify();
 		copia.Ki = copia.MaxKi;
 		return (copia, corpo);
+	}
+
+	/// <summary>Os ganchos do corpo emprestado, que sao os do Tuffle -- ver <see cref="CorpoEmprestado"/>. O login os poe tambem na copia que volta do disco.</summary>
+	private void LigarAoTuffle(CombatState corpo, ServerPlayer tuffle)
+	{
+		corpo.AoDecepar = (_, caiu) => SoltarPecas(tuffle, caiu);
+		corpo.SendoArremessado = () => tuffle.TiquesDeVoo > 0;
+		corpo.EmCinematica = () => EmCena(tuffle);
+		corpo.RitmoDaRecarga = () => RitmoDaRecargaDe(tuffle);
+	}
+
+	/// <summary>(2026-10-30, o pedido 180) A posse de hospedeiro permanente que este jogador dirige, ou nula.</summary>
+	private PosseDoTuffle? HospedeiroPermanenteDe(ServerPlayer pl) =>
+		PosseDoTuffleDe(pl.Id) is { Permanente: true } p && p.Tuffle == pl ? p : null;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 180) O SAVE DE QUEM ESTA NO HOSPEDEIRO PERMANENTE -- o dono: *"guarda a posse"*. O corpo DELE vai pelo caminho de
+	/// sempre (`AccountStore.DeJogador`, com a ficha, os membros, a raca, a classe, o livro e as formas que a posse guarda: trocados no corpo so
+	/// pra leitura, e devolvidos), e a copia vai por cima (`CharacterSave.Hospedeiro`). Os buffs acesos sao todos da copia (a entrada apagou os
+	/// dele, `HospedarDeVez`): saem da ficha dela, como saem da de todo mundo (`FichaSemOsBuffs`).
+	/// </summary>
+	private CharacterSave SaveDoHospedeiro(ServerPlayer a, PosseDoTuffle posse)
+	{
+		var copia = new HospedeiroSalvo
+		{
+			Corpo = posse.Corpo, Raca = a.Race, Classe = a.Class, ContaDoHospede = posse.Hospede.Conta,
+			Ficha = FichaSemOsBuffs(a), Membros = FotografarCorpo(a.Combate),
+			Skills = [.. a.Livro.Aprendidas], SkillsEnsinadas = [.. a.Livro.Ensinadas], SkillsCompradas = [.. a.Livro.Compradas],
+			SkillsEscolhas = new Dictionary<string, int>(a.Livro.Escolhas),
+			SkillsGanhos = a.Livro.GanhosNaCompra.ToDictionary(kv => kv.Key, kv => new Dictionary<string, double>(kv.Value)),
+			MarcosTotais = a.Livro.MarcosTotais, MarcosLivres = a.Livro.MarcosLivres, MarcosPorBp = a.Livro.MarcosPorBp,
+			Limiares = a.Forma.Limiares, FormasDespertadas = [.. a.Forma.Liberadas], FormasEstreadas = [.. a.Forma.EstreiaVista],
+			PortasCortadas = [.. a.Forma.PortasCortadas], Maestrias = a.Forma.Maestria.ParaSave(),
+			GradesLigados = a.Forma.GradesLigados, CPelasDivinas = a.Forma.CPelasDivinas, CPeloMistico = a.Forma.CPeloMistico,
+		};
+
+		(Fighter ficha, CombatState combate, DisfarceG12? visto) = (a.Ficha, a.Combate, a.CorpoDaPosse);
+		(string raca, string classe) = (a.Race, a.Class);
+		(Jandirus.Core.Skills.SkillBook livro, Jandirus.Core.Forms.EstadoDeForma forma) = (a.Livro, a.Forma);
+		a.Ficha = posse.FichaDoTuffle;
+		a.Combate = posse.CombateDoTuffle;
+		a.CorpoDaPosse = null;
+		a.Race = posse.RacaDoTuffle;
+		a.Class = posse.ClasseDoTuffle;
+		a.Livro = posse.LivroDoTuffle;
+		a.Forma = posse.FormaDoTuffle;
+		try
+		{
+			a.Ficha.Class = a.Class;
+			CharacterSave salvo = AccountStore.DeJogador(a, NowMs());
+			salvo.Hospedeiro = copia;
+			return salvo;
+		}
+		finally
+		{
+			(a.Ficha, a.Combate, a.CorpoDaPosse) = (ficha, combate, visto);
+			(a.Race, a.Class) = (raca, classe);
+			(a.Livro, a.Forma) = (livro, forma);
+		}
+	}
+
+	/// <summary>
+	/// (2026-10-30, o pedido 180) A VOLTA PRA DENTRO DO HOSPEDEIRO PERMANENTE, no login: o `Entrar` montou o corpo DELE pelo caminho de sempre,
+	/// e aqui ele volta pra dentro da copia que o save guardou (<see cref="SaveDoHospedeiro"/>) -- a ficha, os membros, a raca, a classe, o
+	/// livro e as formas dela, e a cara do hospede pro mundo. E o fim do <see cref="HospedarDeVez"/> sem a morte (o hospede ja morreu) e sem
+	/// os pacotes: o `JoinAccepted` ainda nao saiu, e a ficha, as tecnicas e a aparencia que o login manda adiante ja sao as da copia.
+	/// </summary>
+	private void RetomarOHospedeiro(ServerPlayer a, HospedeiroSalvo h)
+	{
+		Fighter copia = h.Ficha;
+		copia.raboPresoMod = 1;   // o aperto no rabo nao atravessa o logout (o `PrepararCombate`)
+		// (2026-10-31, o pedido 201) A COPIA GRAVADA ANTES DO PEDIDO 201 nao tem o BP do roubo: ela rendia 90% dele (o pedido 159). O roubado e o
+		// BP dela sobre 0,9, e o dominio e o que da os mesmos 90% -- ninguem perde poder no login por causa da regra nova.
+		if (copia.tuffle_bp_roubado <= 0)
+		{
+			copia.tuffle_bp_roubado = copia.BP / 0.9;
+			// (o adendo 201d) na linha reta de 10% a 110%, o dominio que da os 90% e 80%
+			copia.tuffle_dominio = (0.9 - FracaoInicialDoHospedeiro) / (FracaoNoDominioCompleto - FracaoInicialDoHospedeiro) * 100;
+		}
+		var corpo = new CombatState(copia, TemRabo(h.Raca), EixoDeRegen(h.Raca, copia));
+		foreach (BodyPart p in corpo.Corpo.Partes)
+			if (h.Membros.TryGetValue(p.Nome, out double[]? v) && v.Length >= 4)
+			{
+				p.Vida = Math.Clamp(v[0], 0, p.VidaMax);
+				p.Decepado = v[1] > 0.5;
+				p.Perdido = v[2] > 0.5;
+				p.FeridaAberta = Math.Max(0, v[3]);
+			}
+		LigarAoTuffle(corpo, a);
+
+		var livro = new Jandirus.Core.Skills.SkillBook();
+		livro.Carregar(h.Skills);
+		livro.CarregarEnsinadas(h.SkillsEnsinadas);
+		livro.CarregarCompradas(h.SkillsCompradas);
+		livro.CarregarEscolhas(h.SkillsEscolhas);
+		livro.CarregarGanhos(h.SkillsGanhos);
+		livro.MarcosTotais = h.MarcosTotais;
+		livro.MarcosLivres = h.MarcosLivres;
+		livro.MarcosPorBp = h.MarcosPorBp;
+		var formas = new Jandirus.Core.Forms.EstadoDeForma
+		{
+			Limiares = h.Limiares, Liberadas = [.. h.FormasDespertadas], EstreiaVista = [.. h.FormasEstreadas], PortasCortadas = [.. h.PortasCortadas],
+			GradesLigados = h.GradesLigados, CPelasDivinas = h.CPelasDivinas, CPeloMistico = h.CPeloMistico,
+		};
+		formas.Maestria.DoSave(h.Maestrias);
+
+		// o hospede de verdade ja morreu e joga do Outro Mundo: o que a posse ainda pergunta dele e a conta (a tech dele, `EDaContaDona`)
+		_posses[a.Id] = new PosseDoTuffle
+		{
+			Tuffle = a, Hospede = new ServerPlayer { Id = -1, Peer = null, Name = h.Corpo.Nome, Conta = h.ContaDoHospede },
+			FichaDoTuffle = a.Ficha, CombateDoTuffle = a.Combate, Corpo = h.Corpo, Permanente = true,
+			RacaDoTuffle = a.Race, ClasseDoTuffle = a.Class, LivroDoTuffle = a.Livro, FormaDoTuffle = a.Forma,
+		};
+		a.Ficha = copia;
+		a.Combate = corpo;
+		a.CorpoDaPosse = h.Corpo;
+		a.Race = h.Raca;
+		a.Class = h.Classe;
+		a.Livro = livro;
+		a.Forma = formas;
+		corpo.SincronizarVida();
+		a.Ficha.Statify();
+		a.SigAtributos = "";
+		AplicarPoderes(a);
+		AplicarEfeitos(a);
+		GD.Print($"[server] NEO TUFFLE: {a.Name} voltou dentro da copia de {h.Corpo.Nome} (hospedeiro permanente)");
 	}
 
 	/// <summary>
@@ -344,6 +631,15 @@ public sealed partial class GameServer
 		foreach (PosseDoTuffle p in posses)
 		{
 			ServerPlayer a = p.Tuffle, b = p.Hospede;
+			// (2026-10-29, o pedido 159) O HOSPEDEIRO PERMANENTE: o nocaute nao expulsa (a copia e dele agora), e a MORTE dela leva o Tuffle junto.
+			// Nao ha corpo de verdade pra arrastar: o hospede joga do Outro Mundo.
+			if (p.Permanente)
+			{
+				if (a.Ficha.dead || (a.Combate.Corpo.DeveMorrer() && !a.Combate.Corpo.RegeneraDecepado))
+					DeixarOHospedeiro(p, $"a cópia de {p.Corpo.Nome} morre -- e você morre junto com ela.", morreJunto: true);
+				else DominarOHospedeiro(a, p);   // (2026-10-31, o pedido 201)
+				continue;
+			}
 			if (!PosseNaoAcabaNoNocauteDeTeste && (a.Ficha.KO || a.Ficha.dead))
 			{
 				Expulsar(p, $"o corpo de {p.Corpo.Nome} caiu -- e você é expulso dele, de volta ao seu.");
@@ -352,6 +648,41 @@ public sealed partial class GameServer
 			if (!b.Zone.Equals(a.Zone)) MoveToZone(b.Id, a.Zone, a.Pos);
 			else b.Pos = a.Pos;
 		}
+	}
+
+	/// <summary>
+	/// (2026-10-31, o pedido 201) O DOMINIO DO CORPO ROUBADO, a cada tique dentro dele: sobe com o tempo (o dobro lutando), e o BP da copia
+	/// segue a conta -- de 10% do roubado (dominio 0) a 110% (dominio completo), em linha reta (o adendo 201d) -- e nunca acima
+	/// disso. E aqui que o TETO vale: um ganho que escapasse
+	/// por outra porta (o treino ja nao rende, `Fighter.GanhoDeAtividade`; o Zenkai, um desejo) volta pra conta neste mesmo tique. A cada
+	/// 10% de dominio, o Tuffle e avisado.
+	/// </summary>
+	private void DominarOHospedeiro(ServerPlayer a, PosseDoTuffle p)
+	{
+		Fighter f = a.Ficha;
+		if (f.tuffle_bp_roubado <= 0) return;
+		int decimoAntes = (int)(f.tuffle_dominio / 10);
+		if (f.tuffle_dominio < 100)
+		{
+			double ritmo = Jandirus.Core.Forms.Catalogo.MaestriaPorSegundo * (a.Combate is { EmCombate: > 0 } ? DominioLutando : 1);
+			f.tuffle_dominio = Math.Min(100, f.tuffle_dominio + ritmo * Protocol.TickSeconds);
+		}
+		// O BP SEGUE A CONTA: pra cima quando a diferenca passa de 0,1% (o Statify nao precisa rodar trinta vezes por segundo por um passo
+		// invisivel) -- e no dominio completo, o resto que falta: na linha reta do adendo 201d o ultimo passo nao chega aos 0,1%, e o
+		// corpo parava um fio abaixo dos 110% (o robo `--diagtuffle` viu 54.999.654 de 55.000.000); pra baixo -- o teto --, sempre.
+		double alvo = BpDoHospedeiro(f);
+		if (f.BP > alvo + 1e-6 || alvo - f.BP > alvo * 0.001 || (f.tuffle_dominio >= 100 && f.BP < alvo))
+		{
+			f.BP = alvo;
+			f.Statify();
+			a.SigAtributos = "";
+		}
+		int decimoAgora = (int)(f.tuffle_dominio / 10);
+		if (decimoAgora > decimoAntes)
+			Avisar(a, decimoAgora >= 10
+				? $"você domina o corpo de {p.Corpo.Nome} por inteiro: ele rende {FracaoNoDominioCompleto * 100:0}% do poder que tinha -- mais "
+				  + "do que o dono dele -- e não passa disso."
+				: $"você domina {decimoAgora * 10}% do corpo de {p.Corpo.Nome}: ele já rende {FracaoDoHospedeiro(f.tuffle_dominio) * 100:0}% do poder que tinha.");
 	}
 
 	/// <summary>
@@ -422,11 +753,15 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// QUEM SAI DO JOGO NO MEIO DE UMA POSSE a desfaz ANTES do save -- seja o Tuffle (que carrega a copia do corpo alheio) ou o hospede (que
-	/// esta escondido andando com ele). E o `SoltarDaFusao` desta mecanica: ver o `Drop`.
+	/// esta escondido andando com ele). E o `SoltarDaFusao` desta mecanica: ver o `Drop`. (2026-10-30) Menos a do hospedeiro permanente, que fica.
 	/// </summary>
 	private void SoltarDaPosse(ServerPlayer pl)
 	{
 		if (PosseDoTuffleDe(pl.Id) is not { } p) return;
+		// (2026-10-29, o pedido 159) do hospedeiro permanente, sair do jogo era sair dele: a copia ficava no chao, morta. (2026-10-30, o pedido
+		// 180) O dono: *"guarda a posse"*. Ela fica de pe pro `Persistir` logo abaixo no `Drop`, que grava o corpo dele E a copia
+		// (`SaveDoHospedeiro`); o `DespedirCorpo` a tira do mapa, e o login o poe de volta dentro dela (`RetomarOHospedeiro`).
+		if (p.Permanente) return;
 		Expulsar(p, p.Tuffle == pl ? "você sai do corpo de " + p.Corpo.Nome + "." : $"o dono do corpo de {p.Corpo.Nome} saiu do jogo -- e você é expulso.");
 	}
 

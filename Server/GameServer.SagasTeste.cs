@@ -90,8 +90,9 @@ public partial class GameServer
 			// =====================================================================
 			// 1. A CADEIA E AS DECLARACOES DA FICHA
 			// =====================================================================
-			Checa($"a cadeia tem os quatro elos do DM ({string.Join(" -> ", _cadeia.Select(e => e.Id))})",
-				  _cadeia.Length == 4);
+			// (2026-11-01, o pedido 210) ...e os dois da saga Saiyajin, entre o Freeza no Vegeta e Namek -- a ordem do anime, a escolha do dono
+			Checa($"a cadeia tem os quatro elos do DM e os dois da saga Saiyajin ({string.Join(" -> ", _cadeia.Select(e => e.Id))})",
+				  _cadeia.Length == 6);
 			Checa("...e nenhum deles e contraditorio",
 				  Sagas.Problemas(_cadeia, _moldes).Count == 0,
 				  string.Join(" | ", Sagas.Problemas(_cadeia, _moldes)));
@@ -253,10 +254,20 @@ public partial class GameServer
 			// =====================================================================
 			// 6. A CADEIA DESTRAVA -- o marco que esperava dispara agora
 			// =====================================================================
-			Checa("a saga 2 NAO tinha disparado enquanto a 1 corria (o BP dela ja estava batido ha muito)",
+			// (2026-11-01, o pedido 210) ENTRE A 1 E NAMEK VEM A SAGA SAIYAJIN (a ordem do anime, a escolha do dono). Ela e medida na
+			// `--saiyajinteste`; aqui ela e PULADA (os dois elos vencidos, como o botao do admin), e o que esta bancada mede continua sendo o
+			// marco de Namek, batido ha muito, esperando a vez dele.
+			Checa("a saga de Namek NAO tinha disparado enquanto a 1 corria (o BP dela ja estava batido ha muito)",
 				  !Elo("freeza_namek").Disparou);
+			foreach (string daSagaSaiyajin in new[] { "raditz", "saiyajins" })
+			{
+				EstadoDoElo pulado = Elo(daSagaSaiyajin);
+				pulado.Disparou = true;
+				pulado.Fase = FaseDaSaga.Vencida;
+				pulado.Chefes.Clear();
+			}
 			TickDasSagas();
-			Checa("...e ela dispara no primeiro tique depois de a 1 fechar -- o marco esperou a vez",
+			Checa("...e ela dispara no primeiro tique depois de a 1 e a saga Saiyajin fecharem -- o marco esperou a vez",
 				  Elo("freeza_namek") is { Disparou: true, Fase: FaseDaSaga.Contando });
 
 			// =====================================================================
@@ -310,7 +321,7 @@ public partial class GameServer
 			// =====================================================================
 			// 8. O GANCHO DA DESTRUICAO -- ele DISPARA, e e INERTE
 			// =====================================================================
-			MedirOGancho(Checa);
+			MedirOGancho(pl, Checa);
 
 			// =====================================================================
 			// 9. A ABSORCAO -- a ficha do Cell movida por um evento, e nao por dano
@@ -322,6 +333,11 @@ public partial class GameServer
 			// =====================================================================
 			MedirOPisoDaFichaNova(Checa);
 			MedirOPisoDaFichaNovaDoCell(Checa);
+
+			// =====================================================================
+			// 11. A SAGA NUM PLANETA DESTRUIDO ESPERA ELE VOLTAR (2026-10-29, o pedido 151)
+			// =====================================================================
+			MedirASagaQueEsperaOPlaneta(Checa);
 
 			Checa("a bancada chegou ao fim (ver o `catch`: sem ele, abortar no meio reportava '0 falhas')",
 				  true);
@@ -378,7 +394,7 @@ public partial class GameServer
 	/// familia leva a saga ate o fim em vez de parar em "Explodindo".
 	/// ====================================================================================================
 	/// </summary>
-	private void MedirOGancho(Checagem Checa)
+	private void MedirOGancho(ServerPlayer pl, Checagem Checa)
 	{
 		// O ELO QUE DESTROI **E** TEM CHEFE NO MUNDO. Procurar so pelo primeiro que destroi pegava a
 		// saga 1, ja vencida e sem corpo nenhum -- e a checagem falhava por nao ter o que medir.
@@ -394,13 +410,38 @@ public partial class GameServer
 			return;
 		}
 
-		// SO NO ULTIMO DEGRAU (a saga 2). Sobe a ficha ate o fim pelo caminho de producao.
+		// ============================ (2026-10-29, o pedido 167) OS 5 MINUTOS COMECAM NA FORMA 4/5 ============================
+		// O dono: *"Os 5 minutos do freeza so deveriam começar quando ele atingisse a forma 4/5 dele e nao 3/5 , Ao derrotalo antes vc salva o
+		// planeta"*. O Freeza chega aqui na forma 3/5 (a secao 7 o deixou la): a primeira briga com um jogador nao arma os minutos nem os promete
+		// na frase; uma forma acima (4/5), eles comecam -- e o mundo e avisado. Pelo tique do monitor (`TickDasSagas`) e pelo roteiro de degraus.
+		// ======================================================================================================================
+		Checa("(montagem, pedido 167) o Freeza de Namek esta na forma 3/5", corpo.Papel.Estagio == 2, $"degrau {corpo.Papel.Estagio + 1}");
+		EscutaDasSagas = [];
+		ec.Engajou = false;
+		ec.UltimatoEm = 0;
+		corpo.UltimoAgressor = pl.Id;
+		corpo.RancorAte = NowMs() + 10_000;
+		TickDasSagas();
+		Checa("**NA FORMA 3/5, A BRIGA COMECA E OS 5 MINUTOS NAO CORREM** (pedido 167) -- e a frase da briga nao os promete: ela fala da forma 4/5",
+			  ec.Engajou && ec.UltimatoEm == 0 && EscutaDasSagas!.Any(t => t.Contains("forma 4/5", StringComparison.Ordinal))
+			  && !EscutaDasSagas!.Any(t => t.Contains("perca a paciência", StringComparison.Ordinal)),
+			  $"engajou {ec.Engajou}, prazo {ec.UltimatoEm:0}; {string.Join(" | ", EscutaDasSagas!)}");
+		EscutaDasSagas = [];
+		PorPiorMembroEm(corpo, corpo.Papel.GatilhoAtual - 0.01);
+		TickDoRoteiro();
+		TickDasSagas();
+		Checa("**NA FORMA 4/5 OS 5 MINUTOS COMECAM** (*\"so deveriam começar quando ele atingisse a forma 4/5\"*) -- e o mundo e avisado",
+			  corpo.Papel.Estagio == 3 && Math.Abs(ec.UltimatoEm - _relogioDoMundo - elo.MinutosDeLuta * 60) < 2
+			  && EscutaDasSagas!.Any(t => t.Contains("será destruído em", StringComparison.Ordinal)),
+			  $"degrau {corpo.Papel.Estagio + 1}, prazo em {ec.UltimatoEm - _relogioDoMundo:0} s; {string.Join(" | ", EscutaDasSagas!)}");
+
+		// Sobe a ficha ate o fim pelo caminho de producao (o prazo ja corre desde a 4/5).
 		for (int i = 0; i < 8 && corpo.Papel.GatilhoAtual >= 0; i++)
 		{
 			PorPiorMembroEm(corpo, corpo.Papel.GatilhoAtual - 0.01);
 			TickDoRoteiro();
 		}
-		Checa("o ultimato de Namek so entra em cena com o Freeza no ULTIMO degrau da ficha",
+		Checa("(montagem) o Freeza de Namek sobe ate o ULTIMO degrau da ficha (5/5)",
 			  corpo.Papel.Proximo == null, $"degrau {corpo.Papel.Estagio + 1}");
 
 		EscutaDasSagas = [];
@@ -409,7 +450,7 @@ public partial class GameServer
 		int Habitantes() => _players.Values.Count(p => p.Peer == null && p.Papel is { EhChefe: false, Tipo: not TipoDeNpc.Soldado });
 		int habitantesAntes = Habitantes();
 
-		// ============================ O PRAZO SO NASCE QUANDO ELE CHEGA NO ULTIMO DEGRAU ============================
+		// ============================ O PRAZO SO NASCE QUANDO ELE CHEGA NO DEGRAU DO PRAZO (a 4/5 desde 2026-10-29) ============================
 		// E o `s2_deadline = world.time + BEV_FREEZA2_FINAL_TIMER` escrito DENTRO do `freeza_transform`
 		// (BossEvents.dm:673): os cinco minutos de Namek comecam na forma final e nao na chegada.
 		//
@@ -418,7 +459,7 @@ public partial class GameServer
 		// antes de o prazo ser armado nao adianta prazo nenhum, e isso e verdade no jogo tambem.
 		// ======================================================================================================
 		TickDasSagas();
-		Checa("...e e SO ENTAO que o prazo de 5 min e armado (nao na chegada dele em Namek)",
+		Checa("...e o prazo de 5 min esta armado (desde a forma 4/5, nao na chegada dele em Namek)",
 			  ec.UltimatoEm > _relogioDoMundo, $"{ec.UltimatoEm:0} vs {_relogioDoMundo:0}");
 
 		// O RELOGIO DO MUNDO E ADIANTADO -- e so ele. Mesma manivela que o `_adiantoDoCeu` e pelo mesmo
@@ -858,6 +899,50 @@ public partial class GameServer
 	}
 
 	private EstadoDoElo Elo(string id) => _sagas.Do(id)!;
+
+	/// <summary>
+	/// (2026-10-29) O dono, pedido 151: *"sagas q acontecem em planetas destruidos n acontecem, elas esperam o planeta voltar"*. O Freeza de Namek
+	/// a caminho, chegando no proximo dia: com Namek EXPLODINDO ele nao chega (e o mundo ouve, uma vez); com Namek DESTRUIDA, nem na virada
+	/// seguinte; restaurada, ele chega NA HORA. Tudo pelas portas de producao: `ComecarDestruicao`, `TickDaDestruicao`, a virada do dia pelo
+	/// relogio do ceu (`AvancarUmDia`) e `RessuscitarPlaneta`.
+	/// </summary>
+	private void MedirASagaQueEsperaOPlaneta(Checagem Checa)
+	{
+		EloDaSaga? elo = Array.Find(_cadeia, e => e.Id == "freeza_namek");
+		MoldeDeNpc? molde = elo is { Chefes.Length: > 0 } ? _moldes?.Get(elo.Chefes[0].Molde) : null;
+		if (elo == null || molde == null) { Checa("(montagem) a saga do Freeza em Namek existe, com o molde do chefe", false); return; }
+		foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
+		var namek = ZoneKey.Premade(elo.Planeta);
+		if (ZonaCondenada(namek)) RessuscitarPlaneta(namek);
+
+		EstadoDoElo est = Elo(elo.Id);
+		est.Disparou = true;
+		est.Fase = FaseDaSaga.Contando;
+		est.Chefes.Clear();
+		var ec = new EstadoDoChefe { Molde = elo.Chefes[0].Molde, Fase = FaseDoChefe.ACaminho, DiasRestantes = 1, Bps = Sagas.Pinar(molde, MediaDoServidor()) };
+		est.Chefes.Add(ec);
+		EscutaDasSagas = [];
+		int Avisos() => EscutaDasSagas!.Count(t => t.Contains("espera ele voltar", StringComparison.Ordinal));
+
+		ComecarDestruicao(namek, 1e9, "bancada: a saga que espera o planeta");
+		AvancarUmDia();
+		Checa("**COM NAMEK EXPLODINDO, O FREEZA NAO CHEGA** (pedido 151, *\"sagas q acontecem em planetas destruidos n acontecem\"*): ele continua "
+			  + "a caminho -- e o mundo ouve que a ameaca espera o planeta voltar",
+			  ZonaCondenada(namek) && ec.Fase == FaseDoChefe.ACaminho && ec.Corpo == 0 && ec.DiasRestantes <= 0 && Avisos() == 1,
+			  $"fase {ec.Fase}, dias {ec.DiasRestantes}, avisos {Avisos()}; {string.Join(" | ", EscutaDasSagas!)}");
+
+		for (int i = 0; i < 400 && MorteDaZona(namek)?.Fase == FaseDaMorte.Explodindo; i++) TickDaDestruicao(1);
+		AvancarUmDia();
+		Checa("**...E COM NAMEK DESTRUIDA, NEM NA VIRADA SEGUINTE** -- e o aviso nao se repete",
+			  ZonaMorta(namek) && ec.Fase == FaseDoChefe.ACaminho && ec.Corpo == 0 && Avisos() == 1,
+			  $"morta {ZonaMorta(namek)}, fase {ec.Fase}, avisos {Avisos()}");
+
+		RessuscitarPlaneta(namek);
+		ServerPlayer? freeza = Corpo(ec);
+		Checa("**...E COM NAMEK RESTAURADA, ELE CHEGA NA HORA** (*\"elas esperam o planeta voltar\"*), e nao so na proxima virada do dia",
+			  ec.Fase == FaseDoChefe.NoMundo && freeza != null && freeza.Zone.Hash == namek.Hash, $"fase {ec.Fase}, corpo {freeza != null}");
+		foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
+	}
 
 	private ServerPlayer? Corpo(EstadoDoChefe ec) =>
 		_players.TryGetValue(ec.Corpo, out ServerPlayer? c) ? c : null;

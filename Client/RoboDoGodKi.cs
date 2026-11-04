@@ -227,7 +227,8 @@ public partial class RoboDoGodKi : Node
 			  comHalo && trocados == 0, $"{discos} disco(s) a vista, {trocados} com o halo trocado");
 		await FotoDoMundo(menu, "orbita-o-halo-dourado", zoom: 1);   // a camera toda aberta, pra o disco caber
 
-		Checa("a carta estelar marca este mundo (o anel dourado sai da MESMA pergunta: `MenuJogo.MundoDivino`), e nao a Terra",
+		// (2026-10-29, o pedido 174) a carta estelar nao o marca mais: a pergunta e a do halo e do chao, e a do Nav saiu
+		Checa("este mundo e divino pela MESMA pergunta do halo (`MenuJogo.MundoDivino`), e a Terra nao",
 			  MenuJogo.MundoDivino(mundo.Corpo) && !Espaco.PreFeitos().Any(MenuJogo.MundoDivino));
 
 		ZoneKey chao = Espaco.ZonaDe(mundo.Corpo);

@@ -150,7 +150,7 @@ public sealed partial class GameServer
 		if (o.VigorPorSegundo > 0) f.stamina = Math.Min(f.stamina + f.maxstamina * o.VigorPorSegundo * dt, Math.Max(f.stamina, f.maxstamina));
 		if (o.KiDrenadoPorSegundo > 0)
 		{
-			f.Ki -= f.MaxKi * o.KiDrenadoPorSegundo * o.Dreno * dt;
+			f.Ki -= f.MaxKi * o.KiDrenadoPorSegundo * o.Dreno * dt * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 			if (f.Ki <= 0)
 			{
 				f.Ki = 0;
@@ -271,7 +271,8 @@ public sealed partial class GameServer
 		}
 
 		if (a.Racial.PoderMaximo)
-			a.Ficha.Ki = Math.Max(0, a.Ficha.Ki - a.Ficha.MaxKi * Passivas.CustoDoSocoNoPoderMaximo * a.Racial.Efeito.CustoKi);
+			// (2026-11-01, o pedido 220) o morto paga 25% menos (`Fighter.FatorDeKiDoEstado`)
+			a.Ficha.Ki = Math.Max(0, a.Ficha.Ki - a.Ficha.MaxKi * Passivas.CustoDoSocoNoPoderMaximo * a.Racial.Efeito.CustoKi * a.Ficha.FatorDeKiDoEstado);
 	}
 
 	/// <summary>
@@ -691,7 +692,14 @@ public sealed partial class GameServer
 		est.ExecucaoAlvo = 0;
 		EstadoRacial.Recarregar(pl.Ficha.RecargasRaciais, Passivas.MenteCruel, agora, Passivas.RecargaDaMenteCruel);
 		MarcarAgressao(alvo!, pl);
-		alvo!.Combate?.Morrer();
+		// (2026-10-30, o pedido 179) A MORTE PODE SER NEGADA (o Bills derruba em vez de morrer, o seguro, a Aura of Destruction -- o
+		// `CombatState.NegarMorte`): ai a execucao se desfaz, sem o "morre devagar" e sem o -10% em quem assiste. Antes ela anunciava e
+		// espalhava o debuff com o alvo vivo. A `pdisc` cobra o retorno de toda chamada de `Morrer()`.
+		if (alvo!.Combate?.Morrer() != true)
+		{
+			Avisar(pl, "a execucao se desfaz.");
+			return;
+		}
 		Avisar(pl, $"RUTHLESS MIND: {alvo.Name} morre devagar -- e todo mundo em volta sente.");
 		AvisarPertoG3(pl, (float)(Passivas.TilesDaMenteCruel * ZoneCollision.TileSize), $"{pl.Name} EXECUTA {alvo.Name} com crueldade -- o seu corpo gela.", excetoCentro: true);
 

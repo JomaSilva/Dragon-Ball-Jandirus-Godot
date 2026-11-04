@@ -64,6 +64,12 @@ public sealed partial class Fighter
 	/// </summary>
 	public static bool PerdaDePoderComoAntesDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagbioabsorve`): a media do absorvido de antes do pedido 203 -- `(tempBP + AbsorbBP) / 2` sempre, que derrubava
+	/// o corpo cujo poder passou do que ele absorveu (o Bio-Androide da VPS preso em 0,55x). Falso em jogo, sempre.
+	/// </summary>
+	public static bool MediaDoAbsorvidoComoAntesDeTeste;
+
 	public void PowerLevel(double gravBalance = 1, long agoraMs = 0)
 	{
 		if (BP == 0) return;
@@ -146,7 +152,13 @@ public sealed partial class Fighter
 
 		// --- base: BP real mais as somas de zeni cru ----------------------------------
 		double tempBP = BP + BPadd + FuseBuff + HVBPAdd + CooldownAmount + majin_absorb_bp;
-		if (AbsorbDeterminesBP && AbsorbBP != 0) tempBP = (tempBP + AbsorbBP) / 2;
+		// (2026-10-31, o pedido 203) A MEDIA DO ABSORVIDO SO PODE AJUDAR. O DM tira a media `(tempBP + AbsorbBP) / 2` de quem absorve
+		// (`base.dm:110-111`, o "absorb to compensate"), e ela DERRUBAVA o corpo cujo poder passou do total que ele ja absorveu: o
+		// Bio-Androide da VPS, depois do desejo de poder (o banco do potencial solto no BP), ficou preso em 0,55x -- o absorvido em 10% do
+		// BP --, e quanto mais treinasse, mais perto de 0,5x ia, pra sempre (a media nao desliga). Ela continua puxando pra CIMA quem
+		// absorveu mais do que tem; pra baixo, nunca.
+		if (AbsorbDeterminesBP && AbsorbBP != 0)
+			tempBP = MediaDoAbsorvidoComoAntesDeTeste ? (tempBP + AbsorbBP) / 2 : Math.Max(tempBP, (tempBP + AbsorbBP) / 2);
 		else tempBP += AbsorbBP;
 
 		// A GRAVIDADE SAI DAQUI COMO DIVISOR DE CONDICAO. Ver o bloco que a calcula la embaixo --
@@ -214,6 +226,10 @@ public sealed partial class Fighter
 		// cai junto -- o pico (`peakexBP`) nao leva este corte. Ver `Core/Combat/RaboPreso.cs`.
 		if (raboPresoMod < 1) expressedBP = DmMath.Round(Math.Max(expressedBP * raboPresoMod, 1));
 
+		// (2026-11-01, o pedido 219) A GOSMA NO CHAO: o Majin que a largou fica com 73% enquanto ela esta no mapa -- no fim de tudo, como o rabo
+		// preso, e condicao do corpo como ele (sai do pico pela mesma divisao). Ver `Races.GosmaDoMajin`.
+		if (gosmaNoMapaMod < 1) expressedBP = DmMath.Round(Math.Max(expressedBP * gosmaNoMapaMod, 1));
+
 		// Nocauteado = COMPLETAMENTE exposto: 10% do BP base, e nada acima disso conta.
 		if (KO) expressedBP = DmMath.Round(Math.Max(BP * 0.1, 1));
 
@@ -246,7 +262,7 @@ public sealed partial class Fighter
 		// DM, e a % passou a ser o produto dos fatores de condicao, que e o que ela sempre VALEU.
 		// ================================================================================================
 		// (o RABO PRESO e condicao do corpo como as outras: sai do pico pela mesma divisao -- `raboPresoMod`)
-		peakexBP = Math.Max(expressedBP / Math.Max(AgeDiv * deBuff * statusBuff * gravDiv * raboPresoMod, 1e-9), expressedBP);
+		peakexBP = Math.Max(expressedBP / Math.Max(AgeDiv * deBuff * statusBuff * gravDiv * raboPresoMod * gosmaNoMapaMod, 1e-9), expressedBP);
 
 		Egains = HBTCMod * Trainmult * bgains * tgains * tailgain;
 		if (isHV && BoostActive && BoostMult != 0) Egains *= BoostMult;
@@ -294,7 +310,7 @@ public sealed partial class Fighter
 	/// (corpo inteiro), que era o que a razao antiga tambem devolvia com `peakexBP` zerado.
 	/// </remarks>
 	// (O RABO PRESO entra no produto: e o corte que o Saiyajin segurado pelo rabo LE na tela -- o "% efetivo" despenca.)
-	public double Inteireza => statusBuff > 0 ? Math.Max(AgeDiv * deBuff * statusBuff * gravDiv * raboPresoMod, 0) : 1;
+	public double Inteireza => statusBuff > 0 ? Math.Max(AgeDiv * deBuff * statusBuff * gravDiv * raboPresoMod * gosmaNoMapaMod, 0) : 1;
 
 	/// <summary>
 	/// O MULTIPLICADOR TOTAL sobre o BP base -- o que o treino virou depois de TUDO.

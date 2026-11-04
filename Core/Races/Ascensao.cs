@@ -31,6 +31,16 @@ namespace Jandirus.Core.Races;
 ///
 /// A RACA E A GRAVADA (`ServerPlayer.Race`, a do perfil de formas): o meio-sangue conta pela raca que o personagem tem, e nao pela
 /// do pai -- decisao minha, a mesma pergunta que o perfil de formas faz.
+///
+/// ============================ (2026-10-30, o pedido 183) A ASCENSAO DIVINA ============================
+/// O dono: *"Faça com q raças de ascensão ao pegarem god ki a ascensão delas sobe pra 22x (ssj god) e conforme vai subindo a maestria
+/// do god ki (a qual pra elas deve subir igual uma pessoa transformada) ai atingirem o god ki pra ter o blue, a ascensão sobe pro nivel
+/// blue"* -- e logo depois, *"Melhor, faça o limite do ascension ser nivel blue"*. Com o ki divino DESPERTO a Ascensao vale o SSG (22x),
+/// e com a maestria divina do Blue (33%) vale o Blue (32x); acima dele nao sobe mais -- o teto e o Blue, e a rampa mortal fica por
+/// baixo (vale o MAIOR dos dois). Os numeros e a maestria saem do catalogo, como os da rampa: as entradas `ssg` e `blue`.
+/// A maestria divina que sobe "igual uma pessoa transformada" mora no servidor (`GameServer.TickDaMaestriaDivina`), e o teto de x20 do
+/// Kaio-ken em todo nivel (*"limite o kaioken pra racas de ascension pra 20x em todas os niveis de ascension pra balancear"*), no botao
+/// do Kaio-ken (`GameServer.Kaioken`).
 /// ======================================================================================================================
 /// </summary>
 public static class Ascensao
@@ -66,6 +76,23 @@ public static class Ascensao
 	];
 
 	private static double PrimeiroMult(string id) => Catalogo.Def(id)!.Mult[0];
+
+	/// <summary>
+	/// (2026-10-30, o pedido 183) OS DOIS NIVEIS DIVINOS DA ASCENSAO, lidos do catalogo do Saiyajin como os de cima: o do ki divino desperto
+	/// (o SSG, 22x) e o do Blue (32x), que abre com a maestria divina que o Blue pede (33%). O Blue e o teto (o dono: "o limite do ascension
+	/// ser nivel blue").
+	/// </summary>
+	public static readonly double NoKiDivino = PrimeiroMult("ssg"), NoKiDoBlue = PrimeiroMult(Catalogo.IdBlue);
+
+	/// <summary>(2026-10-30, o pedido 183) A maestria divina que leva a Ascensao ao nivel do Blue: a mesma que o Blue pede.</summary>
+	public static readonly double MaestriaDoBlue = Catalogo.Def(Catalogo.IdBlue)!.PedeGodKi;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 183) O NIVEL DIVINO pela maestria do ki divino (negativa = nao despertou, como no `PerfilDeFormas.GodKi`): 1 sem
+	/// ki divino, o do SSG com ele desperto, o do Blue a partir da maestria do Blue -- e para ai.
+	/// </summary>
+	public static double NivelDivino(double godKi) =>
+		godKi < 0 ? 1 : godKi >= MaestriaDoBlue ? NoKiDoBlue : NoKiDivino;
 
 	/// <summary>
 	/// O BONUS PELO BP BASE: 1x ate a ancora de baixo, LINEAR NO LOGARITMO DO BP entre duas ancoras, e o teto acima da ultima. Linear
@@ -123,12 +150,15 @@ public static class Ascensao
 	/// 2 bilhoes no Mistico expressa os 16x do Mistico, como o Saiyajin de 2 bilhoes, e nao 16 x 16. Somadas, a raca sem escada
 	/// passaria a ser 16 vezes mais forte que o Saiyajin em toda forma divina -- o contrario de "proporcional".
 	/// ==============================================================================================================================
+	///
+	/// (2026-10-30, o pedido 183) E COM O KI DIVINO, o MAIOR entre a rampa e o nivel divino (<see cref="NivelDivino"/>).
 	/// </summary>
-	public static double Fator(string? raca, string? classe, double bpBase, bool emFormaAbsoluta)
+	/// <param name="godKi">A maestria do ki divino, ou negativa pra quem nao o despertou (a convencao do `PerfilDeFormas.GodKi`).</param>
+	public static double Fator(string? raca, string? classe, double bpBase, bool emFormaAbsoluta, double godKi = -1)
 	{
 		if (!Ascende(raca, classe)) return 1;
 		if (emFormaAbsoluta && !FormaAbsolutaSomaDeTeste) return 1;
-		return Rampa(bpBase);
+		return Math.Max(Rampa(bpBase), NivelDivino(godKi));
 	}
 
 	// =====================================================================

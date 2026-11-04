@@ -117,10 +117,11 @@ public partial class GameServer
 			return;
 		}
 
-		double custo = pl.Ficha.MaxKi * RegenCustoKi;
+		// (2026-11-02, o pedido 220) o morto paga 25% menos -- e a frase diz o que ele paga
+		double custo = pl.Ficha.MaxKi * RegenCustoKi * pl.Ficha.FatorDeKiDoEstado;
 		if (pl.Ficha.Ki < custo)
 		{
-			Avisar(pl, $"Ki insuficiente: regenerar custa {RegenCustoKi * 100:0}% do maximo.");
+			Avisar(pl, $"Ki insuficiente: regenerar custa {RegenCustoKi * pl.Ficha.FatorDeKiDoEstado * 100:0}% do maximo.");
 			return;
 		}
 
@@ -178,6 +179,8 @@ public partial class GameServer
 		switch (id)
 		{
 			case "regenerar": Regenerar(pl); break;
+			// (2026-11-01, o pedido 219) A GOSMA DO MAJIN: larga ou recolhe -- ver `GameServer.GosmaDoMajin.cs`.
+			case Jandirus.Core.Races.GosmaDoMajin.Verbo: UsarAGosma(pl); break;
 			// A TELA ONDULA PRIMEIRO, e so entao se viaja -- ver `ComecarOMergulho`. A entrada em si
 			// (`EntrarNaMente`) roda 1,8 s depois, no fim da onda.
 			case "mente": ComecarOMergulho(pl); break;
@@ -210,6 +213,8 @@ public partial class GameServer
 			// livro -- aqui relaxar pede o controle de ki, e quem cobra e o proprio `AlternarProntidao`
 			// (`GameServer.PoderEmUso.cs`). E tambem o canal que atende o `Conceal_Power` do DM (`CensoDeSkills`).
 			case "prontidao": AlternarProntidao(pl); break;
+			// (2026-10-29, o pedido 162) o botao que iguala o poder ao do alvo, pelo mesmo cano -- ver `IgualarAoAlvo`
+			case PoderEmUso.VerboDeIgualar: IgualarAoAlvo(pl); break;
 			// O `Grab` do DM (`Grabbing.dm:48`). Mesmo cano do voo e do nado, e pela mesma razao: e um
 			// verb do CORPO e nao uma tecnica do livro, entao o `UsarTecnica` nunca o acharia. Uma
 			// tecla so cicla os tres estados (pegar / levantar no colo / soltar) -- ver
@@ -292,6 +297,8 @@ public partial class GameServer
 				if (UsarVerboDoJuiz(pl, id)) break;
 				// (2026-10-23) O RITUAL MISTICO DO VELHO KAIOHSHIN: tambem e do trono. Ver `GameServer.RitualDoKaioshin.cs`.
 				if (UsarVerboDoRitual(pl, id)) break;
+				// (2026-10-29) O KAIOSHIN RESTAURA UM PLANETA: tambem e do trono. Ver `GameServer.CargoMissoes.cs`.
+				if (UsarVerboDeRestaurar(pl, id)) break;
 				// (2026-10-27) AS LINGUAS -- o botao do chat e o ensino: nao sao skill. Ver `GameServer.Linguas.cs`.
 				if (UsarVerboDeLingua(pl, id)) break;
 				// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca, e nao do livro. Ver `GameServer.Passivas.cs`.

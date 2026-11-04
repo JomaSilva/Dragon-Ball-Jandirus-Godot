@@ -111,6 +111,26 @@ public sealed partial class GameServer
 		return r.GetString(120);
 	}
 
+	/// <summary>(2026-10-29, o pedido 173) As Super Esferas que o pacote marca no MAPA (o fim dele, so com o Super Radar): numero e posicao.</summary>
+	private static List<(int Numero, Vec2 P)> SupersNoMapaDoPacote(NetDataWriter w)
+	{
+		var r = new NetDataReader(w.CopyData());
+		r.GetByte();   // o opcode
+		int n = r.GetByte();
+		for (int i = 0; i < n; i++) { r.GetByte(); r.GetFloat(); r.GetFloat(); r.GetString(24); r.GetBool(); }
+		r.GetByte();
+		r.GetString(120);
+		var l = new List<(int, Vec2)>();
+		int m = r.AvailableBytes > 0 ? r.GetByte() : 0;
+		for (int i = 0; i < m; i++)
+		{
+			int numero = r.GetByte();
+			l.Add((numero, new Vec2(r.GetFloat(), r.GetFloat())));
+			r.GetBool();
+		}
+		return l;
+	}
+
 	private void RodarBancadaDosVerbs(ServerPlayer pl)
 	{
 		GD.Print("\n[verbs] ================ QUEM VE QUE VERB + O RADAR DOURADO (dono, 2026-10-10) ================");
@@ -232,6 +252,23 @@ public sealed partial class GameServer
 			Checa("...e COM o radar na mochila ela viaja, dizendo que a esfera esta NESTA celula",
 				  comRadar.StartsWith("RADAR:", StringComparison.Ordinal) && comRadar.Contains("NESTA", StringComparison.Ordinal),
 				  $"viajou '{comRadar}'");
+
+			// ---- (2026-10-29, o pedido 173) O SUPER RADAR: as sete no mapa do espaco, longe ou perto ----
+			// Longe de TODAS (na posicao de Vegeta, que fica fora do alcance do radar dourado -- ver a montagem logo abaixo): o Dragon Radar
+			// nao as poe no mapa, e o Super Radar poe as sete, cada uma no lugar dela.
+			Vec2 ondeEstava = radarista.Pos;
+			radarista.Pos = Espaco.PreFeitos().First(p => p.Nome == "Vegeta").Pos;
+			List<(int Numero, Vec2 P)> soComODragonRadar = SupersNoMapaDoPacote(MontarPacoteDeSupers(radarista));
+			radarista.Mochila.Guardar(CatalogoDeItens.SuperRadar);
+			List<(int Numero, Vec2 P)> comOSuper = SupersNoMapaDoPacote(MontarPacoteDeSupers(radarista));
+			bool cadaUmaNoLugar = comOSuper.All(s => Vec2.Distance(s.P, OndeEstaASuper(s.Numero)) < 1)
+								  && comOSuper.Select(s => s.Numero).Distinct().Count() == comOSuper.Count;
+			Checa("(o pedido 173) **O SUPER RADAR MARCA AS SETE NO MAPA DO ESPACO**: com ele na mochila o pacote das Super leva a posicao de "
+				  + $"todas ({SuperEsferas.Total}) -- longe delas, em Vegeta --, e so com o Dragon Radar, nenhuma",
+				  soComODragonRadar.Count == 0 && comOSuper.Count == SuperEsferas.Total && cadaUmaNoLugar,
+				  $"so o Dragon Radar: {soComODragonRadar.Count}; com o Super Radar: {comOSuper.Count} (no lugar: {cadaUmaNoLugar})");
+			radarista.Mochila.Tirar(CatalogoDeItens.SuperRadar);
+			radarista.Pos = ondeEstava;
 
 			// ---- de onde se mede: em terra firme, do PLANETA ----
 			PlanetaNoEspaco vegeta = Espaco.PreFeitos().First(p => p.Nome == "Vegeta");
@@ -384,6 +421,8 @@ public sealed partial class GameServer
 			neoTuffle.Ficha.NeoTuffle = true;
 			ServerPlayer divino = Gente("HumanoComGodKi", "Human");
 			divino.Ficha.godki = new GodKiState { awakened = true, mastery = 10 };
+			// (2026-10-29, o pedido 153) ...e o Potential Unleashed liberado: e a plateia do botao que o tira do C duplo
+			divino.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdMistico);
 			// (Write_Teachings vem da COMPRA da Ki Unlocked; Focus_Skill, do nivel 10 da Basic Ki Awareness)
 			const string consciencia = "/datum/skill/mind/Basic_Ki_Awareness";
 			ServerPlayer mentalista = Gente("HumanoDaMente", "Human", skills: ["/datum/skill/mind/Ki_Unlocked", consciencia],
@@ -608,7 +647,8 @@ public sealed partial class GameServer
 					  // (o `sdb_invocar` saiu daqui em 2026-10-10: o servidor passou a recusar quem o manda de terra firme)
 					  // (2026-10-25) e o `divinas_c` (o C duplo das formas divinas, 2026-10-23), irmao do `graus`: o servidor guarda a
 					  // preferencia de qualquer um, e a linha nasceu sem recusa de proposito (`RequisitosDosVerbos`) -- faltava so aqui.
-					  new[] { RequisitosDosVerbos.LinhaDoRadar, "verbo:cargo_herdeiros", "verbo:graus", "verbo:divinas_c", "verbo:sdb_status",
+					  // (2026-10-29) e o `mistico_c` (o Potential Unleashed no C duplo, o pedido 153), irmao do `divinas_c` pelo mesmo motivo
+					  new[] { RequisitosDosVerbos.LinhaDoRadar, "verbo:cargo_herdeiros", "verbo:graus", "verbo:divinas_c", "verbo:mistico_c", "verbo:sdb_status",
 							  "verbo:lab_menu labs", "verbo:and_menu androide",
 							  "verbo:tuffle_menu tuffle" }.Order()),   // (2026-10-18) a pagina da conversao do Neo Tuffle, irma das duas de cima
 				  string.Join(", ", tabela.Where(v => v.Recusa.Length == 0).Select(v => v.Chave)));
@@ -932,6 +972,11 @@ public sealed partial class GameServer
 			Checa("O RITUAL MISTICO DO VELHO KAIOHSHIN: o Kaioshin no trono ve o botao do ritual -- e o novato nao",
 				  VeChave(kaioshin, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Ranks.RitualDoKaioshin.Verbo)
 				  && !VeChave(novato, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Ranks.RitualDoKaioshin.Verbo));
+			// (2026-10-29, o pedido 149) O RESTAURAR PLANETA -- a linha do `ag/deveresdivinos` (a regra inteira e da `--cargomissoes`; aqui e a
+			// plateia da familia 7): o Kaioshin no trono ve o botao, e o novato nao.
+			Checa("O RESTAURAR PLANETA: o Kaioshin no trono ve o botao -- e o novato nao",
+				  VeChave(kaioshin, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Ranks.MissoesDeCargo.VerboDeRestaurar)
+				  && !VeChave(novato, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Ranks.MissoesDeCargo.VerboDeRestaurar));
 			// (2026-10-24) O BIO COM SANGUE MAJIN TEM AS DUAS ABSORCOES -- a linha do `ag/biomajin` (a regra inteira e da `--bioteste`, familia
 			// 4c; aqui e a plateia da familia 7): o bio de sangue Majin que comprou Buu Absorb ve o "Absorver como Majin" ao lado do "Absorver".
 			ServerPlayer bioMajin = Gente("BioDeSangueMajin", Jandirus.Core.Races.BioAndroids.Raca, skills: [Jandirus.Core.Combat.AbsorcaoMajin.Skill]);

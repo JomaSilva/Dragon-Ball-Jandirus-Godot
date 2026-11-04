@@ -89,7 +89,7 @@ public partial class GameServer
 
 	/// <summary>
 	/// QUANTO UM GOLPE ENTRE ESTES DOIS RENDE, em vezes do ganho contra um NPC, por cima do gap e do mestre -- pros dois
-	/// lados do golpe. Com um NPC no meio: 1, como sempre foi (apanhar de NPC inclusive). Entre dois jogadores: a troca
+	/// lados do golpe. Com um NPC no meio: a barra de quem ganha, se for jogador (2026-10-29, o pedido 162; era 1). Entre dois jogadores: a troca
 	/// se o ALVO atacou o ATACANTE na janela, e zero se nao. E o *"precisa ter uma luta"*: bater em quem nao revida nao
 	/// rende, e apanhar sem revidar tambem nao.
 	///
@@ -104,7 +104,12 @@ public partial class GameServer
 		// (2026-10-27) DO MESMO IP NAO RENDE NADA (o pedido 110): dois personagens da mesma conexao nao treinam um no outro -- os dois lados do
 		// golpe, soco, ki e tecnica. Ver `GameServer.MesmoIp.cs`.
 		if (MesmoIp(atacante, alvo)) return 0;
-		if (GainKnobs.PvpSemTrocaDeTeste || !EhJogador(atacante) || !EhJogador(alvo)) return 1;
+		// (2026-10-29, o pedido 162) COM UM NPC NO MEIO A BARRA TAMBEM CONTA -- o dono: *"lembrando q abaixar o poder faz o seus ganhos de treino
+		// cairem linearmente, se o bp do inimigo for menor ou igual a 1% do seu bp, vc vai ganhar apenas 1/4 dos ganhos"*. A mesma reta da troca
+		// (`PoderEmUso.FatorDaTroca`), pela barra de quem ganha quando ele e jogador; o NPC que ganha continua com 1.
+		if (!EhJogador(atacante) || !EhJogador(alvo))
+			return EhJogador(quemGanha ?? atacante) ? PoderEmUso.FatorDaTroca((quemGanha ?? atacante).Ficha) : 1;
+		if (GainKnobs.PvpSemTrocaDeTeste) return 1;
 		if (!AtacouHaPouco(alvo, atacante)) return 0;
 		atacante.TrocouEm = alvo.TrocouEm = NowMs();
 		return GainKnobs.GanhoDaTrocaPvp * PoderEmUso.FatorDaTroca((quemGanha ?? atacante).Ficha);

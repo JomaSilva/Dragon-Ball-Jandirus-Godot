@@ -218,6 +218,7 @@ public partial class PlanetaProcedural : Planeta
 		Sombra = TerrenoPronto != null ? Terreno.QueEsconde.Instanciar() : Terreno.QueEsconde;
 
 		MontarCamadas(Terreno);
+		PintarACidade(Terreno);   // (2026-11-02, o pedido 227) as casas e as estradas do mundo com civilizacao
 
 		// O CHAO EM VOLTA DO POUSO, AGORA. O resto chega conforme a camera anda -- e o mesmo pintor
 		// dos mapas pre-feitos, pelo mesmo motivo: o custo de um tilemap e por celula MONTADA, e um
@@ -377,6 +378,27 @@ public partial class PlanetaProcedural : Planeta
 		AddChild(camada);
 		_camadas[chave] = camada;
 		return camada;
+	}
+
+	/// <summary>
+	/// (2026-11-02, o pedido 227) A CIDADE DO MUNDO COM CIVILIZACAO (`TerrenoGerado.Cidade`): as casas e as estradas numa camada propria,
+	/// por cima do chao e por baixo dos corpos -- como o chao: ninguem fica em cima de uma casa (ela e parede), e a estrada e chao. Pintada
+	/// inteira de uma vez, fora do pintor de pedacos: sao umas poucas centenas de celulas.
+	/// </summary>
+	private void PintarACidade(TerrenoGerado t)
+	{
+		if (t.Cidade is not { } cidade) return;
+		if ((ResourceLoader.Exists(CaminhoDoTileSet) ? ResourceLoader.Load<TileSet>(CaminhoDoTileSet) : null) is not { } conjunto) return;
+		var camada = new TileMapLayer { Name = "Cidade", TileSet = conjunto, ZIndex = -1 };
+		int faltam = 0;
+		foreach ((int x, int y, TileVisual tile) in cidade.Celulas())
+		{
+			if (Resolver(tile, out int fonte, out Vector2I quadro)) camada.SetCell(new Vector2I(x, y), fonte, quadro);
+			else faltam++;
+		}
+		if (faltam > 0) GD.PushWarning($"[planeta] a cidade de {NomeDoPlaneta} tem {faltam} celula(s) sem tile no catalogo");
+		AddChild(camada);
+		GD.Print($"[planeta] {NomeDoPlaneta}: cidade {cidade.Desenho.Nome} de {cidade.Casas.Count} casa(s) e {cidade.Estradas.Count} celula(s) de estrada");
 	}
 
 	/// <summary>

@@ -241,6 +241,26 @@ public sealed class EstadoDeForma
 	/// </summary>
 	public static bool CSurdoAFamiliaDeTeste;
 
+	/// <summary>
+	/// (2026-10-29) O C DUPLO PASSA PELO POTENTIAL UNLEASHED? O irmao do <see cref="CPelasDivinas"/>, pelo mesmo desenho -- o pedido 153, o
+	/// dono: *"opção de mudar de tipo de transformação ao apertar c duas vezes, isso ja tem pro god mas pro potential unsleashed, vc n consegue
+	/// voltar a usar ssj ao apertar c duas vezes, so se vc colocar as formas de ssj nas teclas"*. O Potential Unleashed (16x a 32x, da base)
+	/// ganha de todo degrau mortal que sai da base, e o "mais forte vence" do <see cref="Proxima"/> o escolhia sempre. `false` = a linha do
+	/// Mistico vira RESERVA, como a outra familia: o C sobe por todo o resto primeiro, e ela so entra quando nada mais subir (o Prodigial no
+	/// Mistico ainda chega no Beast). A tecla dele continua indo direto. `null` = corpo sem dono (NPC, IA), a regra de sempre; quem preenche
+	/// pro jogador e o login (`GameServer.RestaurarFormaEDisciplina`), com <see cref="CPeloMisticoDeFabrica"/> quando o disco nao diz nada.
+	/// </summary>
+	public bool? CPeloMistico;
+
+	/// <summary>(2026-10-29) O lado do botao pra quem nunca o apertou: o Potential Unleashed NO C, o que o C ja fazia.</summary>
+	public const bool CPeloMisticoDeFabrica = true;
+
+	/// <summary>
+	/// (2026-10-29) DEFEITO INJETADO (bancada `--formasteclasteste`): o C ignora o botao do Potential Unleashed -- o jogo de antes. Lido pelo
+	/// proprio <see cref="Proxima"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CSurdoAoMisticoDeTeste;
+
 	public FormaDef? Def => Catalogo.Def(Atual);
 
 	public bool NaBase => Atual == Catalogo.IdBase;
@@ -345,18 +365,26 @@ public sealed class EstadoDeForma
 	/// </summary>
 	public FormaDef? Proxima(double bpBase, PerfilDeFormas perfil)
 	{
-		// A FAMILIA DO JOGADOR, E A OUTRA DE RESERVA -- e o `is bool` e literal: `null` e corpo sem dono (NPC, IA) e cai na regra de
-		// sempre, numa passada so. Ver `CPelasDivinas`.
+		// (2026-10-29, o pedido 153) O POTENTIAL UNLEASHED FORA DO C: primeiro tudo sem a linha do Mistico, e ela de reserva. Ver `CPeloMistico`.
+		if (CPeloMistico == false && !CSurdoAoMisticoDeTeste)
+			return ProximaPelaFamilia(bpBase, perfil, semMistico: true) ?? ProximaPelaFamilia(bpBase, perfil, semMistico: false);
+		return ProximaPelaFamilia(bpBase, perfil, semMistico: false);
+	}
+
+	/// <summary>A FAMILIA DO JOGADOR, E A OUTRA DE RESERVA (`CPelasDivinas`) -- com ou sem a linha do Mistico (`CPeloMistico`).</summary>
+	private FormaDef? ProximaPelaFamilia(double bpBase, PerfilDeFormas perfil, bool semMistico)
+	{
+		// e o `is bool` e literal: `null` e corpo sem dono (NPC, IA) e cai na regra de sempre, numa passada so. Ver `CPelasDivinas`.
 		if (CPelasDivinas is bool divinas && !CSurdoAFamiliaDeTeste)
-			return ProximaDaFamilia(divinas, bpBase, perfil) ?? ProximaDaFamilia(!divinas, bpBase, perfil);
-		return ProximaDaFamilia(null, bpBase, perfil);
+			return ProximaDaFamilia(divinas, bpBase, perfil, semMistico) ?? ProximaDaFamilia(!divinas, bpBase, perfil, semMistico);
+		return ProximaDaFamilia(null, bpBase, perfil, semMistico);
 	}
 
 	/// <summary>
 	/// O SELETOR DE SEMPRE (o ramo lateral dos grades, depois o mais forte acima de mim), restrito a UMA familia -- `true` so as divinas,
-	/// `false` so as mortais -- ou a todas (`null`). Ver <see cref="Proxima"/>.
+	/// `false` so as mortais -- ou a todas (`null`), e sem a linha do Mistico quando <paramref name="semMistico"/>. Ver <see cref="Proxima"/>.
 	/// </summary>
-	private FormaDef? ProximaDaFamilia(bool? divinas, double bpBase, PerfilDeFormas perfil)
+	private FormaDef? ProximaDaFamilia(bool? divinas, double bpBase, PerfilDeFormas perfil, bool semMistico)
 	{
 		// COM OS GRADES LIGADOS, O RAMO VEM ANTES DO TRONCO -- e o `== true` e literal: `null` e
 		// corpo sem dono (NPC, IA) e cai na regra de sempre. Ver `GradesLigados`.
@@ -369,6 +397,7 @@ public sealed class EstadoDeForma
 		{
 			if (d.Id == Atual || d.Id == Catalogo.IdBase) continue;
 			if (!DaFamilia(d, divinas)) continue;
+			if (semMistico && d.Linha == LinhaDeForma.Mistico) continue;
 			if (!NoCaminhoDoC(d)) continue;
 			if (Avaliar(d.Id, bpBase, kiFracao: 1, caido: false, perfil) != RecusaForma.Pode) continue;
 			double m = Catalogo.Multiplicador(d.Id, Maestria, perfil, CombateSegundos);
@@ -765,6 +794,11 @@ public sealed class EstadoDeForma
 		if (d.PedeEnergiaUe > 0 && perfil.EnergiaUe < d.PedeEnergiaUe) return RecusaForma.SemEnergia;
 		if (d.PedeProficienciaUi > 0 && perfil.ProficienciaUi < d.PedeProficienciaUi)
 			return RecusaForma.SemMaestria;
+
+		// 7b. (2026-10-30, o pedido 186) AS OUTRAS MAESTRIAS -- o SSJ1 dominado e o SSG a 50% do Blue. Depois do ki divino de proposito: ver
+		//     FormaDef.PedeOutrasMaestrias.
+		foreach ((string forma, double pct) in d.PedeOutrasMaestrias)
+			if (Maestria.De(forma) < pct) return RecusaForma.SemMaestria;
 
 		// 8. A PORTA E O BP BASE. Ver o cabecalho do Catalogo -- gatear pelo expresso deixaria a
 		//    propria forma anterior "pagar" o requisito da seguinte.

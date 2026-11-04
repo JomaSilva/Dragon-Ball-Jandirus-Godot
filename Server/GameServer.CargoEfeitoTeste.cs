@@ -142,7 +142,7 @@ public partial class GameServer
 		["Holy_Shortcut"] = "o corpo atravessa pra Arconia, paga METADE do Ki e LEVA JUNTO quem estava colado",
 
 		// ---- os provados noutra bancada: ver `EfeitoProvadoEmOutraBancada` ----
-		["Revive"] = "o morto colado volta a vida, a volta e contada e a SEGUNDA cobra a vida de quem ressuscita",
+		["Revive"] = "o morto colado volta a vida, a volta e contada e TODA volta cobra a vida de quem ressuscita (2026-10-29, o pedido 165)",
 		["Keep_Body"] = "o corpo do marcado passa a FICAR no mundo dos vivos quando o prazo da morte vence",
 		["Paralysis"] = "o tiro tranca as PERNAS do alvo (e nao os bracos: paralisia nao e stun)",
 		["Kaioken"] = "o `KaioPcnt` sobe de 1 no corpo, e apertar de novo apaga",

@@ -222,6 +222,26 @@ public sealed partial class GameServer
 	/// autorizacao E sem recarga precisa ouvir primeiro que falta a chave, senao ele espera 24 h
 	/// pra descobrir que faltava o Guardiao.
 	/// </summary>
+	/// <summary>
+	/// (2026-11-01, o pedido 222) O PISO DA SALA DO TEMPO: *"so pode entrar na sala do tempo quem tiver NO MINIMO 20 milhoes de bp base"*. O
+	/// poder BASE (`Fighter.BP`), e nao o expresso: forma, raiva e carga nao abrem a porta. Vale pras duas portas (a da Terra e as dos mundos
+	/// sorteados, `GameServer.SalasDePlaneta.cs`) e pra quem entra agarrado (`PorQueLevarOAgarradoBarraASala`).
+	/// </summary>
+	internal const double BpBaseMinimoDaSala = 20_000_000;
+
+	internal const string FraseDoPisoDaSala = "a Sala do Tempo só deixa entrar quem tem no mínimo 20 milhões de poder base.";
+
+	/// <summary>
+	/// NUM PROCESSO DE BANCADA O PISO SO VALE QUANDO A FAMILIA DELE PEDE -- o molde da zona segura (`ZonaSeguraNaBancadaDeTeste`): as cenas
+	/// que ja existiam (a `--salateste`, as salas de planeta, o levar junto, os robos da chave e das salas) entram com corpos de mil. O jogo de
+	/// verdade nao passa bandeira de bancada.
+	/// </summary>
+	internal static bool PisoDaSalaNaBancadaDeTeste;
+
+	/// <summary>Este corpo tem o poder base que a porta pede?</summary>
+	private static bool PoderBaseDaSala(ServerPlayer pl) =>
+		(ProcessoDeBancada.Value && !PisoDaSalaNaBancadaDeTeste) || pl.Ficha.BP >= BpBaseMinimoDaSala;
+
 	private void EntrarNaSala(ServerPlayer pl)
 	{
 		// PERTO DA PORTA? A pergunta e do servidor. O menu do cliente le a mesma tabela
@@ -251,6 +271,9 @@ public sealed partial class GameServer
 		// nao se gasta numa porta que ainda nao abriu.
 		if (!SalaDoTempoAberta(NowMs())) { Avisar(pl, FraseDaSalaFechada(NowMs())); return; }
 
+		// (2026-11-01, o pedido 222) O PISO DE 20 MILHOES DE PODER BASE -- tambem antes da lotacao e da chave, pelo mesmo motivo.
+		if (!PoderBaseDaSala(pl)) { Avisar(pl, FraseDoPisoDaSala); return; }
+
 		// A LOTACAO ANTES DA AUTORIZACAO: gastar a chave do Guardiao numa porta cheia seria queimar
 		// uma autorizacao que ele so da uma vez.
 		int dentro = QuantosNaSala();
@@ -262,8 +285,11 @@ public sealed partial class GameServer
 		}
 
 		// A AUTORIZACAO DO GUARDIAO (`permission = 1` em `EarthRanks.dm`), e ela vale pra UMA
-		// entrada -- e consumida logo abaixo.
-		if (!pl.SalaAutorizada)
+		// entrada -- e consumida logo abaixo. (2026-10-31, o pedido 196) OU A CHAVE DA SALA, que faz as vezes dela: conferida aqui e
+		// QUEBRADA so na entrada, la embaixo -- a recarga e o agarrado nao a gastam, como nao gastam a autorizacao. Quem tem as duas usa a
+		// autorizacao e guarda a chave. Ver `GameServer.ChaveDaSala.cs`.
+		bool pelaChave = !pl.SalaAutorizada && TemAChaveDaSala(pl);
+		if (!pl.SalaAutorizada && !pelaChave)
 		{
 			Avisar(pl, "uma barreira mágica bloqueia a porta. Só o Guardião da Terra pode "
 					   + "autorizar a sua entrada na Sala do Tempo.");
@@ -306,6 +332,7 @@ public sealed partial class GameServer
 		// (`permission = 0; htc_last_visit = world.realtime`). Marcar a recarga na saida abriria a
 		// reentrada de graca pra quem entrasse e saisse no mesmo minuto. O agarrado que entra de
 		// verdade abre a mesma sessao (aoLevar), senao ocuparia a sala sem vaga e sem recarga.
+		if (pelaChave) QuebrarAChaveDaSala(pl);   // (2026-10-31, o pedido 196) a chave quebra AQUI, na entrada
 		AbrirSessaoDaSalaDaTerra(pl, agora);
 
 		const int t = ZoneCollision.TileSize;
@@ -361,6 +388,8 @@ public sealed partial class GameServer
 		Avisar(pl, "  o chão puxa 10x mais forte, e um dia lá dentro vale um ano de treino.");
 		Avisar(pl, $"  cabem {LotacaoDaSala} pessoas por vez, e o Guardião da Terra precisa autorizar "
 				   + "a sua entrada.");
+		// (2026-10-31, o pedido 196) ...ou a Chave da Sala, que faz as vezes da autorizacao uma vez
+		Avisar(pl, "  uma Chave da Sala do Tempo também abre a barreira, sem o Guardião -- uma vez: ela quebra na entrada.");
 		Avisar(pl, "  depois de entrar, seu corpo leva 24 horas REAIS pra aguentar de novo -- esta ou qualquer outra");
 		Avisar(pl, "  Sala do Tempo (as dos outros mundos contam, e cada uma cobra pelo quanto dilata).");
 		Avisar(pl, "  a sessão rende por 2 dias in-game (~48 min). Depois disso a comida some, os");
@@ -434,6 +463,7 @@ public sealed partial class GameServer
 		// servidor fazia a chave pra qualquer um, em qualquer planeta, pelo id ou pelo nome.
 		ServerPlayer? o = AlvoAoAlcance(pl, arg, TilesDaChave, out ServerPlayer? longe, euMesmoConto: true);
 		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (RecusaPeloMesmoIp(pl, o)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (o == null || !EhPessoa(o))
 		{
 			Avisar(pl, "marque alguém antes (duplo clique nele) pra autorizar a entrada.");

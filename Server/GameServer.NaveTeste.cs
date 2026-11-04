@@ -379,6 +379,10 @@ public partial class GameServer
 		RodarBancadaDaPonteQueOuve(pl, Checa);
 		RodarBancadaDoObservar(pl, Checa);
 
+		// AS CAMADAS 12 E 13 (2026-10-31): o shift ao leme (o pedido 207) e o tanque maior (o pedido 209) -- ver `GameServer.NaveTanqueTeste.cs`.
+		RodarBancadaDoShiftAoLeme(pl, Checa);
+		RodarBancadaDoTanqueMaior(pl, Checa);
+
 		GD.Print($"===== BANCADA DA NAVE: {ok} OK, {falhou} FALHA(S) =====\n");
 	}
 

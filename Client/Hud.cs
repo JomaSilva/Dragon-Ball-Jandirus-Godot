@@ -35,6 +35,9 @@ public partial class Hud : CanvasLayer
 	public static Hud? Instancia { get; private set; }
 
 	private Label _nome = null!, _bp = null!, _atividade = null!;
+
+	/// <summary>(2026-10-31, o robo `--diagbionome`) o nome que o painel do canto desenhou por ultimo.</summary>
+	public string NomeDesenhadoDeTeste => _nome?.Text ?? "";
 	private Label _mira = null!, _letal = null!, _hora = null!, _efetivo = null!;
 	private LuaNoCeu _lua = null!;
 
@@ -107,7 +110,13 @@ public partial class Hud : CanvasLayer
 		raiz.AddChild(_torneio);
 		// OS PEDIDOS QUE ESPERAM RESPOSTA (convite de mestre, licao, fusao...), no mesmo canto e logo acima do convite
 		// do torneio (dono, 2026-10-13). Ver `PainelDePedidos`.
-		raiz.AddChild(new PainelDePedidos { Name = "Pedidos" });
+		var pedidos = new PainelDePedidos { Name = "Pedidos" };
+		raiz.AddChild(pedidos);
+		// (2026-10-31, o pedido 198) O AVISO DO JORNAL GALACTICO mora na MESMA pilha dos pedidos (o canto inferior direito que o dono pediu):
+		// a pilha ja sabe nao tapar o convite do torneio, e um cartao a mais cresce pra cima como os outros. Ver `JornalGalactico`.
+		pedidos.AddChild(new AvisoDoJornal { Name = "AvisoDoJornal" });
+		// (2026-11-01, o pedido 216) O AVISO URGENTE (o cartao vermelho: alguem esta matando os Kaioshins) na mesma pilha. Ver `AvisoUrgenteNaTela`.
+		pedidos.AddChild(new AvisoUrgenteNaTela { Name = "AvisoUrgente" });
 		// O DISCO DO DRAGON RADAR, no mesmo canto (dono, 2026-10-10): so aparece pra quem tem o aparelho, e o
 		// convite do torneio encosta a esquerda dele. Ver `RadarNaTela`.
 		raiz.AddChild(new RadarNaTela { Name = "RadarDeEsferas" });
@@ -121,6 +130,8 @@ public partial class Hud : CanvasLayer
 		var camadaDaChave = new CanvasLayer { Name = "CamadaDaChave", Layer = 3 };
 		AddChild(camadaDaChave);
 		camadaDaChave.AddChild(_chave);
+		// (2026-10-31, o pedido 198) A JANELA DO JORNAL GALACTICO, na mesma camada acima do chat (e uma janela, como o chaveamento).
+		camadaDaChave.AddChild(new JornalGalactico { Name = "Jornal" });
 		_assistir = new PainelDeAssistir { Name = "Assistir" };
 		raiz.AddChild(_assistir);
 
@@ -130,6 +141,7 @@ public partial class Hud : CanvasLayer
 			cli.ConviteDeTorneioFechou += AoFecharConviteDeTorneio;
 			cli.ChaveDeTorneio += AoChaveDeTorneio;
 			cli.SheetUpdated += Mostrar;
+			cli.MeuNomeMudou += MostrarMeuNome;   // (2026-10-31) o renome do bio-androide recem-nascido
 			cli.CorpoAtualizado += AoMudarCorpo;
 			cli.PoderEmUsoMudou += MostrarOPoderEmUso;
 			cli.AtributosRecebidos += MostrarPoderes;
@@ -150,6 +162,7 @@ public partial class Hud : CanvasLayer
 		SoltarAsEscalas();
 		if (GameClient.Instance is not { } cli) return;
 		cli.SheetUpdated -= Mostrar;
+		cli.MeuNomeMudou -= MostrarMeuNome;
 		cli.CorpoAtualizado -= AoMudarCorpo;
 		cli.PoderEmUsoMudou -= MostrarOPoderEmUso;
 		cli.AtributosRecebidos -= MostrarPoderes;
@@ -439,6 +452,9 @@ public partial class Hud : CanvasLayer
 		_temScouter = a.Tem(Protocol.Poder.Scouter);
 		if (antes != _temScouter) Mostrar(_ficha);
 	}
+
+	/// <summary>(2026-10-31) O nome mudou no meio da sessao (o parto do bio-androide): o painel troca na hora, sem esperar a ficha.</summary>
+	private void MostrarMeuNome() => _nome.Text = GameClient.Instance?.LocalName ?? "";
 
 	private void Mostrar(SheetState f)
 	{

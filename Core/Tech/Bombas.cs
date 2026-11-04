@@ -237,7 +237,8 @@ public static class DrenoDeEnergia
 
 	/// <summary>O Ki que <paramref name="pecas"/> pecas tiram deste corpo por segundo.</summary>
 	public static double DrenoPorSegundo(Fighter f, int pecas) =>
-		pecas <= 0 ? 0 : pecas * (DrenoPorPeca * f.BaseDrain() + FracaoDoKiMaximoPorPeca * f.MaxKi);
+		// (2026-11-01, o pedido 220) a fatia do tanque com o fator do morto; a do `BaseDrain` ja o traz
+		pecas <= 0 ? 0 : pecas * (DrenoPorPeca * f.BaseDrain() + FracaoDoKiMaximoPorPeca * f.MaxKi * f.FatorDeKiDoEstado);
 
 	/// <summary>DEFEITO INJETADO (bancada `--v021teste`, familia X2): a peca vestida nao drena nem treina nada -- a roupa sem acao da v0.2.0.</summary>
 	public static bool NaoFazNadaDeTeste;

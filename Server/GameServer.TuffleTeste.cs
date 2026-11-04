@@ -38,7 +38,10 @@ public sealed partial class GameServer
 	/// <summary>O comeco dos ids das maquinas que esta bancada poe no chao.</summary>
 	private const int IdDoPalcoDoTuffle = 986_100;
 
-	private static readonly string[] ContasDaBancadaDoTuffle = ["bancada_tuffle_baby", "bancada_tuffle_vegeta", "bancada_tuffle_bulma"];
+	// (2026-10-29, o pedido 159) o Goku e o hospede da familia H (a morte da copia): o Vegeta e a Bulma ja morreram nas de cima
+	// (2026-10-30, o pedido 180) e a Chichi e a hospede do logout dentro da copia (familia L)
+	private static readonly string[] ContasDaBancadaDoTuffle =
+		["bancada_tuffle_baby", "bancada_tuffle_vegeta", "bancada_tuffle_bulma", "bancada_tuffle_goku", "bancada_tuffle_chichi"];
 
 	private void AfirmarTf(string nome, bool cond, string detalhe = "")
 	{
@@ -515,11 +518,189 @@ public sealed partial class GameServer
 			vegeta2.Combate.Nocautear(600);
 			Possuir(baby2, out _);
 			bool dentro = PosseDoTuffleDe(baby2.Id)?.Hospede == vegeta2;
-			baby2.Combate.Morrer();
+			_ = baby2.Combate.Morrer();
 			TickDasPosses();
 			AfirmarTf("O GOLPE QUE MATA O CORPO POSSUIDO MATA O VEGETA, pelas regras dele (o `Morrer` do corpo dele) -- e o Tuffle sai vivo e de pe",
 				dentro && vegeta2.Ficha.dead && !baby2.Ficha.dead && !baby2.Ficha.KO && baby2.CorpoDaPosse == null && _posses.Count == 0,
 				$"dentro {dentro}, Vegeta morto {vegeta2.Ficha.dead}, Baby morto {baby2.Ficha.dead}");
+
+			// ============================================================ H) O HOSPEDEIRO PERMANENTE (2026-10-29, o pedido 159)
+			GD.Print("[tuffle] -- H) o hospedeiro permanente: o hospede morre, a copia com 10% (o pedido 201), o dominio, a saida e a morte --");
+			int CadaveresDe(ServerPlayer onde, string nome) => ZoneList(onde.Zone.Hash).Count(o => o.ECadaver && o.NomeDeQuemMorreu == nome);
+			double bpDaBulma = bulma.Ficha.BP;
+			LadoALado(baby2, bulma);
+			bulma.Combate.Nocautear(600);
+			List<string> tomou = Ouvir(() => UsarHabilidade(baby2, "tuffle_hospedar"));
+			PosseDoTuffle? perm = PosseDoTuffleDe(baby2.Id);
+			var daCopia = Look(baby2);
+			string nomeDaCopia = perm?.Corpo.Nome ?? "?";
+			AfirmarTf("(o pedido 159) **O HOSPEDEIRO PERMANENTE**: o Tuffle toma a Bulma nocauteada -- ela MORRE (pela porta, pro Outro Mundo), e ele "
+					  + "anda numa copia dela com 10% do BP (o pedido 201; era 90%) e o BP do roubo guardado, com o nome dela e o cabelo branco-acinzentado",
+				// os 10% do DONO, e nao a constante: a contraprova que volta aos 90% muda a constante, e a regua que lesse dela nao reprovava (a r2)
+				perm is { Permanente: true } && bulma.Ficha.dead && Math.Abs(baby2.Ficha.BP - bpDaBulma * 0.10) <= Math.Max(bpDaBulma, 1) * 1e-6
+				&& baby2.Ficha.tuffle_bp_roubado == bpDaBulma && baby2.Ficha.tuffle_dominio == 0
+				&& daCopia.Nome == nomeDaCopia && daCopia.CabeloBranco,
+				$"permanente {perm?.Permanente}; Bulma morta {bulma.Ficha.dead}; BP {baby2.Ficha.BP:N0} de {bpDaBulma:N0}; {daCopia.Nome} branco {daCopia.CabeloBranco} | {Ultimos(tomou)}");
+			List<string> outro = Ouvir(() => UsarHabilidade(baby2, "tuffle_hospedar"));
+			AfirmarTf("(o pedido 159) ...e DENTRO dela nao se toma outro (*\"ele tem q estar sem hospedeiros pra isso\"*): o verb some da tabela, e o aperto "
+					  + "nao muda nada",
+				!VeOVerb(baby2, "hab:tuffle_hospedar") && VeOVerb(baby2, "hab:tuffle_sair") && PosseDoTuffleDe(baby2.Id) == perm, Ultimos(outro));
+			// ============================================================ (2026-10-31, o pedido 201) O DOMINIO DO CORPO ROUBADO
+			double roubado = baby2.Ficha.tuffle_bp_roubado;
+			int tiquesNumMinuto = (int)Math.Round(60 / Protocol.TickSeconds);
+			double esperadoNumMinuto = Jandirus.Core.Forms.Catalogo.MaestriaPorSegundo * tiquesNumMinuto * Protocol.TickSeconds;
+			baby2.Combate.EmCombate = 0;
+			baby2.Combate.BrigandoComAlguem = 0;
+			double dominio0 = baby2.Ficha.tuffle_dominio;
+			for (int i = 0; i < tiquesNumMinuto; i++) TickDasPosses();
+			double subiuFora = baby2.Ficha.tuffle_dominio - dominio0;
+			double alvoDaConta = BpDoHospedeiro(baby2.Ficha);
+			AfirmarTf("(o pedido 201) T2. **O DOMINIO DO CORPO SOBE COM O TEMPO DENTRO DELE, E O PODER VEM JUNTO**: um minuto na copia (fora de luta), no "
+					  + "ritmo da maestria das formas (100% em 3 h), e o BP sai dos 10% do roubado pela conta",
+				Math.Abs(subiuFora - esperadoNumMinuto) < esperadoNumMinuto * 0.01 && baby2.Ficha.BP > roubado * FracaoInicialDoHospedeiro
+				&& Math.Abs(baby2.Ficha.BP - alvoDaConta) <= alvoDaConta * 0.0011,
+				$"dominio {dominio0:0.####} -> {baby2.Ficha.tuffle_dominio:0.####} (esperado +{esperadoNumMinuto:0.####}); BP {baby2.Ficha.BP:N0} (conta {alvoDaConta:N0}) de {roubado:N0}");
+			double dominio1 = baby2.Ficha.tuffle_dominio;
+			for (int i = 0; i < tiquesNumMinuto; i++) { baby2.Combate.EntrarEmCombate(); TickDasPosses(); }
+			double subiuLutando = baby2.Ficha.tuffle_dominio - dominio1;
+			baby2.Combate.EmCombate = 0;
+			baby2.Combate.BrigandoComAlguem = 0;
+			baby2.Combate.LutandoDeVerdade = 0;
+			AfirmarTf("(o pedido 201) T2b. **...E LUTANDO O DOMINIO SOBE NO DOBRO**", Math.Abs(subiuLutando - 2 * esperadoNumMinuto) < esperadoNumMinuto * 0.02,
+				$"+{subiuLutando:0.####} num minuto lutando, +{subiuFora:0.####} fora");
+			// (2026-10-31, o adendo 201d, a escolha do dono: "Linha reta até 110%") a LINHA RETA de 10% a 110%, nos numeros do dono e nao
+			// nas constantes: com 50% de dominio o corpo rende 60% do que tinha; com 90%, o que tinha; com 99%, 109%
+			bool NaLinhaReta(double dominio)
+			{
+				baby2.Ficha.tuffle_dominio = dominio;
+				TickDasPosses();
+				double conta = roubado * (0.10 + 1.00 * baby2.Ficha.tuffle_dominio / 100);
+				return Math.Abs(baby2.Ficha.BP - conta) <= conta * 0.0011;
+			}
+			bool reta50 = NaLinhaReta(50);
+			double bp50 = baby2.Ficha.BP;
+			bool reta90 = NaLinhaReta(90);
+			double bp90 = baby2.Ficha.BP;
+			bool reta99 = NaLinhaReta(99);
+			double bp99 = baby2.Ficha.BP;
+			// (o adendo 201d) a reta chega ao fim em passos pequenos: o ultimo (de 99,95% pra 100%) fica abaixo dos 0,1% que o BP espera pra
+			// subir, e o corpo parava um fio abaixo dos 110% (o robo `--diagtuffle` viu 54.999.654 de 55.000.000) -- o T3 confere dai
+			NaLinhaReta(99.95);
+			baby2.Ficha.tuffle_dominio = 99.9999;
+			List<string> inteiro = Ouvir(() => TickDasPosses());
+			// os 110% do DONO (o adendo 201d), e nao a constante: a contraprova que volta aos 100% muda a constante
+			bool noTeto = baby2.Ficha.tuffle_dominio == 100 && Math.Abs(baby2.Ficha.BP - roubado * 1.10) <= roubado * 1e-9;
+			baby2.Ficha.BP = roubado * 3;   // um ganho que escapasse por outra porta (o Zenkai, um desejo)
+			TickDasPosses();
+			AfirmarTf("(o adendo 201d) T3. **DOMINADO POR INTEIRO, O CORPO RENDE 110% DO PODER QUE TINHA -- E NUNCA PASSA DISSO**: com 100% de "
+					  + "dominio o BP e 110% do roubo (e o Tuffle e avisado), e um ganho por outra porta volta pro teto no tique seguinte",
+				noTeto && inteiro.Any(t => t.Contains("por inteiro: ele rende 110%", StringComparison.Ordinal))
+				&& Math.Abs(baby2.Ficha.BP - roubado * 1.10) <= roubado * 1e-9,
+				$"no teto {noTeto}; BP {baby2.Ficha.BP:N0} de {roubado:N0} (110% = {roubado * 1.10:N0}) | {Ultimos(inteiro)}");
+			AfirmarTf("(o adendo 201d) T3b. **O DOMINIO SOBE O PODER EM LINHA RETA ATE OS 110%** (a escolha do dono): com 50% de dominio o "
+					  + "corpo rende 60% do que tinha, com 90% o que tinha, e com 99% ja passa dele (109%) -- sem salto no fim",
+				reta50 && reta90 && reta99 && bp99 > roubado,
+				$"com 50%: {bp50:N0}; com 90%: {bp90:N0}; com 99%: {bp99:N0} (109% = {roubado * 1.09:N0}) -- de {roubado:N0}");
+			double ganhoNaCopia = baby2.Ficha.GanhoDeAtividade(10);
+			AfirmarTf("(o pedido 201) T4. **NEM O CORPO ROUBADO TREINA** (*\"vc n consegue treinar nem seu corpo original nem corpos invadidos\"*): o "
+					  + "ganho de uma atividade na copia e zero", ganhoNaCopia == 0, $"ganho na copia {ganhoNaCopia}");
+			int antesDaSaida = CadaveresDe(baby2, nomeDaCopia);
+			List<string> saiu2 = Ouvir(() => UsarHabilidade(baby2, "tuffle_sair"));
+			int depoisDaSaida = CadaveresDe(baby2, nomeDaCopia);
+			double ganhoNoProprio = baby2.Ficha.GanhoDeAtividade(10);
+			AfirmarTf("(o pedido 159) **SAIR DELA A DEIXA MORTA NO CHAO** (um cadaver novo com o nome dela), e o Tuffle volta vivo pro proprio corpo -- "
+					  + "onde NAO ganha BP (*\"Neotuffles n poderiam ganhar bp fora do host\"*; e desde o pedido 201 nem na copia -- o T4)",
+				PosseDoTuffleDe(baby2.Id) == null && baby2.CorpoDaPosse == null && baby2.Ficha.NeoTuffle && !baby2.Ficha.dead
+				&& depoisDaSaida == antesDaSaida + 1 && ganhoNoProprio == 0,
+				$"cadaveres {antesDaSaida} -> {depoisDaSaida}; ganho na copia {ganhoNaCopia}, no proprio {ganhoNoProprio} | {Ultimos(saiu2)}");
+
+			// ============================================================ L) O LOGOUT DENTRO DO HOSPEDEIRO (2026-10-30, o pedido 180)
+			// O dono: *"guarda a posse"* -- sair do jogo dentro da copia nao a deixa mais morta no chao: o disco leva o corpo dele e a copia, e o
+			// login o poe de volta dentro dela. E os buffs sao do corpo que os acendeu: a entrada apaga os dele, a saida apaga os da copia.
+			GD.Print("[tuffle] -- L) a saida do jogo dentro do hospedeiro permanente: a posse fica (o pedido 180) --");
+			bool Perto(double x, double y) => Math.Abs(x - y) < 1;   // o buff da bancada e de +1000 de physoff
+			ServerPlayer? chichi = Entrar(4, Ficha("Chichi", "Human", "Female"));
+			if (chichi == null) { AfirmarTf("(montagem) a Chichi entra pela porta", false, c[4].Recusa ?? ""); return; }
+			LadoALado(baby2, chichi);
+			chichi.Combate.Nocautear(600);
+			chichi.Livro.Dar(PathDoZanzoken);   // uma tecnica dela, que a copia leva e o disco tem de guardar
+			double physoffDoBaby = baby2.Ficha.physoff;
+			LigarBuff(baby2, "bancada_tuffle", "Bancada", new() { ["physoff"] = 1000 });
+			bool buffNele = baby2.Ficha.physoff > physoffDoBaby + 500;
+			UsarHabilidade(baby2, "tuffle_hospedar");
+			PosseDoTuffle? naChichi = PosseDoTuffleDe(baby2.Id);
+			AfirmarTf("(o pedido 180) **A ENTRADA APAGA OS BUFFS DELE**: com um buff de pe, o Tuffle toma a Chichi -- o buff sai da ficha DELE (o "
+					  + "numero volta) e nao fica nada aceso pra copia",
+				buffNele && naChichi is { Permanente: true } && Perto(naChichi.FichaDoTuffle.physoff, physoffDoBaby) && BuffsDe(baby2.Id).Count == 0,
+				$"buff nele {buffNele}; physoff guardado {naChichi?.FichaDoTuffle.physoff:0.##} (era {physoffDoBaby:0.##}); buffs de pe {BuffsDe(baby2.Id).Count}");
+			if (naChichi is not { Permanente: true }) return;
+			string nomeDaChichi = naChichi.Corpo.Nome;
+			double bpDaCopia = baby2.Ficha.BP, bpDoProprio = naChichi.FichaDoTuffle.BP, physoffDaCopia = baby2.Ficha.physoff;
+			LigarBuff(baby2, "bancada_tuffle", "Bancada", new() { ["physoff"] = 1000 });   // e um aceso NA copia, que o save tira dela
+			// ...e a copia sem a perna esquerda, com as tecnicas dela: os dois voltam do disco como estavam
+			if (baby2.Combate.Corpo.Achar("Perna esquerda") is { } pernaDaCopia) { pernaDaCopia.Decepado = true; pernaDaCopia.Vida = 0; }
+			int tecnicasDaCopia = baby2.Livro.Aprendidas.Count;
+			ZoneKey zonaDaCena = baby2.Zone;
+			int CadaveresDaChichi() => ZoneList(zonaDaCena.Hash).Count(o => o.ECadaver && o.NomeDeQuemMorreu == nomeDaChichi);
+			int antesDoLogout = CadaveresDaChichi(), idDeAntes = baby2.Id;
+			// (2026-10-31, o pedido 201) A COPIA DE ANTES DA REGRA: sem o BP do roubo gravado (como as que a VPS tem, do pedido 159) -- o login
+			// tem de migra-la sem tirar poder (o T5, la embaixo).
+			baby2.Ficha.tuffle_bp_roubado = 0;
+			baby2.Ficha.tuffle_dominio = 0;
+			bool saiuDentro = mesa.SaiDoJogo(c[0], ContasDaBancadaDoTuffle[0]);
+			CharacterSave? disco = mesa.NoDisco(ContasDaBancadaDoTuffle[0]);
+			AfirmarTf("(o pedido 180) **O DISCO GUARDA OS DOIS CORPOS**: o do Tuffle (Neo Tuffle, Tsufurujin, sem o buff) e a copia da Chichi por cima "
+					  + "(Humana, sem o buff aceso nela) -- e a posse sai do mapa com o id que saiu do jogo",
+				saiuDentro && disco is { Raca: "Tsujin", Hospedeiro: { Raca: "Human" } h } && disco.Ficha.NeoTuffle && Perto(disco.Ficha.physoff, physoffDoBaby)
+				&& Perto(h.Ficha.physoff, physoffDaCopia) && h.Corpo.Nome == nomeDaChichi && !_posses.ContainsKey(idDeAntes),
+				$"saiu {saiuDentro}; disco {disco?.Raca}, Neo Tuffle {disco?.Ficha.NeoTuffle}, physoff {disco?.Ficha.physoff:0.##}; copia "
+				+ $"{disco?.Hospedeiro?.Raca} '{disco?.Hospedeiro?.Corpo.Nome}', physoff {disco?.Hospedeiro?.Ficha.physoff:0.##} (era {physoffDaCopia:0.##}); "
+				+ $"posse no id antigo {_posses.ContainsKey(idDeAntes)}");
+			ServerPlayer? baby3 = mesa.EntraNoMundo(c[0], ContasDaBancadaDoTuffle[0], "Baby");
+			if (baby3 == null) { AfirmarTf("(montagem) o Baby volta ao jogo", false, c[0].Recusa ?? ""); return; }
+			var deVoltaNaCopia = Look(baby3);
+			AfirmarTf("(o pedido 201) T5. **A COPIA GRAVADA ANTES DA REGRA NOVA NAO PERDE PODER NO LOGIN**: o BP do roubo vira o dela sobre 0,9, e o "
+					  + "dominio, o que rende os mesmos 90% (80%, na linha reta ate 110% do adendo 201d)",
+				Math.Abs(baby3.Ficha.tuffle_bp_roubado - bpDaCopia / 0.9) <= Math.Max(bpDaCopia, 1) * 1e-6
+				&& Math.Abs(FracaoDoHospedeiro(baby3.Ficha.tuffle_dominio) - 0.9) < 1e-9 && Math.Abs(baby3.Ficha.BP - bpDaCopia) <= Math.Max(bpDaCopia, 1) * 1e-6,
+				$"roubado {baby3.Ficha.tuffle_bp_roubado:N0} (esperado {bpDaCopia / 0.9:N0}); dominio {baby3.Ficha.tuffle_dominio:0.###}; BP {baby3.Ficha.BP:N0}");
+			bool semAPerna = baby3.Combate.Corpo.Achar("Perna esquerda")?.Decepado == true;
+			AfirmarTf("(o pedido 180) **A POSSE FICA NO LOGOUT** (*\"guarda a posse\"*): o Tuffle volta ao jogo DENTRO da copia da Chichi -- o nome e "
+					  + "o cabelo branco dela, a raca dela, o BP dela, a perna que ela perdeu, as tecnicas dela, os ganchos do corpo -- e o logout "
+					  + "nao deixou cadaver nenhum no chao",
+				PosseDoTuffleDe(baby3.Id) is { Permanente: true } && baby3.CorpoDaPosse != null && deVoltaNaCopia.Nome == nomeDaChichi
+				&& deVoltaNaCopia.CabeloBranco && baby3.Race == "Human" && Math.Abs(baby3.Ficha.BP - bpDaCopia) <= Math.Max(bpDaCopia, 1) * 1e-6
+				&& semAPerna && baby3.Livro.Sabe(PathDoZanzoken) && baby3.Livro.Aprendidas.Count == tecnicasDaCopia
+				&& baby3.Combate.AoDecepar != null && baby3.Combate.RitmoDaRecarga != null && CadaveresDaChichi() == antesDoLogout,
+				$"posse {PosseDoTuffleDe(baby3.Id)?.Permanente}; {deVoltaNaCopia.Nome} branco {deVoltaNaCopia.CabeloBranco}; raca {baby3.Race}; BP "
+				+ $"{baby3.Ficha.BP:N0} de {bpDaCopia:N0}; sem a perna {semAPerna}; tecnicas {baby3.Livro.Aprendidas.Count} de {tecnicasDaCopia}; "
+				+ $"ganchos {baby3.Combate.AoDecepar != null}; cadaveres {antesDoLogout} -> {CadaveresDaChichi()}");
+			LigarBuff(baby3, "bancada_tuffle", "Bancada", new() { ["physoff"] = 1000 });
+			List<string> saiu3 = Ouvir(() => UsarHabilidade(baby3, "tuffle_sair"));
+			AfirmarTf("(o pedido 180) **A SAIDA DEPOIS DO RELOG DEVOLVE O CORPO DELE INTEIRO**: o Neo Tuffle Tsufurujin, com o BP e o physoff dele "
+					  + "(o buff aceso na copia apagou NELA), e a copia cai morta",
+				PosseDoTuffleDe(baby3.Id) == null && baby3.CorpoDaPosse == null && baby3.Ficha.NeoTuffle && baby3.Race == "Tsujin"
+				&& Math.Abs(baby3.Ficha.BP - bpDoProprio) <= Math.Max(bpDoProprio, 1) * 1e-6 && Perto(baby3.Ficha.physoff, physoffDoBaby)
+				&& BuffsDe(baby3.Id).Count == 0 && CadaveresDaChichi() == antesDoLogout + 1,
+				$"raca {baby3.Race}; BP {baby3.Ficha.BP:N0} de {bpDoProprio:N0}; physoff {baby3.Ficha.physoff:0.##} (era {physoffDoBaby:0.##}); "
+				+ $"buffs de pe {BuffsDe(baby3.Id).Count}; cadaveres {CadaveresDaChichi()} | {Ultimos(saiu3)}");
+			baby2 = baby3;   // a familia de baixo segue com o Baby que voltou
+
+			ServerPlayer? goku = Entrar(3, Ficha("Goku", "Saiyan", "Male"));
+			if (goku == null) { AfirmarTf("(montagem) o Goku entra pela porta", false, c[3].Recusa ?? ""); return; }
+			LadoALado(baby2, goku);
+			goku.Combate.Nocautear(600);
+			UsarHabilidade(baby2, "tuffle_hospedar");
+			string nomeDoGoku = PosseDoTuffleDe(baby2.Id)?.Corpo.Nome ?? "?";
+			bool noGoku = PosseDoTuffleDe(baby2.Id) is { Permanente: true } && goku.Ficha.dead;
+			int antesDaMorte = CadaveresDe(baby2, nomeDoGoku);
+			_ = baby2.Combate.Morrer();   // o golpe que mata a copia (o corpo emprestado nao tem a porta da morte: quem a cobra e o tique)
+			TickDasPosses();
+			AfirmarTf("(o pedido 159) **A MORTE DA COPIA LEVA O TUFFLE JUNTO** (*\"Se o corpo do neotuffle hospedeiro morrer o neotuffle morre junto\"*): a copia "
+					  + "fica no chao, e o Tuffle morre no proprio corpo",
+				noGoku && PosseDoTuffleDe(baby2.Id) == null && baby2.CorpoDaPosse == null && baby2.Ficha.NeoTuffle && baby2.Ficha.dead
+				&& CadaveresDe(baby2, nomeDoGoku) == antesDaMorte + 1,
+				$"no Goku {noGoku}; Baby morto {baby2.Ficha.dead}; cadaveres {antesDaMorte} -> {CadaveresDe(baby2, nomeDoGoku)}");
 		}
 		catch (Exception e)
 		{
@@ -530,7 +711,9 @@ public sealed partial class GameServer
 			PosseSemAMaquinaDeTeste = HospedeAVistaDeTeste = HospedeComAsRedeasDeTeste = TuffleSemCabeloBrancoDeTeste = PosseNaoAcabaNoNocauteDeTeste = false;
 			TuffleSemCorpoDoBabyDeTeste = TuffleComAMenteDeTeste = false;
 			Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = false;
-			foreach (PosseDoTuffle p in _posses.Values.Distinct().ToList()) Expulsar(p, "");
+			foreach (PosseDoTuffle p in _posses.Values.Distinct().ToList())
+				if (p.Permanente) DeixarOHospedeiro(p, "", morreJunto: false);
+				else Expulsar(p, "");
 			_noChao.RemoveAll(o => o.Id >= IdDoPalcoDoTuffle && o.Id < IdDoPalcoDoTuffle + 100);
 			mesa.Fecha();
 			ApagarContasDoTuffle();

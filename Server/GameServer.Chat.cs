@@ -126,7 +126,10 @@ public partial class GameServer
 				float raio = texto.Contains('!') ? RaioDoGrito : RaioDaVista;
 				// (2026-10-27) A LINGUA DO SAY (o pedido 118): so a fala DIGITADA de uma pessoa, e so quando ela escolheu outra lingua que nao a
 				// Galactica -- cada ouvinte a le pela maestria dele (`Mandar`).
-				string? lingua = digitada && EhPessoa(a) && LinguaDaFala(a) is { } l && l != Jandirus.Core.Races.Linguas.Galactica ? l : null;
+				// (2026-11-01, o pedido 221) ...E A FALA DO HABITANTE, na nativa dele: *"faça npcs de cada planeta falar na lingua nativa deles"*.
+				// Ver `LinguaDoHabitante`.
+				string? lingua = (digitada && EhPessoa(a) ? LinguaDaFala(a) : LinguaDoHabitante(a)) is { } l && l != Jandirus.Core.Races.Linguas.Galactica
+					? l : null;
 				if (!soDentro) PorPerto(a, a, raio, canal, texto, excetoEste: null, marca, lingua);
 				if (daPonte != null) PorPerto(a, daPonte, raio, canal, texto, excetoEste: soDentro ? null : daPonte, marca, lingua);
 				break;
@@ -229,7 +232,9 @@ public partial class GameServer
 		if (para.Peer == null && DonoQueOuvePeloBoneco(para) is { } dono) para = dono;
 
 		// (2026-10-27) A LINGUA DO SAY (o pedido 118): quem nao a sabe inteira le EMBARALHADO pela maestria dele -- e aprende um pouco ouvindo
-		// (so pessoa aprende; quem fala se ouve inteiro). A etiqueta diz a lingua. Ver `Core/Races/Linguas.cs`.
+		// (so pessoa aprende; quem fala se ouve inteiro). Ver `Core/Races/Linguas.cs`.
+		// (2026-11-01, o pedido 221) SEM A ETIQUETA: *"tira o [lingua falada] q tem sempre q vc fala uma lingua q nao é a comum galatica"*. A
+		// fala chega so com as palavras (inteiras ou embaralhadas); o som de cada lingua (o `Vocabulo`) e o que a distingue.
 		if (lingua != null && falante != null)
 		{
 			double m = para == falante ? 1 : Jandirus.Core.Races.Linguas.Maestria(para.Ficha, lingua);
@@ -240,7 +245,7 @@ public partial class GameServer
 				// o cartao da aba Stats anda a cada ponto inteiro de maestria, e nao a cada frase
 				if (Math.Floor(depois * 100) > Math.Floor(antes * 100)) MandarLinguas(para);
 			}
-			texto = $"[{Jandirus.Core.Races.Linguas.Rotulo(lingua)}] " + Jandirus.Core.Races.Linguas.Embaralhar(texto, lingua, m);
+			texto = Jandirus.Core.Races.Linguas.Embaralhar(texto, lingua, m);
 		}
 		EscutaDeEntregas?.Add((para.Id, autor, texto));
 

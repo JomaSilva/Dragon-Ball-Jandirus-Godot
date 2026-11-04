@@ -183,7 +183,10 @@ public sealed class ParametrosDeTerreno
 	/// </summary>
 	public double Gravidade = 1.0;
 
-	/// <summary>Nome, so pra rastreabilidade e log. Nao entra na geracao.</summary>
+	/// <summary>
+	/// Nome, pra rastreabilidade e log. (2026-11-02) Na geracao entra so numa pergunta: o Yardrat, que ja tem povo, nao ganha a cidade
+	/// da civilizacao (`Civilizacao.Tem`).
+	/// </summary>
 	public string Nome = "";
 }
 
@@ -292,6 +295,13 @@ public sealed class TerrenoGerado
 	/// receber um byte. Ver <see cref="SalaDePlaneta.AbrirAPorta"/>.
 	/// </summary>
 	public PortaNoTerreno? PortaDaSala { get; init; }
+
+	/// <summary>
+	/// (2026-11-02, o pedido 227) A CIDADE DESTE MUNDO, se ele e dos 15% com civilizacao (`Civilizacao.Tem`) e tem onde: as casas (parede
+	/// dura no mapa) e as estradas. Funcao pura do terreno e da seed, como as <see cref="Macieiras"/> -- o cliente a desenha e o servidor
+	/// poe o povo nela sem trocar um byte. Nula no resto. Ver <see cref="CidadeProcedural"/>.
+	/// </summary>
+	public CidadeProcedural? Cidade { get; init; }
 
 	/// <summary>O ponto de pouso em PIXELS, no centro da celula. E o que vai pro `MoveToZone`.</summary>
 	public Vec2 Spawn => new(
@@ -944,6 +954,12 @@ public static class GeradorDeTerreno
 		// ergue um rochedo, que tem de sair fechado. No resto dos mundos nao le nem escreve nada.
 		PortaNoTerreno? portaDaSala = SalaDePlaneta.AbrirAPorta(w, h, chao, cobertura, bits, agua, sx, sy, p.Seed, macieiras);
 
+		// (2026-11-02, o pedido 227) A CIDADE, no mundo com civilizacao: DEPOIS do pomar e da porta da Sala (ela desvia das duas) e ANTES do
+		// blob, pelo motivo dele -- a casa e parede, e a estrada tira a mata. O nome entra so pra deixar o Yardrat de fora (ele ja tem povo).
+		CidadeProcedural? cidade = Civilizacao.Tem(p.Seed, p.Nome)
+			? CidadeProcedural.Erguer(w, h, chao, cobertura, bits, agua, duro, sx, sy, p.Seed, macieiras, portaDaSala)
+			: null;
+
 		// o blob e montado DEPOIS da clareira -- montar antes congelaria os bits que a escavacao
 		// ainda ia apagar, e o servidor acharia parede exatamente no ponto de pouso
 		byte[] jcol = MontarJcol(w, h, bits);
@@ -958,7 +974,8 @@ public static class GeradorDeTerreno
 		colisao.DefinirAgua(agua);
 		// O PLANO DO QUE NAO SE QUEBRA VIAJA PELO MESMO CAMINHO, e pelo mesmo motivo. Mundo sem rocha grande
 		// fica sem plano nenhum, que e "nada duro aqui" -- o que todo mundo gerado dizia ate 2026-10-10.
-		if (rochasGrandes > 0) colisao.DefinirDuro(duro);
+		// (2026-11-02) ...e a casa da cidade tambem e dura: uma explosao nao abre buraco no desenho que o cliente continuaria pintando.
+		if (rochasGrandes > 0 || cidade != null) colisao.DefinirDuro(duro);
 
 		return new TerrenoGerado
 		{
@@ -978,6 +995,7 @@ public static class GeradorDeTerreno
 			ClareiraEscavada = escavou,
 			Macieiras = macieiras,
 			PortaDaSala = portaDaSala,
+			Cidade = cidade,
 		};
 	}
 

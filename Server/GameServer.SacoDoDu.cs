@@ -47,12 +47,14 @@ public sealed partial class GameServer
 	{
 		if (SacoNaFrente(a) is not { } saco) return false;
 		if (a.Race == "Majin") return true;   // o `if(Race=="Majin") return` do DU: o saco nao rende pro Majin
-		// (2026-10-27, o pedido 136) o saco que ja estava numa Sala do Tempo segura o soco e nao paga -- ver `LugarDeObra.AumentamOGanho`
-		if (LugarDeObra.NaoRendeAqui(saco.Zona, saco.Tipo)) return true;
+		// (2026-10-27, o pedido 136) o saco que ja estava numa Sala do Tempo segura o soco e nao paga -- ver `LugarDeObra.AumentamOGanho`.
+		// (2026-10-29, o pedido 164) E o da zona segura de quem nasce: `PorQueNaoRende`.
+		if (PorQueNaoRende(saco) != null) return true;
 		long agora = NowMs();
 		if (agora - a.UltimoSocoNoSaco < MsEntreSocosNoSaco) return true;
-		if (a.Ficha.Ki < KiDoSocoNoSaco) return true;
-		a.Ficha.Ki -= KiDoSocoNoSaco;
+		double kiDoSoco = KiDoSocoNoSaco * a.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
+		if (a.Ficha.Ki < kiDoSoco) return true;
+		a.Ficha.Ki -= kiDoSoco;
 		a.UltimoSocoNoSaco = agora;
 		a.Ficha.AttackGain(_rng);   // o BPMod ja esta no ganho base -- ver o cabecalho
 		return true;

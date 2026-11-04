@@ -20,6 +20,15 @@ public sealed class RaceCatalog
 	public RaceProto? Get(string nome) => _protos.GetValueOrDefault(nome);
 
 	/// <summary>
+	/// (2026-11-02, o pedido 227) UMA RACA QUE NAO ESTA NO ARQUIVO: a raca procedural de um mundo com civilizacao (`RacaProcedural.Proto`),
+	/// posta pelo servidor quando o mundo dela nasce. Quem ja esta no catalogo nao e trocado.
+	/// </summary>
+	public void Registrar(RaceProto p)
+	{
+		if (p.Name.Length > 0) _protos.TryAdd(p.Name, p);
+	}
+
+	/// <summary>
 	/// DE ONDE SAEM OS NUMEROS DESTE CORPO. O meio-Saiyajin nao tem prototipo: a raca gravada e
 	/// <c>Halfbreed</c>, e o corpo e o do Saiyajin. As linhagens New Generation, Future Lineage e
 	/// Prodigial moram na entrada do Saiyajin por isso.

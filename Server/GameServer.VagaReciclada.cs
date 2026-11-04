@@ -74,6 +74,7 @@ public sealed partial class GameServer
 		EsquecerOAprendiz(sig);   // (2026-10-19) o vinculo de aprendiz de Kaioshin era do personagem que saiu da vaga
 		EsquecerAsAmizades(sig);
 		VagarOsTronosDaAssinatura(sig);   // (2026-10-26) o CARGO era do personagem que saiu da vaga -- `GameServer.Ranks.cs`   // (2026-10-21) os lacos de amizade com os habitantes (os aliados vao embora com a ficha) -- `GameServer.Amizade.cs`
+		EsquecerNaPatrulha(sig);   // (2026-10-31, o pedido 198) a ficha de procurado (e a pena) era do personagem que saiu da vaga -- `GameServer.PatrulhaGalactica.cs`
 	}
 
 	/// <summary>

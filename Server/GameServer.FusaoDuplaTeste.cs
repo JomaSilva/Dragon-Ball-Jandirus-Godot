@@ -251,6 +251,7 @@ public partial class GameServer
 			OCorpoInteiroAoFundir();
 			ARecargaAtravessaOLogout();
 			OPuxaoDaPotara();
+			OsRivaisFundemMaisForte();   // (2026-11-01, o pedido 211)
 		}
 		catch (Exception e)
 		{
@@ -291,6 +292,96 @@ public partial class GameServer
 		GD.Print($"[fusao2] ============ {_fdOk} passaram, {_fdFalhou} falharam ============");
 		if (_fdFalhou > 0)
 			foreach (string f in _fdFalhas) GD.Print($"[fusao2]   -> {f}");
+	}
+
+	// =====================================================================
+	// RV. (2026-11-01, o pedido 211) OS RIVAIS FUNDEM 15% MAIS FORTE
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"faca tb com q personagens q sao rivais (rival bom) tenham um boost de poder se fizerem fusao (em torno de uma fusao 15%
+	/// mais forte) pra qualquer fusao, potara ou a danca"*. Pela corrente inteira (`FundirDeVerdade`), com a declaracao feita pelo funil do
+	/// jogo (`Convivio.Declarar`, que cobra o convivio): dois que se declararam "rival amigo" UM DO OUTRO fundem com o BP base 15% acima
+	/// do de sempre -- na Danca, na Potara e na Danca estragada --, e o planeta ouve a rivalidade. A declaracao de UM lado so funde como
+	/// sempre; e a fusao de quem nao e rival nenhum (a secao D) continua no `(A+B)x2` exato.
+	/// </summary>
+	private void OsRivaisFundemMaisForte()
+	{
+		GD.Print("[fusao2] -- RV) (o pedido 211) os rivais fundem 15% mais forte --");
+
+		// A DECLARACAO PELO FUNIL DO JOGO: conhecer, conviver o que o "rival amigo" pede e declarar.
+		void Rival(ServerPlayer de, ServerPlayer para)
+		{
+			de.Social.Fotografar(para.Assinatura, para.Name, para.Race, para.Genero, para.Idade, NowMs());
+			de.Social.SomarFamiliaridade(para.Assinatura, Convivio.FamiliaridadeExigida(Relacao.RivalBom));
+			de.Social.Declarar(para.Assinatura, Relacao.RivalBom);
+		}
+		double BaseDe(ServerPlayer p, double buffAntes) => p.Ficha.BP + p.Ficha.FuseBuff - buffAntes;
+		bool OuviuARivalidade() => EscutaDeAvisos?.Any(t => t.Contains("rivalidade", StringComparison.Ordinal)) == true;
+		// AS FALHAS DESTA SECAO SAEM TAMBEM COM A PALAVRA FALHA: e a que o ciclo dos agentes le (o `AfirmarFd` escreve FALHOU).
+		void AfirmarN(string oque, bool passou, string detalhe = "")
+		{
+			AfirmarFd(oque, passou, detalhe);
+			if (!passou) GD.Print($"[fusao2]   FALHA {oque}   ({detalhe})");
+		}
+
+		// ---- A DANCA, rivais dos dois lados ----
+		ServerPlayer a = ForjarNaFusaoDupla("Kakarotto", "Saiyan", 1_000_000, sabeDancar: true, 0);
+		ServerPlayer b = ForjarNaFusaoDupla("Ouji", "Saiyan", 900_000, sabeDancar: true, 1);
+		Rival(a, b);
+		Rival(b, a);
+		double buffA = a.Ficha.FuseBuff;
+		double esperado = Fusao.BpDaFusao(1_000_000, 900_000) * Fusao.BonusDosRivais;
+		EscutaDeAvisos?.Clear();
+		FusaoAtiva? f = FundirDeVerdade(a, b, TipoDeFusao.Danca);
+		AfirmarN("RV1 **OS RIVAIS FUNDEM 15% MAIS FORTE NA DANCA**: dois que se declararam rival amigo um do outro saem com o BP base de "
+				  + "(A+B)x2 vezes 1,15",
+				  f is { Estragada: false } && Math.Abs(BaseDe(a, buffA) - esperado) < 1.0,
+				  $"{BaseDe(a, buffA):N0} vs {esperado:N0} (sem o bonus {Fusao.BpDaFusao(1_000_000, 900_000):N0}); "
+				  + $"declaracoes {a.Social.RelacaoCom(b.Assinatura)} / {b.Social.RelacaoCom(a.Assinatura)}");
+		AfirmarN("RV2 ...e o planeta ouve a rivalidade (o aviso dos 15%)",
+				  EscutaDeAvisos?.Any(t => t.Contains("rivalidade", StringComparison.Ordinal) && t.Contains("15% mais forte", StringComparison.Ordinal)) == true,
+				  string.Join(" | ", EscutaDeAvisos?.TakeLast(3) ?? []));
+		if (f != null) Separar(f, "fim da secao RV (danca)");
+		AfirmarN("RV3 ...e desfeita, o `FuseBuff` volta ao que era (o bonus sai junto)",
+				  Math.Abs(a.Ficha.FuseBuff - buffA) < 1e-6, $"{a.Ficha.FuseBuff}");
+
+		// ---- A POTARA, rivais dos dois lados ----
+		ServerPlayer c = ForjarNaFusaoDupla("Shin", "Kai", 3_000_000, sabeDancar: false, 3);
+		ServerPlayer d = ForjarNaFusaoDupla("Kibito", "Kai", 2_000_000, sabeDancar: false, 4);
+		Rival(c, d);
+		Rival(d, c);
+		double buffC = c.Ficha.FuseBuff;
+		f = FundirDeVerdade(c, d, TipoDeFusao.Potara);
+		esperado = Fusao.BpDaFusao(3_000_000, 2_000_000) * Fusao.BonusDosRivais;
+		AfirmarN("RV4 **...E NA POTARA TAMBEM** (pra qualquer fusao, potara ou a danca)",
+				  f != null && Math.Abs(BaseDe(c, buffC) - esperado) < 1.0, $"{BaseDe(c, buffC):N0} vs {esperado:N0}");
+		if (f != null) Separar(f, "fim da secao RV (potara)");
+
+		// ---- A DANCA ESTRAGADA DE RIVAIS: "qualquer fusao" ----
+		ServerPlayer g = ForjarNaFusaoDupla("Tarble", "Saiyan", 600_000, sabeDancar: true, 6);
+		ServerPlayer h = ForjarNaFusaoDupla("Gure", "Saiyan", 500_000, sabeDancar: true, 7);
+		Rival(g, h);
+		Rival(h, g);
+		double buffG = g.Ficha.FuseBuff;
+		f = FundirDeVerdade(g, h, TipoDeFusao.Danca, aAcerta: false);
+		esperado = Fusao.BpDaFusaoEstragada(600_000, 500_000) * Fusao.BonusDosRivais;
+		AfirmarN("RV5 ...e na Danca ESTRAGADA de dois rivais tambem: a metade do mais fraco, vezes 1,15",
+				  f is { Estragada: true } && Math.Abs(BaseDe(g, buffG) - esperado) < 1.0,
+				  $"estragada {f?.Estragada}; {BaseDe(g, buffG):N0} vs {esperado:N0}");
+		if (f != null) Separar(f, "fim da secao RV (estragada)");
+
+		// ---- DE UM LADO SO, NAO ----
+		ServerPlayer i = ForjarNaFusaoDupla("Raditz", "Saiyan", 1_000_000, sabeDancar: false, 9);
+		ServerPlayer j = ForjarNaFusaoDupla("Nappa", "Saiyan", 900_000, sabeDancar: false, 10);
+		Rival(i, j);   // so o Raditz declarou
+		double buffI = i.Ficha.FuseBuff;
+		EscutaDeAvisos?.Clear();
+		f = FundirDeVerdade(i, j, TipoDeFusao.Potara);
+		esperado = Fusao.BpDaFusao(1_000_000, 900_000);
+		AfirmarN("RV6 a rivalidade de UM LADO SO nao conta: a fusao sai com o (A+B)x2 de sempre, e ninguem ouve aviso de rivalidade",
+				  f != null && Math.Abs(BaseDe(i, buffI) - esperado) < 1.0 && !OuviuARivalidade(),
+				  $"{BaseDe(i, buffI):N0} vs {esperado:N0}; declaracoes {i.Social.RelacaoCom(j.Assinatura)} / {j.Social.RelacaoCom(i.Assinatura)}");
+		if (f != null) Separar(f, "fim da secao RV (um lado)");
 	}
 
 	// =====================================================================

@@ -25,6 +25,35 @@ public sealed class TranseSalvo
     public bool Morto;
 }
 
+/// <summary>
+/// (2026-10-30, o pedido 180) A COPIA DO HOSPEDEIRO PERMANENTE de quem saiu do jogo dentro dela -- o Neo Tuffle volta DENTRO dela. O resto
+/// do save e o corpo DELE (como a posse o guarda); este bloco e o da copia que ele dirige: a ficha, os membros, a raca, a classe, as tecnicas
+/// e as formas dela, e o que o mundo ve (o nome, a raca, o genero e a cara do hospede). Ver <see cref="CharacterSave.Hospedeiro"/>.
+/// </summary>
+public sealed class HospedeiroSalvo
+{
+    public DisfarceG12 Corpo = new();
+    public string Raca = "", Classe = "";
+
+    /// <summary>A conta do hospede: a tech dele responde ao Tuffle dentro da copia (`EDaContaDona`).</summary>
+    public string ContaDoHospede = "";
+
+    public Fighter Ficha = new();
+
+    /// <summary>No formato do `CharacterSave.Membros`.</summary>
+    public Dictionary<string, double[]> Membros = [];
+
+    public List<string> Skills = [], SkillsEnsinadas = [], SkillsCompradas = [];
+    public Dictionary<string, int> SkillsEscolhas = [];
+    public Dictionary<string, Dictionary<string, double>> SkillsGanhos = [];
+    public int MarcosTotais, MarcosLivres, MarcosPorBp;
+
+    public Jandirus.Core.Forms.LimiaresPessoais? Limiares;
+    public List<int> FormasDespertadas = [], FormasEstreadas = [], PortasCortadas = [];
+    public Dictionary<string, double> Maestrias = [];
+    public bool? GradesLigados, CPelasDivinas, CPeloMistico;
+}
+
 /// <summary>Tudo que sobrevive ao logout de um personagem.</summary>
 public sealed class CharacterSave
 {
@@ -138,6 +167,12 @@ public sealed class CharacterSave
     /// (`GameServer.TirarOSaveDoTranse`).
     /// </summary>
     public TranseSalvo? Transe;
+
+    /// <summary>
+    /// (2026-10-30, o pedido 180) A COPIA QUE O NEO TUFFLE DIRIGE, de quem foi gravado dentro do hospedeiro permanente (nulo no caso normal).
+    /// Os campos de cima sao o corpo dele; o login monta esse corpo e o poe de volta dentro dela (`GameServer.RetomarOHospedeiro`).
+    /// </summary>
+    public HospedeiroSalvo? Hospedeiro;
 
     /// <summary>
     /// AS SKILLS APRENDIDAS, por typepath, e os marcos.
@@ -498,6 +533,12 @@ public sealed class CharacterSave
     public bool? CPelasDivinas;
 
     /// <summary>
+    /// (2026-10-29) O C DUPLO DESTE PERSONAGEM PASSA PELO POTENTIAL UNLEASHED? Ver <see cref="Jandirus.Core.Forms.EstadoDeForma.CPeloMistico"/> e o
+    /// verb `mistico_c`. A receita do <see cref="CPelasDivinas"/>: anulavel (o nulo e "save de antes do botao") e gravado em `DeJogador`.
+    /// </summary>
+    public bool? CPeloMistico;
+
+    /// <summary>
     /// (v0.3.0) O SCOUTER ESTAVA LIGADO na hora do save -- a copia em disco do bit `Poder.Scouter` de
     /// `ServerPlayer.PoderesConcedidos`, que nao vai pro disco. O dono: *"ao sair do server usando scouter, e dps entrar, o
     /// scouter e desequipado"*. No DM o `scouteron` e variavel do mob sem `tmp` (`Inventory.dm:155`) e viaja no save.
@@ -522,6 +563,19 @@ public sealed class CharacterSave
     /// E ELE E GRAVADO EM `DeJogador` (campo nao escrito e campo apagado).
     /// </summary>
     public bool RefugioPerguntado;
+
+    /// <summary>
+    /// (2026-11-01, o pedido 216) OS KAIOSHINS QUE CAIRAM COM ESTE DEUS DA DESTRUICAO FORA DO JOGO -- os nomes, pro aviso urgente da
+    /// entrada. Escrito pelo servidor no save de quem esta fora (`GameServer.VidaLigada.cs`), lido no login e NAO gravado em `DeJogador`:
+    /// entregue uma vez, ele morre no proximo save, de proposito.
+    /// </summary>
+    public List<string>? KaioshinsQueCairam;
+
+    /// <summary>
+    /// (2026-11-01, o pedido 216) ...e a MORTE QUE ELE DEVE: o ultimo Kaioshin de jogador caiu com ele fora. Cobrada no login (se nenhum
+    /// Kaioshin voltou a vida nesse meio tempo) e, como o de cima, nao gravada em `DeJogador`.
+    /// </summary>
+    public bool DeveAMorteDosKaioshins;
 }
 
 /// <summary>
@@ -980,7 +1034,8 @@ public sealed class AccountStore(string pasta)
         // O ALINHAMENTO MORAL. Ver o campo -- ele e `PERSISTENTE: sem tmp` no original e nunca
         // tinha chegado ao disco aqui.
         Karma = pl.Karma,
-        FormasDespertadas = pl.Forma != null ? [.. pl.Forma.Liberadas] : [],
+        // (2026-10-29) menos a forma que o ritual dos cinco Saiyajins so EMPRESTOU (o pedido 163): um logout no meio nao a deixa sua
+        FormasDespertadas = pl.Forma != null ? [.. pl.Forma.Liberadas.Where(r => r != pl.FormaEmprestadaPeloRitual)] : [],
         FormasEstreadas = pl.Forma != null ? [.. pl.Forma.EstreiaVista] : [],
 
         // A PREFERENCIA DOS GRADES. Vai crua, INCLUSIVE o nulo: um corpo que nunca passou pelo login
@@ -990,6 +1045,7 @@ public sealed class AccountStore(string pasta)
 
         // (2026-10-23) A FAMILIA DO C DUPLO, crua pelo mesmo motivo (o nulo de quem nunca opinou). Ver `CharacterSave.CPelasDivinas`.
         CPelasDivinas = pl.Forma?.CPelasDivinas,
+        CPeloMistico = pl.Forma?.CPeloMistico,   // (2026-10-29) o irmao, cru pelo mesmo motivo
 
         // (v0.3.0) O SCOUTER LIGADO -- a copia do bit que nao vai pro disco. Ver `CharacterSave.ScouterLigado`.
         ScouterLigado = (pl.PoderesConcedidos & Jandirus.Net.Protocol.Poder.Scouter) != 0,

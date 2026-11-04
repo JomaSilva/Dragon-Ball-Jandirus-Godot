@@ -447,7 +447,9 @@ public sealed partial class GameServer
 		// LISTAR NAO E AGIR: as duas listas (contas, online) ficam fora do registro, senao cada abertura
 		// do painel viraria uma linha no `admin.log`.
 		// (v0.3.0) ...e PERGUNTAR o modo das racas tambem nao: so muda-lo (com argumento) vai pro registro.
-		if (cmd != "admin_contas" && cmd != "admin_online" && !(cmd == "admin_modo_racas" && arg.Trim().Length == 0))
+		// (2026-11-01, o pedido 213) ...nem perguntar os custos do Outro Mundo.
+		if (cmd != "admin_contas" && cmd != "admin_online" && !(cmd == "admin_modo_racas" && arg.Trim().Length == 0)
+			&& !(cmd == VerboDosCustosDoAlem && arg.Trim().Length == 0))
 			Registrar(pl, arg.Length > 0 ? $"{cmd} [{arg}]" : cmd);
 
 		switch (cmd)
@@ -495,6 +497,10 @@ public sealed partial class GameServer
 			case "admin_anunciar": AdminAnunciar(pl, arg); break;
 			// (v0.3.0) as racas dos personagens novos: padrao ou aleatorias -- ver `GameServer.ModoDeRacas.cs`.
 			case "admin_modo_racas": AdminModoDeRacas(pl, arg); break;
+			// (2026-10-31, o pedido 195) as Esferas do Dragao por jogador, ou um set de cada no servidor -- ver `GameServer.EsferasPorJogador.cs`.
+			case VerboDasEsferasPorJogador: AdminEsferasPorJogador(pl, arg); break;
+			// (2026-11-01, o pedido 213) os custos do Outro Mundo -- ver `GameServer.CustosDoAlem.cs`.
+			case VerboDosCustosDoAlem: AdminCustosDoAlem(pl, arg); break;
 
 			// ---------------------------------------------------------- ceu (ver GameServer.Clima.cs)
 			case "admin_clima": AdminClima(pl, arg); break;

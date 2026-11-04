@@ -645,6 +645,13 @@ public partial class GameServer
 			// molde, nem fera. Ver `GuiarOGuardiaoDoMajin` (`GameServer.AbsorcaoMajin.cs`).
 			if (!GuiarOGuardiaoDoMajin(npc, out presa, out destino)) return;
 		}
+		else if (_patrulheiroDe.ContainsKey(npc.Id))
+		{
+			// (2026-10-31, o pedido 198) O PATRULHEIRO DA PATRULHA GALACTICA (e o Bills que ela chama): a presa e o procurado que ele veio
+			// prender, e so ele -- nem molde, nem soldado. ANTES do ramo do soldado de proposito: aquele cacaria o povo do planeta. Ver
+			// `GuiarOPatrulheiro` (`GameServer.PatrulhaGalactica.cs`).
+			if (!GuiarOPatrulheiro(npc, out presa, out destino)) return;
+		}
 		else if (npc.Papel is { Tipo: Jandirus.Core.Npc.TipoDeNpc.Animal } && npc.CerebroDaPosse == null)
 		{
 			// O BICHO (2026-10-10): nem habitante, nem hostil de saga. O manso pasta em volta da toca e corre de
@@ -661,6 +668,13 @@ public partial class GameServer
 			// chao e de quem as carrega, revida quem o ataca e foge quando e derrotado. ANTES do ramo do habitante de proposito: aquele o
 			// entregaria ao `PresaDoHostil`, que so ve jogador. Ver `GuiarOSoldado` (`GameServer.TropaDaSaga.cs`).
 			if (!GuiarOSoldado(npc, out presa, out destino)) return;
+		}
+		else if (_observadoresDaSaga.Count > 0 && npc.CerebroDaPosse == null && ObservandoOParceiro(npc, dt))
+		{
+			// (2026-11-01, o pedido 210) O CHEFE QUE OBSERVA -- o Vegeta da saga Saiyajin: enquanto o Nappa esta de pe ele nao luta, so fica perto
+			// dele olhando (o dono: *"Vegeta n luta e fica so observando o nappa lutar"*). ANTES do ramo do habitante de proposito: aquele o
+			// entregaria ao `PresaDoNpc`, que caca o planeta inteiro. Quem o move e o `ObservandoOParceiro` (`GameServer.SagaSaiyajin.cs`).
+			return;
 		}
 		else if (npc.Papel != null && npc.CerebroDaPosse == null)
 		{
@@ -886,7 +900,9 @@ public partial class GameServer
 
 		// HOSTIL (chefe de saga; e o inimigo comum no dia em que voltar): **so em jogador** -- o
 		// `AI nao ataca AI` do `NPCAI.dm:439` -- e agora DENTRO DE UM RAIO. Ver `PresaDoHostil`.
-		if (npc.Papel is not { Pacifico: true }) return PresaDoHostil(npc);
+		// (2026-11-01, o pedido 218) ...MENOS O FAT BOO DA SAGA, que e NEUTRO: so revida quem bate nele, como o habitante (o rancor logo
+		// abaixo) -- *"ele vai ser um npc neutro, ele vai andar pelo planeta terra e so ataca quem o atacar"*. Ver `GameServer.SagaDoBuu.cs`.
+		if (npc.Papel is not { Pacifico: true } && !BooNeutro(npc)) return PresaDoHostil(npc);
 
 		// O RANCOR VENCEU: ele volta a ser um habitante. Nao ha campo pra limpar -- o prazo E o
 		// estado, e um `AlvoDoNpc = 0` a mais seria uma segunda verdade sobre a mesma coisa.
@@ -988,8 +1004,36 @@ public partial class GameServer
 	/// (v0.3.0) A EXCECAO E O CHEFE DE SAGA, por pedido do dono: ele volta a cacar a zona inteira -- ver
 	/// `CacaOPlaneta`, logo acima. O hostil comum continua com os dois raios do DM.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-29) O RAIO EM QUE UM HOSTIL ACHA QUEM ESCONDE O PODER: 6 tiles -- o da vista de uma cena (o `view(src)` do DM). ESCOLHA minha: o
+	/// dono pediu *"so de entrar dentro de um raio proximo deles"*, sem numero.
+	/// </summary>
+	private const float RaioDeQuemSeEsconde = 6 * Jandirus.Core.World.ZoneCollision.TileSize;
+
+	/// <summary>
+	/// (2026-10-29) ESTE HOSTIL ACHA <paramref name="o"/>? Quem nao esconde o poder, sempre (os raios do <see cref="PresaDoHostil"/> valem); quem
+	/// esconde (relaxado ou escondido, `PoderEmUso.Escondido`) so dentro de <see cref="RaioDeQuemSeEsconde"/> E A VISTA, sem parede no meio
+	/// (`LinhaDeVisaoLivre`, o mesmo amostrador do tiro). O pedido 152, o dono: *"npcs villoes e villoes de saga, ao vc relaxar/esconder o
+	/// poder de luta, eles n conseguiriam te achar , so de entrar dentro de um raio proximo deles, mas se vc estiver atras de paredes ou mt
+	/// longe com poder escondido, eles n te achariam automaticamente"*. Vale tambem pro chefe de saga, que caca o planeta inteiro.
+	/// </summary>
+	private bool AchaQuemSeEsconde(ServerPlayer npc, ServerPlayer o) =>
+		EscondidoAchadoDeLongeDeTeste || !Jandirus.Core.Stats.PoderEmUso.Escondido(o.Ficha)
+		|| ((o.Pos - npc.Pos).LengthSquared <= RaioDeQuemSeEsconde * RaioDeQuemSeEsconde && LinhaDeVisaoLivre(npc, o));
+
+	/// <summary>(2026-10-29) DEFEITO INJETADO (`--iateste`): o hostil acha quem esconde o poder de longe -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool EscondidoAchadoDeLongeDeTeste;
+
 	private ServerPlayer? PresaDoHostil(ServerPlayer npc)
 	{
+		// (2026-11-02) AS FOTOS DO ROBO `--diaginvasao`: o vilao solto deixa o fotografo de fora e vai so no povo (`SoltoSoCacaOPovoDeTeste`)
+		if (SoltoSoCacaOPovoDeTeste && EhOCorpoDeUmSolto(npc))
+		{
+			ServerPlayer? doPovo = PovoPraOSolto(npc);
+			npc.PresaEngajada = doPovo?.Id ?? 0;
+			return doPovo;
+		}
+
 		// --- 1. A PRESA JA ENGAJADA, enquanto ela nao escapar do leash ------
 		// As recusas sao as MESMAS da adocao (gente de verdade, viva, de pe, na mesma zona) -- e a
 		// unica coisa que muda entre as duas pontas e o raio. Ver o `lostTarget` (`NPCAI.dm:161`).
@@ -1001,7 +1045,9 @@ public partial class GameServer
 			// (letal, `NascerChefeDaSaga`) fica com a presa nocauteada ate acabar com ela; o hostil comum a larga, como sempre.
 			&& (!engajada.Ficha.KO || npc.Combate.Letal)
 			&& engajada.Zone.Hash == npc.Zone.Hash
-			&& (CacaOPlaneta(npc) || (engajada.Pos - npc.Pos).LengthSquared <= RaioDePerseguicao * RaioDePerseguicao))
+			&& (CacaOPlaneta(npc) || (engajada.Pos - npc.Pos).LengthSquared <= RaioDePerseguicao * RaioDePerseguicao)
+			// (2026-10-29, o pedido 152) e quem esconde o poder so continua achado de perto e a vista -- ver `AchaQuemSeEsconde`
+			&& AchaQuemSeEsconde(npc, engajada))
 			return engajada;
 
 		// --- 2. NOTAR ALGUEM: o corpo em pe mais proximo DENTRO do raio -----
@@ -1014,10 +1060,16 @@ public partial class GameServer
 			// imposta logo abaixo (`PresaImpostaPeloRoteiro`); com o `dead` cru, o vilao de saga que volta no Inferno (`GameServer.ViloesDoInferno`)
 			// ignoraria justamente os mortos que foram la lutar com ele.
 			if (o.Id == npc.Id || !EhJogador(o) || EhCadaver(o) || o.Ficha.KO) continue;
+			// (2026-10-29, o pedido 152) QUEM ESCONDE O PODER (relaxado ou escondido) SO E NOTADO DE PERTO E A VISTA -- ver `AchaQuemSeEsconde`
+			if (!AchaQuemSeEsconde(npc, o)) continue;
 			float d2 = (o.Pos - npc.Pos).LengthSquared;
 			if (d2 >= perto) continue;
 			perto = d2; melhor = o;
 		}
+
+		// (2026-11-02, o pedido 227) O VILAO SOLTO SEM JOGADOR A VISTA CACA O POVO DO PLANETA (*"vai atacar os npcs nativos"*) -- o chefe da saga
+		// continua so atras de gente. Ver `GameServer.ViloesInvasores.cs`.
+		melhor ??= PovoPraOSolto(npc);
 
 		// NAO HA CAMPO PRA LIMPAR NO CAMINHO DE VOLTA: escrever zero aqui e o proprio "esqueci".
 		// Quem sumiu, morreu, caiu ou escapou do leash cai no ramo de cima e e reescrito na mesma

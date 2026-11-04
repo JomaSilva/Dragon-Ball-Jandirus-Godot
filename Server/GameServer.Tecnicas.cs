@@ -38,7 +38,9 @@ public partial class GameServer
 		// (2026-10-18) e o OLHO de quem observa uma nave de fora: ele esta la so pra ver -- ver `GameServer.NaveObservar.cs`
 		|| (!OlhoAVistaDeTeste && _observadores.Contains(id))
 		// (2026-10-18) e o corpo de verdade de quem o Neo Tuffle possui: quem anda no lugar dele e o Tuffle -- ver `GameServer.NeoTuffle.cs`
-		|| EhHospedeDeTuffle(id);
+		|| EhHospedeDeTuffle(id)
+		// (2026-11-01, o pedido 219) e a gosma do Majin escondida (o `GooHide` do DU), e quem vai dentro de uma -- ver `GameServer.GosmaDoMajin.cs`
+		|| GosmaEscondida(id) || NaGosma(id);
 
 	/// <summary>
 	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa. So o

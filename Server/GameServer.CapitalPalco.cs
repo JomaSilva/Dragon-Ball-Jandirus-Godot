@@ -156,7 +156,7 @@ public partial class GameServer
 	internal void PalcoCS_Tanque(int id, double fracao)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl) || (NaveDoPiloto(pl) ?? NaveQueObservo(pl)) is not { } n) return;
-		n.Tanque = Combustivel.Capacidade(n.Tipo) * fracao;
+		n.Tanque = CapacidadeDe(n) * fracao;   // (2026-10-31) o tanque DESTA nave, com os degraus do pedido 209
 		if (fracao <= 0) { AcabouOCombustivel(n); return; }
 		_pilotosSemCombustivel.Remove(pl.Id);
 		MandarCombustivelDaNave(n);

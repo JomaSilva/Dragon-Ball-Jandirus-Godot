@@ -150,6 +150,35 @@ public partial class RoboDoKaiKai : Node
 				 "K1c. ...cada linha com a arte do planeta e o botao Teletransportar -- menos a Terra, onde ele esta");
 		Fotografar("user://kaikai-1-tela.png");
 
+		// (2026-10-29, o pedido 154) A BUSCA: o nome, sem acento e sem maiuscula -- e com ela no teclado os atalhos ficam mudos
+		tela.Buscar("NAMÉK");
+		await Quadros(2);
+		bool soNamek = tela.Visivel("Namek") && !tela.Visivel("Earth") && !tela.Visivel(chave);
+		tela.Buscar(Jandirus.Server.GameServer.BatismoDoPalcoKK.ToLowerInvariant());
+		await Quadros(2);
+		bool peloBatismo = tela.Visivel(chave) && !tela.Visivel("Namek") && !tela.Visivel("Earth");
+		Fotografar("user://kaikai-1b-busca.png");
+		tela.Buscar("");
+		await Quadros(2);
+		bool todos = tela.Destinos.All(d => tela.Visivel(d.Chave));
+		Conferir(soNamek && peloBatismo && todos,
+				 $"K1f. (pedido 154) **A BUSCA FILTRA PELO NOME**, sem acento e sem maiuscula: \"NAMÉK\" deixa so Namek, o batismo deixa so o mundo do livro, e vazia volta tudo [namek {soNamek}; batismo {peloBatismo}; todos {todos}]");
+		tela.FocarABusca();
+		await Quadros(2);
+		Conferir(Foco.Digitando, "K1g. ...e com a busca no teclado os atalhos do jogo ficam mudos (`Foco.Digitando`) -- o \"M\" de Namek nao manda meditar");
+		TelaDoKaiKai.BuscaCegaDeTeste = true;
+		try
+		{
+			tela.Buscar("namek");
+			await Quadros(2);
+			Conferir(tela.Visivel("Earth"), "K1h. (defeito injetado: a busca nao filtra) a regua de K1f REPROVA -- a Terra continua na tela");
+		}
+		finally
+		{
+			TelaDoKaiKai.BuscaCegaDeTeste = false;
+			tela.Buscar("");
+		}
+
 		// O CONTRA-EXEMPLO DA ABERTURA: a lista chega (o contador sobe) e a tela nao abre
 		tela.Fechar();
 		await Quadros(2);

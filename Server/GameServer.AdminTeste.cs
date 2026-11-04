@@ -781,7 +781,7 @@ public sealed partial class GameServer
 				bool koDoAdm = adm.Ficha.KO;
 				try
 				{
-					cobaia.Combate.Morrer();
+					_ = cobaia.Combate.Morrer();
 					Checa("PREMISSA: a cobaia esta morta", cobaia.Ficha.dead, "");
 					cobaia.Combate.Corpo.Partes[0].Vida = 1;
 					Mandar("admin_curar", cobaia.Id.ToString());

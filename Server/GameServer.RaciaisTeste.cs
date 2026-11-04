@@ -134,6 +134,7 @@ public partial class GameServer
 			}
 
 			ARacaSemEscada(pl, Checa);
+			OTopoSemADisciplina(pl, Checa);   // (2026-10-30, o pedido 182)
 			ASupressaoNaoPEGOUNinguem(pl, Checa);
 		}
 		finally
@@ -530,6 +531,75 @@ public partial class GameServer
 		Checa("...e o jogo DIZ que a raca dele nao tem essa escada",
 			  ditos.Any(a => a.Contains("escada", StringComparison.OrdinalIgnoreCase)),
 			  string.Join(" | ", ditos));
+	}
+
+	// =====================================================================
+	// 5b. (2026-10-30, o pedido 182) O TOPO DE QUEM TEM KI DIVINO E NAO PEGOU A DISCIPLINA
+	// =====================================================================
+	/// <summary>
+	/// O RELATO DO DONO: *"Bio androide quando ta na super perfect form 2 e aperta C duas vezes aparece isso (o cara nem pegou a skill do
+	/// ultra instinto)"* -- o chat dizia "Ultra Instinct -Sign- requires 0% mastery of the previous form (you have 0%)". Duas faltas numa
+	/// frase: o C falava de uma disciplina que o corpo nunca aprendeu, e a frase lia a maestria de uma forma anterior que o Sign nao tem.
+	///
+	/// O CORPO E O TSUJIN DA SECAO 5 com o ki divino em 100%: a linha divina do Saiyajin fica fechada pela origem, e o Ultra Instinto e o
+	/// Ultra Ego abrem os dois (nenhum escolhido) -- o mesmo estado do bio no topo da escada dele, sem depender dela. As quatro medidas:
+	///   a. sem disciplina nenhuma, o C diz que nao ha degrau acima, e nao cita o Sign nem a Destroyer Form;
+	///   b. com o Ultra Instinto aprendido (5%), o C fala do Sign com os 20% DA DISCIPLINA e os 5% do corpo;
+	///   c. com o Poder da Destruicao aprendido, o C fala da Destroyer Form (a disciplina aprendida nao some da explicacao);
+	///   d. a tecla de forma do Sign (a pergunta fechada), sem disciplina, tambem diz os 20% do Ultra Instinto.
+	/// </summary>
+	private void OTopoSemADisciplina(ServerPlayer pl, Action<string, bool, string> Checa)
+	{
+		EstadoDeDisciplina uiAntes = pl.UltraInstinct, ueAntes = pl.PoderDaDestruicao;
+		try
+		{
+			VestirCorpoRacial(pl, new EscadaRacial("Tsujin", "", LinhaDeForma.Saiyajin, ""));
+			pl.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = 100 };
+			pl.UltraInstinct = new EstadoDeDisciplina();
+			pl.PoderDaDestruicao = new EstadoDeDisciplina();
+
+			List<string> ditos = ApertarCEOuvir(pl);
+			Checa("(o pedido 182) **O C NO TOPO NAO FALA DA DISCIPLINA QUE O CORPO NAO APRENDEU**: o Tsujin com ki divino em 100% e sem Ultra "
+				  + "Instinto nem Ultra Ego aperta C e ouve que nao ha degrau acima -- nem o Sign, nem a Destroyer Form",
+				  pl.Forma.NaBase && ditos.Any(a => a.Contains("nao ha mais degrau", StringComparison.Ordinal))
+				  && !ditos.Any(a => a.Contains("Ultra Instinct", StringComparison.Ordinal) || a.Contains("Destroyer", StringComparison.Ordinal)),
+				  string.Join(" | ", ditos));
+
+			pl.UltraInstinct.Aprendida = true;
+			pl.UltraInstinct.Real = 5;
+			ditos = ApertarCEOuvir(pl);
+			Checa("(o pedido 182) **A FRASE DO SIGN E A MAESTRIA DA DISCIPLINA**: com o Ultra Instinto aprendido (5%), o C diz os 20% do Ultra "
+				  + "Instinto e os 5% do corpo -- e nao 'a forma anterior'",
+				  pl.Forma.NaBase
+				  && ditos.Any(a => a.Contains("Ultra Instinct -Sign-", StringComparison.Ordinal) && a.Contains("20% de maestria em Ultra Instinto", StringComparison.Ordinal)
+									&& a.Contains("(voce tem 5%)", StringComparison.Ordinal))
+				  && !ditos.Any(a => a.Contains("forma anterior", StringComparison.Ordinal)),
+				  string.Join(" | ", ditos));
+
+			pl.UltraInstinct = new EstadoDeDisciplina();
+			pl.PoderDaDestruicao.Aprendida = true;
+			pl.PoderDaDestruicao.Real = 5;
+			ditos = ApertarCEOuvir(pl);
+			Checa("(o pedido 182) **A DISCIPLINA APRENDIDA CONTINUA NA EXPLICACAO**: com o Poder da Destruicao aprendido, o C fala da Destroyer Form",
+				  pl.Forma.NaBase && ditos.Any(a => a.Contains("Destroyer Form", StringComparison.Ordinal)),
+				  string.Join(" | ", ditos));
+
+			pl.PoderDaDestruicao = new EstadoDeDisciplina();
+			EscutaDeAvisos = [];
+			TransformarPara(pl, "ui_sign");
+			ditos = EscutaDeAvisos ?? [];
+			EscutaDeAvisos = null;
+			Checa("(o pedido 182) **A TECLA DO SIGN DIZ A MAESTRIA DA DISCIPLINA**: sem o Ultra Instinto, a tecla de forma do Sign diz os 20% do "
+				  + "Ultra Instinto, e nao 'a forma anterior'",
+				  pl.Forma.NaBase && ditos.Any(a => a.Contains("20% de maestria em Ultra Instinto (voce tem 0%)", StringComparison.Ordinal))
+				  && !ditos.Any(a => a.Contains("forma anterior", StringComparison.Ordinal)),
+				  string.Join(" | ", ditos));
+		}
+		finally
+		{
+			pl.UltraInstinct = uiAntes;
+			pl.PoderDaDestruicao = ueAntes;
+		}
 	}
 
 	// =====================================================================

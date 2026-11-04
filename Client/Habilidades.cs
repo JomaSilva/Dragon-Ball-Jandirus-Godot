@@ -119,6 +119,17 @@ public static class Habilidades
 			+ "inteiro na hora.\n\nO estado aparece no painel de status e na aba Ki.",
 			() => GameClient.Instance?.SendHabilidade(MenuJogo.VerboDaProntidao)) { Chave = "hab:prontidao" });
 
+		// (2026-10-29) IGUALAR AO ALVO -- o pedido 162: a barra desce ate o poder do alvo marcado (e um verb pra poder ganhar uma TECLA). A
+		// linha dele esta na tabela de requisitos (o mesmo controle de ki do relaxar); quem confere e o `GameServer.IgualarAoAlvo`.
+		Verbos.Registrar(new Verbo(
+			"Igualar ao alvo",
+			Verbos.Skills,
+			"Baixa o seu poder até o poder de quem você marcou (duplo clique nele), se ele for mais fraco -- pro spar com um "
+			+ "habitante, ou pra igualar o poder numa fusão. Quem expressa 1% do seu poder ou menos te põe no mínimo. Lembre: com "
+			+ "o poder baixo o treino rende menos, até 1/4 no mínimo.",
+			() => GameClient.Instance?.SendHabilidade(Jandirus.Core.Stats.PoderEmUso.VerboDeIgualar))
+		{ Chave = "hab:" + Jandirus.Core.Stats.PoderEmUso.VerboDeIgualar });
+
 		// ============================ O VOO NAO TEM VERB, E NAO DEVE TER ============================
 		// Eu tinha posto dois botoes aqui -- "Voar" e "Velocidade de voo" -- atras da skill
 		// `/datum/skill/flying`. O dono cortou os dois:
@@ -229,6 +240,18 @@ public static class Habilidades
 			+ "as técnicas e o que mais tinha por causa deles.",
 			() => GameClient.Instance?.SendHabilidade("expelir"),
 			() => GameClient.Instance is { AbsorvidosDoMajin.Count: > 0 }) { Chave = "hab:expelir" });
+
+		// (2026-11-01, o pedido 219) A GOSMA DO MAJIN (a `Goo Trap` do DU) -- *"pros majins (todos)"*: quem ve o botao e a tabela
+		// (`hab:gosma`, pela raca). Ver `Races.GosmaDoMajin`.
+		Verbos.Registrar(new Verbo(
+			"Gosma",
+			Verbos.Skills,
+			"Larga um pedaço de você no chão: a gosma fica INVISÍVEL ali, e de tempos em tempos procura um jogador por perto que esteja "
+			+ "nocauteado ou mais fraco que ela (ela tem 70% do seu poder). Achando, aparece, vai atrás e GRUDA -- e ele tem nove segundos pra "
+			+ "passar o poder dela, ou ela o ENGOLE e voa até você: ao encostar em você, ele é absorvido.\n\n"
+			+ "Enquanto ela está no mapa, você fica com 73% do seu poder. À vista, qualquer golpe a desfaz; sair daqui também. "
+			+ "Apertar de novo a recolhe.",
+			() => GameClient.Instance?.SendHabilidade(Jandirus.Core.Races.GosmaDoMajin.Verbo)) { Chave = "hab:gosma" });
 
 		// (2026-10-17) A LARVA DO BIO-ANDROIDE (o adendo do dono) -- a forma de barata que o bio de LABORATORIO veste quando quer, e o enterrar,
 		// que e so dela. Quem tem os botoes e a tabela (`hab:larva`, `hab:enterrar`); quem decide e o servidor (`GameServer.Larva.cs`).
@@ -601,6 +624,14 @@ public static class Habilidades
 			Verbos.Outros,
 			"Sai do corpo que você possui e volta pro seu, um passo ao lado. O dono do corpo fica caído onde estava.",
 			() => GameClient.Instance?.SendHabilidade("tuffle_sair")) { Chave = "hab:tuffle_sair" });
+		// (2026-10-29, o pedido 159) ...e o HOSPEDEIRO PERMANENTE: a linha `hab:tuffle_hospedar` o mostra so a quem esta no proprio corpo.
+		Verbos.Registrar(new Verbo(
+			"Hospedeiro permanente",
+			Verbos.Outros,
+			"Toma de vez o corpo do jogador nocauteado mais perto: ele morre e vai pro Outro Mundo, e você fica numa cópia do corpo dele, com "
+			+ "90% do poder e o cabelo branco-acinzentado. Ela é sua até morrer -- e você morre junto -- ou até você sair (aí a cópia cai morta "
+			+ "no chão). Fora de um hospedeiro, o Neo Tuffle não ganha poder.",
+			() => GameClient.Instance?.SendHabilidade("tuffle_hospedar")) { Chave = "hab:tuffle_hospedar" });
 	}
 
 	/// <summary>

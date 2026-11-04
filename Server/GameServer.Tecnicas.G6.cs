@@ -968,6 +968,7 @@ public sealed partial class GameServer
 
 		ServerPlayer? alvo = Marcado(pl) ?? AlvoNaFrente(pl);
 		if (alvo == null || alvo == pl) { Avisar(pl, "marque quem voce quer curar e fique ao lado dele."); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (alvo.Combate == null || EhCadaver(alvo)) { Avisar(pl, "nao ha o que curar ai."); return; }
 
 		double entrada = pl.Ficha.MaxKi / Math.Max(pl.Ficha.Ekiskill * 20, 1);
@@ -1146,7 +1147,7 @@ public sealed partial class GameServer
 			// E ele nao e detalhe: `BaseDrain` cresce com a raiz do Ki maximo, entao um curandeiro de
 			// 5 milhoes de Ki pagaria ~94 milhoes por tique pra devolver `0,2*Ekiskill` de vida. A cura
 			// do jogo antigo era impagavel exatamente pra quem tinha Ki pra cura-la.
-			double kireq = pl.Ficha.MaxKi / Math.Max(pl.Ficha.Ekiskill * 10, 1);
+			double kireq = pl.Ficha.MaxKi / Math.Max(pl.Ficha.Ekiskill * 10, 1) * pl.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 			if (pl.Ficha.Ki < kireq * 2 || pl.Ficha.KO || EhCadaver(pl))
 			{
 				_curando.Remove(id);

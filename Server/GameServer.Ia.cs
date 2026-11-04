@@ -456,6 +456,8 @@ public partial class GameServer
 		&& !EmCena(pl)
 		// (2026-10-18) O CORPO POSSUIDO PELO NEO TUFFLE: quem anda e o Tuffle, no corpo que ele veste; o de verdade so vai junto (`GameServer.NeoTuffle.cs`).
 		&& pl.PossuidoPor == 0
+		// (2026-11-01, o pedido 219) ENGOLIDO POR UMA GOSMA: quem anda e a gosma, e ele vai dentro (`GameServer.GosmaDoMajin.cs`).
+		&& !NaGosma(pl.Id)
 		// OS COLETORES ABERTOS DO ANDROIDE DE ABSORCAO (`canmove = 0`, `DNALabs.dm:227`). E o preco
 		// da imunidade a ki: fincado no chao ate desligar o verb. Entra AQUI e nao no `Input` porque
 		// este e o funil de vetor -- e assim ela vale pra IA tambem, de graca.

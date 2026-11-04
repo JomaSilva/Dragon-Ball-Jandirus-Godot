@@ -392,6 +392,10 @@ public partial class GameServer
 			Avisar(pl, $"o seu sangue já conhecia esse ki: você desperta com {r.Maestria:0}% de maestria divina.");
 		Avisar(pl, "as formas divinas da sua linhagem (tecla C) e o desafio ao Deus da Destruição (menu P) passam a "
 				   + "depender só de você. A maestria divina cresce USANDO o ki divino, numa forma que o peça.");
+		// (2026-10-30, o pedido 183) a raca que ascende nao tem forma divina pra vestir: a Ascensao e a forma dela (`Races.Ascensao.NivelDivino`)
+		if (Jandirus.Core.Races.Ascensao.Ascende(pl.Race, pl.Ficha.Class))
+			Avisar(pl, "a sua Ascensão sobe ao nível do Super Saiyajin God -- ela é a sua forma divina: a maestria divina cresce com ela, "
+					   + "e no nível do Blue a Ascensão sobe de novo.");
 
 		AnunciarODespertar(pl);
 		GD.Print($"[godki] {pl.Name} DESPERTOU o ki divino ({fonte}) | BP base {pl.Ficha.BP:N0} "
@@ -455,7 +459,12 @@ public partial class GameServer
 		// maestria das formas divinas. So o "nao" vale aqui -- o ritmo de zona (a Sala do Tempo, 4x) nunca acelerou esta.
 		if (pl.Ficha.zoneMasteryMult <= 0) return;
 		if (!DespertarDivino.JaDespertou(pl.Ficha) || EhCadaver(pl) || pl.Ficha.KO) return;
-		if (!DespertarDivino.UsaOKiDivino(Catalogo.Def(pl.Forma.Atual), pl.Ficha.Class, pl.Ficha.SaiyanLineage)) return;
+		// (2026-10-30, o pedido 183) A RACA QUE ASCENDE USA O KI DIVINO O TEMPO TODO -- o dono: *"a maestria do god ki (a qual pra elas deve
+		// subir igual uma pessoa transformada)"*. A linha do SSG e do Saiyajin, e ela nao tem forma divina pra vestir: a Ascensao divina e
+		// a forma dela, sempre acesa (`Races.Ascensao.NivelDivino`). A maestria sobe como a de quem esta no SSG -- o dobro em combate, nada
+		// caido --, e e assim que ela chega aos 70% do Ultra Instinto e do Ultra Ego.
+		bool ascende = Jandirus.Core.Races.Ascensao.Ascende(pl.Race, pl.Ficha.Class);
+		if (!ascende && !DespertarDivino.UsaOKiDivino(Catalogo.Def(pl.Forma.Atual), pl.Ficha.Class, pl.Ficha.SaiyanLineage)) return;
 
 		// (2026-10-16) O ECHOED INSANITY do Corrupted Majin com a Forma Pura: *"master everything 20% slower"*. Ver `FatorDeMaestriaDoCorpo`.
 		double marco = DespertarDivino.SubirMaestria(pl.Ficha, dt * FatorDeMaestriaDoCorpo(pl), emCombate: pl.Combate is { EmCombate: > 0 });
@@ -470,6 +479,8 @@ public partial class GameServer
 			>= 100 => "maestria TOTAL do ki divino.",
 			>= Catalogo.GodkiUiUePct => $"maestria divina {marco:0}%: o seu corpo está pronto pros segredos dos Anjos e dos Deuses da "
 										+ "Destruição (Ultra Instinct e Poder da Destruição) -- falta quem os ensine.",
+			// (2026-10-30, o pedido 183) a Ascensao para no Blue: os 50% nao dao nada a ela -- nem a promessa do Kaio-ken por cima do Blue
+			>= Catalogo.GodkiRoyalePct when ascende => $"o seu ki divino amadurece ({marco:0}%).",
 			>= Catalogo.GodkiRoyalePct => prodigial
 				? $"maestria divina {marco:0}%: algo BESTIAL espreita no fundo do seu potencial."
 				: elite ? $"maestria divina {marco:0}%: a evolução da sua forma divina está ao alcance do seu sangue."
@@ -478,11 +489,16 @@ public partial class GameServer
 						: Jandirus.Core.Skills.Kaioken.ClasseAguentaNoBlue(classe) || KaiokenNoSuperSaiyajinDeTeste
 							? $"maestria divina {marco:0}%: o seu corpo agora aguenta o Kaio-ken por cima do Blue."
 							: $"o seu ki divino amadurece ({marco:0}%).",
+			// (2026-10-30, o pedido 183) os 33% do Blue levam a Ascensao ao nivel dele
+			_ when ascende => $"o seu ki divino amadurece ({marco:0}%): a sua Ascensão sobe ao nível do Blue.",
 			_ => prodigial
 				? $"o seu ki divino amadurece ({marco:0}%): o Potential Unleashed agora expressa o poder inteiro dele."
 				: $"o seu ki divino amadurece ({marco:0}%): o degrau seguinte das formas divinas está ao seu alcance.",
 		});
 		GD.Print($"[godki] {pl.Name} cruzou {marco:0}% de maestria divina");
+
+		// (2026-10-30, o pedido 184) os 50% sao o marco do Blue Kaio-ken de quem o tem -- ver `GameServer.MarcosDeForma.PagarOBlueKaioken`
+		if (marco >= Catalogo.GodkiRoyalePct) PagarOBlueKaioken(pl, avisar: true);
 	}
 
 	// =====================================================================
@@ -631,5 +647,90 @@ public partial class GameServer
 					+ (perto == null ? $" ATENÇÃO: nenhum mundo divino por perto puxa menos que a sua maestria de gravidade "
 									   + $"({adm.Ficha.GravMastered:0.#}x) -- este é o mais leve." : ""));
 		GD.Print($"[server] {adm.Name} foi levado a orbita do mundo divino {mundo.Corpo.Nome} [{mundo.Sx}:{mundo.Sy}]k{mundo.K}");
+	}
+
+	// =====================================================================
+	// (2026-10-29) O RITUAL DOS CINCO SAIYAJINS -- o pedido 163
+	// =====================================================================
+	// O dono: *"Permita com q ao 5 saiyajins com karma acima de 50 e com ssj1 desbloqueado, ao darem energia (give power ) a um sexto
+	// saiyajin tb de karms acima de 50, e esse saiyajin tenha o bp acima do requisito pessoal do god ki, ele vai virar ssj deus
+	// temporariamente (5 minutos) e ele n ganha maestria de god ki nessa forma temporaria, o ritual pode ser feito inumeras vezes [...] ele so
+	// tem acesso s forma de 22x do ssj god temporariamente, e nesse meio tempo ele tem as vantagens de ter god ki, mas apos sair da forma ele
+	// n tem god ki desbloqueado e n consegue virar sozinho"*.
+	//
+	// COMO: cinco doacoes (`Give_Power`) vivas no mesmo alvo, cada doador Saiyajin de karma acima de 50 com o SSJ1 liberado, e o alvo
+	// Saiyajin de karma acima de 50, com o BP base no requisito pessoal do ki divino e SEM o ki divino desperto. O alvo entra no SSG pelo
+	// funil de sempre (`EntrarNaForma`) e, por 5 minutos, o perfil de formas lhe empresta o 0% de maestria divina (o SSG abre pelo C de novo
+	// se ele sair); as vantagens do ki divino sao as da FORMA divina (o Sense, o scouter -- `CarregaKiDivino` cobre quem esta nela). O ki
+	// divino nunca desperta (a maestria divina so sobe de quem despertou), a barra do SSG nao anda (`SubirPeloPoder`) e o save nao grava a
+	// forma emprestada. No fim: a base, a forma devolvida, a maestria de antes. Repetivel: e so juntar os cinco de novo.
+	// =====================================================================
+	internal const int DoadoresDoRitual = 5, KarmaDoRitual = 50;
+	internal const long DuracaoDoRitualMs = 5 * 60 * 1000;
+	internal const string IdDoSsgDoRitual = "ssg";
+
+	/// <summary>DEFEITO INJETADO (`--g11teste`): o ritual conta doador de qualquer karma -- o jogo sem a regra. Falso em jogo, sempre.</summary>
+	internal static bool RitualSemKarmaDeTeste;
+
+	/// <summary>(2026-10-29) Saiyajin de karma acima de 50 -- o doador e o alvo do ritual.</summary>
+	private static bool SaiyajinDoRitual(ServerPlayer p) =>
+		string.Equals(p.Race, "Saiyan", StringComparison.OrdinalIgnoreCase) && (p.Karma > KarmaDoRitual || RitualSemKarmaDeTeste);
+
+	/// <summary>
+	/// (2026-10-29) O LENDARIO FICA FORA DO RITUAL -- o dono: *"lssj fica fora do ritual"*. A classe Legendary (o LSSJ) e a Legendary
+	/// Primal: a escada delas nao tem o SSG (`Catalogo.ClassesDoKiDivino`), e o ritual nao a empresta.
+	/// </summary>
+	private static bool EhLendarioDoRitual(ServerPlayer p) => p.Ficha.Class.Contains("Legendary", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>(2026-10-29) A DOSE CAIU NESTE ALVO: os cinco estao doando a ele? Chamado a cada dose da doacao (`DoseDaDoacaoG11`).</summary>
+	private void ConferirORitualDosCinco(ServerPlayer alvo)
+	{
+		if (alvo.RitualDeusAte > 0 || !SaiyajinDoRitual(alvo) || EhCadaver(alvo) || alvo.Ficha.KO) return;
+		if (EhLendarioDoRitual(alvo)) return;
+		if (alvo.Ficha.godki is { awakened: true }) return;   // quem ja despertou o ki divino vira sozinho
+		if (alvo.Ficha.BP < RequisitoDeGodKi(alvo)) return;
+		int doadores = 0;
+		foreach ((int id, DoacaoG11 d) in _doacaoG11)
+			if (d.Alvo == alvo.Id && !d.Parar && _players.TryGetValue(id, out ServerPlayer? doador)
+				&& SaiyajinDoRitual(doador) && doador.Forma.Despertou("ssj1"))
+				doadores++;
+		if (doadores < DoadoresDoRitual) return;
+		ComecarORitualDosCinco(alvo, doadores);
+	}
+
+	private void ComecarORitualDosCinco(ServerPlayer alvo, int doadores)
+	{
+		if (Catalogo.Def(IdDoSsgDoRitual) is not { } ssg) return;
+		alvo.FormaEmprestadaPeloRitual = alvo.Forma.Despertou(IdDoSsgDoRitual) ? 0 : ssg.IdRede;
+		alvo.MaestriaDoSsgAntesDoRitual = alvo.Forma.Maestria.De(IdDoSsgDoRitual);
+		alvo.RitualDeusAte = NowMs() + DuracaoDoRitualMs;
+		EntrarNaForma(alvo, ssg);
+		HabilidadesMudaram(alvo);
+		string frase = $"{doadores} Saiyajins de coração justo dão a {alvo.Name} a própria energia -- e ela vira o poder de um DEUS: o SUPER SAIYAJIN GOD!";
+		Avisar(alvo, frase);
+		AvisarPertoG3(alvo, RaioDaVista, frase, excetoCentro: true);
+		Avisar(alvo, $"o poder é emprestado: por {DuracaoDoRitualMs / 60_000} minutos você tem o Super Saiyajin God (e o ki divino dele). Depois, "
+				   + "ele se apaga -- o ki divino nunca foi seu.");
+		GD.Print($"[server] RITUAL DOS CINCO: {alvo.Name} virou Super Saiyajin God por {DuracaoDoRitualMs / 60_000} min ({doadores} doadores)");
+	}
+
+	/// <summary>(2026-10-29) O FIM DO RITUAL, no laco de 5 Hz por jogador: aos 5 minutos o corpo volta, e o que foi emprestado volta junto.</summary>
+	private void ConferirORitualSaiyajin(ServerPlayer pl)
+	{
+		if (pl.RitualDeusAte == 0 || NowMs() < pl.RitualDeusAte) return;
+		AcabarORitualDosCinco(pl);
+	}
+
+	private void AcabarORitualDosCinco(ServerPlayer pl)
+	{
+		pl.RitualDeusAte = 0;
+		for (int i = 0; i < 12 && !pl.Forma.NaBase && pl.Forma.Def != null; i++) Transformar(pl, subir: false);
+		if (pl.FormaEmprestadaPeloRitual != 0) pl.Forma.Liberadas.Remove(pl.FormaEmprestadaPeloRitual);
+		pl.FormaEmprestadaPeloRitual = 0;
+		pl.Forma.Maestria.Por(IdDoSsgDoRitual, pl.MaestriaDoSsgAntesDoRitual);
+		Persistir(pl);
+		HabilidadesMudaram(pl);
+		Avisar(pl, "o poder dos cinco se apaga: você volta ao normal. O ki divino nunca foi seu -- pra virar deus sozinho, aprenda o God Ki "
+				 + "(ou junte os cinco de novo).");
 	}
 }

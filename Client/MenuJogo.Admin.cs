@@ -538,6 +538,12 @@ public partial class MenuJogo
 		// ------------------------------------------------- (v0.3.0) as racas dos personagens novos
 		PainelDoModoDeRacas(cli);
 
+		// ------------------------------------------------- (2026-10-31, o pedido 195) as Esferas do Dragao por jogador
+		PainelDasEsferasPorJogador(cli);
+
+		// ------------------------------------------------- (2026-11-01, o pedido 213) os custos do Outro Mundo
+		PainelDosCustosDoAlem(cli);
+
 		// ------------------------------------------------- os planetas destruidos
 		PainelDosPlanetasDestruidos(cli);
 
@@ -595,6 +601,82 @@ public partial class MenuJogo
 		}
 		corpo.AddChild(linha);
 	}
+
+	/// <summary>
+	/// (2026-10-31, o pedido 195) AS ESFERAS DO DRAGAO POR JOGADOR -- o dono: *"faça na aba de adm tem um botao q faz esferas de namek e de
+	/// jogadores se tornarem client side assim cada um tendo seu set, ou voltando ao padrao (1 set de cada no server)"*. Dois botoes, um por
+	/// modo, e um que pergunta o de agora: a resposta (e a troca) vem pelo chat (`admin_esferas_jogador`). Quem confere a permissao e o
+	/// servidor. Ver `GameServer.EsferasPorJogador.cs`.
+	/// </summary>
+	private void PainelDasEsferasPorJogador(GameClient cli)
+	{
+		VBoxContainer corpo = Cartao("Esferas do Dragão");
+		Nota("Por jogador: cada um tem o próprio set das Esferas de Namek e das estátuas de jogadores -- só vê e só junta as suas sete. "
+			 + "As Black Star e as Super Esferas continuam do servidor. Refazer a estátua fica desligado.", corpo);
+		var linha = new HBoxContainer();
+		linha.AddThemeConstantOverride("separation", 6);
+		foreach ((string rotulo, string arg, string dica) in new[]
+				 {
+					 ("Por jogador", "ligar", "cada jogador passa a ter o próprio set"),
+					 ("Um set no servidor", "desligar", "volta ao padrão: um set de cada, pra todo mundo"),
+					 ("Ver o modo", "", "o chat diz o modo de agora"),
+				 })
+		{
+			var b = new Button { Text = rotulo, TooltipText = dica };
+			b.Pressed += () => cli.SendVerbo(Jandirus.Server.GameServer.VerboDasEsferasPorJogador, arg);
+			linha.AddChild(b);
+		}
+		corpo.AddChild(linha);
+	}
+
+	/// <summary>
+	/// (2026-11-01, o pedido 213) OS CUSTOS DO OUTRO MUNDO -- o dono: *"faca custo de reviver, custo de visitar mundo dos vivos morto etc ser
+	/// uma config de adm do server, assim n precisando recompilar o jogo"*. Os numeros de agora (os que o servidor mandou, `S2C.CustosDoAlem`),
+	/// uma linha por custo, com o campo e o "Salvar" -- o verb `admin_custos_alem chave valor`. Quem confere a permissao, grava o
+	/// `servidor.json` e manda os numeros novos pra todo mundo e o servidor.
+	/// </summary>
+	private void PainelDosCustosDoAlem(GameClient cli)
+	{
+		VBoxContainer corpo = Cartao("Custos do Outro Mundo");
+		Nota("Os preços da mesa do Enma, guardados no servidor.json do servidor: valem na hora, sem recompilar o jogo.", corpo);
+		foreach ((string chave, string rotulo, string atual) in new[]
+				 {
+					 (Jandirus.Core.World.CustosDoAlem.ChaveDoRevive, "Voltar à vida (zeni)",
+					  Jandirus.Core.World.CustosDoAlem.Zeni(Jandirus.Core.World.CustosDoAlem.PrecoDoRevive)),
+					 (Jandirus.Core.World.CustosDoAlem.ChaveDoHakai, "Quem levou Hakai paga (vezes)",
+					  Jandirus.Core.World.CustosDoAlem.MultiplicadorDoHakai.ToString("0.##")),
+					 (Jandirus.Core.World.CustosDoAlem.ChaveDoPasse, "Visitar os vivos (zeni)",
+					  Jandirus.Core.World.CustosDoAlem.Zeni(Jandirus.Core.World.CustosDoAlem.PrecoDoPasse)),
+					 (Jandirus.Core.World.CustosDoAlem.ChaveDosDias, "Dias da visita", Jandirus.Core.World.CustosDoAlem.DiasDoPasse.ToString()),
+				 })
+		{
+			var linha = new HBoxContainer();
+			linha.AddThemeConstantOverride("separation", 6);
+			linha.AddChild(new Label { Text = rotulo, CustomMinimumSize = new Vector2(210, 0) });
+			// O QUE FOI DIGITADO SOBREVIVE AO REDESENHO (a aba se refaz quando a ficha chega) -- como o aviso ao servidor.
+			var campo = new LineEdit
+			{
+				Text = _custosDigitados.GetValueOrDefault(chave, atual),
+				MaxLength = 24,
+				SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+			};
+			campo.TextChanged += t => _custosDigitados[chave] = t;
+			void Salvar()
+			{
+				cli.SendVerbo(Jandirus.Server.GameServer.VerboDosCustosDoAlem, $"{chave} {campo.Text.Trim()}");
+				_custosDigitados.Remove(chave);
+			}
+			campo.TextSubmitted += _ => Salvar();
+			var salvar = new Button { Text = "Salvar", TooltipText = "grava no servidor e vale na hora, pra todo mundo" };
+			salvar.Pressed += Salvar;
+			linha.AddChild(campo);
+			linha.AddChild(salvar);
+			corpo.AddChild(linha);
+		}
+	}
+
+	/// <summary>(2026-11-01, o pedido 213) O que o admin digitou nos campos dos custos e ainda nao salvou -- sobrevive ao redesenho da aba.</summary>
+	private readonly Dictionary<string, string> _custosDigitados = [];
 
 	/// <summary>Um verb de admin que age sobre alguem precisa escolher na lista? Sem marca, ou com a marca em mim.</summary>
 	public static bool PrecisaEscolherAlvo(int alvoId, int meuId) => alvoId == 0 || alvoId == meuId;
@@ -1158,6 +1240,8 @@ public partial class MenuJogo
 		$"{_alvoPedido?.Cmd ?? ""}|{string.Join(",", (GameClient.Instance?.Online ?? []).Select(o => o.Id))}"
 		+ $"|{(GameClient.Instance is { } c ? string.Join(",", PlanetasDestruidos(c.Mortos).Select(e => e.Chave)) : "")}"
 		+ $"|{GameClient.Instance?.ModoDeRacas}"
+		// (2026-11-01, o pedido 213) E OS CUSTOS DO OUTRO MUNDO, pela mesma razao: o `S2C.CustosDoAlem` chega sem mexer em mais nada.
+		+ $"|{Jandirus.Core.World.CustosDoAlem.Resumo()}"
 		// (2026-10-18) E A LISTA DAS SAGAS, pela mesma razao: ela chega pelas escolhas sem mexer em mais nada desta assinatura.
 		+ $"|{(GameClient.Instance?.Escolhas is { Verbo: "admin_sagas" } sagas ? sagas.ChegouEm : 0)}"
 		// (2026-10-20) E O BOTAO DE SAGA ARMADO (o Resetar e o Pular de dois cliques): sem isto ele seguiria dizendo "Confirmar" depois de desarmar.

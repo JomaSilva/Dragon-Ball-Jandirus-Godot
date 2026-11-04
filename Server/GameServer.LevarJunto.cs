@@ -61,7 +61,8 @@ public sealed partial class GameServer
 	private ServerPlayer? AgarradoQueViaja(ServerPlayer pl)
 	{
 		if (QuemEuSeguro(pl) is not { } d) return null;
-		return _players.ContainsKey(d.Id) ? d : null;
+		// (2026-11-01, o pedido 212) o agarrado da mesma conexao nao viaja junto -- ver `GameServer.MesmoIp.cs`
+		return _players.ContainsKey(d.Id) && !UsoNoMesmoIp(pl, d) ? d : null;
 	}
 
 	/// <summary>
@@ -181,6 +182,8 @@ public sealed partial class GameServer
 		if (carga.Ficha.dead) return $"{carga.Name} não entra na Sala do Tempo: mortos não treinam. Você também não entra.";
 		if (carga.Ficha.KO) return $"{carga.Name} não entra na Sala do Tempo: mal se sustenta de pé. Você também não entra.";
 		if (carga.Voando) return $"{carga.Name} está no ar. Pouse antes de atravessar a porta da Sala do Tempo. Você também não entra.";
+		// (2026-11-01, o pedido 222) e o piso de 20 milhoes de poder base vale pra quem vai agarrado -- ver `BpBaseMinimoDaSala`
+		if (!PoderBaseDaSala(carga)) return $"{carga.Name} não tem os 20 milhões de poder base que a Sala do Tempo pede. Você também não entra.";
 
 		if (daTerra && carga.SalaPreso)
 			return $"{carga.Name} ficou preso na sessão anterior da Sala do Tempo. Você também não entra.";

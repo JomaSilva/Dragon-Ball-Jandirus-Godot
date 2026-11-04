@@ -756,7 +756,7 @@ public sealed partial class GameServer
 
 				// `A.Ki = max(A.Ki - A.MaxKi * BCL_KI_PER_TICK, 0)` -- os DOIS pagam, sempre.
 				foreach (LadoDeKi l in new[] { d.A, d.B })
-					l.Quem.Ficha.Ki = Math.Max(l.Quem.Ficha.Ki - l.Quem.Ficha.MaxKi * EmbateDeKi.KiPorCiclo, 0);
+					l.Quem.Ficha.Ki = Math.Max(l.Quem.Ficha.Ki - l.Quem.Ficha.MaxKi * EmbateDeKi.KiPorCiclo * l.Quem.Ficha.FatorDeKiDoEstado, 0);   // (o pedido 220)
 
 				MandarPlacar(d.A.Quem, d.Medidor, 100 - d.Medidor);
 				MandarPlacar(d.B.Quem, 100 - d.Medidor, d.Medidor);

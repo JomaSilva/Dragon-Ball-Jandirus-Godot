@@ -94,6 +94,7 @@ public sealed partial class GameServer
 			IntrDasPortas();
 			IntrDaObraDaSala();
 			IntrDoGanhoNaSala();
+			IntrDaZonaSeguraDoNascimento();
 			IntrDosHomonimos();
 			IntrDaFonte();
 			IntrDaMemoria();
@@ -702,6 +703,158 @@ public sealed partial class GameServer
 			_proximaObraId = idDeAntes;
 			GravarMundo();
 			SoltarInterioresVazios();
+		}
+	}
+
+	/// <summary>
+	/// 1d) (2026-10-29, o pedido 164) NA ZONA SEGURA DE QUEM NASCE NADA SE CONSTROI, E O QUE AUMENTA O GANHO PARA -- o dono: *"faca qualquer
+	/// construcao como gravidade etc, deixarem de funcionar caso estejam dentro da safezone de spawn"*. Com a zona segura ligada (a familia a
+	/// pede, `ZonaSeguraNaBancadaDeTeste`): o `Posicionar` recusa a maquina no berco da Terra e na chegada do Outro Mundo (a mesa do Enma) e
+	/// assenta fora; o bloco nao sobe de dentro nem pra dentro; a gravidade que ja estava dentro nao liga (fora, liga) e o saco de dentro nao
+	/// dobra o treino; o campo LIGADO de uma maquina logo do lado de fora nao pesa em quem esta dentro (pesa em quem esta fora, no mesmo
+	/// campo); e a maquina de dentro que ja estava ligada nao pesa em ninguem. O CONTRA-EXEMPLO e a zona segura desligada (o jogo de antes).
+	/// </summary>
+	private void IntrDaZonaSeguraDoNascimento()
+	{
+		GD.Print("[interiores] -- 1d) (o pedido 164) na zona segura de quem nasce nada se constroi, e o que aumenta o ganho para --");
+		ZoneKey terra = ZoneKey.Premade("Earth"), alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		const float T = ZoneCollision.TileSize;
+		List<Obra> noChaoDeAntes = [.. _noChao];
+		int idDeAntes = _proximaObraId;
+		var corpos = new List<ServerPlayer>();
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(terra);
+		Vec2 Livre(Vec2 p) => mapa?.PontoLivrePerto(p) ?? p;
+		(int X, int Y) Celula(Vec2 p) => ((int)(p.X / T), (int)(p.Y / T));
+		Vec2 berco = PontoDeNascimento(terra), mesa = MesaDoEnma(alem);
+		// a maquina logo do lado de fora (10,6 tiles), e um corpo de cada lado da borda, a 0,9 tile dela
+		Vec2 maqFora = Livre(new Vec2(berco.X + 10.6f * T, berco.Y));
+		float dist = Vec2.Distance(maqFora, berco);
+		var dir = new Vec2((maqFora.X - berco.X) / dist, (maqFora.Y - berco.Y) / dist);
+		Vec2 dentro = new(maqFora.X - dir.X * 0.9f * T, maqFora.Y - dir.Y * 0.9f * T), fora = new(maqFora.X + dir.X * 0.9f * T, maqFora.Y + dir.Y * 0.9f * T);
+		AfirmarIntr("(montagem, 1d) a maquina e o corpo de fora ficam fora dos 10 tiles do berco, e o de dentro, dentro",
+					dist > TilesDaZonaSegura * T && Vec2.Distance(fora, berco) > TilesDaZonaSegura * T && Vec2.Distance(dentro, berco) < TilesDaZonaSegura * T,
+					$"maquina a {dist / T:0.0} tiles; dentro a {Vec2.Distance(dentro, berco) / T:0.0}; fora a {Vec2.Distance(fora, berco) / T:0.0}");
+
+		Obra Maquina(string tipo, ZoneKey z, Vec2 onde, double grav = 0)
+		{
+			var o = new Obra { Id = _proximaObraId++, Tipo = tipo, X = onde.X, Y = onde.Y, DonoConta = "bancada_interiores", DonoNome = "bancada: o de antes", Aparafusada = true };
+			if (grav > 0) o.Gravidade = new GravidadeDaObra { Grav = grav, Range = 10 };
+			o.PorZona(z);
+			_noChao.Add(o);
+			return o;
+		}
+		ServerPlayer Ao(Vec2 onde, ZoneKey z) => new()
+		{
+			Id = IdBaseDaVigia + 971, Name = "bancada: o treinador", Conta = "bancada_interiores", Zone = z, Pos = new Vec2(onde.X - T, onde.Y),
+			Facing = Facing.East, Ficha = new Fighter(),
+		};
+		ServerPlayer NoMundo(string nome, Vec2 onde)
+		{
+			ServerPlayer c = ForjarV2(nome, onde, 1_000_000);
+			MoveToZone(c.Id, terra, onde);
+			CravarPosicao(c, onde);
+			corpos.Add(c);
+			return c;
+		}
+		(bool Ligou, string Disse) Ligar(Vec2 onde)
+		{
+			Obra m = Maquina("Gravity", terra, onde);
+			string disse = string.Join(" | ", Ouvir(() => DefinirGravidade(Ao(onde, terra), "5")));
+			bool ligou = m.Gravidade is { MudaEm: > 0, Pedida: > 0 };
+			_noChao.Remove(m);
+			return (ligou, disse);
+		}
+		double BonusDoSaco(Vec2 onde)
+		{
+			Obra s = Maquina("Punching_Bag", terra, onde);
+			double bonus = BonusDeTreinoPerto(Ao(onde, terra));
+			_noChao.Remove(s);
+			return bonus;
+		}
+
+		ZonaSeguraNaBancadaDeTeste = true;
+		try
+		{
+			// ---- assentar: dentro nao, fora sim -- na Terra e na chegada do Outro Mundo
+			(Obra? noBerco, string disseBerco) = IntrAssentar(terra, Celula(berco), "Gravity");
+			(Obra? naMesa, string disseMesa) = IntrAssentar(alem, Celula(mesa), "Gravity");
+			(Obra? deFora, string disseFora) = IntrAssentar(terra, Celula(fora), "Gravity");
+			foreach (Obra? o in new[] { noBerco, naMesa, deFora }) if (o != null) _noChao.Remove(o);
+			// o centro da zona e lido uma vez (o ponto livre perto do berco): com o defeito de assentar, a obra no berco o deslocaria
+			_centroDaZonaSegura.Remove(terra.Hash);
+			AfirmarIntr("(o pedido 164) **NA ZONA SEGURA DE QUEM NASCE NADA SE ASSENTA**: a gravidade no berco da Terra e na mesa do Enma (a chegada do "
+						+ "Outro Mundo) e recusada com a frase -- e a 11 tiles do berco ela assenta (o contra-exemplo)",
+						noBerco == null && disseBerco.Contains(FraseDaObraNaZonaSegura) && naMesa == null && disseMesa.Contains(FraseDaObraNaZonaSegura)
+						&& deFora != null,
+						$"berco: {disseBerco} || mesa: {disseMesa} || fora: {(deFora != null ? "assentou" : disseFora)}");
+
+			// ---- os blocos: de dentro nao se ergue nada; de fora, pra dentro, tambem nao
+			ServerPlayer pedreiroDentro = Ao(berco, terra), pedreiroFora = Ao(fora, terra);
+			pedreiroDentro.Pos = berco;
+			pedreiroFora.Pos = fora;
+			BlocoDef? parede = _blocos?.Todos.FirstOrDefault(b => b.Classe != ClasseDeBloco.Piso);
+			string deDentro = PorQueNaoConstroi(pedreiroDentro), deForaProBerco = "";
+			bool subiu = false;
+			if (parede != null)
+			{
+				(int X, int Y) cb = Celula(berco);
+				deForaProBerco = string.Join(" | ", Ouvir(() => subiu = ErguerBloco(pedreiroFora, parede.Numero, cb.X, cb.Y, "")));
+			}
+			AfirmarIntr("(o pedido 164) ...**E NENHUM BLOCO SOBE**: quem esta dentro da zona ouve a frase em qualquer obra, e quem esta fora nao ergue a "
+						+ "parede na celula do berco",
+						deDentro == FraseDaObraNaZonaSegura && parede != null && !subiu && deForaProBerco.Contains(FraseDaObraNaZonaSegura)
+						&& PorQueNaoConstroi(pedreiroFora) != FraseDaObraNaZonaSegura,
+						$"de dentro: '{deDentro}'; de fora pro berco: '{deForaProBerco}'; parede {parede?.Id}");
+
+			// ---- o que ja estava la: a gravidade nao liga, o saco nao dobra (fora, os dois rendem)
+			(bool ligouDentro, string disseDentro) = Ligar(berco);
+			(bool ligouFora, _) = Ligar(fora);
+			double sacoDentro = BonusDoSaco(berco), sacoFora = BonusDoSaco(fora);
+			AfirmarIntr("(o pedido 164) **A GRAVIDADE QUE JA ESTAVA NO BERCO NAO LIGA**: o `DefinirGravidade` recusa com a frase e nada fica armado -- "
+						+ "a 11 tiles ela liga",
+						!ligouDentro && disseDentro.Contains(FraseDaObraParadaNaZonaSegura) && ligouFora, $"dentro: {disseDentro}; fora ligou {ligouFora}");
+			AfirmarIntr("(o pedido 164) ...**E O SACO DE DENTRO NAO DOBRA O TREINO** (o de fora dobra)",
+						sacoDentro == 1 && sacoFora == DobraDoSaco, $"dentro {sacoDentro}; fora {sacoFora}");
+
+			// ---- o campo: o de fora nao pesa em quem esta dentro; o de dentro, ja ligado, nao pesa em ninguem
+			ServerPlayer cDentro = NoMundo("bancada: no berco", dentro), cFora = NoMundo("bancada: fora do berco", fora);
+			Obra campoDeFora = Maquina("Gravity", terra, maqFora, grav: 10);
+			LerOsCampos();
+			double pesoDentro = cDentro.Ficha.gravmult, pesoFora = cFora.Ficha.gravmult;
+			_noChao.Remove(campoDeFora);
+			AfirmarIntr("(o pedido 164) **O CAMPO NAO PESA EM QUEM ESTA NA ZONA SEGURA**: a maquina ligada logo do lado de fora pesa 10x em quem esta "
+						+ "fora, e nada em quem esta dentro, no mesmo campo",
+						pesoDentro == 0 && pesoFora == 10, $"dentro {pesoDentro}x; fora {pesoFora}x");
+			Obra campoDeDentro = Maquina("Gravity", terra, dentro, grav: 10);
+			LerOsCampos();
+			double pesoDoDeDentro = cFora.Ficha.gravmult;
+			_noChao.Remove(campoDeDentro);
+			LerOsCampos();
+			AfirmarIntr("(o pedido 164) ...**E A MAQUINA DE DENTRO, JA LIGADA, PARA**: o campo dela nao pesa nem em quem esta fora",
+						pesoDoDeDentro == 0, $"fora {pesoDoDeDentro}x");
+
+			// ---- o jogo de antes: sem a zona segura, tudo assenta, liga e pesa
+			ZonaSeguraNaBancadaDeTeste = false;
+			(Obra? antesNoBerco, _) = IntrAssentar(terra, Celula(berco), "Gravity");
+			if (antesNoBerco != null) _noChao.Remove(antesNoBerco);
+			(bool ligouAntes, _) = Ligar(berco);
+			Obra campoAntes = Maquina("Gravity", terra, maqFora, grav: 10);
+			LerOsCampos();
+			double pesoAntes = cDentro.Ficha.gravmult;
+			_noChao.Remove(campoAntes);
+			LerOsCampos();
+			DefeitoIntr("sem a zona segura (o jogo de antes do pedido 164): a gravidade assenta no berco, liga, e o campo de fora pesa em quem esta dentro",
+						antesNoBerco != null && ligouAntes && pesoAntes == 10, $"assentou {antesNoBerco != null}; ligou {ligouAntes}; peso {pesoAntes}x");
+		}
+		finally
+		{
+			ZonaSeguraNaBancadaDeTeste = false;
+			foreach (ServerPlayer c in corpos) RemoverNpc(c);
+			_noChao.Clear();
+			_noChao.AddRange(noChaoDeAntes);
+			_proximaObraId = idDeAntes;
+			LerOsCampos();
+			GravarMundo();
 		}
 	}
 

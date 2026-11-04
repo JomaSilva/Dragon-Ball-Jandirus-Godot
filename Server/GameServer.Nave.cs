@@ -121,6 +121,12 @@ public sealed class Nave
 	/// </summary>
 	public double Tanque = -1;
 
+	/// <summary>
+	/// (2026-10-31, o pedido 209) OS DEGRAUS DO TANQUE MAIOR (0 = o de fabrica, ate `Combustivel.DegrausDoTanque`) -- o "Melhorar tanque".
+	/// PERSISTE como a velocidade, e vai junto pra mochila (a gaveta do `MaquinaGuardada`). Quem le e o `CapacidadeDe`.
+	/// </summary>
+	public int DegrausDoTanque;
+
 	/// <summary>O que a nave gastou desde a ultima volta de um segundo (`TickDoCombustivel`). Sessao, nao disco.</summary>
 	[JsonIgnore] public double GastoNoSegundo;
 
@@ -570,7 +576,8 @@ public partial class GameServer
 		Avisar(pl, (NaveGrande.EhNaveGrande(c.Id)
 			? $"você assenta {c.Nome} no chão. Aperte E nela pra EMBARCAR -- a ponte fica lá dentro."
 			: $"você assenta {c.Nome} no chão. Aperte E nela pra entrar.")
-			+ (voltou ? $" A velocidade que ela tinha volta com ela: {nave.Velocidade}x." : ""));
+			+ (voltou && nave.Velocidade > Naves.VelocidadeInicial ? $" A velocidade que ela tinha volta com ela: {nave.Velocidade}x." : "")
+			+ (voltou && nave.DegrausDoTanque > 0 ? $" O tanque maior também: {CapacidadeDe(nave):N0} de combustível." : ""));
 		MandarObras(pl.Zone);
 	}
 
@@ -604,9 +611,9 @@ public partial class GameServer
 		// (2026-10-18) SO DE TANQUE CHEIO: o item da mochila nao guarda o tanque (so a velocidade, logo abaixo), e a nave assentada de novo
 		// nasce cheia -- recolher e assentar seria abastecer de graca, em qualquer lugar, e o combustivel que o dono pediu pra obrigar o
 		// pouso estrategico deixaria de obrigar qualquer coisa. Ver `GameServer.Combustivel.cs`.
-		if (!RecolheComTanqueFuradoDeTeste && Combustivel.TemTanque(n.Tipo) && !Combustivel.Cheio(n.Tipo, NivelDoTanque(n)))
+		if (!RecolheComTanqueFuradoDeTeste && Combustivel.TemTanque(n.Tipo) && !Combustivel.Cheio(n.Tipo, NivelDoTanque(n), n.DegrausDoTanque))
 		{
-			Avisar(pl, $"{NomeDaNave(n)} só vai pra mochila de tanque cheio (faltam {Combustivel.Capacidade(n.Tipo) - NivelDoTanque(n):N0}): "
+			Avisar(pl, $"{NomeDaNave(n)} só vai pra mochila de tanque cheio (faltam {CapacidadeDe(n) - NivelDoTanque(n):N0}): "
 					   + "abasteça antes -- assentada de novo ela volta cheia, e é por isso.");
 			return;
 		}
@@ -622,8 +629,11 @@ public partial class GameServer
 		_naves.Remove(n);
 		GravarNaves();
 		Guardar(pl, recolhida);
+		// (2026-10-31, o pedido 209) a gaveta leva a velocidade E os degraus do tanque: cada um diz o seu
+		bool levou = recolhida != n.Tipo;
 		Avisar(pl, $"você recolhe {NomeDaNave(n)}."
-				   + (recolhida != n.Tipo ? $" A velocidade vai junto: assentada de novo, ela volta a {n.Velocidade}x." : ""));
+				   + (levou && n.Velocidade > Naves.VelocidadeInicial ? $" A velocidade vai junto: assentada de novo, ela volta a {n.Velocidade}x." : "")
+				   + (levou && n.DegrausDoTanque > 0 ? $" O tanque maior também: {CapacidadeDe(n):N0} de combustível." : ""));
 		if (obras > 0)
 			Avisar(pl, obras == 1
 				? "a construção que estava lá dentro fica no chão, ao lado -- solta."
@@ -1119,8 +1129,15 @@ public partial class GameServer
 				   + (TetoPorTecnologia.Livre(pl.Ficha.techskill) ? ")" : $"; a sua tecnologia leva até {TetoPorTecnologia.VelocidadeDaNave(pl.Ficha.techskill)}x)"));
 		// (2026-10-18) O TANQUE, so em quem tem: o foguete nao viaja, e "0 de combustivel" nele diria que ele esta seco.
 		if (Combustivel.TemTanque(n.Tipo))
-			Avisar(pl, $"  combustível: {NivelDoTanque(n):N0} de {Combustivel.Capacidade(n.Tipo):N0} "
-					   + $"(um tanque leva {Combustivel.TilesDeAlcance(n.Tipo):N0} tiles; abastecer custa {Combustivel.RecursosPorUnidade:0.#} recurso por unidade)");
+		{
+			Avisar(pl, $"  combustível: {NivelDoTanque(n):N0} de {CapacidadeDe(n):N0} "
+					   + $"(um tanque leva {Combustivel.TilesDeAlcance(n.Tipo, n.DegrausDoTanque):N0} tiles; abastecer custa {Combustivel.RecursosPorUnidade:0.#} recurso por unidade)");
+			// (2026-10-31, o pedido 209) o degrau do tanque, e o que o proximo soma e custa
+			Avisar(pl, n.DegrausDoTanque >= Combustivel.DegrausDoTanque
+				? $"  tanque: degrau {n.DegrausDoTanque} de {Combustivel.DegrausDoTanque} -- no limite."
+				: $"  tanque: degrau {n.DegrausDoTanque} de {Combustivel.DegrausDoTanque}; o próximo soma "
+				  + $"{Combustivel.Capacidade(n.Tipo) * Combustivel.FracaoPorDegrau:N0} e custa {Recurso.DoisPrecos(Combustivel.CustoDoDegrau(n.Tipo, n.DegrausDoTanque))}");
+		}
 		Avisar(pl, $"  Terra→Namek: {Naves.SegundosDeViagem(d, n.Velocidade) / 60:0.#} min reais "
 				   + $"({Naves.DiasInGame(d, n.Velocidade):0.##} dias in-game)");
 		Avisar(pl, $"  espera do lançamento: {SegundosDeLancamentoDe(n):0.#} s");
@@ -1141,7 +1158,8 @@ public partial class GameServer
 		if (n.VoltaEm > 0) Avisar(pl, $"  em órbita: desce em {(n.VoltaEm - NowMs()) / 1000.0:0} s.");
 
 		// O SALDO AO LADO DOS PRECOS (quando ha o que pagar nela): e com ele que se escolhe a moeda.
-		if (n.Velocidade < Naves.VelocidadeMaxima || (Naves.EhFoguete(n.Tipo) && n.Usada))
+		if (n.Velocidade < Naves.VelocidadeMaxima || (Naves.EhFoguete(n.Tipo) && n.Usada)
+			|| (Combustivel.TemTanque(n.Tipo) && n.DegrausDoTanque < Combustivel.DegrausDoTanque))
 			Avisar(pl, $"  você tem {CarteiraEscrita(pl)}.");
 
 		Avisar(pl, $"  onde: {n.Zona}");
@@ -1176,6 +1194,7 @@ public partial class GameServer
 			case "nave_pegar": PegarNave(pl); return true;
 			case "nave_recondicionar": RecondicionarNave(pl, arg); return true;
 			case "nave_abastecer": Abastecer(pl); return true;   // (2026-10-18) ver `GameServer.Combustivel.cs`
+			case "nave_tanque": MelhorarOTanque(pl, arg); return true;   // (2026-10-31, o pedido 209) idem
 
 			// A CAMADA 2 -- arquivo proprio (`GameServer.NaveGrande.cs`) pela mesma razao que a
 			// camada 1 nao mora no `GameServer.Tech.cs`: interior, ponte e ejecao sao um sistema, e

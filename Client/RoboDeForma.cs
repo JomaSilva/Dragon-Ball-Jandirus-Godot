@@ -3492,15 +3492,22 @@ public partial class RoboDeForma : Node
 		Conferir(desenhistas.Count == 0,
 					 "todo simbolo de aura tem UM desenhista so -- o sprite, a chama por shader ou a nuvem"
 				   + (desenhistas.Count > 0 ? $" (errados: {string.Join(", ", desenhistas)})" : ""));
-		Conferir(ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusQuente) is { } eq
-				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio) is { } ef
-				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusRosa) is { } er
-				  && eq != ef && ef != er && eq != er,
-					 "e as tres DIVINAS sao da chama por shader, cada uma com o seu desenho -- o fogo do SSG, a chama do Blue e a do Rose");
+		// (2026-11-02, o pedido 223f) AS DIVINAS VESTEM A LUZ DO BLUE, cada uma na sua cor -- o dono: *"Só as divinas"*. Ate aqui cada uma
+		// tinha o seu desenho (o fogo do SSG, a chama do Blue e a do Rose); agora o desenho e um so, e o que e de cada uma e a paleta.
+		static Color MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura fl) => ChamaDeAura.PaletaDe(fl, Colors.White).Meio;
+		Conferir(ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusQuente) == ChamaDeAura.EstiloDaLuz
+				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio) == ChamaDeAura.EstiloDaLuz
+				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusRosa) == ChamaDeAura.EstiloDaLuz
+				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusDourado) == ChamaDeAura.EstiloDaLuz
+				  && !MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura.DeusQuente).IsEqualApprox(MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura.DeusRosa))
+				  && !MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura.DeusQuente).IsEqualApprox(MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura.DeusDourado))
+				  && !MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura.DeusRosa).IsEqualApprox(MeioDaLuz(Jandirus.Core.Forms.FolhaDeAura.DeusDourado)),
+					 "(223f) e as quatro DIVINAS sao da chama por shader, todas na LUZ do Blue (o mesmo desenho), cada uma na sua cor -- o SSG, "
+				   + "o Blue, o Rose e a Golden Perfect");
 
 		// ============================ (2026-10-26) E AS DUAS DIVINAS DO BIO, PELA COR ============================
 		// O dono: a Golden Perfect com *"uma aura igual a do ssj god so q dourada ao inves de laranja"*, e a MAX com a *"do blue/blue
-		// evolution so q vermelha"*. A Golden tem o MESMO desenho do fogo do SSG (o mesmo estilo do shader) e uma rampa propria: o meio
+		// evolution so q vermelha"*. A Golden tem o MESMO desenho do SSG (o mesmo estilo do shader; a luz desde o 223f) e uma rampa propria: o meio
 		// dela tem de ser OURO -- vermelho e verde altos, azul baixo, o verde bem acima do laranja do SSG. A MAX tem o desenho do Blue
 		// Evolution e a cor dela, pela regra da chama do Blue (a rampa sai da cor da forma), tem de sair VERMELHA.
 		// ==========================================================================================================
@@ -3509,7 +3516,7 @@ public partial class RoboDeForma : Node
 		Conferir(ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusDourado) == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusQuente)
 				  && meioDoOuro.R > 0.9f && meioDoOuro.G > 0.75f && meioDoOuro.B < 0.45f && meioDoOuro.G > meioDoFogo.G + 0.1f
 				  && bordaDoOuro.G > bordaDoOuro.B,
-				 $"e a da GOLDEN PERFECT e o FOGO do Deus (o mesmo desenho) em OURO, e nao no laranja dele (meio #{meioDoOuro.ToHtml(false)} "
+				 $"e a da GOLDEN PERFECT e o desenho do SSG (a luz, desde o 223f) em OURO, e nao no laranja dele (meio #{meioDoOuro.ToHtml(false)} "
 			   + $"contra #{meioDoFogo.ToHtml(false)} do SSG)");
 		Jandirus.Core.Forms.FormaDef maxDoBio = Jandirus.Core.Forms.Catalogo.Def("bio_max")!;
 		var (_, meioDaMax, _, _) = ChamaDeAura.PaletaDe(Jandirus.Core.Forms.Catalogo.Folha(maxDoBio), new Color(maxDoBio.Aura));
@@ -3813,38 +3820,45 @@ public partial class RoboDeForma : Node
 			Conferir(aura.DesenhoDeTeste.SemTinta && aura.CorDaChama == Aura.CorDoKaioken,
 					 "a folha dele nao se tinge (ja e vermelha) e a cor que a LUZ recebe e a do Kaio-ken");
 
-			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
-			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+			// (2026-11-02, o pedido 223) A TROCA DE FORMA com o Kaio-ken aceso, medida numa MORTAL (a lendaria): no Blue o sprite vermelho
+			// agora sai -- a chama dele leva o Kaio-ken por fora (o bloco de baixo).
+			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Lssj);
+			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.Lssj);
 			Conferir(aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken
 				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken,
 						 "transformar-se com o Kaio-ken aceso NAO tira a folha vermelha de nenhum dos dois "
 				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
 				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
 
-			// ============================ E NO BLUE SAO DUAS CHAMAS, UMA EM CIMA DA OUTRA (adendo 13) ============================
-			// O dono: *"no blue kaioken seria a aura shaders do blue + aura sprite do kaioken por cima"*. O sprite vermelho segue
-			// la em cima (a linha acima); por BAIXO dele, a chama por shader dos dois nodes continua com o simbolo do Blue e ACESA
-			// (o buff acende sem `Acender`), na cor da FORMA -- nunca no vermelho, que e da luz e do sprite.
+			// ============================ NO BLUE, A CHAMA LEVA O KAIO-KEN POR FORA (o pedido 223) ============================
+			// O dono, com a foto de um Blue Kaio-ken de outro jogo: *"no blue kaioken o efeito da segunda imagem"* -- a luz do Blue por
+			// dentro e uma chama VERMELHA grande por fora, numa chama so. Era a regra do adendo 13 (*"a aura shaders do blue + aura sprite
+			// do kaioken por cima"*); agora a chama por shader dos dois nodes veste o desenho 4 (`ChamaDeAura.EstiloDaLuzComKaioken`), acesa
+			// e na cor da FORMA (o vermelho e do proprio desenho), e o sprite vermelho fica MUDO por cima dela.
 			//
-			// COMO REPROVA SE A REGRA SUMIR: o `Aura.KaiokenTomaADivinaDeTeste` (o buff tomando a chama inteira, o jogo de antes do
-			// pedido) -- a bancada o liga logo abaixo.
+			// COMO REPROVA SE A REGRA SUMIR: o `Aura.KaiokenTomaADivinaDeTeste` (o buff tomando a chama inteira) apaga a chama -- a bancada
+			// o liga logo abaixo; e o sprite de volta por cima (o jogo do adendo 13) derruba a metade do "mudo".
 			// ================================================================================================================
-			bool DuasChamas() =>
-				aura.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio)
-				&& cgt.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio)
-				&& aura.ChamaDeTeste.AcesaDeTeste && aura.DesenhoDeTeste.Visible;
-			Conferir(DuasChamas() && aura.ChamaDeTeste.CorNoMaterialDeTeste is { } corDaChama
-				  && !corDaChama.IsEqualApprox(Aura.CorDoKaioken),
-						 "no BLUE com o Kaio-ken as chamas sao DUAS: a do Blue por shader, acesa por baixo "
-				   + $"(desenho {aura.ChamaDeTeste.EstiloDeTeste}, acesa {aura.ChamaDeTeste.AcesaDeTeste}, "
-				   + $"cor #{aura.ChamaDeTeste.CorNoMaterialDeTeste?.ToHtml(false)}), e o sprite vermelho por cima");
+			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+			bool ChamaComOKaioken() =>
+				aura.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.EstiloDaLuzComKaioken
+				&& cgt.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.EstiloDaLuzComKaioken
+				&& aura.ChamaDeTeste.AcesaDeTeste;
+			Conferir(ChamaComOKaioken() && aura.ChamaDeTeste.CorNoMaterialDeTeste is { } corDaChama
+				  && !corDaChama.IsEqualApprox(Aura.CorDoKaioken)
+				  && aura.DesenhoDeTeste.SemFolha && cgt.DesenhoDeTeste.SemFolha,
+						 "(223) no BLUE com o Kaio-ken a CHAMA leva o Kaio-ken por fora (o desenho 4: a luz do Blue dentro, o vermelho fora), "
+				   + $"acesa na cor da forma, e o sprite vermelho fica MUDO (desenho {aura.ChamaDeTeste.EstiloDeTeste}/{cgt.ChamaDeTeste.EstiloDeTeste}, "
+				   + $"acesa {aura.ChamaDeTeste.AcesaDeTeste}, cor #{aura.ChamaDeTeste.CorNoMaterialDeTeste?.ToHtml(false)}; sprites sem folha: "
+				   + $"aura {aura.DesenhoDeTeste.SemFolha}, carga {cgt.DesenhoDeTeste.SemFolha})");
 			Aura.KaiokenTomaADivinaDeTeste = true;
 			try
 			{
 				aura.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
 				cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
-				Conferir(!DuasChamas(),
-							 "(defeito injetado: o Kaio-ken tomando a chama inteira) o Blue apaga por baixo do vermelho -- a linha de cima REPROVA");
+				Conferir(!ChamaComOKaioken(),
+							 "(defeito injetado: o Kaio-ken tomando a chama inteira) o Blue apaga -- a linha de cima REPROVA");
 			}
 			finally
 			{
@@ -7896,11 +7910,11 @@ public partial class RoboDeForma : Node
 	/// A metade do CABELO cai no bloco de cima. Aqui mora a metade da AURA, com as tres perguntas de sempre:
 	///
 	///   1. o simbolo da forma e o do ROSE -- e o SSG da linha Rose fica no fogo;
-	///   2. o desenho e o DELE, e nao o do Blue com outro nome, e a paleta e violeta e carmim -- medida na cor, e nao no
-	///      nome; e ela nao vem de fora (um Blue azul nao vira um Rose azul);
+	///   2. o desenho e a LUZ do Blue (desde o pedido 223f: *"Só as divinas"*), e a paleta e DELE, violeta e carmim -- medida na cor, e
+	///      nao no nome; e ela nao vem de fora (um Blue azul nao vira um Rose azul);
 	///   3. o sprite fica MUDO pra ele, e responde pelo SIMBOLO.
 	///
-	/// COMO REPROVA SE A REGRA SUMIR: mande a `DeusRosa` pro desenho da `DeusFrio` no `ChamaDeAura.Estilo` (cai a segunda),
+	/// COMO REPROVA SE A REGRA SUMIR: tire a `DeusRosa` da luz no `ChamaDeAura.Estilo` (cai a segunda),
 	/// ou devolva a folha dela ao `SpriteDeAura.CaminhoDa` (cai a terceira).
 	/// </summary>
 	/// <summary>
@@ -7926,9 +7940,9 @@ public partial class RoboDeForma : Node
 					 "e o `rose_ssg` continua no FOGO do SSG (o corte `ssj==0` do AuraObject.dm)");
 
 		// --- 2. O DESENHO E A PALETA ---
-		Conferir(ChamaDeAura.Estilo(FolhaDeAura.DeusRosa) is { } doRose && doRose != ChamaDeAura.Estilo(FolhaDeAura.DeusFrio),
-					 $"a chama do Rose tem desenho PROPRIO, e nao o do Blue (desenho {ChamaDeAura.Estilo(FolhaDeAura.DeusRosa)} "
-				   + $"contra {ChamaDeAura.Estilo(FolhaDeAura.DeusFrio)})");
+		// (2026-11-02, o pedido 223f) o desenho agora e a LUZ do Blue, e o que e DELE e a paleta, logo abaixo
+		Conferir(ChamaDeAura.Estilo(FolhaDeAura.DeusRosa) == ChamaDeAura.EstiloDaLuz,
+					 $"(223f) a chama do Rose veste a LUZ do Blue (desenho {ChamaDeAura.Estilo(FolhaDeAura.DeusRosa)}), na paleta DELE");
 		(Color _, Color meio, Color borda, Color aro) = ChamaDeAura.PaletaDe(FolhaDeAura.DeusRosa, new Color("ff7ac6"));
 		Conferir(meio.B > meio.G + 0.3f && meio.R > meio.G,
 					 $"o meio da chama do Rose e VIOLETA (#{meio.ToHtml(false)})");
@@ -7946,7 +7960,7 @@ public partial class RoboDeForma : Node
 		// a do rabo e a do olho) num vermelho vivo.
 		var (mioloDoDeus, meioDoDeus, _, _) = ChamaDeAura.PaletaDe(FolhaDeAura.DeusQuente, Colors.White);
 		Conferir(meioDoDeus.H * 360f is > 25f and < 45f && meioDoDeus.S > 0.7f && mioloDoDeus.V > 0.9f,
-					 $"**O FOGO DO SSG E O DE ANTES** (o dono: \"a aura anterior tava melhor do ssj god\"): o meio e LARANJA "
+					 $"**O SSG E LARANJA COMO ANTES** (o dono: \"a aura anterior tava melhor do ssj god\"; na luz desde o 223f): o meio e LARANJA "
 				   + $"(#{meioDoDeus.ToHtml(false)}, {meioDoDeus.H * 360f:0} graus) e o miolo claro (#{mioloDoDeus.ToHtml(false)})");
 		foreach (string id in new[] { "ssg", "rose_ssg" })
 			Conferir(Jandirus.Core.Forms.Catalogo.Def(id) is { } doDeus && doDeus.Cabelo is { } tintaDoDeus && VermelhoVivo(new Color(tintaDoDeus)),

@@ -74,4 +74,10 @@ public enum AtaqueDoUltimato : byte
 
 	/// <summary>A esfera roxa da Death Ball (`deathball2017purple2`, a arte da tecnica, `DeathBall.dm:53`) -- o Freeza de Namek.</summary>
 	DeathBall = 1,
+
+	/// <summary>
+	/// (2026-11-01, o pedido 218) A ESFERA ROSA DO KID BOO -- *"use o mesmo efeito da death ball mas rosa"*: a folha da Death Ball, pintada
+	/// de rosa na tela (`Client/SupernovaDesenhada.cs`), pelos mesmos prazos. Quem a ergue e a fuga do Kid (`GameServer.SagaDoBuu.cs`).
+	/// </summary>
+	EsferaRosa = 2,
 }

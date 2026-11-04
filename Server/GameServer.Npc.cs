@@ -206,6 +206,9 @@ public partial class GameServer
 	/// (2026-10-27) O PLANETA QUE DA A RACA, quando nao e o da zona. Nulo = a zona, como sempre foi. So a lista da mente passa outro: o
 	/// habitante lembrado nasce na mente (que nao e berco de ninguem) com a raca do planeta onde foi visto (`ChamarOponenteDaMente`).
 	/// </param>
+	/// <summary>(2026-11-02, o pedido 227n) DEFEITO INJETADO (`--soltosteste`): o chefe nasce sem a maestria de 300x. Falso em jogo, sempre.</summary>
+	internal static bool ChefeSemMaestriaDeTeste;
+
 	private ServerPlayer? NascerNpc(string moldeId, ZoneKey zona, Vec2 pos, ulong lugar, double? media = null, string? planeta = null)
 	{
 		MoldeDeNpc? molde = _moldes?.Get(moldeId);
@@ -321,6 +324,23 @@ public partial class GameServer
 		// A BOLSA (2026-10-13): o zeni que ele carrega -- o que se rouba dele nocauteado, e o premio de quem mata o
 		// vilao. Da MESMA semente da ficha. Ver `Core/Npc/BolsaDeNpc.cs`.
 		npc.Ficha.Zeni = BolsaDeNpc.Zeni(molde.Tipo, semente);
+
+		// (2026-11-02, o pedido 227n) TODO CHEFE DE SAGA NASCE COM A MAESTRIA DE GRAVIDADE DE 300x -- *"lembrando q boss de saga devem todos
+		// ter maestria de 300x gravidade (eles n tem bonus de acllimacao) pra n acabarem morrendo ao invadir um planeta com gravidade mt
+		// alta"*. Aqui, na porta de todo nascimento: a saga, o vilao solto, o do Inferno, o campeao do wipe.
+		if (molde.EhChefe && !ChefeSemMaestriaDeTeste)
+			npc.Ficha.GravMastered = Math.Max(npc.Ficha.GravMastered, Jandirus.Core.Npc.ViloesSoltos.MaestriaDeGravidadeDoChefe);
+
+		// (2026-11-01, o adendo 210l) O SCOUTER LIGADO, se o molde pede (`scouter`) -- o dono, dos tres da saga Saiyajin: *"Os 3 usam scouter tb
+		// equipado"*. E o MESMO bit que o equipar do jogador acende (`GameServer.Mochila`): mora em `PoderesConcedidos` (o `Poderes` e a soma
+		// dele com as skills -- `AplicarPoderes`), e o pacote da aparencia o le pra desenhar a folha do item no rosto. Antes de o corpo entrar
+		// no mundo, pra a primeira aparencia que a zona recebe ja vir com ele. Sem o item na mochila: o scouter em uso nao sai no saque
+		// (`Saque.EmUso`), entao nao haveria o que levar.
+		if (molde.Scouter)
+		{
+			npc.PoderesConcedidos |= Protocol.Poder.Scouter;
+			npc.Poderes |= Protocol.Poder.Scouter;
+		}
 
 		PorNoMundo(npc);
 
@@ -525,6 +545,12 @@ public partial class GameServer
 		// nenhum, exatamente o que o pedido proibe. O preco e que uma peca fora do catalogo some em
 		// silencio, e por isso o motivo que ele devolve deixou de ser descartado aqui: era assim que
 		// "vesti o NPC e ele continua pelado" viraria um misterio de duas horas.
+		// (2026-11-02, o pedido 227) O POVO DE UM MUNDO COM CIVILIZACAO: o tom da pele (a cor do povo, mais clara ou mais escura) ou o brilho
+		// da folha de alien, e o cabelo (a cor comum, a segunda ou uma exotica) num dos penteados do povo -- tudo da raca, e ANTES do
+		// `Sanear`, que confere o cabelo contra o catalogo. O corpo ja e a folha unica da raca (`VisualCatalog.CorposDe`).
+		if (Jandirus.Core.Races.RacaProcedural.EhProcedural(raca))
+			Jandirus.Core.Races.RacaProcedural.Vestir(ap, raca, genero, semente, [.. _visual.Cabelos.Select(c => c.Nome)]);
+
 		string queixa = _visual.Sanear(ap, raca, genero);
 		if (queixa.Length > 0)
 			GD.PushWarning($"[server] aparencia de NPC do molde '{molde.Id}' ({raca}): {queixa}");

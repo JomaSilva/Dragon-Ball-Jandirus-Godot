@@ -31,6 +31,9 @@ namespace Jandirus.Server;
 /// compensate, not as a goddamn training method."* A conta ja estava portada em
 /// `Fighter.PowerLevel` e **os dois campos nunca eram escritos por ninguem** -- este arquivo e o
 /// consumidor que faltava.
+///
+/// (2026-10-31, o pedido 203) E A MEDIA SO AJUDA: o corpo cujo poder passou do total absorvido nao perde nada com ela (o
+/// `Math.Max` do `Fighter.PowerLevel`). Era o "debuff eterno" do Bio-Androide preso em 0,55x depois do desejo de poder.
 /// ==========================================================================================================
 /// </summary>
 public partial class GameServer
@@ -289,7 +292,8 @@ public partial class GameServer
 
 		// ============================ `AbsorbDeterminesBP = 1` -- E ELE E PRA SEMPRE ============================
 		// O DM o liga dentro do proprio verb (`Absorption.dm:114`), toda vez. Ligado uma vez, ele muda a conta de poder do corpo pro resto
-		// da vida: o BP absorvido deixa de SOMAR e passa a tirar MEDIA com o proprio. Nao ha desligar, e nao deveria haver.
+		// da vida: o BP absorvido deixa de SOMAR e passa a tirar MEDIA com o proprio. Nao ha desligar, e nao deveria haver -- e desde o
+		// pedido 203 a media so entra quando e MAIOR que o poder do corpo (nunca o derruba).
 		// ====================================================================================================
 		f.AbsorbDeterminesBP = true;
 
@@ -333,7 +337,8 @@ public partial class GameServer
 			? $"+{bpAlvo:N0} de poder absorvido"
 			: $"{Jandirus.Core.Stats.PoderNaFrase.ParteDoPoderDele(bpAlvo, bpAlvo)} absorvido";
 		Avisar(pl, $"você absorve {alvo.Name} por inteiro ({absorvido} -- "
-				   + "e ele conta pela MÉDIA com o seu, não pela soma). Vida, fôlego e Ki: +20%.");
+				   + "e ele conta pela MÉDIA com o seu, não pela soma -- só quando a média passa do seu poder: nunca te enfraquece). "
+				   + "Vida, fôlego e Ki: +20%.");
 
 		// ---- E SO ENTAO A ESCADA ----
 		// Depois da morte e depois do poder, como no DM (`Absorption.dm:143`): a evolucao e um EVENTO em cima de uma absorcao que ja aconteceu.

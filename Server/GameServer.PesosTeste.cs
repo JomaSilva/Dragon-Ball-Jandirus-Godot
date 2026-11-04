@@ -269,6 +269,35 @@ public sealed partial class GameServer
 			AfirmarPesos("(defeito injetado: a maestria so no passe do treino, o jogo de antes) o treino com peso para de cansaco e a maestria para "
 					  + "junto -- a regua de cima REPROVA", deAntes.Treinando < N / 2 && deAntes.Subiu < comPeso.Subiu * 0.6,
 					  $"treinando {deAntes.Treinando} de {N}; subiu {deAntes.Subiu:0.#####}");
+
+			// ---- (2026-10-29, o pedido 175) O PESO IDEAL DESTA GRAVIDADE: o botao do teclado da %, pelo `AjustarPeso` de producao ----
+			(double Razao, double Ganho, double Esmaga, double Pct, List<string> Disse) Ideal(double gravidade, double maestria, double tetoEmLimites)
+			{
+				f.Planetgrav = gravidade;
+				f.gravmult = 0;
+				f.GravMastered = maestria;
+				f.train = f.med = false;
+				f.Tick(agoraMs: NowMs());
+				string pesos = PesoDeTreino.IdDe(Math.Max(f.weight_cap_hw, 1) * tetoEmLimites, "");
+				pl.Mochila.Guardar(pesos);
+				List<string> disse = Ouvir(() => AjustarPeso(pl, pesos, PesoDeTreino.ArgumentoDoIdeal));
+				var medido = (f.weight_ratio, f.weight, Jandirus.Core.Stats.Esmagamento.Razao(f), f.pesoPct, disse);
+				AjustarPeso(pl, pesos, "0");
+				pl.Mochila.Tirar(pesos);
+				return medido;
+			}
+			var naGravidade = Ideal(10, 5, GainKnobs.WeightItemCapMult);   // a gravidade ja esmaga 2x
+			var naTerra = Ideal(1, 5, GainKnobs.WeightItemCapMult);        // a gravidade nao esmaga nada
+			var leve = Ideal(10, 5, 0.01);                                  // o peso maximo nem chega perto do ideal
+			AfirmarPesos("(o pedido 175) **O PESO IDEAL DESTA GRAVIDADE**: a 10x com a maestria em 5 (a gravidade ja esmaga 2x) o botao veste o peso "
+					  + "que pesa 2x o limite do corpo -- 4x de ganho, e o esmagamento nao passa do que a gravidade ja faz",
+					  Math.Abs(naGravidade.Razao - 2) < 0.1 && Math.Abs(naGravidade.Ganho - 4) < 0.2 && naGravidade.Esmaga < 2.1,
+					  $"razao {naGravidade.Razao:0.###}, ganho {naGravidade.Ganho:0.##}x, esmagamento {naGravidade.Esmaga:0.###}, {naGravidade.Pct:0.#}%");
+			AfirmarPesos("(o pedido 175) ...e onde a gravidade nao esmaga, o ideal e o limite do corpo: 2x de ganho, sem esmagar",
+					  Math.Abs(naTerra.Razao - 1) < 0.05 && naTerra.Esmaga <= 1.05 && Math.Abs(naTerra.Ganho - 2) < 0.1,
+					  $"razao {naTerra.Razao:0.###}, ganho {naTerra.Ganho:0.##}x, esmagamento {naTerra.Esmaga:0.###}, {naTerra.Pct:0.#}%");
+			AfirmarPesos("(o pedido 175) ...e com o peso maximo leve demais, ele veste 100% e diz pra melhorar o peso",
+					  Math.Abs(leve.Pct - 100) < 1e-6 && Disse(leve.Disse, "melhore o peso máximo"), $"{leve.Pct:0.#}% | {Ultimos(leve.Disse)}");
 		}
 		finally
 		{

@@ -31,7 +31,7 @@ public static class HabilidadesDoDeus
 			"APAGA quem você está agarrando (ou quem está colado à sua frente). Só pega quando o TORSO do alvo está em "
 			+ $"{KitDoDeus.HakaiTorsoPct:0}% ou menos e ele é ao menos {(1 - KitDoDeus.HakaiFracaoDeBp) * 100:0}% mais fraco "
 			+ "que você agora.\n\nQuem é apagado assim paga ao Enma "
-			+ $"{KitDoDeus.HakaiPrecoDoRevive:0}x o preço pra voltar à vida.");
+			+ $"{Jandirus.Core.World.CustosDoAlem.MultiplicadorDoHakai:0.##}x o preço pra voltar à vida.");   // (2026-11-01, o pedido 213) o do servidor
 
 		Botao("Power Flick", KitDoDeus.VerbFlick,
 			"O peteleco: solta quem você está AGARRANDO com o dano de "

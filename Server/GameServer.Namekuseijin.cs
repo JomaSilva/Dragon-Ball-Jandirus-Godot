@@ -306,6 +306,9 @@ public sealed partial class GameServer
 	{
 		// TRES PERGUNTAS BARATAS PRIMEIRO -- este metodo roda 5x por segundo por jogador.
 		if (!Fusao.EhNamekuseijin(pl.Race)) return;
+		// (2026-10-29) E O PRESENTE DO DRAGAO QUE DORMIA (o pedido 157): o Orange guardado pelo desejo de poder desperta quando o poder chega
+		// -- a mesma pergunta deste metodo, "o poder chegou?". Ver `ConferirOPresenteDoDragao`.
+		ConferirOPresenteDoDragao(pl);
 		if (pl.Livro == null) return;
 		if (pl.Livro.Sabe(AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin)) return;
 

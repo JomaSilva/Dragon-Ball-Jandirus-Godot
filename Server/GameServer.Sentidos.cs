@@ -100,6 +100,21 @@ namespace Jandirus.Server;
 /// modo Scan o numero vai, porque o scouter E a porta de leitura (<see cref="TemScouter"/>). A bancada
 /// `--sentidosteste` abre o pacote com o leitor do cliente e afirma os dois.
 ///
+/// ============================ A SALA DO TEMPO E OUTRA DIMENSAO (dono, 2026-10-31, o pedido 199) ============================
+/// *"n permita sentir o ki de pessoas dentro da sala do tempo usando sense mesmo ele em nivel 5, nem de dentro e nem pra fora da sala do
+/// tempo, por serem outras dimensao o sense n sente ninguem fora nem dentro"*. Qualquer Sala (a da Terra e as de planeta,
+/// `SalaDoTempo.EhUmaSala`) e uma zona propria, entao so os alcances de OUTRA zona (o sistema e o universo) a atravessavam: de fora, quem
+/// esta la dentro nao se sente; de dentro, ninguem de fora. Quem divide a MESMA sala se sente como sempre (a mesma zona -- a mesma
+/// dimensao). O Scan ja nao cruzava zona nenhuma. So a aba Sense, literal: o convite da Genkidama, que usa o mesmo alcance
+/// (`AlcanceDoSense`), nao mudou.
+///
+/// ============================ QUEM ESTA ABSORVIDO TAMBEM (dono, 2026-11-02, o pedido 224) ============================
+/// *"assim como sala do tempo n permita dar sense em quem esta absorvido e nem quem ta absorvido conseguir dar sense pra fora"*. Quem um
+/// Majin absorveu esta no INTERIOR dele (`InteriorDoMajin.De`, uma zona por Majin -- a gosma do pedido 219 leva pro mesmo lugar), entao
+/// e a mesma porta da Sala: de fora ninguem sente o absorvido (nem o Majin que o tem dentro), e de dentro o absorvido nao sente ninguem
+/// de fora (nem o Majin). Quem esta preso no MESMO Majin se sente como sempre (a mesma zona), e o guardiao la de dentro tambem. Outro
+/// `Interior` (a Capital Ship, a mente, o selo) nao e absorcao e nao muda.
+///
 /// ============================ QUANDO SAI ============================
 /// A 1 Hz (o laco de um segundo do `Tick`), so pra quem tem `Poder.Sense` ou scouter, e so quando a LISTA
 /// MUDA -- a mesma disciplina de assinatura do `MandarAtributos`/`MandarCorpo`. Um mundo parado e zero
@@ -127,6 +142,12 @@ public partial class GameServer
 
 	/// <summary>DEFEITO INJETADO (`--sentidosteste`): o nivel da skill nao abre alcance nenhum -- so o contador, o jogo de antes. Falso em jogo, sempre.</summary>
 	internal static bool SenseSemNiveisDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--sentidosteste`, `--diagsentidos`): o Sense de outra zona atravessa a Sala do Tempo -- o jogo de antes do pedido 199. Lido pelo `SentidosDe`. Falso em jogo, sempre.</summary>
+	internal static bool SenseCruzaASalaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--sentidosteste`, `--diagsentidos`): o Sense de outra zona atravessa o corpo do Majin -- o jogo de antes do pedido 224. Lido pelo `SentidosDe`. Falso em jogo, sempre.</summary>
+	internal static bool SenseCruzaOInteriorDeTeste;
 
 	/// <summary>Ate quantos tiles o scouter le um NPC comum (o chefe, de qualquer distancia). Ver o cabecalho.</summary>
 	public const int TilesDoScanDeNpc = 40;
@@ -352,6 +373,11 @@ public partial class GameServer
 			foreach (ServerPlayer o in _players.Values)
 			{
 				if (o == eu || o.ECadaver || vistos.Contains(o.Id) || o.Zone.Hash == eu.Zone.Hash) continue;
+				// (2026-10-31, o pedido 199) A SALA DO TEMPO E OUTRA DIMENSAO: de dentro dela o Sense nao alcanca ninguem de fora, e de fora
+				// ninguem de dentro -- nem no nivel 5. Ver o cabecalho.
+				if (!SenseCruzaASalaDeTeste && (SalaDoTempo.EhUmaSala(eu.Zone) || SalaDoTempo.EhUmaSala(o.Zone))) continue;
+				// (2026-11-02, o pedido 224) ...E O CORPO DO MAJIN TAMBEM: quem esta absorvido nao e sentido de fora, nem sente pra fora.
+				if (!SenseCruzaOInteriorDeTeste && (InteriorDoMajin.EhOInterior(eu.Zone) || InteriorDoMajin.EhOInterior(o.Zone))) continue;
 				if (!GenteOuChefe(o) || !AchoAEnergia(eu, o)) continue;
 				byte alcance = AlcanceDoSense(eu, o);
 				if (alcance > nivel) continue;

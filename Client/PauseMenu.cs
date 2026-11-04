@@ -173,6 +173,10 @@ public partial class PauseMenu : CanvasLayer
     private HSlider? _zoom;
     private Label? _zoomTxt;
 
+    /// <summary>(2026-10-31, o pedido 194) A caixa da camera do lock-on -- o robo `--diagcameratrava` a aperta pelo caminho do dedo.</summary>
+    private CheckBox? _cameraDoLockOn;
+    public CheckBox? CaixaDaCameraDoLockOnDeTeste => _cameraDoLockOn;
+
     public void Abrir()
     {
         Aberto = true;
@@ -417,6 +421,17 @@ public partial class PauseMenu : CanvasLayer
         // outras -- o que ele ganha e a frase que explica por que nada se mexe na tela.
         linhaZoom.TooltipText = "vale quando você entrar no mundo";
         caixa.AddChild(linhaZoom);
+
+        // (2026-10-31, o pedido 194) A CAMERA DO LOCK-ON: o dono, *"faca isso ser uma opção no menu de pausa (esc) podendo ativar ou nao"*.
+        // So grava: a camera le a preferencia a cada quadro (`World.CameraDoLockOn`), entao vale na hora, sem `Aplicar`.
+        _cameraDoLockOn = new CheckBox
+        {
+            Text = "câmera do lock-on (centra em você e no alvo)",
+            ButtonPressed = _cfg.CameraDoLockOn,
+            TooltipText = "com um alvo travado, a câmera fica no meio de você e dele, e afasta o zoom quando vocês se afastam",
+        };
+        _cameraDoLockOn.Toggled += on => { _cfg.CameraDoLockOn = on; _cfg.Gravar(); };
+        caixa.AddChild(_cameraDoLockOn);
 
         // GRAFICO: hoje ele decide o filtro da sombra das luzes (nenhum / PCF5 / PCF13).
         //

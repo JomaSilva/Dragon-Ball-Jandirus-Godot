@@ -718,8 +718,9 @@ public sealed partial class GameServer
 				_embates.RemoveAt(i);
 				continue;
 			}
-			e.A.Ficha.Ki = Math.Max(e.A.Ficha.Ki - e.A.Ficha.MaxKi * CustoDeKiPorCruzamento, 0);
-			e.B.Ficha.Ki = Math.Max(e.B.Ficha.Ki - e.B.Ficha.MaxKi * CustoDeKiPorCruzamento, 0);
+			// (2026-11-01, o pedido 220) cada um pelo fator dele: o morto paga 25% menos
+			e.A.Ficha.Ki = Math.Max(e.A.Ficha.Ki - e.A.Ficha.MaxKi * CustoDeKiPorCruzamento * e.A.Ficha.FatorDeKiDoEstado, 0);
+			e.B.Ficha.Ki = Math.Max(e.B.Ficha.Ki - e.B.Ficha.MaxKi * CustoDeKiPorCruzamento * e.B.Ficha.FatorDeKiDoEstado, 0);
 
 
 			e.ProximoBaque = agora + (e.Cruzamentos.Count > 0 ? e.Cruzamentos.Dequeue() : MsPorCruzamentoMin);

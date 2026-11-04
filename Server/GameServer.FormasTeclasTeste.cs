@@ -23,7 +23,7 @@ namespace Jandirus.Server;
 ///   F2. O C: as divinas primeiro (o SSG, e nao o Blue direto), as mortais primeiro (o Super Saiyajin -- o defeito do dono) e o tronco
 ///       mortal inteiro, a outra familia de reserva, e o C que NAO pula degrau nem com 50% de maestria. Contra-exemplo `CSurdoAFamiliaDeTeste`.
 ///   F3. A DIVINA NA TECLA: o Blue da base e o SSG de dentro do Super Saiyajin, a porta do ki divino que continua e a forma nunca assumida
-///       que nao vai. Contra-exemplo `DivinaPedeOCaminhoDeTeste`.
+///       que nao vai. Contra-exemplo `DivinaPedeOCaminhoDeTeste`. E (o pedido 189) o Rose de um Kaio, que pede o que o Blue pede (F3g-F3i).
 ///   F4. A MORTAL COM 50% NA TECLA: o SSJ3 da base, os 49% que nao pulam (com a frase do quanto falta), as portas que continuam (a maestria
 ///       do SSJ2, o poder, o Ki), o X de sempre depois do salto e a forma nunca assumida. Contra-exemplo `MaestriaNaoPulaDeTeste`.
 ///
@@ -69,6 +69,7 @@ public sealed partial class GameServer
 			OCPeloFio(mesa, cli, pl);
 			ADivinaNaTecla(mesa, cli, pl);
 			AMortalComMetadeNaTecla(mesa, cli, pl);
+			OMisticoNoC(mesa, cli, pl);
 		}
 		catch (Exception e)
 		{
@@ -79,6 +80,7 @@ public sealed partial class GameServer
 		{
 			EstadoDeForma.CSurdoAFamiliaDeTeste = EstadoDeForma.DivinaPedeOCaminhoDeTeste = false;
 			EstadoDeForma.MaestriaNaoPulaDeTeste = EstadoDeForma.PulaFormaNuncaUsadaDeTeste = false;
+			EstadoDeForma.CSurdoAoMisticoDeTeste = false;
 			EscutaDeAvisos = null;
 			EscutaDeAnuncios = null;
 			mesa.Fecha();
@@ -195,6 +197,7 @@ public sealed partial class GameServer
 		double bp = pl.Ficha.BP;
 		pl.Forma.Limiares = null;
 		pl.Ficha.BP = Catalogo.PortaSsj2 - 1;
+		pl.Forma.Maestria.Por("ssj1", 100);   // (2026-10-30, o pedido 186) o Blue pede o SSJ1 dominado
 		try
 		{
 			ditos = FtC(mesa, cli, pl);
@@ -205,6 +208,7 @@ public sealed partial class GameServer
 		{
 			pl.Forma.Limiares = limiares;
 			pl.Ficha.BP = bp;
+			pl.Forma.Maestria.Por("ssj1", 40);
 		}
 
 		// SO A TECLA PULA: o mesmo corpo com o SSJ3 a 50% -- o C sobe um degrau.
@@ -227,6 +231,14 @@ public sealed partial class GameServer
 	{
 		GD.Print("[formasteclas] -- F3) a forma divina na tecla vai direto --");
 
+		// (2026-10-30, o pedido 186) o Blue pede o SSJ1 dominado (e 50% no SSG, que a montagem ja da): a familia inteira o tem, e a F3e o tira
+		pl.Forma.Maestria.Por("ssj1", 100);
+		try { ADivinaNaTeclaComOSsj1Dominado(mesa, cli, pl); }
+		finally { pl.Forma.Maestria.Por("ssj1", 40); }
+	}
+
+	private void ADivinaNaTeclaComOSsj1Dominado(MesaDeClientesCrus mesa, ClienteCruDeTeste cli, ServerPlayer pl)
+	{
 		// AS MORTAIS PRIMEIRO de proposito: a tecla nao e o C, e a familia do botao nao muda o que ela faz.
 		pl.Forma.CPelasDivinas = false;
 		FtABase(pl);
@@ -273,7 +285,75 @@ public sealed partial class GameServer
 					  + "tecla so lista forma ja usada, e o servidor confere)", pl.Forma.NaBase, $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
 		}
 		finally { pl.Forma.Liberar("blue"); }
+
+		// (2026-10-30, o pedido 186) E AS DUAS MAESTRIAS QUE O BLUE PEDE, depois do ki divino -- e a frase diz a que falta
 		FtABase(pl);
+		pl.Forma.Maestria.Por("ssj1", 99);
+		ditos = FtTecla(mesa, cli, pl, "blue");
+		AfirmarFt("F3e. (o pedido 186) **o Blue pede o Super Saiyajin DOMINADO**: com o SSJ1 a 99% a tecla do Blue e recusada -- e a frase diz os 100% dele",
+				  pl.Forma.NaBase && FtDito(ditos, "100% de maestria em Super Saiyajin (") && FtDito(ditos, "99%"), $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+		pl.Forma.Maestria.Por("ssj1", 100);
+		FtABase(pl);
+		pl.Forma.Maestria.Por("ssg", Catalogo.BluePedeSsgPct - 1);
+		try
+		{
+			ditos = FtTecla(mesa, cli, pl, "blue");
+			AfirmarFt($"F3f. (o pedido 186) **...e {Catalogo.BluePedeSsgPct:0}% de maestria no Super Saiyajin God**: com o SSG a "
+					  + $"{Catalogo.BluePedeSsgPct - 1:0}% a tecla do Blue e recusada -- e a frase diz os {Catalogo.BluePedeSsgPct:0}% dele",
+					  pl.Forma.NaBase && FtDito(ditos, $"{Catalogo.BluePedeSsgPct:0}% de maestria em Super Saiyajin God")
+					  && FtDito(ditos, $"{Catalogo.BluePedeSsgPct - 1:0}%"), $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+		}
+		finally { pl.Forma.Maestria.Por("ssg", 60); }
+		FtABase(pl);
+		ORoseNaTecla(mesa, cli, pl);
+	}
+
+	/// <summary>
+	/// (2026-10-30, o pedido 189) O ROSE PEDE O QUE O BLUE PEDE -- o dono: *"Tudo q o blue tem o rose deve ter (menos o kaioken, ele tem o rose
+	/// 2)"*. O mesmo corpo vira KAIO (a classe do Rose: a linha divina dele passa a ser a Rose), com o SSJ1 dominado e o `ssg` a 60%, e a tecla
+	/// do Rose cobra o SSG DELE (o `rose_ssg`) e o SSJ1. A classe e as barras voltam no fim.
+	/// </summary>
+	private void ORoseNaTecla(MesaDeClientesCrus mesa, ClienteCruDeTeste cli, ServerPlayer pl)
+	{
+		string classe = pl.Ficha.Class;
+		pl.Class = pl.Ficha.Class = Catalogo.ClasseRose;
+		if (pl.Ficha.Genoma != null) pl.Ficha.Genoma.Class = pl.Class;
+		foreach (string id in new[] { "rose_ssg", "rose" })
+		{
+			pl.Forma.Liberar(id);
+			pl.Forma.EstreiaVista.Add(Catalogo.Rede(id));
+		}
+		try
+		{
+			FtABase(pl);
+			pl.Forma.Maestria.Por("rose_ssg", Catalogo.BluePedeSsgPct - 1);
+			List<string> ditos = FtTecla(mesa, cli, pl, "rose");
+			AfirmarFt($"F3g. (o pedido 189) **o Rose pede o SSG DELE a {Catalogo.BluePedeSsgPct:0}%, como o Blue**: um Kaio com o SSJ1 dominado, o `ssg` a 60% e "
+					  + $"o `rose_ssg` a {Catalogo.BluePedeSsgPct - 1:0}% -- a tecla do Rose e recusada, e a frase diz os {Catalogo.BluePedeSsgPct:0}% em Super Saiyajin God",
+					  pl.Forma.NaBase && FtDito(ditos, $"{Catalogo.BluePedeSsgPct:0}% de maestria em Super Saiyajin God")
+					  && FtDito(ditos, $"{Catalogo.BluePedeSsgPct - 1:0}%"), $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+
+			pl.Forma.Maestria.Por("rose_ssg", Catalogo.BluePedeSsgPct);
+			pl.Forma.Maestria.Por("ssj1", 99);
+			FtABase(pl);
+			ditos = FtTecla(mesa, cli, pl, "rose");
+			AfirmarFt("F3h. (o pedido 189) **...e o Super Saiyajin DOMINADO**: com o SSJ1 a 99% a tecla do Rose e recusada -- e a frase diz os 100% dele",
+					  pl.Forma.NaBase && FtDito(ditos, "100% de maestria em Super Saiyajin (") && FtDito(ditos, "99%"), $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+
+			pl.Forma.Maestria.Por("ssj1", 100);
+			FtABase(pl);
+			ditos = FtTecla(mesa, cli, pl, "rose");
+			AfirmarFt($"F3i. (o pedido 189) ...com as duas (o SSJ1 dominado e {Catalogo.BluePedeSsgPct:0}% no `rose_ssg`) a tecla do Rose sai da base direto pro Rose",
+					  pl.Forma.Atual == "rose", $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+		}
+		finally
+		{
+			FtABase(pl);
+			pl.Forma.Maestria.Por("rose_ssg", 0);
+			pl.Forma.Maestria.Por("ssj1", 100);
+			pl.Class = pl.Ficha.Class = classe;
+			if (pl.Ficha.Genoma != null) pl.Ficha.Genoma.Class = pl.Class;
+		}
 	}
 
 	// =====================================================================
@@ -411,6 +491,65 @@ public sealed partial class GameServer
 	/// SSJ3 cobra do SSJ2. OS GRAUS FORA DO CAMINHO: aqui o assunto e a familia; o encontro dela com os graus e da `pformas` [5b]. A familia
 	/// do C NAO e tocada aqui -- e ela que o login e o botao escrevem.
 	/// </summary>
+	// =====================================================================
+	// F6) (2026-10-29, o pedido 153) O POTENTIAL UNLEASHED DENTRO OU FORA DO C DUPLO
+	// =====================================================================
+	private void OMisticoNoC(MesaDeClientesCrus mesa, ClienteCruDeTeste cli, ServerPlayer pl)
+	{
+		GD.Print("[formasteclas] -- F6) (o pedido 153) o botao do Potential Unleashed no C: sem ele, o C volta pro Super Saiyajin --");
+		FtMontar(pl);
+		pl.Forma.CPelasDivinas = false;
+		pl.Forma.Liberar(Catalogo.IdMistico);
+		pl.Forma.EstreiaVista.Add(Catalogo.Rede(Catalogo.IdMistico));
+		try
+		{
+			pl.Forma.CPeloMistico = true;
+			List<string> ditos = FtC(mesa, cli, pl);
+			AfirmarFt("F6a. (controle, o relato do dono) com o Potential Unleashed no C e as mortais primeiro, da base o C vai pro Potential "
+					  + "Unleashed -- e nao pro Super Saiyajin", pl.Forma.Atual == Catalogo.IdMistico, $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+			FtABase(pl);
+			ditos = FtVerbo(mesa, cli, pl, "mistico_c");
+			bool? noDisco = mesa.NoDisco(ContaDaBancadaDasTeclas)?.CPeloMistico;
+			AfirmarFt("F6b. o verb `mistico_c` pelo fio TIRA o Potential Unleashed do C -- o servidor diz em que pe ficou, e a escolha vai pro disco",
+					  pl.Forma.CPeloMistico == false && FtDito(ditos, "Potential Unleashed") && noDisco == false,
+					  $"{FtTxt(pl.Forma.CPeloMistico)}; disco {FtTxt(noDisco)} | {FtJuntos(ditos)}");
+
+			// O RELOG PELA PORTA: o corpo e outro, montado pelo login de producao a partir do .json
+			if (FtRelogar(mesa, cli) is not { } volta) { AfirmarFt("(montagem, F6) o cliente sai e volta pela porta", false, $"recusa: {cli.Recusa}"); return; }
+			pl = volta;
+			AfirmarFt("F6e. o RELOG traz a escolha de volta do disco: o corpo novo entra SEM o Potential Unleashed no C",
+					  pl.Forma.CPeloMistico == false, FtTxt(pl.Forma.CPeloMistico));
+			FtMontar(pl);
+			pl.Forma.CPelasDivinas = false;
+			pl.Forma.Liberar(Catalogo.IdMistico);
+			pl.Forma.EstreiaVista.Add(Catalogo.Rede(Catalogo.IdMistico));
+
+			ditos = FtC(mesa, cli, pl);
+			string daBase = pl.Forma.Atual;
+			FtC(mesa, cli, pl);
+			AfirmarFt("F6c. **sem o Potential Unleashed no C, da base ele vai pro Super Saiyajin, e do Super Saiyajin pro 2** -- o relato do dono, "
+					  + "consertado", daBase == "ssj1" && pl.Forma.Atual == "ssj2", $"{daBase} -> {pl.Forma.Atual} | {FtJuntos(ditos)}");
+			FtABase(pl);
+			EstadoDeForma.CSurdoAoMisticoDeTeste = true;
+			try
+			{
+				ditos = FtC(mesa, cli, pl);
+				AfirmarFt("(defeito injetado: o C surdo ao botao do Potential Unleashed -- o jogo de antes) a regua da F6c REPROVA: da base o C vai "
+						  + "pro Potential Unleashed", pl.Forma.Atual == Catalogo.IdMistico, $"{pl.Forma.Atual} | {FtJuntos(ditos)}");
+			}
+			finally { EstadoDeForma.CSurdoAoMisticoDeTeste = false; }
+			FtABase(pl);
+			ditos = FtVerbo(mesa, cli, pl, "mistico_c");
+			AfirmarFt("F6d. ...e o segundo aperto devolve o Potential Unleashed ao C, dizendo tambem",
+					  pl.Forma.CPeloMistico == true && FtDito(ditos, "Potential Unleashed"), $"{FtTxt(pl.Forma.CPeloMistico)} | {FtJuntos(ditos)}");
+		}
+		finally
+		{
+			pl.Forma.CPeloMistico = true;
+			FtABase(pl);
+		}
+	}
+
 	private void FtMontar(ServerPlayer pl)
 	{
 		pl.Class = pl.Ficha.Class = "Normal";

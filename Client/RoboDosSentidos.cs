@@ -24,6 +24,15 @@ namespace Jandirus.Client;
 ///   S4. (2026-10-23) QUEM SO DESPERTOU o God Ki (o Desperto, na forma base, a um tile e pouco): o Sense do jogador mortal nao o sente --
 ///       foto `sentidos-4-desperto-fora`; CONTRA-EXEMPLO (`GameServer.DespertoAparecerNoSenseDeTeste`, o jogo de antes): ele aparece --
 ///       foto `sentidos-4b-defeito-desperto`; com o God Ki desperto no proprio jogador, ele o sente -- foto `sentidos-4c-quem-tem-sente`.
+///   S5. (2026-10-31, o pedido 199) A SALA DO TEMPO E OUTRA DIMENSAO: no nivel 5, da Terra, o EmNamek aparece e o NaSala (na Sala da Terra) e
+///       o NaSalaDePlaneta nao -- foto `sentidos-5-de-fora-quem-esta-na-sala-nao-se-sente`; CONTRA-EXEMPLO (`GameServer.SenseCruzaASalaDeTeste`,
+///       o jogo de antes): os dois aparecem -- foto `sentidos-5b-defeito-a-sala-se-sente`; e DE DENTRO da Sala da Terra so o NaSala, que a
+///       divide -- foto `sentidos-5c-de-dentro-nao-se-sente-ninguem-de-fora`.
+///   S6. (2026-11-02, o pedido 224) QUEM ESTA ABSORVIDO, COMO QUEM ESTA NA SALA: no nivel 5 o EmNamek e o Majin (ao lado do jogador)
+///       aparecem, e o Absorvido e o OutroAbsorvido (no interior do Majin) nao -- foto `sentidos-6-de-fora-quem-esta-absorvido-nao-se-sente`;
+///       CONTRA-EXEMPLO (`GameServer.SenseCruzaOInteriorDeTeste`, o jogo de antes): os dois aparecem -- foto
+///       `sentidos-6b-defeito-o-absorvido-se-sente`; e DE DENTRO do Majin so os dois presos com o jogador, nem o EmNamek, nem o Vizinho,
+///       nem o proprio Majin -- foto `sentidos-6c-de-dentro-nao-se-sente-ninguem-de-fora`.
 ///
 ///     Godot --path . --host --rede 8472 --campoteste 12 --horateste 0.5 --semfauna --diagsentidos --raca Human --conta bancada_sentidos --nome Sensor
 /// </summary>
@@ -66,11 +75,15 @@ public partial class RoboDosSentidos : Node
 			await AFichaAcimaDoTeto(cli, srv, menu, eu);
 			await OsNiveisDoSense(cli, srv, menu, eu);
 			await ODespertoNaBase(cli, srv, menu, eu);
+			await ASalaDoTempo(cli, srv, menu, eu);
+			await OAbsorvido(cli, srv, menu, eu);
 		}
 		finally
 		{
 			Jandirus.Server.GameServer.KiDivinoAparecerDeTeste = false;
 			Jandirus.Server.GameServer.DespertoAparecerNoSenseDeTeste = false;
+			Jandirus.Server.GameServer.SenseCruzaASalaDeTeste = false;
+			Jandirus.Server.GameServer.SenseCruzaOInteriorDeTeste = false;
 			Jandirus.Core.Stats.Scouter.SemTetoDeTeste = false;
 			srv.PalcoSN_Limpar(eu);
 		}
@@ -225,6 +238,104 @@ public partial class RoboDosSentidos : Node
 	}
 
 	// =====================================================================
+	// S5) A SALA DO TEMPO E OUTRA DIMENSAO (dono, 2026-10-31, o pedido 199)
+	// =====================================================================
+	/// <summary>
+	/// *"n permita sentir o ki de pessoas dentro da sala do tempo usando sense mesmo ele em nivel 5, nem de dentro e nem pra fora da sala do
+	/// tempo"*. O NaSala espera na Sala da Terra, o NaSalaDePlaneta numa sala de mundo sorteado; o jogador olha de fora (a Terra) e de dentro.
+	/// </summary>
+	private async Tarefa ASalaDoTempo(GameClient cli, Jandirus.Server.GameServer srv, MenuJogo menu, int eu)
+	{
+		bool montou = srv.PalcoSN_Salas(eu);
+		srv.PalcoSN_Sense(eu, 5);
+		bool chegou = await Ate(() => !cli.SentidosSaoDoScouter && cli.NivelDoSense == 5 && Tem(cli, "EmNamek"), 8);
+		await Aba(menu, "Sense");
+		await Segundos(1.5);   // mais um tique de 1 Hz: os das salas teriam entrado nele
+		Conferir(montou && chegou && !Tem(cli, "NaSala") && !Tem(cli, "NaSalaDePlaneta"),
+				 "S5a. (o pedido 199) **DE FORA NAO SE SENTE QUEM ESTA NA SALA DO TEMPO**: no nivel 5, da Terra, o EmNamek aparece -- e o NaSala (na "
+				 + $"Sala da Terra) e o NaSalaDePlaneta NAO [palco {montou}; nivel 5 {chegou}; {Lista(cli)}]");
+		Fotografar("user://sentidos-5-de-fora-quem-esta-na-sala-nao-se-sente.png");
+
+		Jandirus.Server.GameServer.SenseCruzaASalaDeTeste = true;
+		bool apareceram;
+		try
+		{
+			apareceram = await Ate(() => Tem(cli, "NaSala") && Tem(cli, "NaSalaDePlaneta"), 5);
+			await Quadros(8);
+			Fotografar("user://sentidos-5b-defeito-a-sala-se-sente.png");
+		}
+		finally { Jandirus.Server.GameServer.SenseCruzaASalaDeTeste = false; }
+		Conferir(apareceram, "CONTRA-EXEMPLO (defeito injetado: o Sense atravessa a sala, o jogo de antes): os dois das salas aparecem na aba -- a "
+							 + $"regua de S5a reprovaria [{Lista(cli)}]");
+		await Ate(() => !Tem(cli, "NaSala"), 5);
+
+		// DE DENTRO: o jogador entra na Sala da Terra (a viagem de producao) e o NaSala esta a tres tiles do ponto de chegada.
+		menu.Fechar();
+		bool dentro = srv.PalcoSN_NaSala(eu, true)
+					  && await Ate(() => Jandirus.Core.World.SalaDoTempo.EhASala(cli.Zone) && World.Instancia?.ZonaMontadaDeTeste == cli.Zone.Hash, 30);
+		await Segundos(2.5);
+		bool senteODaSala = await Ate(() => Tem(cli, "NaSala"), 8);
+		await Aba(menu, "Sense");
+		await Segundos(1.5);
+		Conferir(dentro && senteODaSala && !Tem(cli, "EmNamek") && !Tem(cli, "Vizinho") && !Tem(cli, "NaSalaDePlaneta"),
+				 "S5c. (o pedido 199) **DE DENTRO DA SALA NAO SE SENTE NINGUEM DE FORA**: na Sala da Terra, no nivel 5, nem o EmNamek nem o Vizinho que "
+				 + $"ficou na Terra -- so o NaSala, que divide a sala [dentro {dentro}; zona {cli.Zone.Name}; {Lista(cli)}]");
+		Fotografar("user://sentidos-5c-de-dentro-nao-se-sente-ninguem-de-fora.png");
+		menu.Fechar();
+		srv.PalcoSN_NaSala(eu, false);
+		await Ate(() => !Jandirus.Core.World.SalaDoTempo.EhASala(cli.Zone) && World.Instancia?.ZonaMontadaDeTeste == cli.Zone.Hash, 30);
+	}
+
+	// =====================================================================
+	// S6) QUEM ESTA ABSORVIDO, COMO QUEM ESTA NA SALA (dono, 2026-11-02, o pedido 224)
+	// =====================================================================
+	/// <summary>
+	/// *"assim como sala do tempo n permita dar sense em quem esta absorvido e nem quem ta absorvido conseguir dar sense pra fora"*. O Majin
+	/// fica ao lado do jogador, e o Absorvido e o OutroAbsorvido no interior dele; o jogador olha de fora e, depois, de dentro.
+	/// </summary>
+	private async Tarefa OAbsorvido(GameClient cli, Jandirus.Server.GameServer srv, MenuJogo menu, int eu)
+	{
+		bool montou = srv.PalcoSN_Absorvidos(eu);
+		srv.PalcoSN_Sense(eu, 5);
+		bool chegou = await Ate(() => !cli.SentidosSaoDoScouter && cli.NivelDoSense == 5 && Tem(cli, "EmNamek") && Tem(cli, "Majin"), 8);
+		await Aba(menu, "Sense");
+		await Segundos(1.5);   // mais um tique de 1 Hz: os absorvidos teriam entrado nele
+		Conferir(montou && chegou && !Tem(cli, "Absorvido") && !Tem(cli, "OutroAbsorvido"),
+				 "S6a. (o pedido 224) **DE FORA NAO SE SENTE QUEM ESTA ABSORVIDO**: no nivel 5 o EmNamek e o Majin (ao lado) aparecem -- e os dois "
+				 + $"absorvidos dentro dele NAO [palco {montou}; nivel 5 {chegou}; {Lista(cli)}]");
+		Fotografar("user://sentidos-6-de-fora-quem-esta-absorvido-nao-se-sente.png");
+
+		Jandirus.Server.GameServer.SenseCruzaOInteriorDeTeste = true;
+		bool apareceram;
+		try
+		{
+			apareceram = await Ate(() => Tem(cli, "Absorvido") && Tem(cli, "OutroAbsorvido"), 5);
+			await Quadros(8);
+			Fotografar("user://sentidos-6b-defeito-o-absorvido-se-sente.png");
+		}
+		finally { Jandirus.Server.GameServer.SenseCruzaOInteriorDeTeste = false; }
+		Conferir(apareceram, "CONTRA-EXEMPLO (defeito injetado: o Sense atravessa o corpo do Majin, o jogo de antes): os dois absorvidos aparecem na "
+							 + $"aba -- a regua de S6a reprovaria [{Lista(cli)}]");
+		await Ate(() => !Tem(cli, "Absorvido"), 5);
+
+		// DE DENTRO: o jogador vai pro interior do Majin (a viagem de producao), entre os dois absorvidos.
+		menu.Fechar();
+		bool dentro = srv.PalcoSN_NaBarriga(eu)
+					  && await Ate(() => Jandirus.Core.World.InteriorDoMajin.EhOInterior(cli.Zone) && World.Instancia?.ZonaMontadaDeTeste == cli.Zone.Hash, 30);
+		await Segundos(2.5);
+		bool senteOsDeDentro = await Ate(() => Tem(cli, "Absorvido") && Tem(cli, "OutroAbsorvido"), 8);
+		await Aba(menu, "Sense");
+		await Segundos(1.5);
+		Conferir(dentro && senteOsDeDentro && !Tem(cli, "EmNamek") && !Tem(cli, "Vizinho") && !Tem(cli, "Majin"),
+				 "S6c. (o pedido 224) **QUEM ESTA ABSORVIDO NAO SENTE PRA FORA**: dentro do Majin, no nivel 5, nem o EmNamek, nem o Vizinho, nem o "
+				 + $"proprio Majin -- so os dois presos com o jogador [dentro {dentro}; zona {cli.Zone.Name}; {Lista(cli)}]");
+		Fotografar("user://sentidos-6c-de-dentro-nao-se-sente-ninguem-de-fora.png");
+		menu.Fechar();
+		srv.PalcoSN_NaSala(eu, false);   // a volta e a mesma da Sala (o mesmo lugar guardado)
+		await Ate(() => !Jandirus.Core.World.InteriorDoMajin.EhOInterior(cli.Zone) && World.Instancia?.ZonaMontadaDeTeste == cli.Zone.Hash, 30);
+	}
+
+	// =====================================================================
 	// AS MAOS
 	// =====================================================================
 	private static IEnumerable<Node> Todos(Node raiz)
@@ -271,6 +382,7 @@ public partial class RoboDosSentidos : Node
 	{
 		Jandirus.Server.GameServer.KiDivinoAparecerDeTeste = false;
 		Jandirus.Server.GameServer.DespertoAparecerNoSenseDeTeste = false;
+		Jandirus.Server.GameServer.SenseCruzaASalaDeTeste = false;
 		Jandirus.Core.Stats.Scouter.SemTetoDeTeste = false;
 		foreach (string l in _linhas) GD.Print("[dsentidos] " + l);
 		GD.Print(_falhas.Count == 0 ? "[dsentidos] ===== TUDO OK =====" : $"[dsentidos] ===== {_falhas.Count} FALHA(S) =====");

@@ -78,6 +78,16 @@ public static class Tema
     public static readonly Color Perigo = new("e05a4a");
     public static readonly Color Bom = new("5fc46a");
 
+    /// <summary>
+    /// (2026-11-01, o pedido 215) AS LETRAS DO BOTAO -- ver <see cref="EstiloDeBotao"/>: clara na chapa azul, LARANJA na amarela (o "Host a
+    /// Room" das fotos do dono), cinza-clara no desligado, e o contorno roxo escuro de todas (o mesmo nas tres chapas: e ele que faz a letra
+    /// se ler em qualquer uma).
+    /// </summary>
+    public static readonly Color LetraDoBotao = new("fbf8ff");
+    public static readonly Color LetraDoBotaoAceso = new("e8781f");
+    public static readonly Color LetraDoBotaoApagado = new("d5d9e3");
+    public static readonly Color ContornoDaLetraDoBotao = new("2e1740");
+
     public const int RaioCanto = 6;
 
     private static Theme? _tema;
@@ -144,48 +154,44 @@ public static class Tema
         t.SetConstant("outline_size", "Label", 0);   // contorno so onde e preciso: ver Legenda()
 
         // ---- botao ----
-        // AS CHAPAS EM VARIAVEL DE COR, e nao direto no `Caixa()`: o estado "marcado + mouse em
-        // cima" nao tem cor propria no jogo -- ele e DERIVADO destas duas logo abaixo.
-        Color cHover = PainelAceso;         // o mouse CLAREIA a chapa normal (252a38 -> 2f3549); e paleta: ver PainelAceso
-        var cPress = new Color("1a1e29");   // apertado/marcado AFUNDA: e a normal escurecida ~29%
+        // (2026-11-01, o pedido 215) O BOTAO DO JOGO E O DAS FOTOS DO DONO (*"Faca os botoes dos menus do jogo nesse estilo, botoes de
+        // escolher gravidade, % do peso, etc, manter um padrao visual no jogo"*): um paralelogramo inclinado com degrade vertical, borda
+        // grossa e um brilho fino em cima -- AZUL em repouso, AMARELO-LARANJA aceso (o mouse em cima), o amarelo AFUNDADO no clique e no
+        // marcado, e CINZA-AZULADO desligado. A chapa e a `EstiloDeBotao`. Antes era a chapa escura arredondada dos paineis (252a38), com a
+        // borda laranja no mouse -- a mesma lingua do painel, e o botao nao se destacava do resto da tela.
+        Color cHover = PainelAceso;   // (a faixa acesa do menu suspenso continua a chapa de hover dos paineis -- ver o PopupMenu)
 
-        var bNormal = Caixa(PainelClaro, Borda, 10);
-        var bHover = Caixa(cHover, BordaViva, 10);
-        var bPress = Caixa(cPress, BordaViva, 10);
-        var bDesab = Caixa(PainelApagado, BordaApagada, 10);
+        var bNormal = EstiloDeBotao.Azul();
+        var bHover = EstiloDeBotao.Amarelo();
+        var bPress = EstiloDeBotao.AmareloFundo();
+        var bDesab = EstiloDeBotao.Apagado();
         t.SetStylebox("normal", "Button", bNormal);
         t.SetStylebox("hover", "Button", bHover);
         t.SetStylebox("pressed", "Button", bPress);
         t.SetStylebox("disabled", "Button", bDesab);
-        t.SetStylebox("focus", "Button", Caixa(new Color(0, 0, 0, 0), BordaViva, 10));
+        t.SetStylebox("focus", "Button", EstiloDeBotao.SoOContorno());
 
-        // MARCADO **E** COM O MOUSE EM CIMA (`hover_pressed`). Estado real e obrigatorio: uma
-        // caixa de marcar ligada esta em PRESSED, e o Godot pede este stylebox quando o mouse
-        // passa por ela. Faltando aqui, o motor caia no tema DE FABRICA -- que para CheckBox e
-        // CheckButton entrega um StyleBoxEmpty. Tres coisas quebravam de uma vez: sumia a chapa,
-        // sumia a borda, e (o que o dono viu) a margem de conteudo caia de 10 pra 4 -- o tique e
-        // ancorado na margem do stylebox `normal` e o TEXTO usa a margem do stylebox DO ESTADO,
-        // entao a palavra andava 6 px pra esquerda e encostava no quadradinho.
-        // NAO E COR NOVA, E CRUZAMENTO: `pressed` e a chapa normal escurecida em ~29%
-        // (252a38 -> 1a1e29); logo, marcado-com-mouse e a chapa de HOVER escurecida na MESMA
-        // proporcao. Fica acesa como hover e afundada como pressed, que e exatamente o que ela e.
-        // Registrado em "Button" (e nao em CheckBox) porque a familia inteira herda por cadeia:
-        // CheckBox, CheckButton, OptionButton, MenuButton e os Button de `ToggleMode` -- inclusive
-        // os que ainda nao existem. Nos toggles isso troca um fallback silencioso pra `pressed`
-        // (aba ligada nao reagia ao mouse) por um realce de verdade.
-        t.SetStylebox("hover_pressed", "Button", Caixa(cHover.Darkened(0.29f), BordaViva, 10));
+        // MARCADO **E** COM O MOUSE EM CIMA (`hover_pressed`). Estado real e obrigatorio: uma caixa de marcar ligada esta em PRESSED, e o
+        // Godot pede este stylebox quando o mouse passa por ela -- faltando, o motor cai no tema DE FABRICA, que pra CheckBox e CheckButton e
+        // um StyleBoxEmpty (some a chapa, e a margem do texto cai de 10 pra 4: a palavra encostava no quadradinho). E um amarelo PROPRIO,
+        // entre o aceso e o afundado: os quatro estados pintam quatro chapas diferentes (a `--diagmarcavel` cobra isso). Registrado em
+        // "Button" porque a familia inteira herda por cadeia: CheckBox, CheckButton, OptionButton, MenuButton e os Button de `ToggleMode`.
+        t.SetStylebox("hover_pressed", "Button", EstiloDeBotao.AmareloMarcado());
 
-        t.SetColor("font_color", "Button", Texto);
-        t.SetColor("font_hover_color", "Button", Destaque);
-        t.SetColor("font_pressed_color", "Button", Destaque);
-        // A LETRA DO MESMO ESTADO: hover pinta de laranja, pressed pinta de laranja -- o
-        // cruzamento dos dois so pode ser laranja. Sem esta linha o Godot devolvia #ffffff.
-        t.SetColor("font_hover_pressed_color", "Button", Destaque);
-        // COM O FOCO DO TECLADO a moldura de foco so ACRESCENTA a borda laranja por cima; a chapa
-        // e a letra continuam as do estado normal. Sem esta linha o Godot devolvia #f2f2f2, um
-        // quase-branco que ja estava na tela de todo mundo -- so nao doia porque e parecido.
-        t.SetColor("font_focus_color", "Button", Texto);
-        t.SetColor("font_disabled_color", "Button", TextoFraco);
+        // A LETRA: a de sempre ENGROSSADA (o `VariationEmbolden` da fonte de fabrica -- sem arquivo de fonte novo), com o contorno roxo
+        // escuro de 4 px das fotos. Clara no azul, laranja no amarelo; o contorno e o mesmo nas chapas todas.
+        t.SetFont("font", "Button", new FontVariation { BaseFont = ThemeDB.FallbackFont, VariationEmbolden = 0.6f });
+        t.SetColor("font_outline_color", "Button", ContornoDaLetraDoBotao);
+        t.SetConstant("outline_size", "Button", 4);
+        t.SetColor("font_color", "Button", LetraDoBotao);
+        t.SetColor("font_hover_color", "Button", LetraDoBotaoAceso);
+        t.SetColor("font_pressed_color", "Button", LetraDoBotaoAceso);
+        // A LETRA DO MESMO ESTADO: o aceso e o afundado pintam de laranja -- o cruzamento dos dois so pode ser laranja. Sem esta linha o
+        // Godot devolvia #ffffff.
+        t.SetColor("font_hover_pressed_color", "Button", LetraDoBotaoAceso);
+        // COM O FOCO DO TECLADO o contorno creme so ACRESCENTA a moldura por cima; a chapa e a letra continuam as do estado normal.
+        t.SetColor("font_focus_color", "Button", LetraDoBotao);
+        t.SetColor("font_disabled_color", "Button", LetraDoBotaoApagado);
 
         // ---- campo de texto ----
         var eNormal = Caixa(new Color("0e1017"), Borda, 8);
@@ -218,7 +224,7 @@ public static class Tema
         t.SetStylebox("normal", "OptionButton", bNormal);
         t.SetStylebox("hover", "OptionButton", bHover);
         t.SetStylebox("pressed", "OptionButton", bPress);
-        t.SetColor("font_color", "OptionButton", Texto);
+        t.SetColor("font_color", "OptionButton", LetraDoBotao);   // (2026-11-01, o pedido 215) a letra clara do botao novo
 
         t.SetStylebox("panel", "PopupMenu", Caixa(new Color("161a24"), Borda, 6));
         // A FAIXA QUE ACENDE na linha sob o mouse. O tema ja pintava a LETRA dela de laranja

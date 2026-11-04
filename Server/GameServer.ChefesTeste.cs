@@ -78,8 +78,9 @@ public sealed partial class GameServer
 		{
 			pl = mesa.EntraNoMundo(cli, ContaDaBancadaDosChefes, "Testemunha");
 			AfirmarCh("(montagem) o cliente entra pela porta e e jogador; a Terra tem mapa; a cadeia de sagas e o catalogo de moldes carregaram",
-					  pl != null && EhJogador(pl) && _pjMapa != null && _cadeia.Length == 4 && _moldes != null);
-			if (pl == null || _pjMapa == null || _moldes == null || _cadeia.Length != 4) return;
+					  pl != null && EhJogador(pl) && _pjMapa != null && _cadeia.Length == 6 && _moldes != null);
+			// (2026-11-01, o pedido 210) seis elos: os quatro do DM e os dois da saga Saiyajin, entre o Freeza no Vegeta e Namek
+			if (pl == null || _pjMapa == null || _moldes == null || _cadeia.Length != 6) return;
 			bpGuardado = pl.Ficha.BP;
 
 			OCuspeAcido();
@@ -97,6 +98,7 @@ public sealed partial class GameServer
 			PularOsDiasDaSaga(pl);
 			PularUmaSaga(pl);
 			ATropaDoFreeza(pl);
+			AAfterimageDosViloes();   // (2026-10-30, o pedido 187)
 		}
 		catch (Exception e)
 		{
@@ -326,6 +328,50 @@ public sealed partial class GameServer
 		RemoverNpc(saco);
 		LimparEmbatesDaBancada();
 		return (tiros.Values.Count(n => n == "Death Beam"), resumo);
+	}
+
+	// =====================================================================
+	// K) (2026-10-30, o pedido 187) A AFTERIMAGE DOS VILOES DE SAGA E DO BILLS
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"faca todo vilao de saga e o bills terem after image desbloqueado"*. Todo chefe da CADEIA (o `npcs.json`: o Freeza de Vegeta e
+	/// o de Namek, os dois androides, o Cell e o Boo), o Cell Jr. (o clone do Cell nos Jogos) e o Bills nascem pela porta de producao
+	/// (`NascerNpc`) sabendo a Afterimage Technique, no nivel das skills dele, e a USANDO: e a pergunta da piscada da IA (`UsaAMiragem`). A lista
+	/// sai da cadeia, e nao de uma lista escrita aqui: o chefe de uma saga nova cai nesta regua sozinho, e reprova se nascer sem ela. O Whis e a
+	/// tropa ficam de fora (o pedido diz "vilao de saga" e "o bills").
+	///
+	/// PELO MOLDE, E NAO PELO SORTEIO: os sete viloes a recebem nas `dadas`. A vocacao de alguns tambem chega nela, mas SORTEANDO -- medido no
+	/// ag/vilaomiragem: sem as `dadas`, os Androides nasceram com ela numa rodada e sem ela nas duas seguintes. Por isso cada um tem duas reguas:
+	/// a de nascer com ela (o que o jogo faz) e a do molde (a que nao depende da sorte, e a que um molde que perca a linha reprova sempre). O
+	/// Bills e o caso que nao sorteia: o `todasDaVocacao` dele compra a arvore inteira, e e por ele que a regua o cobra.
+	/// </summary>
+	private void AAfterimageDosViloes()
+	{
+		GD.Print("[chefes] -- K) (o pedido 187) todo vilao de saga e o Bills nascem com a Afterimage --");
+		List<string> viloes = [.. _cadeia.SelectMany(e => e.Chefes).Select(c => c.Molde)
+								  .Append(TorneioDoCell.MoldeDoCellJr).Distinct(StringComparer.Ordinal)];
+		List<string> moldes = [.. viloes.Append(BillsEWhis.MoldeDoBills)];
+		ulong semente = 18_700;
+		foreach (string id in moldes)
+		{
+			ServerPlayer? npc = NascerNpc(id, ZonaDaBancadaDeProjetil, TerraFirmeG12(16), semente++);
+			AfirmarCh($"(o pedido 187) **{id} nasce com a Afterimage**: sabe a tecnica e a usa (a pergunta da piscada da IA)",
+					  npc != null && npc.Livro?.Sabe(PathDoZanzoken) == true && UsaAMiragem(npc),
+					  npc == null ? "nao nasceu" : $"{npc.Livro?.Aprendidas.Count ?? 0} skills, a Afterimage no nivel {npc.Niveis.Nivel(PathDoZanzoken):0}");
+			if (npc != null) RemoverNpc(npc);
+			MoldeDeNpc? m = _moldes!.Get(id);
+			if (id == BillsEWhis.MoldeDoBills)
+				AfirmarCh("(o pedido 187) **...e o Bills a compra pela vocacao INTEIRA** (`todasDaVocacao`): sem sorteio", m?.TodasDaVocacao == true,
+						  $"todasDaVocacao={m?.TodasDaVocacao}");
+			else
+				AfirmarCh($"(o pedido 187) **...e o {id} a recebe do MOLDE**: a Afterimage esta nas `dadas` dele (a vocacao so a sorteia)",
+						  m != null && Array.IndexOf(m.Dadas, PathDoZanzoken) >= 0, m == null ? "sem molde" : string.Join(", ", m.Dadas));
+		}
+		// (2026-11-01, o pedido 210) a cadeia ganhou os tres da saga Saiyajin (Raditz, Nappa e Vegeta): nove chefes, o Cell Jr. e o Bills
+		// (2026-11-01, o pedido 214) ...e os seis Saibamen que o Nappa planta: quinze chefes, o Cell Jr. e o Bills
+		AfirmarCh("(o pedido 187) ...e sao todos: os quinze chefes da cadeia (os seis do DM, os tres da saga Saiyajin e os seis Saibamen do "
+				  + "Nappa), o Cell Jr. e o Bills",
+				  moldes.Count == 17, string.Join(", ", moldes));
 	}
 
 	// =====================================================================
@@ -849,6 +895,10 @@ public sealed partial class GameServer
 			pl.Ficha.BP = 1;
 			e1.Fase = FaseDaSaga.Vencida;
 			e1.Chefes.Clear();
+			// (2026-11-01, o pedido 210) ...e a SAGA SAIYAJIN, que fica entre a 1 e Namek (a ordem do anime), e PULADA -- vencida, como o botao do
+			// admin: ela e medida na `--saiyajinteste`, e o que esta regua mede e o registro de Namek esperando a vez dele
+			foreach (string daSagaSaiyajin in new[] { "raditz", "saiyajins" })
+				if (_sagas.Do(daSagaSaiyajin) is { } pulado) { pulado.Disparou = true; pulado.Fase = FaseDaSaga.Vencida; pulado.Chefes.Clear(); }
 			ConferirMarcos();
 			return (registrou, esperou, e2 is { Disparou: true, Fase: FaseDaSaga.Contando });
 		}

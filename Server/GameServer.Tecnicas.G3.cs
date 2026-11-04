@@ -269,7 +269,7 @@ public partial class GameServer
 	/// Os dois verbs usam a MESMA conta, letra por letra.
 	/// </summary>
 	private static double CustoDaVarreduraG3(Fighter f)
-		=> f.Ephysoff * 4 + 10 * DrenoDaEspadaG3 + 10 * DrenoDaLaminaG3;
+		=> (f.Ephysoff * 4 + 10 * DrenoDaEspadaG3 + 10 * DrenoDaLaminaG3) * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 
 	/// <summary>
 	/// O CORPO DAS DUAS: acerta TODO MUNDO na frente de uma vez, somando 5 de dano em cada golpe
@@ -532,7 +532,7 @@ public partial class GameServer
 		EspalharDanoG3(pl, pl, power / meuBaixo * 10, letal: true, porKi: true);
 
 		// misc.dm:318 -- o custo escala com o RAIO escolhido, nao com o tempo de carga
-		f.Ki = Math.Max(f.Ki - carga.Raio * (f.MaxKi / 25), 0);
+		f.Ki = Math.Max(f.Ki - carga.Raio * (f.MaxKi / 25) * f.FatorDeKiDoEstado, 0);   // (2026-11-01, o pedido 220) o morto paga 25% menos
 
 		// misc.dm:319-323 -- a aposta. Carga acima de 10 (mais de 25s), 70% de morrer; ja
 		// machucado ou nocauteado, morte certa.
@@ -1294,6 +1294,17 @@ public partial class GameServer
 	private ServerPlayer? AlvoDeTecnica(ServerPlayer pl, float raioPx, Func<ServerPlayer, bool>? serve = null)
 	{
 		serve ??= AlvoVivoETocavel;
+		// (2026-11-01, o pedido 212) O CORPO DA MESMA CONEXAO DE QUEM USA NAO E ALVO de tecnica nenhuma (o revive de cargo, as absorcoes...):
+		// ele e pulado como quem nao serve, e quem so o tinha por perto ouve por que. Ver `GameServer.MesmoIp.cs`.
+		Func<ServerPlayer, bool> criterio = serve;
+		bool pulouAConexao = false;
+		serve = o =>
+		{
+			if (!criterio(o)) return false;
+			if (!UsoNoMesmoIp(pl, o)) return true;
+			pulouAConexao = true;
+			return false;
+		};
 
 		// (2026-10-18) o corpo escondido de quem o Neo Tuffle possui nao e alvo de tecnica nenhuma -- ver `GameServer.NeoTuffle.cs` (e o
 		// mesmo crivo do `QuemEstaNaFrente`).
@@ -1311,6 +1322,7 @@ public partial class GameServer
 			melhorDist = d2;
 			melhor = o;
 		}
+		if (melhor == null && pulouAConexao) AvisarDoUsoNoMesmoIpUmaVez(pl);
 		return melhor;
 	}
 

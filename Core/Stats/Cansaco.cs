@@ -141,7 +141,8 @@ public static class Cansaco
 	public static bool SocoDeGracaDeTeste;
 
 	/// <summary>O Ki que este soco custa. Nunca recusa o golpe: sem Ki o soco sai (fraco -- o poder cai com o tanque).</summary>
-	public static double KiDoSoco(Fighter f, double pesoDoGolpe) => f.MaxKi * KiDoSocoLeve * Math.Max(pesoDoGolpe, 1);
+	// (2026-11-01, o pedido 220) o morto paga 25% menos (`Fighter.FatorDeKiDoEstado`)
+	public static double KiDoSoco(Fighter f, double pesoDoGolpe) => f.MaxKi * KiDoSocoLeve * Math.Max(pesoDoGolpe, 1) * f.FatorDeKiDoEstado;
 
 	// =====================================================================
 	// O VOO
@@ -170,7 +171,8 @@ public static class Cansaco
 	/// <param name="comPiso">So o corpo de jogador paga o piso: o NPC que voa nao sabe pousar pra descansar.</param>
 	public static double KiDoVooPorSegundo(Fighter f, double custoDoDm, bool rapido, bool comPiso)
 	{
-		if (!comPiso || VooSemPisoDeTeste) return custoDoDm;
-		return Math.Max(custoDoDm, f.MaxKi * (rapido ? PisoDoVooRapidoPorSegundo : PisoDoVooPorSegundo));
+		// (2026-11-01, o pedido 220) o morto paga 25% menos -- o custo do DM e o piso, os dois (`Fighter.FatorDeKiDoEstado`)
+		if (!comPiso || VooSemPisoDeTeste) return custoDoDm * f.FatorDeKiDoEstado;
+		return Math.Max(custoDoDm, f.MaxKi * (rapido ? PisoDoVooRapidoPorSegundo : PisoDoVooPorSegundo)) * f.FatorDeKiDoEstado;
 	}
 }

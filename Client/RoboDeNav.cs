@@ -1186,6 +1186,20 @@ public partial class RoboDeNav : Node
 				Conferir(cli.SeedDoUniverso != 0, $"a seed do universo chega no login ({cli.SeedDoUniverso})");
 				Conferir(!Espaco.EhEspaco(cli.Zone), "estou em TERRA FIRME (e onde a aba nao existia antes)");
 
+				// (2026-10-29, o pedido 174) O NAV NAO MOSTRA OS MUNDOS DE GOD KI -- o dono: *"n deixe aparecer god ki planets no nav system"*. Um
+				// mundo divino de verdade (a regiao garantida em volta da Terra tem pelo menos um) e a ficha que a aba Nav escreve dele.
+				// Num bloco proprio: o `case 20` ja tem um `terra` e as secoes do switch dividem o escopo.
+				{
+					PlanetaNoEspaco terra = Espaco.PreFeitos().FirstOrDefault(t => t.Nome == "Earth");
+					if (AtmosferaDivina.MaisProximo(cli.SeedDoUniverso, terra.Pos, raioEmCelulas: AtmosferaDivina.RaioGarantidoEmCelulas) is { } divino)
+					{
+						string ficha = MenuJogo.FichaDoPlaneta(divino.Corpo);
+						Conferir(MenuJogo.MundoDivino(divino.Corpo) && !ficha.Contains("DIVINA", StringComparison.OrdinalIgnoreCase),
+								 $"(o pedido 174) **O NAV NAO MOSTRA OS MUNDOS DE GOD KI**: a ficha do mundo divino {divino.Corpo.Nome} nao diz a atmosfera ({ficha})");
+					}
+					else Conferir(false, "(o pedido 174) **O NAV NAO MOSTRA OS MUNDOS DE GOD KI**: nao achei o mundo divino da regiao garantida");
+				}
+
 				// ============================ A BANCADA NASCE **FORA** DO ESTADO ============================
 				// O personagem da bancada e novo: mochila vazia, zero zeni, tech zero. Entao este passo mede a
 				// metade que o dono reclamou -- SEM o item a aba nao pode existir -- e so DEPOIS ganha o item.

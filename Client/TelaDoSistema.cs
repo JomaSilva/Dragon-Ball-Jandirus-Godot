@@ -580,8 +580,7 @@ public partial class TelaDoSistema : Control
 		// terreno sorteado, e essa e a diferenca que muda o que o jogador encontra ao pousar.
 		if (p.Premade) DrawArc(c, r + 3.5f, 0, Mathf.Tau, 28, new Color(Tema.Destaque, 0.9f), 1.5f);
 
-		// O ANEL DOURADO: atmosfera divina, o mesmo da carta (`MapaEstelar.DesenharPlaneta`).
-		if (MenuJogo.MundoDivino(p)) DrawArc(c, r + 3.5f, 0, Mathf.Tau, 28, new Color(MenuJogo.OuroDivino, 0.95f), 1.5f);
+		// (2026-10-29, o pedido 174) o anel dourado da atmosfera divina saiu, como na carta (`MapaEstelar.DesenharPlaneta`)
 
 		// O ANEL ROXO: a casa do Bills, o mesmo da carta.
 		if (MenuJogo.CasaDeBills(p)) DrawArc(c, r + 5.3f, 0, Mathf.Tau, 28, new Color(MenuJogo.RoxoDeBills, 0.95f), 1.3f);
@@ -817,7 +816,7 @@ public partial class TelaDoSistema : Control
 		Linha("clima", !c.Existe || c.Permitidos.Length == 0
 			? "sempre limpo"
 			: string.Join(", ", c.Permitidos.Select(Clima.Nome)));
-		if (MenuJogo.MundoDivino(p)) Linha("atmosfera", "DIVINA");
+		// (2026-10-29, o pedido 174) a linha "atmosfera DIVINA" saiu: *"n deixe aparecer god ki planets no nav system"*
 		if (MenuJogo.CasaDeBills(p)) Linha("morador", "BILLS");
 
 		if (MapaEstelar.MinhaPosicaoNaGalaxia() is { } eu)

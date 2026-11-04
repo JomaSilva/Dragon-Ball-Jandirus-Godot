@@ -379,6 +379,17 @@ public partial class GameServer
 				Avisar(pl, "DOMINANDO A FERA VOCE ENTENDEU O QUE ELA E: o Super Saiyajin 4 esta ao "
 						 + "seu alcance. Suba ate ele quando quiser.");
 
+			// ============================ (2026-10-30, o pedido 178) A PORTA DO SSJ4 VALE AQUI TAMBEM ============================
+			// O dono: *"volta pra base"*. Este caminho punha o corpo no SSJ4 SEM perguntar o BP -- foi assim que um amigo dele virou SSJ4
+			// com 2,5 bilhoes de base, com a porta em 10,5-21. Abaixo da porta (os 5 bi, ou a metade com o mestre: `PortaDeBp`), a fera se
+			// desfaz e o corpo fica na BASE; o SSJ4 continua liberado (o `Liberar` de cima), e o C o leva la quando o BP chegar.
+			// ===================================================================================================================
+			if (Catalogo.Def("ssj4") is { } ssj4 && pl.Ficha.BP < pl.Forma.PortaDeBp(ssj4))
+			{
+				Avisar(pl, $"voce volta ao normal: o Super Saiyajin 4 pede {pl.Forma.PortaDeBp(ssj4):N0} de BP base.");
+				return;
+			}
+
 			pl.Forma.Atual = "ssj4";
 			AplicarForma(pl);
 			Avisar(pl, "voce tenta voltar ao normal e para como SUPER SAIYAJIN 4.");

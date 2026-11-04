@@ -150,6 +150,46 @@ public sealed partial class GameServer
 	/// As frases do DM: "You are relaxed." / "You are now ready." (`:43`, `:50`). A raiva e conferida aqui mesmo,
 	/// e nao so no tique: quem tenta relaxar furioso ouve as duas frases do `RelaxCheck` no mesmo aperto.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-29) IGUALAR O PODER AO DO ALVO -- o botao "Igualar ao alvo" (o pedido 162, o dono: *"Adicione um botao ao qual pode ser
+	/// colocado em uma tecla do teclado, ao qual vc abaixa seu poder pro poder exato do seu target (isso claro so funciona quando ele é mais
+	/// fraco q vc) assim npcs de planetas aceitariam um spar com vc e facilita igualar poder pra fusao metamoro/dança da fusao"*). A barra
+	/// desce pela porta do Power Control (`PoderEmUso.Baixar`) ate o poder que o alvo marcado EXPRESSA agora, e nunca abaixo do piso: quem
+	/// expressa 1% do seu poder ou menos te poe no piso, e ali o treino rende 1/4 (`PoderEmUso.FatorDaTroca`, que desde este pedido vale
+	/// tambem contra NPC). So BAIXA, como o Power Control: pra subir, carrega-se ou fica-se pronto. Pede o controle de ki, como o relaxar.
+	/// </summary>
+	private void IgualarAoAlvo(ServerPlayer pl)
+	{
+		if (!SabeTecnica(pl, PoderEmUso.VerboDoControle))
+		{
+			Avisar(pl, "você ainda não sabe controlar o próprio poder: igualar ao alvo pede Basic Ki Control no nível 5.");
+			return;
+		}
+		if (PorQueNaoMexeNoPoder(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
+		if (PoderEmUso.Relaxado(pl.Ficha)) { Avisar(pl, "relaxado você não está usando poder nenhum: fique pronto antes de igualar."); return; }
+		if (pl.AlvoId == 0 || pl.AlvoId == pl.Id || !_players.TryGetValue(pl.AlvoId, out ServerPlayer? alvo))
+		{
+			Avisar(pl, "marque alguém antes (duplo clique nele).");
+			return;
+		}
+		double meuInteiro = PoderEmUso.SemABarra(pl.Ficha), dele = alvo.Ficha.expressedBP;
+		if (!(meuInteiro > 0) || dele >= meuInteiro)
+		{
+			Avisar(pl, $"{alvo.Name} não é mais fraco que você: não há o que baixar.");
+			return;
+		}
+		double fracao = Math.Clamp(dele / meuInteiro, PoderEmUso.Piso, PoderEmUso.Cheio);
+		if (!PoderEmUso.Baixar(pl.Ficha, fracao))
+		{
+			Avisar(pl, $"você já usa menos poder que {alvo.Name}: pra subir, carregue (tecla C) -- ou fique pronto.");
+			return;
+		}
+		AoMexerNoPoder(pl);
+		Avisar(pl, fracao <= PoderEmUso.Piso
+			? $"{alvo.Name} é fraco demais: você baixa o poder ao mínimo (1%) -- e ali o treino rende só 1/4."
+			: $"você baixa o poder ao de {alvo.Name}: {fracao * 100:0.#}% do seu.");
+	}
+
 	private void AlternarProntidao(ServerPlayer pl)
 	{
 		if (PoderEmUso.VaiRelaxar(pl.Ficha) && !RelaxarSemControleDeTeste && !SabeTecnica(pl, PoderEmUso.VerboDoControle))
@@ -328,6 +368,9 @@ public sealed partial class GameServer
 		if (PoderVemDoDiscoDeTeste && double.IsFinite(pl.Ficha.powerMod)) return;
 		pl.Ficha.powerMod = PoderEmUso.Cheio;
 		pl.Ficha.relaxado = false;
+		// (2026-11-01, o pedido 219) ...E SEM O PRECO DA GOSMA: ela nao sobrevive ao logout (`EsquecerAsGosmas`), e o 0,73 que tivesse ido pro
+		// disco com a ficha nao pode voltar sem ela.
+		pl.Ficha.gosmaNoMapaMod = 1;
 	}
 
 	/// <summary>Este id saiu do mundo: o retrato que a tela dele recebeu some junto (id se reusa). Chamado pelo `EsquecerG9`.</summary>

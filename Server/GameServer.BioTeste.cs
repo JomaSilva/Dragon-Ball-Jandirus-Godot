@@ -279,6 +279,9 @@ public partial class GameServer
 	/// A CADEIA INTEIRA, e ela termina com uma CRIATURA EXISTINDO -- que e o buraco numero 1 da
 	/// auditoria (*"a gestacao termina, o tanque some, o criador morre -- e nada nasce"*).
 	/// </summary>
+	/// <summary>(o pedido 204) O nome que o primeiro cientista escreve na caixa ao gestar -- e com que a criatura dele desperta.</summary>
+	private const string NomeDaCriaturaDeTeste = "Cria do Laboratorio";
+
 	private ServerPlayer? MedirONascimento(Checagem Checa, ServerPlayer host, ServerPlayer pl,
 										   List<Obra> obras, List<ServerPlayer> forjados)
 	{
@@ -387,8 +390,18 @@ public partial class GameServer
 		// ---- o doador TREINA depois da coleta: e o BP de HOJE que conta ----
 		doador.Ficha.BP = 10_000_000;
 		doador.Ficha.KO = koGuardado;
-		ComandoDeTech(pl, "gestar", "");
+		// (2026-10-31, o pedido 204) O NOME DA CRIATURA, pela caixa do "Gestar bio-androide" (o argumento do verbo): curto demais e o nome
+		// de quem esta em jogo (o host, o doador) recusam a gestacao com o tanque aberto; o nome bom fecha o tanque e fica na fornada.
+		ComandoDeTech(pl, "gestar", "X");
+		bool recusouCurto = lab.Fornada.PrometidaEm == 0;
+		ComandoDeTech(pl, "gestar", host.Name.ToUpperInvariant());
+		bool recusouEmUso = lab.Fornada.PrometidaEm == 0;
+		ComandoDeTech(pl, "gestar", "  " + NomeDaCriaturaDeTeste + " ");
 		Checa("a gestacao comecou", lab.Fornada.PrometidaEm > 0);
+		Checa("(o pedido 204) **O NOME DA CRIATURA SE ESCREVE AO GESTAR**: 1 letra e o nome de quem esta em jogo (o host, em maiusculas) "
+			  + "recusam com o tanque aberto; o nome bom (sem os espacos das pontas) fica na fornada",
+			  recusouCurto && recusouEmUso && lab.Fornada.Nome == NomeDaCriaturaDeTeste,
+			  $"curto recusado={recusouCurto}, em uso recusado={recusouEmUso}, na fornada '{lab.Fornada.Nome}'");
 		Checa("o `brew_strongest_bp` le o BP ATUAL do doador online, e nao o congelado na agulha "
 			  + "(colher cedo e esperar a pessoa treinar PAGA)",
 			  Math.Abs(lab.Fornada.MaiorBp - 10_000_000) < 1, $"{lab.Fornada.MaiorBp:N0}");
@@ -424,7 +437,7 @@ public partial class GameServer
 		Checa("O BIO-ANDROIDE NASCEU -- e ele e o MESMO corpo, com outra persona (o `dnl_bio_hatch` "
 			  + "opera sobre o proprio criador; nao ha slot novo a criar)",
 			  BioAndroids.EhBio(pl.Race), $"raca='{pl.Race}'");
-		Checa("...com o nome da criatura", pl.Name == $"Bio-Androide de {nomeAntes}", pl.Name);
+		Checa("(o pedido 204) ...com o nome que o criador escreveu ao gestar", pl.Name == NomeDaCriaturaDeTeste, $"{pl.Name} (era {nomeAntes})");
 		Checa("...nascendo LARVA", pl.Ficha.bio_stage == BioAndroids.Larva, $"{pl.Ficha.bio_stage}");
 		Checa("...com METADE do BP do doador mais forte (`DNL_BIO_BP_SHARE`)",
 			  Math.Abs(pl.Ficha.BP - bpEsperado) < 1, $"{pl.Ficha.BP:N0} != {bpEsperado:N0}");
@@ -936,6 +949,39 @@ public partial class GameServer
 			Checa("...e o `AbsorbBP` passou a existir -- ele e `AbsorbDeterminesBP` nunca eram "
 				  + "escritos por ninguem, com a formula da MEDIA ja portada e sem consumidor",
 				  bio.Ficha.AbsorbBP > 0 && bio.Ficha.AbsorbDeterminesBP);
+
+			// ============================ (2026-10-31, o pedido 203) A MEDIA DO ABSORVIDO NUNCA DERRUBA O PODER ============================
+			// O Bio-Androide da VPS preso em 0,55x: o desejo de poder levou o BP dele a 10x o total que ele tinha absorvido, e a media
+			// `(BP + AbsorbBP) / 2` cortava quase metade do poder -- pra sempre. Pela conta de poder do proprio corpo (`PowerLevel`): com o BP
+			// 10x o absorvido ele expressa o mesmo que sem absorver nada; com o absorvido 3x o BP, a media ainda o puxa pra cima (perto de 2x).
+			{
+				var fb = bio.Ficha;
+				double bpDeAntes = fb.BP, absorvidoDeAntes = fb.AbsorbBP;
+				bool mediaDeAntes = fb.AbsorbDeterminesBP;
+				fb.BP = 10_000_000;
+				fb.AbsorbDeterminesBP = false;
+				fb.AbsorbBP = 0;
+				fb.PowerLevel();
+				double semAbsorver = fb.expressedBP;
+				fb.AbsorbDeterminesBP = true;
+				fb.AbsorbBP = 1_000_000;
+				fb.PowerLevel();
+				double comPouco = fb.expressedBP;
+				fb.AbsorbBP = 30_000_000;
+				fb.PowerLevel();
+				double comMuito = fb.expressedBP;
+				fb.BP = bpDeAntes;
+				fb.AbsorbBP = absorvidoDeAntes;
+				fb.AbsorbDeterminesBP = mediaDeAntes;
+				fb.PowerLevel();
+				Checa("(o pedido 203) **A MEDIA DO ABSORVIDO NUNCA DERRUBA O PODER**: com o BP 10x o total absorvido (o desejo de poder), o bio "
+					  + "expressa o mesmo que sem absorver -- e nao os 0,55x do jogador da VPS",
+					  semAbsorver > 0 && Math.Abs(comPouco / semAbsorver - 1) < 0.01,
+					  $"sem absorver {semAbsorver:N0}, com 1 mi absorvido {comPouco:N0} ({comPouco / Math.Max(semAbsorver, 1):0.00}x)");
+				Checa("(o pedido 203) ...E O ABSORVIDO MAIOR QUE O BP AINDA PUXA PRA CIMA PELA MEDIA (o DM: absorver pra compensar)",
+					  semAbsorver > 0 && comMuito > semAbsorver * 1.5,   // ~2x: as somas da familia 2 (a gravidade) sao do BP, e nao da media
+					  $"com 30 mi absorvidos {comMuito:N0} ({comMuito / Math.Max(semAbsorver, 1):0.00}x)");
+			}
 			bio.Combate.Corpo.Restaurar();
 			bio.Combate.SincronizarVida();
 			bio.Ficha.Ki = bio.Ficha.MaxKi;
@@ -1130,20 +1176,21 @@ public partial class GameServer
 		Checa("ele ENTRA na Golden Perfect pelo funil de producao (`TransformarPara`)", bio.Forma.Atual == "golden_perfect", bio.Forma.Atual);
 		double degrau = BioAndroids.MultAbsoluto(bio.Ficha.bio_stage, bio.Ficha.bio_marco);
 		FormaDef ssg = Catalogo.Def("ssg")!, blue = Catalogo.Def("blue")!, evolution = Catalogo.Def("blue_evolution")!;
-		double meio = Catalogo.GodkiBluePct / 2;
+		// (2026-10-29, o pedido 161) A GOLDEN VALE SOBRE O BP BASE, 20x subindo ate 50x aos 50% -- o dono: *"golden(20x -> 50x) -> max(56x)"*.
+		// Ate aqui ela valia o que faltava sobre o degrau do perfeito (o x1,59 do print); o degrau maior que 1 e o que separa as duas contas.
+		double meio = Catalogo.GodkiRoyalePct / 2;
 		foreach ((double maestria, double esperado, string nivel) in new[]
-			{ (0.0, ssg.Mult[0], "o ki divino DESPERTO vale o do SSG"),
-			  (meio, (ssg.Mult[0] + blue.Mult[0]) / 2, $"a meio caminho ({meio:0.#}%) vale o meio entre os dois"),
-			  (Catalogo.GodkiBluePct, blue.Mult[0], "aos 33% vale o do BLUE"),
-			  (Catalogo.GodkiRoyalePct, blue.Mult[0], "e aos 50% continua no do Blue -- o degrau de cima e a MAX") })
+			{ (0.0, 20.0, "o ki divino DESPERTO vale 20x"),
+			  (meio, 35.0, $"a meio caminho ({meio:0.#}%) vale 35x"),
+			  (Catalogo.GodkiRoyalePct, 50.0, "aos 50% vale 50x -- e ali a MAX abre"),
+			  (100.0, 50.0, "e acima dos 50% continua em 50x -- o degrau de cima e a MAX") })
 		{
 			bio.Ficha.godki = new GodKiState { awakened = true, mastery = maestria };
 			AplicarForma(bio);
-			Checa($"...{nivel}: {esperado:0.##}x o IMPERFEITO (o dono: *\"a golden tem a mesma forca do ssjg mas vai subindo o multiplicador "
-				  + "ate chegar no mesmo multiplicador do ssj blue quando atinger 33% de ki divino\"*) -- a forma vale o que falta sobre o degrau "
-				  + "que ja mora no BP base",
-				  Math.Abs(bio.Ficha.ssjBuff * degrau - esperado) < 1e-6,
-				  $"forma {bio.Ficha.ssjBuff:0.###} x degrau {degrau:0.#} = {bio.Ficha.ssjBuff * degrau:0.###}");
+			Checa($"...{nivel} SOBRE O BP BASE (o pedido 161, o dono: *\"golden(20x -> 50x) -> max(56x)\"*) -- o degrau do perfeito, que ja "
+				  + "mora no BP base, nao divide mais a forma",
+				  Math.Abs(bio.Ficha.ssjBuff - esperado) < 1e-6 && degrau > 1,
+				  $"forma {bio.Ficha.ssjBuff:0.###} (degrau {degrau:0.#})");
 		}
 		bio.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
 		TickDaMaestriaDivina(bio, 60);
@@ -1159,8 +1206,10 @@ public partial class GameServer
 		TransformarPara(bio, "bio_max");
 		Checa("aos 50% ele ENTRA na MAX a partir da GOLDEN (o dono: *\"ao chegar em 50% de god ki, ele libera a forma MAX\"*)",
 			  bio.Forma.Atual == "bio_max", bio.Forma.Atual);
-		Checa("...e ela vale os 56x do BLUE EVOLUTION sobre o imperfeito (*\"a max tem o mesmo bp do blue evolved\"*)",
-			  Math.Abs(bio.Ficha.ssjBuff * degrau - evolution.Mult[0]) < 1e-6, $"{bio.Ficha.ssjBuff * degrau:0.###}");
+		Checa("...e ela vale 56x SOBRE O BP BASE (o pedido 161, o dono: *\"max(56x)\"*) -- os 56x do BLUE EVOLUTION (*\"a max tem o mesmo bp "
+			  + "do blue evolved\"*)",
+			  Math.Abs(bio.Ficha.ssjBuff - 56) < 1e-6 && Catalogo.MultDaMaxDoBio == evolution.Mult[0] && degrau > 1,
+			  $"forma {bio.Ficha.ssjBuff:0.###} (degrau {degrau:0.#})");
 		bio.Forma.Entrar(Catalogo.IdBase);
 		AplicarForma(bio);
 		bio.Ficha.Ki = bio.Ficha.MaxKi;
@@ -1583,6 +1632,8 @@ public partial class GameServer
 		{ Checa("o segundo bio-androide nasceu", false, cientista.Race); return null; }
 		Checa("o SEGUNDO bio-androide nasceu, pela mesma porta e do mesmo tanque",
 			  BioAndroids.EhBio(cientista.Race));
+		Checa("(o pedido 204) ...e, gestado SEM nome, ele desperta com o de sempre", cientista.Name == "Bio-Androide de Dr. Sem Sangue",
+			  cientista.Name);
 		Checa("...e ele nasce SEM `canSSJ` -- e o UNICO campo em que ele difere do primeiro",
 			  !cientista.Ficha.canSSJ);
 		Checa("...e sem o SSJ1 possuido de nascenca", !cientista.Forma.Despertou("ssj1"));
@@ -2251,17 +2302,18 @@ public partial class GameServer
 		Numero("o semi-perfeito no marco 5", BioAndroids.MultAbsoluto(BioAndroids.SemiPerfeito, 5), 3);
 		Numero("o perfeito no marco 0", BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 0), 4);
 		Numero("o perfeito no marco 5", BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 5), 14);
-		Numero("a GOLDEN PERFECT ao despertar o ki divino (o SSG), absoluta sobre o imperfeito", Catalogo.GoldenPerfectDoBio.AoDespertar, 22);
-		Numero("...no nivel do Blue, o teto da rampa", Catalogo.GoldenPerfectDoBio.NoTopo, 32);
-		Numero("...e o nivel do Blue e os 33% de ki divino", Catalogo.GoldenPerfectDoBio.TopoEm, 33);
-		Numero("a MAX (o Blue Evolution), absoluta sobre o imperfeito", Catalogo.MultDaMaxDoBio, 56);
+		// (2026-10-29, o pedido 161) *"golden(20x -> 50x) -> max(56x)"*, sobre o BP base
+		Numero("a GOLDEN PERFECT ao despertar o ki divino, sobre o BP base (o pedido 161)", Catalogo.GoldenPerfectDoBio.AoDespertar, 20);
+		Numero("...o teto da rampa (o pedido 161)", Catalogo.GoldenPerfectDoBio.NoTopo, 50);
+		Numero("...e o teto nos 50% de ki divino, onde a MAX abre", Catalogo.GoldenPerfectDoBio.TopoEm, 50);
+		Numero("a MAX (o Blue Evolution), sobre o BP base (o pedido 161)", Catalogo.MultDaMaxDoBio, 56);
 		Numero("a EXECUCAO de absorcao, em segundos", BioAndroids.SegundosDaExecucao, 5);
 		Numero("...e o que ela devolve (vida, folego e Ki)", BioAndroids.DevolveAExecucao, 0.2);
 		Numero("`nerfSSJ()` no SSJ1 de quem chegou por `canSSJ`", Catalogo.Ssj1BaseDiluido, 1.35);
 		Numero("o marco `bio1` (imperfeito)", Milestones.Valor("bio1"), 1.5);
 		Numero("o marco `bio2` (semi-perfeito)", Milestones.Valor("bio2"), 2);
-		Numero("o marco `bio3` (perfeito)", Milestones.Valor("bio3"), 3);
-		Numero("o marco `bio_ssj2`", Milestones.Valor("bio_ssj2"), 4);
+		Numero("o marco `bio3` (perfeito; o 2^x do pedido 188)", Milestones.Valor("bio3"), 4);
+		Numero("o marco `bio_ssj2` (o 2^x do pedido 188)", Milestones.Valor("bio_ssj2"), 8);
 		Numero("`DNL_ABSORB_KI_PER_HIT` (6% do tanque por tiro engolido)", AbsorcaoPorGolpeDeKi, 0.06);
 		Numero("o teto do androide de absorcao (o DOBRO do tanque)", TetoDoAndroideAbsorcao, 2);
 		Numero("`DNL_INT_REQ` (tecnologia pro laboratorio)", TechDoLaboratorio, 70);
@@ -2456,4 +2508,54 @@ public partial class GameServer
 		bio.Ficha.bio_lab_born = nascidoGuardado;
 		bio.Ficha.Statify();
 	}
+
+	/// <summary>
+	/// (o robo `--diagbioabsorve`, o pedido 203) O BIO QUE ABSORVEU: crava o BP base e o total absorvido, com a media da absorcao ligada
+	/// quando ha absorvido -- o que a absorcao de verdade deixa escrito (`ConsumirPelaExecucao`) --, e manda o poder novo pro cliente.
+	/// </summary>
+	internal void PalcoBA_Absorvido(int id, double bp, double absorvido)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		pl.Ficha.BP = bp;
+		pl.Ficha.AbsorbDeterminesBP = absorvido > 0;
+		pl.Ficha.AbsorbBP = absorvido;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		RepercutirPoder(pl);
+	}
+
+	/// <summary>
+	/// (o robo `--diagbionome`, o pedido 204) O BIO-ANDROID LAB DO HOST, com DNA no tanque: o mainframe aparafusado um tile a direita
+	/// dele (o menu da tecla E o acha), o laboratorio de bio instalado e uma amostra humana na fornada. A gestacao comeca pelo menu.
+	/// </summary>
+	internal void PalcoBN_LabComDna(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		var lab = new Obra
+		{
+			Id = 984_960, Tipo = "Android_Creation_Mainframe", Aparafusada = true, Lab = 2,
+			X = pl.Pos.X + ZoneCollision.TileSize, Y = pl.Pos.Y, DonoConta = pl.Conta, DonoNome = pl.Name,
+		};
+		lab.PorZona(pl.Zone);
+		lab.Fornada = new Gestacao { Amostras = { new Amostra { Raca = "Human", Doador = "doador do robo", Bp = 2_000_000 } } };
+		_noChao.Add(lab);
+		AplicarColisaoDasObras(lab.Zona);
+		MandarObras(lab.Zona);
+	}
+
+	/// <summary>(o robo `--diagbionome`) o nome guardado na fornada do lab do host (nulo = nenhuma gestacao comecou).</summary>
+	internal string? PalcoBN_NomeNaFornada(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) && _noChao.Find(o => o.Id == 984_960 && o.Fornada is { PrometidaEm: > 0 }) is { } lab
+			&& lab.DonoConta == pl.Conta ? lab.Fornada!.Nome : null;
+
+	/// <summary>(o robo `--diagbionome`) o mes do tanque passa agora: o parto roda pela porta de producao (`TickDaGestacao`).</summary>
+	internal void PalcoBN_ParirAgora()
+	{
+		if (_noChao.Find(o => o.Id == 984_960) is { Fornada: { PrometidaEm: > 0 } g }) g.PrometidaEm = NowMs() - 1;
+		TickDaGestacao();
+	}
+
+	/// <summary>(o robo `--diagbionome`) o nome e a raca do corpo do host agora.</summary>
+	internal (string Nome, string Raca) PalcoBN_Corpo(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) ? (pl.Name, pl.Race) : ("", "");
 }

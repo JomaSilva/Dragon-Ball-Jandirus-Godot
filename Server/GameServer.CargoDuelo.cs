@@ -585,13 +585,41 @@ public partial class GameServer
 	/// primeiro um juiz de pessoas, e so na falta delas um demolidor de mundos.
 	/// ==========================================================================================
 	/// </summary>
+	/// <summary>
+	/// (2026-10-29) ESTE CORPO E UMA AMEACA AO EQUILIBRIO? O candidato do `god_task_new` (`:597`): gente viva, que nao e o Deus, com o selo de
+	/// vilao ou o karma podre -- e, desde o pedido 150, quem destruiu <see cref="MissoesDeCargo.MundosDoDestruidor"/> mundos ou mais (o dono:
+	/// *"o deus da destruição vai ter quests de destruir planetas e destruir jogadores q destruiram muitos planetas"*).
+	/// </summary>
+	private bool EhAmeacaAoEquilibrio(ServerPlayer p, string deusConta) =>
+		EhPessoa(p) && !p.Ficha.dead
+		&& !string.Equals(p.Conta, deusConta, StringComparison.OrdinalIgnoreCase)
+		&& (EhVilao(p) || p.Karma <= KarmaDeAmeaca || p.Ficha.planetasDestruidos >= MissoesDeCargo.MundosDoDestruidor);
+
+	/// <summary>
+	/// (2026-10-31, o pedido 198) A PATRULHA GALACTICA CHAMA O DEUS: o procurado do nivel maximo derrubou o esquadrao inteiro (*"o deus da
+	/// destruição vai ser notificado e vai intervir (sendo o deus da destruição um player recebendo a notificação de um criminoso causando
+	/// desequilíbrio no universo)"*). A tarefa de agora da lugar a esta -- sem falha, e com o prazo de sempre --, e o Deus no jogo le o
+	/// chamado na hora; fora dele, le a tarefa ao entrar (o `tarefa` do painel do cargo). Ver `GameServer.PatrulhaGalactica.cs`.
+	/// </summary>
+	private void DeusChamadoPelaPatrulha(ServerPlayer criminoso)
+	{
+		long agora = NowMs();
+		_tarefaPlanetaChave = _tarefaPlanetaNome = "";
+		_tarefaAlvo = criminoso.Conta;
+		_tarefaNomeDoAlvo = criminoso.Name;
+		_tarefaPrazo = agora + IntervaloDeTarefa;
+		SalvarTitulo();
+		if (DeusNoJogo is not { } deus) return;
+		Avisar(deus, $"God of Destruction: a PATRULHA GALÁCTICA pede a sua intervenção -- {criminoso.Name} derrotou a Patrulha no nível máximo "
+				   + $"em {NomeDoPlaneta(criminoso.Zone.Name)}: um criminoso causando desequilíbrio no universo.");
+		Avisar(deus, $"God of Destruction: NOVA TAREFA -- ELIMINAR {criminoso.Name}: mate-o enquanto ele estiver online (se ele sair do jogo, a "
+				   + $"tarefa é cancelada sem falha). Prazo: {Duelo.TempoQueFalta(_tarefaPrazo, agora)}.");
+	}
+
 	private void SortearTarefaDoDeus(long agora)
 	{
 		string deusConta = ContaDoDeus;
-		var vilaes = _players.Values.Where(p =>
-			p.Peer != null && EhPessoa(p) && !p.Ficha.dead
-			&& !string.Equals(p.Conta, deusConta, StringComparison.OrdinalIgnoreCase)
-			&& (EhVilao(p) || p.Karma <= KarmaDeAmeaca)).ToList();
+		var vilaes = _players.Values.Where(p => p.Peer != null && EhAmeacaAoEquilibrio(p, deusConta)).ToList();
 
 		ServerPlayer? deus = DeusNoJogo;
 
@@ -625,7 +653,11 @@ public partial class GameServer
 
 		if (deus != null)
 		{
-			Avisar(deus, $"God of Destruction: NOVA TAREFA -- ELIMINAR {v.Name}, uma ameaça ao equilíbrio: mate-o enquanto ele estiver "
+			// (2026-10-29, o pedido 150) a ameaca que destruiu mundos diz quantos
+			string porque = v.Ficha.planetasDestruidos >= MissoesDeCargo.MundosDoDestruidor
+				? $", que já destruiu {v.Ficha.planetasDestruidos} planetas -- uma ameaça ao equilíbrio"
+				: ", uma ameaça ao equilíbrio";
+			Avisar(deus, $"God of Destruction: NOVA TAREFA -- ELIMINAR {v.Name}{porque}: mate-o enquanto ele estiver "
 					   + "online (se ele sair do jogo, a tarefa é cancelada sem falha).");
 			Avisar(deus, $"Prazo: {Duelo.TempoQueFalta(_tarefaPrazo, agora)}. Se o prazo acabar, você leva 1 falha (tem {_tarefaFalhas} de "
 					   + $"{FalhasQueDestituem}); com {FalhasQueDestituem} falhas, perde o título.");

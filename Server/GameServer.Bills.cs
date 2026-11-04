@@ -586,8 +586,22 @@ public partial class GameServer
 
 		// (2026-10-24) E O WHIS ESTA SEMPRE NO ULTRA INSTINTO PERFEITO, sem efeito visual nenhum. Ver `VestirAFormaDoWhis`.
 		if (c.Quem == QuemFala.Whis) VestirAFormaDoWhis(npc);
+		// (2026-10-31, o pedido 205) E ELE SO SERVE DE TREINO: nao se fere nem cai. Ver `PrepararOWhisDeTreino`.
+		if (c.Quem == QuemFala.Whis) PrepararOWhisDeTreino(npc);
 
 		GD.Print($"[server] {npc.Name} esta em {zona} ({posto.X:0},{posto.Y:0}) | {c.Modo} | BP {npc.Ficha.BP:N0}");
+	}
+
+	/// <summary>
+	/// (2026-10-31, o pedido 205) O WHIS SO SERVE DE TREINO -- o dono: *"o npc whis deveria ter vida infinita, ou seja n tomar dano, ele so
+	/// serve de treino e n da pra derrotar"*: NAO SE FERE NEM CAI (`CombatState.NaoSeFere`) -- o golpe encosta (a esquiva, o bloqueio e o
+	/// treino de quem bate acontecem) e a vida fica, e o nocaute nao o derruba. A aula com ele so acaba pelo tempo, pelo aluno ou por quem se
+	/// mete: o `MestreCaiu` nao acontece mais com o Whis. (O resto do pedido -- o Ultra Instinto em 100% que nao cai -- ja era assim na aula:
+	/// `VestirADisciplina` e o tique do mestre; a `--billsteste` o mede.)
+	/// </summary>
+	private static void PrepararOWhisDeTreino(ServerPlayer w)
+	{
+		if (w.Combate != null) w.Combate.NaoSeFere = true;
 	}
 
 	/// <summary>Tira um dos dois do mundo (o cargo ganhou dono, ou a fase mudou de lugar), encerrando a luta que houver.</summary>
@@ -1218,7 +1232,10 @@ public partial class GameServer
 	/// </summary>
 	private Vec2 LadoDoBills(ServerPlayer? b)
 	{
-		if (b == null || (b.Pos - _bills.Posto).LengthSquared <= 4f) return _whis.Posto;
+		// O BILLS "NO POSTO" E A UM TILE DELE, e nao a 2 px: um esbarrao de corpo na aula do Whis (o aluno arremessado) o tira um ou dois pixels
+		// do lugar, e com a folga de 2 px o Whis ia pro "lado do Bills" encaixado num ponto livre -- e parava fora do proprio posto (o robo
+		// `--diagbills` o pegou a 12 px, com o pedido 205: o Whis que nao cai mudou a luta). Longe de verdade, ele continua indo pro lado dele.
+		if (b == null || (b.Pos - _bills.Posto).LengthSquared <= ZoneCollision.TileSize * ZoneCollision.TileSize) return _whis.Posto;
 		if (_ladoDoBills is { } ja && (ja.Bills - b.Pos).LengthSquared <= 64f) return ja.Lado;
 
 		Vec2 lado = b.Pos + (_whis.Posto - _bills.Posto);

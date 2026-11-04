@@ -432,6 +432,8 @@ public sealed partial class GameServer
 		if (_blocos is not { Total: > 0 }) return "este servidor está sem o catálogo de blocos.";
 		if (pl.Ficha.KO || EhCadaver(pl)) return "você não constrói caído.";
 		if (!RegrasDeBloco.ZonaAceita(pl.Zone)) return RegrasDeBloco.Motivo(RecusaDeBloco.Zona);
+		// (2026-10-29, o pedido 164) de dentro da zona segura de quem nasce nada se ergue -- ver `NaZonaSeguraDoNascimento`
+		if (NaZonaSeguraDoNascimento(pl.Zone, pl.Pos)) return FraseDaObraNaZonaSegura;
 		return "";
 	}
 
@@ -469,6 +471,10 @@ public sealed partial class GameServer
 	{
 		if (PorQueNaoConstroi(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return false; }
 		if (_blocos!.PorNumero(numero) is not { } def) { Avisar(pl, "esse bloco não existe."); return false; }
+		// (2026-10-29, o pedido 164) ...e de fora, pra dentro dela, tambem nao: a celula e a que conta
+		const float lado = ZoneCollision.TileSize;
+		if (NaZonaSeguraDoNascimento(pl.Zone, new Vec2(cx * lado + lado / 2f, cy * lado + lado / 2f)))
+		{ Avisar(pl, FraseDaObraNaZonaSegura); return false; }
 
 		RecusaDeBloco r = RecusaDeErguer(pl, def, cx, cy);
 		if (r != RecusaDeBloco.Pode) { Avisar(pl, RegrasDeBloco.Motivo(r)); return false; }

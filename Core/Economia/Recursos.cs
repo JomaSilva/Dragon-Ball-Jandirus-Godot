@@ -56,6 +56,12 @@ public enum Ferramenta : byte
 /// lado^2 x 10"*). Com o teto de antes a Terra guardava 500 mil, devolvia 5,8 por segundo e UMA furadeira a
 /// secava em 22 h. O tempo de encher nao mudou (<see cref="HorasPraEncher"/>), entao o que o chao devolve por
 /// segundo quintuplicou junto com o teto.
+///
+/// (2026-11-01, o pedido 217) OS TRES DE NOVO -- o dono: *"aumente em 10x os recursos nos planetas e faça as drills melhores tb, a
+/// shovel e a furadeira q vc usa pessoalmente pode ter os ganhos triplicados"* e *"Drills tb vao ser 10x melhor"*. A reserva e lado^2 x
+/// 100 (a Terra guarda 25 milhoes e, com as mesmas 24 h de encher, devolve 289 por segundo), a Drill tira dez vezes mais
+/// (`Drill.TaxaPorNivel`), e a pa e a furadeira rendem o triplo (180 e 360 por segundo); a mao continua nos 3. Com a reserva e a
+/// Drill crescendo juntas, a conta de quem seca quem nao mudou pra Drill -- e a furadeira sozinha (360/s) ainda faz a Terra descer.
 /// ====================================================================================
 /// </summary>
 public static class Recurso
@@ -75,9 +81,10 @@ public static class Recurso
 
 	/// <summary>
 	/// Quanto de recurso cabe em cada celula do mapa de um planeta -- ver <see cref="MaximoDoPlaneta"/>. O dono
-	/// (2026-10-11): *"Reserva do planeta troque o lado^2 x 2 por lado^2 x 10"*.
+	/// (2026-10-11): *"Reserva do planeta troque o lado^2 x 2 por lado^2 x 10"*; e (2026-11-01, o pedido 217) *"aumente em 10x os
+	/// recursos nos planetas"* -- lado^2 x 100.
 	/// </summary>
-	public const double RecursosPorCelula = 10.0;
+	public const double RecursosPorCelula = 100.0;
 
 	/// <summary>O que cabia por celula ate 2026-10-11. So o defeito injetado o le.</summary>
 	private const double RecursosPorCelulaDeAntes = 2.0;
@@ -90,8 +97,8 @@ public static class Recurso
 
 	/// <summary>
 	/// A RESERVA MAXIMA PELO TAMANHO: *"cada planeta tem um resource maximo ao qual e baseado em seu tamanho"*.
-	/// Pela AREA (lado ao quadrado, vezes <see cref="RecursosPorCelula"/>): um planeta de lado 192 guarda 368.640,
-	/// um de 500 guarda 2,5 milhoes, um de 1000 guarda 10 milhoes.
+	/// Pela AREA (lado ao quadrado, vezes <see cref="RecursosPorCelula"/>): um planeta de lado 192 guarda 3.686.400,
+	/// um de 500 guarda 25 milhoes, um de 1000 guarda 100 milhoes (2026-11-01, o pedido 217: dez vezes o de 2026-10-11).
 	/// </summary>
 	public static double MaximoDoPlaneta(int ladoEmTiles)
 	{
@@ -105,7 +112,7 @@ public static class Recurso
 	/// E UM TEMPO, E NAO UMA TAXA: o que o chao devolve por segundo e o teto dividido por estas horas. Quando o
 	/// teto quintuplicou (2026-10-11) este numero ficou como estava -- e a Terra passou de 5,8 pra 28,9 por
 	/// segundo. E o que sai de "trocar o x2 pelo x10" sem mexer aqui; quem quiser a taxa de antes com o teto novo
-	/// poe 120 horas.
+	/// poe 120 horas. (2026-11-01, o pedido 217) O teto decuplicou de novo e este numero de novo ficou: a Terra devolve 289 por segundo.
 	/// </summary>
 	public const double HorasPraEncher = 24.0;
 
@@ -172,8 +179,11 @@ public static class Recurso
 	/// (v0.3.0) A PA E A FURADEIRA RENDEM DEZ VEZES O QUE RENDIAM (6 e 12 por segundo) -- o dono, 2026-10-15: *"aumente em 10x os
 	/// ganhos de recursos da drill, furadeira e pa, pq os jogadores estao reclamando da demora absurda q ta pra conseguir
 	/// recursos pra construir coisas"*. A mao continua nos 3: ela nao estava no pedido. A Drill e `Drill.TaxaPorNivel`.
+	///
+	/// (2026-11-01, o pedido 217) E O TRIPLO DISSO (180 e 360 por segundo) -- o dono: *"a shovel e a furadeira q vc usa pessoalmente pode
+	/// ter os ganhos triplicados"*. A mao, de novo fora do pedido, continua nos 3.
 	/// </summary>
-	public const double PorSegundoNaMao = 3, PorSegundoComPa = 60, PorSegundoComFuradeira = 120;
+	public const double PorSegundoNaMao = 3, PorSegundoComPa = 180, PorSegundoComFuradeira = 360;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--recursosteste`): a ferramenta nao conta -- todo mundo minera na mao. Lido

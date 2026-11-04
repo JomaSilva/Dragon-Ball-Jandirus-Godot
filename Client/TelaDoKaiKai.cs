@@ -16,6 +16,10 @@ namespace Jandirus.Client;
 /// DUAS PARTES: os doze de sempre numa grade de duas colunas (cabem sem rolar numa tela de 720) e, embaixo, os mundos gerados que
 /// algum jogador ja pisou, um por linha, com a gravidade (que e por que se vai a um mundo gerado). No meio da tela, por cima do jogo,
 /// como a janela da estatua: e um gesto que se faz parado. Nenhum botao pega o foco do teclado (ENTER e a tecla de falar).
+///
+/// (2026-10-29) A BUSCA (o pedido 154, o dono: *"adicionar barra de pesquisa no kai kai pq dps de um tempo tem mts planetas"*): um campo
+/// no alto filtra as linhas pelo nome que se le, sem acento e sem maiuscula (`RastroDoSense.Normalizar`, a regra da busca do Sense e da
+/// Tech). So ele pega o teclado, e so com o clique; enquanto o tem, os atalhos do jogo ficam mudos (<see cref="Digitando"/>).
 /// </summary>
 public partial class TelaDoKaiKai : CanvasLayer
 {
@@ -32,6 +36,12 @@ public partial class TelaDoKaiKai : CanvasLayer
 	/// <summary>DEFEITO INJETADO (robo `--diagkaikai`): as linhas saem sem a arte do planeta. Falso em jogo, sempre.</summary>
 	public static bool SemArteDeTeste;
 
+	/// <summary>(2026-10-29) DEFEITO INJETADO (robo `--diagkaikai`): a busca nao filtra -- toda linha fica na tela. Falso em jogo, sempre.</summary>
+	public static bool BuscaCegaDeTeste;
+
+	/// <summary>(2026-10-29) A busca esta com o teclado? Lido por `Foco.Digitando` -- sem isto o "M" de "Namek" mandaria meditar.</summary>
+	public static bool Digitando => Instancia is { } t && t.NaTela && IsInstanceValid(t._busca) && t._busca.HasFocus();
+
 	private const int Largura = 780;
 	private const int Margem = 36;
 	private const int LadoDaArte = 40;
@@ -41,6 +51,10 @@ public partial class TelaDoKaiKai : CanvasLayer
 
 	private Control _raiz = null!;
 	private VBoxContainer _conteudo = null!;
+	private LineEdit _busca = null!;
+	private Label _semAchado = null!;
+	// (2026-10-29) as linhas desenhadas, com o nome que a busca le (ja sem acento e sem maiuscula)
+	private readonly List<(Control Cartao, string Nome)> _cartoes = [];
 	private readonly List<DestinoDoKaiKai> _destinos = [];
 	private readonly Dictionary<string, (Button? Ir, TextureRect Arte, Label Nome)> _porChave = new(StringComparer.Ordinal);
 
@@ -64,6 +78,20 @@ public partial class TelaDoKaiKai : CanvasLayer
 	/// <summary>Quantas listas o servidor ja mandou (abrindo a tela ou nao) -- o robo sabe por aqui que a resposta chegou.</summary>
 	public int Recebidas { get; private set; }
 
+	/// <summary>(2026-10-29) A linha de um destino esta a vista (a busca nao a escondeu)? Falso = nao esta la, ou a busca a tirou.</summary>
+	public bool Visivel(string chave) => _cartoes.Exists(c => IsInstanceValid(c.Cartao) && c.Cartao.Visible
+														   && c.Cartao.Name == NomeDoCartao(chave));
+
+	/// <summary>(2026-10-29) O robo escreve na busca como o teclado escreveria: o texto e o mesmo sinal de quem digita.</summary>
+	public void Buscar(string termo)
+	{
+		_busca.Text = termo;
+		_busca.EmitSignal(LineEdit.SignalName.TextChanged, termo);
+	}
+
+	/// <summary>(2026-10-29) O robo poe o teclado na busca, como o clique poria.</summary>
+	public void FocarABusca() => _busca.GrabFocus();
+
 	public override void _Ready()
 	{
 		Layer = 5;
@@ -86,6 +114,7 @@ public partial class TelaDoKaiKai : CanvasLayer
 		_destinos.Clear();
 		_destinos.AddRange(lista);
 		Recebidas++;
+		_busca.Text = "";   // a tela abre com a lista inteira
 		Desenhar();
 		if (NaoAbreDeTeste) return;
 		if (MenuJogo.NaFrenteDoJogo) MenuJogo.Instancia?.Fechar();
@@ -94,6 +123,7 @@ public partial class TelaDoKaiKai : CanvasLayer
 
 	public void Fechar()
 	{
+		_busca.ReleaseFocus();   // o teclado volta pro jogo
 		if (NaTela) _raiz.Visible = false;
 	}
 
@@ -190,6 +220,19 @@ public partial class TelaDoKaiKai : CanvasLayer
 		sub.HorizontalAlignment = HorizontalAlignment.Center;
 		sub.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		tudo.AddChild(sub);
+
+		// (2026-10-29, o pedido 154) A BUSCA: o unico controle que pega o teclado, e so com o clique
+		_busca = new LineEdit
+		{
+			Name = "Busca",
+			PlaceholderText = "buscar planeta pelo nome",
+			ClearButtonEnabled = true,
+			FocusMode = Control.FocusModeEnum.Click,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+			TooltipText = "procura no nome de cada planeta, sem acento e sem maiúscula",
+		};
+		_busca.TextChanged += _ => Filtrar();
+		tudo.AddChild(_busca);
 		tudo.AddChild(new HSeparator());
 
 		var rolagem = new ScrollContainer
@@ -202,6 +245,9 @@ public partial class TelaDoKaiKai : CanvasLayer
 		_conteudo = new VBoxContainer { Name = "Destinos", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 		_conteudo.AddThemeConstantOverride("separation", 6);
 		rolagem.AddChild(_conteudo);
+		_semAchado = Texto("Nenhum planeta com esse nome.", 13, Tema.TextoFraco);
+		_semAchado.Visible = false;
+		tudo.AddChild(_semAchado);
 
 		tudo.AddChild(new HSeparator());
 		var pe = new HBoxContainer();
@@ -224,6 +270,7 @@ public partial class TelaDoKaiKai : CanvasLayer
 			n.QueueFree();
 		}
 		_porChave.Clear();
+		_cartoes.Clear();
 
 		_conteudo.AddChild(Tema.Rotulo("os doze de sempre"));
 		var grade = new GridContainer { Columns = 2, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -237,12 +284,33 @@ public partial class TelaDoKaiKai : CanvasLayer
 		if (gerados.Count == 0)
 			_conteudo.AddChild(Texto("Nenhum mundo gerado foi pisado ainda.", 13, Tema.TextoFraco));
 		foreach (DestinoDoKaiKai d in gerados) _conteudo.AddChild(Linha(d));
+		Filtrar();   // a busca sobrevive ao redesenho
 	}
+
+	/// <summary>
+	/// (2026-10-29) O FILTRO DA BUSCA, sem redesenhar: esconde a linha cujo nome nao contem o termo (os dois sem acento e sem maiuscula) e
+	/// mostra a que contem. Termo vazio mostra tudo. A grade dos doze pula as linhas escondidas sozinha.
+	/// </summary>
+	private void Filtrar()
+	{
+		string termo = RastroDoSense.Normalizar(_busca.Text);
+		int achados = 0;
+		foreach ((Control cartao, string nome) in _cartoes)
+		{
+			if (!IsInstanceValid(cartao)) continue;
+			bool casa = termo.Length == 0 || BuscaCegaDeTeste || nome.Contains(termo, StringComparison.Ordinal);
+			cartao.Visible = casa;
+			if (casa) achados++;
+		}
+		_semAchado.Visible = termo.Length > 0 && achados == 0;
+	}
+
+	private static string NomeDoCartao(string chave) => "Destino_" + chave.Replace('#', 'g');
 
 	/// <summary>UMA LINHA: a arte, o nome (e, no gerado, a gravidade), e o botao -- ou "você está aqui", no lugar onde se esta.</summary>
 	private PanelContainer Linha(DestinoDoKaiKai d)
 	{
-		var cartao = new PanelContainer { Name = "Destino_" + d.Chave.Replace('#', 'g'), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+		var cartao = new PanelContainer { Name = NomeDoCartao(d.Chave), SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 		cartao.AddThemeStyleboxOverride("panel", d.Aqui ? Tema.Caixa(Tema.PainelAceso, Tema.BordaViva, 6) : Tema.Caixa(Tema.PainelClaro, Tema.Borda, 6));
 		var linha = new HBoxContainer();
 		linha.AddThemeConstantOverride("separation", 8);
@@ -285,6 +353,7 @@ public partial class TelaDoKaiKai : CanvasLayer
 		}
 
 		_porChave[d.Chave] = (ir, arte, nome);
+		_cartoes.Add((cartao, RastroDoSense.Normalizar(d.Nome)));
 		return cartao;
 	}
 }

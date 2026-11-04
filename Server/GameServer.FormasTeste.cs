@@ -1211,6 +1211,26 @@ public partial class GameServer
 			// que e o defeito anterior, o corpo virando SSJ4 no servidor e continuando base em TODAS as
 			// telas, inclusive na do dono.
 			// ========================================================================================
+
+			// ============================ (2026-10-30, o pedido 178) ABAIXO DA PORTA, A SAIDA E A BASE ============================
+			// O dono: *"volta pra base, e faça o requisito do ssj4 ser 5B"*. A saida do Dourado punha o corpo no SSJ4 sem perguntar o BP -- um
+			// amigo dele virou SSJ4 com 2,5 bilhoes de base. Com esses 2,5 (abaixo da porta: 5 bi vezes a faixa da classe, de 3,5 a 7) o corpo fica
+			// na BASE, e o SSJ4 fica liberado (o C o leva la quando o BP chegar); e a porta do SSJ4, do FP e do LB e a mesma. O BP de sempre
+			// (1e13) volta pra cena de baixo, que e a do Dourado dominado com poder de sobra.
+			double bpDoHost = pl.Ficha.BP;
+			pl.Ficha.BP = 2.5e9;
+			DesfazerOozaru(pl, "bancada: o Dourado com 2,5 bilhoes de base");
+			Checa("(o pedido 178) **ABAIXO DA PORTA, A SAIDA DO DOURADO E A BASE**: com 2,5 bilhoes de base (o caso do amigo do dono) o corpo nao vira SSJ4 -- e o SSJ4 fica liberado",
+				  pl.Forma.NaBase && pl.Forma.Despertou("ssj4"), $"forma {pl.Forma.Atual}, liberado {pl.Forma.Despertou("ssj4")}");
+			double[] portas = [.. new[] { "ssj4", "ssj4_full_power", "ssj4_limit_breaker" }.Select(id => Catalogo.Def(id) is { } d4 ? pl.Forma.PortaDeBp(d4) : -1)];
+			Checa("(o pedido 178) **O REQUISITO DO SSJ4 E 5 BILHOES** (vezes a faixa da classe, 3,5 a 7): a porta do SSJ4, do SSJ4 FP e do SSJ4 LB e a mesma, e cai nessa faixa",
+				  portas.All(p4 => Math.Abs(p4 - portas[0]) < 1 && p4 >= 3.5e9 - 1 && p4 <= 7e9 + 1), string.Join(" / ", portas.Select(p4 => p4.ToString("N0"))));
+			pl.Ficha.BP = bpDoHost;
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			pl.Forma.Entrar("ssj1");
+			AplicarForma(pl);
+			Apeshit(pl);
+
 			EscutaDeAnuncios = [];
 			EscutaDeFeras = [];
 			DesfazerOozaru(pl, "bancada: fim do Dourado");
@@ -1774,6 +1794,12 @@ public partial class GameServer
 			  De("Elite", 1, 11, 14), Faixa("Elite", 1));
 		Checa("[classe] o Elite sorteia o SSJ3, o SSJ4 e o Oozaru Dourado de 1,0 a 1,4x",
 			  Enumerable.Range(2, 3).All(p => De("Elite", p, 10, 14)), Escada("Elite"));
+		// (2026-10-30, o pedido 178) ...e o PRIMAL, que nao tem Low-Class nem Elite: o SSJ4 dele e o de fabrica, sem sorteio (o dono)
+		SortedSet<int> normalPrimal = Fatores("Normal Primal Saiyan", 3), lendarioPrimal = Fatores("Legendary Primal Saiyan", 3);
+		Checa("[classe] (o pedido 178) **O SSJ4 DO PRIMAL E O DE FABRICA, CRAVADO**: o Normal Primal e o Lendario Primal sorteiam 1,0x e so "
+			  + "(*\"n tem classe baixa nem elite em primal, entao n precisa colocar variação neles\"*)",
+			  normalPrimal.SetEquals([10]) && lendarioPrimal.SetEquals([10]),
+			  $"Normal Primal {string.Join("/", normalPrimal)}, Lendario Primal {string.Join("/", lendarioPrimal)} (em decimos)");
 
 		// ---------------------------------------------------------------- 2. a ordem: o pedido em si
 		// Pela media do CONJUNTO de fatores (e nao da amostra): duas classes com a mesma faixa empatam sempre, e o empate e
@@ -1842,6 +1868,14 @@ public partial class GameServer
 			LimiaresPessoais aMetade = Logar("Low-Class", absorvido);
 			Checa("[classe] LOGIN: o desconto que o Low-Class ja ganhou (a metade do SSJ2 da absorcao) nao volta a subir",
 				  IgualA(aMetade.ssj2at, hoje.ssj2at / 2), $"{aMetade.ssj2at:N0} (a metade de hoje e {hoje.ssj2at / 2:N0})");
+
+			// (2026-10-30, o pedido 178) O SSJ4 GRAVADO COM OS 15 BI DE ANTES DESCE NO LOGIN pro sorteio dos 5 (a mesma faixa da semente) -- e
+			// no Normal, que o funil do Low-Class nao toca.
+			var ssj4Velho = new LimiaresPessoais { Semente = SementeDoTeste, Rolado = true, rawssj4at = 15e9 * 1.3 };
+			double ssj4Hoje = LimiaresPessoais.Rolar("Saiyan", "Normal", SementeDoTeste).rawssj4at;
+			LimiaresPessoais normalVelho = Logar("Normal", ssj4Velho);
+			Checa("(o pedido 178) **O SSJ4 GRAVADO DESCE PRO REQUISITO NOVO NO LOGIN**: o Normal de antes (19,5 bilhoes gravados) loga com o sorteio dos 5 bi",
+				  IgualA(normalVelho.rawssj4at, ssj4Hoje) && ssj4Hoje <= 7e9 + 1, $"{normalVelho.rawssj4at:N0} (hoje {ssj4Hoje:N0})");
 
 			// SAVE DE ANTES DOS LIMIARES: nunca rolou, nao tem semente -- fica como estava.
 			LimiaresPessoais semSorteio = Logar("Low-Class", Velho(rolado: false));

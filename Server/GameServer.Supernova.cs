@@ -44,7 +44,9 @@ public sealed partial class GameServer
 		if (!SupernovaSemImunidadeDeTeste)
 			chefe.CenaSegundos = Math.Max(chefe.CenaSegundos, Jandirus.Core.Npc.Supernova.SegundosAteAExplosao + 1);
 		bool deathBall = chefe.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall;
-		Falar(chefe, Protocol.Fala.Emote, deathBall
+		// (2026-11-01, o pedido 218) a esfera rosa do Kid Boo tem a frase dela
+		Falar(chefe, Protocol.Fala.Emote, chefe.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.EsferaRosa ? Jandirus.Core.Npc.SagaDoBuu.EmoteDaEsfera
+			: deathBall
 			? "ergue um dedo ao céu -- e uma DEATH BALL começa a crescer sobre ele!"
 			: "ergue um dedo ao céu -- e um sol começa a nascer sobre ele!");
 		GD.Print($"[server] {chefe.Name} ergueu a {(deathBall ? "DEATH BALL" : "SUPERNOVA")} ({Jandirus.Core.Npc.Supernova.SegundosAteAExplosao:0} s ate a explosao)");

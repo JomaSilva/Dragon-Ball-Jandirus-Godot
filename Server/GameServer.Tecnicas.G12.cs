@@ -425,7 +425,8 @@ public sealed partial class GameServer
 					// `while(charging && A && movestrength < 4) { sleep(15); movestrength++; ... }` (`:74-83`)
 					db.Estagio++;
 					f.Ki = Math.Max(f.Ki - db.KiReq / 3, 0);        // `usr.Ki -= KiReq/3` (`:77`), sem deixar negativo
-					db.KiReq += db.Estagio * 10;                    // `KiReq += movestrength*10` (`:78`) -- dez FLAT
+					// `KiReq += movestrength*10` (`:78`) -- dez FLAT; (2026-11-01, o pedido 220) o morto paga 25% menos (os 150*BaseDrain ja o trazem)
+					db.KiReq += db.Estagio * 10 * f.FatorDeKiDoEstado;
 					CreditarContador(pl, "blastcounter", 1);        // `usr.blastcounter++` (`:79`)
 					db.ProximoEstagioEm = _relogioG12 + SegundosPorEstagioDaDeathBallG12;
 
@@ -793,7 +794,8 @@ public sealed partial class GameServer
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = (v.Giro ? 1.1 : 0.7) * f.Ekioff * DanoDeKi.Log10Min(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi
+			// (o pedido 177) o botao do DM fica no 2 de la -- ver `DanoDeKi.PotenciaDeBolaDoDm`
+			BaseDano = DanoDeKi.PotenciaDeBolaDoDm(v.Giro ? 1.1 : 0.7, f.Ekioff, f.blastskill)
 					   * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2),
 			Velocidade = 3,       // `walk(A, dir)` sem lag: um tile por tique
 			AlcanceTiles = 30,    // o `distance = 30` de todo `/obj/attack/blast` (`objects.dm:17-18`)
@@ -906,7 +908,8 @@ public sealed partial class GameServer
 		// (v0.3.2) SO NA FORMA BASE -- ver `CoracaoPuroG12`.
 		if (!CoracaoPuroG12(pl)) { Avisar(pl, "a Genkidama so aceita um coracao puro: volte a forma base."); return; }
 
-		double custo = f.MaxKi * 0.9;   // `if(usr.Ki >= usr.MaxKi*0.9)` (`:180`) -- e o `PodeAtirar` quem recusa, com o numero
+		// `if(usr.Ki >= usr.MaxKi*0.9)` (`:180`) -- e o `PodeAtirar` quem recusa, com o numero; (2026-11-01, o pedido 220) o morto paga 25% menos
+		double custo = f.MaxKi * 0.9 * f.FatorDeKiDoEstado;
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		f.Ki -= custo;
@@ -1090,7 +1093,8 @@ public sealed partial class GameServer
 			// "GENTE" AQUI E QUEM TEM FICHA PROPRIA: jogador (com tela) ou corpo de bancada; nunca um NPC do mundo (nem bicho) nem o
 			// reflexo da mente. (v0.3.2) MEDITANDO OU NAO -- o dono: *"todos q estao no planeta recebem um pedido ao qual podem aceitar pra
 			// doar pra genkidama (n precisa meditar mais)"*. No DM so quem meditava (`M.med`, `:79`).
-			if (o == pl || o.Papel != null || o.DonoDoClone != 0 || (GenkidamaSoConvidaQuemMeditaDeTeste && !o.Ficha.med)
+			// (2026-11-01, o pedido 212) quem joga da mesma conexao de quem forma nao recebe o pedido de doar -- ver `GameServer.MesmoIp.cs`
+			if (o == pl || UsoNoMesmoIp(pl, o) || o.Papel != null || o.DonoDoClone != 0 || (GenkidamaSoConvidaQuemMeditaDeTeste && !o.Ficha.med)
 				|| EhCadaver(o) || o.Ficha.KO) continue;
 			// (2026-10-25) os mortos que estao no Outro Mundo, nao -- e ninguem alem de onde o Sense de quem forma alcanca
 			if (o.Ficha.dead && Jandirus.Core.World.Alem.EhOAlem(o.Zone) && !GenkidamaConvidaOsMortosDeTeste) continue;
@@ -1684,7 +1688,7 @@ public sealed partial class GameServer
 			Avisar(pl, $"voce nao tem pericia pra manter mais que {skill} copia(s).");   // `:103`
 			return;
 		}
-		double custo = f.MaxKi * (0.5 / skill);
+		double custo = f.MaxKi * (0.5 / skill) * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (f.Ki < custo) { Avisar(pl, $"dividir o corpo pede {custo:0} de energia."); return; }
 
 		ServerPlayer copia = CriarSplitformG12(pl);

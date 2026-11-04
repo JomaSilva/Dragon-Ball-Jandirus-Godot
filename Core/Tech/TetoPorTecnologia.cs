@@ -157,6 +157,9 @@ public static class TetoPorTecnologia
 	/// <summary>Ate que velocidade (o jogo para em <see cref="Naves.VelocidadeMaxima"/>).</summary>
 	public static int VelocidadeDaNave(double tech) => ProporcionalInteiro(tech, Naves.VelocidadeInicial, Naves.VelocidadeMaxima);
 
+	/// <summary>(2026-10-31, o pedido 209) Os degraus do tanque da nave: o jogo para em 10, entao com 50 de tecnologia, 5.</summary>
+	public static int DegrausDoTanque(double tech) => ProporcionalInteiro(tech, 0, Combustivel.DegrausDoTanque);
+
 	// =====================================================================
 	// A FRASE
 	// =====================================================================

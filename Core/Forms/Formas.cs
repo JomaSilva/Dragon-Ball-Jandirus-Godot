@@ -119,8 +119,9 @@ public enum LinhaDeForma
 	/// corpo (`Stats.Fighter.bio_stage`, onde a decisao esta escrita por extenso). No DM eles fazem
 	/// `BP *= 2` e `BP *= 4` no BP BASE e trocam o `oicon`; nao ha buff, nao ha dreno e nao ha volta.
 	/// Poe-los aqui teria mentido no teto de treino, no teto do Zenkai e no `CapCheck`, que leem o BP
-	/// base e nao o expresso. E e por o degrau morar no BP base que as duas divinas sao ABSOLUTAS SOBRE O
-	/// IMPERFEITO (`FormaDef.SobreOImperfeito`): elas valem o que falta ate o numero delas.
+	/// base e nao o expresso. E e por o degrau morar no BP base que as duas divinas eram ABSOLUTAS SOBRE O
+	/// IMPERFEITO (`FormaDef.SobreOImperfeito`): valiam o que faltava ate o numero delas -- ate 2026-10-29, quando o dono quis o
+	/// numero da tela (o pedido 161) e elas passaram a valer sobre o BP base.
 	///
 	/// ============================ (2026-10-26) A SUPER PERFEITA SAIU ============================
 	/// A forma do corpo do DM (`Cell4()`, `CellFormBuff.dm:73` -- aqui 20x, com a forma perfeita e 750 milhoes de BP) SAIU DO JOGO pela
@@ -414,6 +415,10 @@ public sealed class FormaDef
 	/// degrau do bio (o semi-perfeito e o perfeito, com os marcos) ja mora no BP BASE, entao a forma vale o que falta ate o numero dela: o
 	/// `Mult` (ou a curva do <see cref="EscalaComGodKi"/>) dividido pelo <see cref="Races.BioAndroids.MultAbsoluto"/> do corpo -- a mesma
 	/// conta da curva da Super Perfeita, que saiu. Ver <see cref="Catalogo.Multiplicador"/>. Falso = sobre o BP base, como toda forma.
+	///
+	/// (2026-10-29, o pedido 161) NENHUMA FORMA O USA HOJE: o dono quis o numero da tela -- *"golden(20x -> 50x) -> max(56x)"* -- e as duas
+	/// divinas do bio passaram a valer sobre o BP base. O campo fica (e a conta no `Multiplicador`): a contraprova da `--bioteste` o religa
+	/// na Golden e na MAX, e a regua do multiplicador reprova.
 	/// </summary>
 	public bool SobreOImperfeito;
 
@@ -583,6 +588,18 @@ public sealed class FormaDef
 	/// regra "Evolution = Grade 2 + god ki" so estaria no comentario.
 	/// </summary>
 	public string PedeMaestriaDe = "";
+
+	/// <summary>
+	/// (2026-10-30, o pedido 186) AS OUTRAS MAESTRIAS QUE A FORMA PEDE, forma e porcentagem -- alem da do degrau anterior
+	/// (<see cref="PedeMaestria"/>). O dono: *"pra ter o blue o cara tem q masterizar o ssj1 normal e ter pelomenos 50% de maestria do ssj
+	/// god (alem do nivel de maestria atual do god ki pro blue)"*. Hoje o Blue (o SSJ1 dominado e 50% no SSG) e, desde o pedido 189, o Rose
+	/// (o mesmo, no SSG da classe Kaio: o `rose_ssg`); e, desde o pedido 190, o Blue Evolution (50% no Blue) e o Rose 2 (50% no Rose).
+	///
+	/// COBRADAS DEPOIS DO KI DIVINO (o passo 7b do `Avaliar`), e nao no passo 6 junto da do degrau anterior: quem ainda nao tem o ki divino
+	/// do Blue ouve isso primeiro -- e a porta principal dele --, e so depois o que falta domar. Na ordem da lista; a frase da recusa
+	/// (`GameServer.FraseDaRecusa`) diz a primeira que falta.
+	/// </summary>
+	public (string Forma, double Pct)[] PedeOutrasMaestrias = [];
 
 	/// <summary>Linhagem exigida ("Primal Saiyan"). Vazio = qualquer.</summary>
 	public string PedeLinhagem = "";
@@ -3311,8 +3328,15 @@ public static class Catalogo
 	/// <summary>`ssj3at` -- 20 bilhoes de BP EXPRESSO. supersaiyanbuff.dm:48.</summary>
 	public const double Ssj3atInicial = 2e10;
 
-	/// <summary>`rawssj4at` -- ja e BASE no original (rework 2026-07-10). supersaiyanbuff.dm:55.</summary>
-	public const double RawSsj4atInicial = 15e9;
+	/// <summary>
+	/// `rawssj4at` -- ja e BASE no original (rework 2026-07-10). supersaiyanbuff.dm:55.
+	///
+	/// (2026-10-30, o pedido 178) CINCO BILHOES -- o dono: *"faça o requisito do ssj4 ser 5B (fp e lb mesma coisa)"*. Era 15 bilhoes; a faixa da
+	/// classe continua por cima (o Low-Class o mais facil, o Elite o mais tarde: 3,5 a 7 bi), o FP e o LB (e as tres do Lendario) leem esta
+	/// mesma porta, o gravado no nascimento desce no login (`LimiaresPessoais.DescerOSsj4AoRequisito`), e o desconto do mestre (a metade do
+	/// `Discipulado`) continua valendo.
+	/// </summary>
+	public const double RawSsj4atInicial = 5e9;
 
 	/// <summary>`ultrassjat` -- 750 milhoes, o USSJ. supersaiyanbuff.dm:18.</summary>
 	public const double UltrassjatInicial = 750e6;
@@ -3399,6 +3423,15 @@ public static class Catalogo
 	/// pede tempo DENTRO da forma anterior, e e o que o dono pediu pra tirar ele da raiva.
 	/// </summary>
 	public const double Ssj3PedeSsj2Pct = 50;
+
+	/// <summary>(2026-10-30, o pedido 186) A MAESTRIA DO SSG QUE O BLUE PEDE, com o SSJ1 dominado -- e o Rose no `rose_ssg`, desde o pedido 189.
+	/// Ver <see cref="FormaDef.PedeOutrasMaestrias"/>.</summary>
+	public const double BluePedeSsgPct = 50;
+
+	/// <summary>(2026-10-30, o pedido 190) A MAESTRIA DO BLUE QUE O BLUE EVOLUTION PEDE -- e a do Rose que o Rose 2 pede. O dono: *"o blue kaioken
+	/// e liberado (blue evolution tb) quando vc tem o nivel certo de god ki e pelomenos 50% de maestria no ssj blue"*. Ver
+	/// <see cref="FormaDef.PedeOutrasMaestrias"/>.</summary>
+	public const double EvolucaoPedeBluePct = 50;
 
 	/// <summary>Fatores dos grades sobre a base do SSJ1. `SSJ_GRADE2_FACTOR` / `_GRADE3_FACTOR`.</summary>
 	public const double Grade2Fator = 1.5, Grade3Fator = 2;
@@ -3834,11 +3867,18 @@ public static class Catalogo
 	/// atinger 33% de ki divino"*. A rampa e a do Mistico (<see cref="MultPorGodKi"/>), com a RACA do bio como origem; o teto e
 	/// estrutural (o `Clamp`), entao 50% ou 100% de ki divino continuam em 32x -- o degrau de cima e a MAX. ABSOLUTO sobre o imperfeito
 	/// (<see cref="FormaDef.SobreOImperfeito"/>), como a curva da Super Perfeita que ela substituiu.
+	///
+	/// (2026-10-29, o pedido 161) **20x SUBINDO ATE 50x AOS 50%, SOBRE O BP BASE** -- o dono, com o print do "x1,59": *"golden(20x -> 50x) ->
+	/// max(56x)"*. O x1,59 era a conta sobre o imperfeito (22x dividido pelo degrau do perfeito, ~14x, que ja mora no BP base): o numero da
+	/// tela agora e o da forma. O topo cai nos 50% de ki divino, onde a MAX abre.
 	/// </summary>
 	public static readonly CurvaDeGodKi GoldenPerfectDoBio =
-		new(Origens: [Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm], SemGodKi: 22, AoDespertar: 22, NoTopo: 32, TopoEm: GodkiBluePct);
+		new(Origens: [Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm], SemGodKi: 20, AoDespertar: 20, NoTopo: 50, TopoEm: GodkiRoyalePct);
 
-	/// <summary>(2026-10-26) A MAX: *"a max tem o mesmo bp do blue evolved"* -- os 56x do Blue Evolution, ABSOLUTOS sobre o imperfeito.</summary>
+	/// <summary>
+	/// (2026-10-26) A MAX: *"a max tem o mesmo bp do blue evolved"* -- os 56x do Blue Evolution. (2026-10-29, o pedido 161) SOBRE O BP BASE,
+	/// como a Golden: *"max(56x)"*.
+	/// </summary>
 	public const double MultDaMaxDoBio = 56;
 
 	/// <summary>
@@ -4439,6 +4479,7 @@ public static class Catalogo
 				// `temporary = 0`, ou seja crepitar constante enquanto a forma durar.
 				Raios = 2,
 				Nome = "Super Saiyajin 4 Limit Breaker", NumeroDm = 6, Intensidade = 5,
+				Marco = Stats.Milestones.Ssj4LimitBreaker,   // (2026-10-30, o pedido 184) o nivel do Blue Evolution: 12x
 				Mult = [56], Dreno = [0.085], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				// (2026-10-16) KI DIVINO DESPERTO, e nao 50% de maestria -- o dono: *"limit breaker era pra liberar quando o personagem
@@ -4716,6 +4757,7 @@ public static class Catalogo
 
 		new() { Id = "primal_legendary4_limit_breaker", IdRede = 260, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 60,
 				Nome = "Legendary Super Saiyajin 4 Limit Breaker", NumeroDm = 6, Intensidade = 5,
+				Marco = Stats.Milestones.Ssj4LimitBreaker,   // (2026-10-30, o pedido 184) o mesmo do Limit Breaker comum
 				Mult = [60], BonusDeCombate = 0.2, PisoSobreAnterior = 2, RitmoDaMaestria = RitmoDoLegendary, Dreno = [0.085],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				// (2026-10-16) KI DIVINO DESPERTO, e nao 50% de maestria -- o dono: *"limit breaker era pra liberar quando o personagem
@@ -4759,11 +4801,14 @@ public static class Catalogo
 				PedeGodKi = GodkiBluePct, PedeOrigemUmaDe = OrigemDoKiDivino,
 				PedeClasseUmaDe = ClassesDoKiDivino, ProibidoParaClasse = [ClasseRose],
 				PedeFormaAtual = ["ssj1"],   // SSJ + ki divino
+				// (2026-10-30, o pedido 186) e o SSJ1 DOMINADO e 50% no SSG -- o dono: *"masterizar o ssj1 normal e ter pelomenos 50% de
+				// maestria do ssj god"* (o "masterizado" e o 100% do Oozaru Dourado). O Rose pede o mesmo desde o pedido 189 (pelo SSG dele).
+				PedeOutrasMaestrias = [("ssj1", 100), ("ssg", BluePedeSsgPct)],
 				// TROCA E TINGE: o cabelo de SSJ1 (`ssjhair`) recebe o azul no `EffectStart` compartilhado
 				// do `/obj/overlay/hairs/ssj` (`SaiyanObjects.dm:11-20`). Nao existe folha de cabelo Blue
 				// no repo -- no original ele TAMBEM e o SSJ pintado.
 				Aura = "3ad2ff", Cabelo = AzulDoCabeloDivino, SufixoDoCabelo = "SSj",
-				Desc = "32x. Super Saiyajin com o ki divino aceso. Abre com 33% de maestria divina." },
+				Desc = "32x. Super Saiyajin com o ki divino aceso. Abre com 33% de maestria divina, o Super Saiyajin dominado e 50% de maestria no SSG." },
 
 		// ============================ O NOME MUDOU DE PROPOSITO ============================
 		// O DM chama de "Royale" (e `GODKI_ROYALE_PCT` continua com esse nome). O dono pediu
@@ -4772,13 +4817,16 @@ public static class Catalogo
 		// ==================================================================================
 		new() { Id = "blue_evolution", IdRede = 320, Linha = LinhaDeForma.GodKi, Ordem = 30,
 				Nome = "Super Saiyajin Blue Evolution", NumeroDm = -1, Intensidade = 5,
-				Marco = Stats.Milestones.Blue,   // o grau com o ki divino aceso (`supersaiyanbuff.dm:405`)
+				Marco = Stats.Milestones.BlueEvolution,   // o grau com o ki divino aceso (`supersaiyanbuff.dm:405`); (2026-10-30, o pedido 184) o nivel dele, 12x
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				// SO O ELITE, e SO A PARTIR DO GRADE. Regra do dono, e o DM ja dizia o mesmo:
 				// "Royale/Rose 2 56x (50%, so Elite/Kaio via USSJ)" -- o USSJ de la e o Grade daqui.
 				PedeGodKi = GodkiRoyalePct, PedeOrigemUmaDe = ["Saiyan"], PedeClasseUmaDe = [ClasseElite],
 				PedeFormaAtual = ["grade2", "grade3"],
 				PedeMaestria = Grade2Pct, PedeMaestriaDe = "ssj1",   // e o que o Grade 2 pede
+				// (2026-10-30, o pedido 190) E 50% DE MAESTRIA NO BLUE -- o dono: *"o blue kaioken e liberado (blue evolution tb) quando vc tem o
+				// nivel certo de god ki e pelomenos 50% de maestria no ssj blue"*. Fecha o atalho do Grade: so tem barra no Blue quem entrou nele.
+				PedeOutrasMaestrias = [("blue", EvolucaoPedeBluePct)],
 				// SPRITE DO USSJ (`SaiyanObjects.dm:73-75` -> `icon = ussjhair`, e o azul vem do
 				// `EffectStart` do pai), E UM AZUL MAIS FUNDO QUE O DO BLUE.
 				//
@@ -4791,7 +4839,7 @@ public static class Catalogo
 				// ca (*"o cabelo atual do blue e pra ser do evolved/royale"*) e deu ao Blue o ciano do
 				// Goku SSGSS. Ver `AzulDoCabeloRoyale`.
 				Aura = "1c7cff", Cabelo = AzulDoCabeloRoyale, SufixoDoCabelo = "USSj",
-				Desc = "56x. Grade 2 com o ki divino aceso. Elite, 50% de maestria divina." },
+				Desc = "56x. Grade 2 com o ki divino aceso. Elite, 50% de maestria divina e 50% de maestria no Blue." },
 
 		// ROSE: a MESMA escada, cor outra. `godki.dm:21` marca `godki_mod` como "this is your Rose
 		// variable" e `statsaiyan.dm:157` amarra Rose a uma classe que ganha "Rose no lugar do Blue
@@ -4812,20 +4860,26 @@ public static class Catalogo
 				Marco = Stats.Milestones.Blue,   // a mesma `SSj()` (`:342`): o Rose e a COR da classe, nao outra proc
 				Mult = [32], Absoluta = true, Dreno = [0.045, 0.0325, 0.02],   // (2026-10-25) dominado, ENTRE o SSJ (0) e o SSJ3 (0,03) -- o dono
 				PedeGodKi = GodkiBluePct, PedeClasseUmaDe = [ClasseRose], PedeFormaAtual = ["ssj1"],
+				// (2026-10-30, o pedido 189) AS DUAS MAESTRIAS DO BLUE (o pedido 186) -- o dono: *"Tudo q o blue tem o rose deve ter (menos o
+				// kaioken, ele tem o rose 2)"*. O SSG daqui e o `rose_ssg`: a classe Kaio sobe pela linha Rose, e a barra do SSG dela e a dele (o
+				// `ssg` nem abre pra ela). O Kaio-ken continua fora do Rose (`Kaioken.VetoDaForma`), e o marco do Blue Kaio-ken tambem.
+				PedeOutrasMaestrias = [("ssj1", 100), ("rose_ssg", BluePedeSsgPct)],
 				// A MESMA RECEITA DO BLUE com o outro hexa -- `SaiyanObjects.dm:13-16`, o ramo
 				// `if(container.godki_mod > 1)`. Mesmo sprite, so muda a cor.
 				Aura = "ff7ac6", Cabelo = RosaDoCabeloDivino, SufixoDoCabelo = "SSj",
-				Desc = "32x. O Blue de quem tem o ki divino corrompido -- rosa em vez de azul." },
+				Desc = "32x. O Blue de quem tem o ki divino corrompido -- rosa em vez de azul. Abre com 33% de maestria divina, o Super Saiyajin dominado e 50% de maestria no SSG." },
 
 		new() { Id = "rose2", IdRede = 321, Linha = LinhaDeForma.GodKiRose, Ordem = 30,
 				Nome = "Super Saiyajin Rose 2", NumeroDm = -1, Intensidade = 5,
-				Marco = Stats.Milestones.Blue,   // idem, pelo grau (`:405`)
+				Marco = Stats.Milestones.BlueEvolution,   // idem, pelo grau (`:405`); (2026-10-30, o pedido 184) o do Blue Evolution
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				PedeGodKi = GodkiRoyalePct, PedeClasseUmaDe = [ClasseRose],
 				PedeFormaAtual = ["grade2", "grade3"],
 				PedeMaestria = Grade2Pct, PedeMaestriaDe = "ssj1",
+				// (2026-10-30, o pedido 190) e 50% de maestria no Rose, como o Blue Evolution pede no Blue (o "tudo q o blue tem" do pedido 189)
+				PedeOutrasMaestrias = [("rose", EvolucaoPedeBluePct)],
 				Aura = "ff4db0", Cabelo = RosaDoCabeloDivino, SufixoDoCabelo = "USSj",
-				Desc = "56x. O degrau final do ki divino corrompido." },
+				Desc = "56x. O degrau final do ki divino corrompido. Abre com 50% de maestria divina e 50% de maestria no Rose." },
 
 		// ============================ O MISTICO E UM DOM, NAO UM DEGRAU ============================
 		// `godki.dm:349-352` e explicito: "Prodigial NAO tem SSG/Blue: o ki divino flui pelo MISTICO
@@ -4918,6 +4972,7 @@ public static class Catalogo
 		// ====================================================================================================================
 		new() { Id = "beast", IdRede = 330, Linha = LinhaDeForma.Mistico, Ordem = 30,
 				Nome = "Beast", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.NivelDaEvolucao,   // (2026-10-30, o pedido 184) 56x, o nivel do Blue Evolution: 12x
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				PedeGodKi = GodkiRoyalePct, PedeClasseUmaDe = [ClasseProdigial],
 				// SEM `AgioNaRaivaComum`, e a ausencia e a regra: no DM o Beast so tem o ramo `"Very Angry"`
@@ -4954,6 +5009,7 @@ public static class Catalogo
 		// ---------------------------------------------------------------------------
 		new() { Id = "ui_sign", IdRede = 400, Linha = LinhaDeForma.UltraInstinct, Ordem = 10,
 				Nome = "Ultra Instinct -Sign-", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.UltraInstintoEEgo,   // (2026-10-30, o pedido 184) o marco NOVO do dono: 20x
 				// `UI_KI_DRAIN_SIGN 0.35` (% do MaxKi por segundo) e `UI_UNLOCK_SIGN 20` -- a maestria REAL da faixa.
 				// O catalogo dizia 5 no dreno (1,6%/s: o tanque acabava em um minuto, e nao em quase cinco) e 1 na
 				// porta (o Sign abria com 1% de maestria, e a faixa so o anunciava aos 20).
@@ -4972,6 +5028,7 @@ public static class Catalogo
 
 		new() { Id = "ui_perfected", IdRede = 410, Linha = LinhaDeForma.UltraInstinct, Ordem = 20,
 				Nome = "Perfected Ultra Instinct", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.UltraInstintoEEgo,   // (2026-10-30, o pedido 184) idem
 				// `UI_KI_DRAIN_PERF 0.5` e `UI_UNLOCK_PERF 60`. A porta daqui pedia 100: a faixa anunciava o Perfected
 				// aos 60% e a forma continuava recusando ate o fim da maestria.
 				Mult = [66], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaSegundaForma)], PisoSobreAnterior = 2,
@@ -4988,6 +5045,7 @@ public static class Catalogo
 		// ---------------------------------------------------------------------------
 		new() { Id = "destroyer", IdRede = 500, Linha = LinhaDeForma.UltraEgo, Ordem = 10,
 				Nome = "Destroyer Form", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.UltraInstintoEEgo,   // (2026-10-30, o pedido 184) o mesmo do Ultra Instinto: 20x
 				Mult = [60], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaPrimeiraForma)],   // `UE_KI_DRAIN_D 0.35`
 				PedeGodKi = GodkiUiUePct, PedeEnergiaUe = Disciplinas.UeDestroyer,
 				// SEM CABELO PROPRIO E SEM TINTA, e o DM diz o porque na linha: "SO o ULTRA EGO pinta o
@@ -4998,6 +5056,7 @@ public static class Catalogo
 
 		new() { Id = "ultra_ego", IdRede = 510, Linha = LinhaDeForma.UltraEgo, Ordem = 20,
 				Nome = "Ultra Ego", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.UltraInstintoEEgo,   // (2026-10-30, o pedido 184) idem
 				Mult = [66], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaSegundaForma)], PisoSobreAnterior = 2,   // `UE_KI_DRAIN_U 0.5`
 				PedeGodKi = GodkiUiUePct, PedeEnergiaUe = Disciplinas.UeUltra,
 				// `rgb(140,50,190)` sobre o cabelo BASE -- `/obj/overlay/hairs/uepurple`,
@@ -5257,6 +5316,7 @@ public static class Catalogo
 		// ================================================================================================================
 		new() { Id = IdOrange, IdRede = 805, Linha = LinhaDeForma.Namekuseijin, Ordem = 20,
 				Nome = "Orange", NumeroDm = -1, Intensidade = 5, Raios = 1,
+				Marco = Stats.Milestones.NivelDaEvolucao,   // (2026-10-30, o pedido 184) 56x, o nivel do Blue Evolution: 12x
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				SoPorConcessao = true,
 				Aura = "ff8a1e", Pele = "f0861a", Porte = 1.15,
@@ -5350,28 +5410,33 @@ public static class Catalogo
 		//   * MAX -- o Blue Evolution do bio: 56x aos 50% de maestria divina, entrando da base ou da Golden; corpo `Bio Android - Form 5`, e
 		//     a aura e a chama do Blue, VERMELHA.
 		//
-		// AS DUAS SO NO ESTAGIO PERFEITO ("So o Perfeito"), AS DUAS ABSOLUTAS SOBRE O IMPERFEITO como a curva velha da Super Perfeita
-		// (`SobreOImperfeito`: o degrau do bio ja mora no BP base), e as duas drenam como as divinas do Saiyajin de que sao irmas -- *"Mesma
+		// AS DUAS SO NO ESTAGIO PERFEITO ("So o Perfeito"), e as duas drenam como as divinas do Saiyajin de que sao irmas -- *"Mesma
 		// coisa do god e blue evolution atual"*: a Golden o dreno do SSG, a MAX o do Blue Evolution. O bio sem sangue Saiyajin fica com
 		// estas duas; o de sangue Saiyajin tem tambem a escada do Super Saiyajin (`CanSsj`), sem bloqueio entre as duas.
+		//
+		// (2026-10-29, o pedido 161) AS DUAS VALEM SOBRE O BP BASE, como toda forma -- o dono, com o print do "x1,59": *"golden(20x -> 50x)
+		// -> max(56x)"*. Ate aqui eram absolutas sobre o IMPERFEITO (`SobreOImperfeito`): o degrau do perfeito (~14x) ja mora no BP base, e
+		// a Golden de 22x sobrava em 1,59x na tela. A Golden agora vai de 20x a 50x pela maestria divina (o topo nos 50%, onde a MAX abre).
 		new() { Id = "golden_perfect", IdRede = 851, Linha = LinhaDeForma.BioAndroide, Ordem = 10,
 				Nome = "Golden Perfect", NumeroDm = -1, Intensidade = 4,
-				Mult = [GoldenPerfectDoBio.AoDespertar], Absoluta = true, SobreOImperfeito = true, EscalaComGodKi = GoldenPerfectDoBio,
+				Marco = Stats.Milestones.GoldenPerfect,   // (2026-10-30, o pedido 184) 22x, o nivel do SSG: 8x
+				Mult = [GoldenPerfectDoBio.AoDespertar], Absoluta = true, EscalaComGodKi = GoldenPerfectDoBio,
 				Dreno = [0.03, 0.02, 0.01],   // o do SSG
 				PedeGodKi = 0, PedeEstagioBio = Races.BioAndroids.Perfeito, PedeFormaAtual = [IdBase],
 				Corpo = CorpoDeForma.BioGolden,
 				Aura = DouradoDaGoldenPerfect,
-				Desc = "22x o imperfeito ao despertar o ki divino, subindo ate 32x aos 33% de maestria divina. Exige a FORMA PERFEITA e entra "
-					 + "pela base -- a carapaca fica dourada, e e nela que o bio amadurece o ki divino." },
+				Desc = "20x ao despertar o ki divino, subindo ate 50x aos 50% de maestria divina, quando a MAX abre. Exige a FORMA PERFEITA e "
+					 + "entra pela base -- a carapaca fica dourada, e e nela que o bio amadurece o ki divino." },
 
 		new() { Id = "bio_max", IdRede = 852, Linha = LinhaDeForma.BioAndroide, Ordem = 20,
 				Nome = "MAX", NumeroDm = -1, Intensidade = 5,
-				Mult = [MultDaMaxDoBio], Absoluta = true, SobreOImperfeito = true,
+				Marco = Stats.Milestones.NivelDaEvolucao,   // (2026-10-30, o pedido 184) 56x, o nivel do Blue Evolution: 12x
+				Mult = [MultDaMaxDoBio], Absoluta = true,
 				Dreno = [0.06],   // o do Blue Evolution
 				PedeGodKi = GodkiRoyalePct, PedeEstagioBio = Races.BioAndroids.Perfeito, PedeFormaAtual = [IdBase, "golden_perfect"],
 				Corpo = CorpoDeForma.BioMax,
 				Aura = VermelhoDaMax,
-				Desc = "56x o imperfeito. Exige a FORMA PERFEITA e 50% de maestria divina, e entra pela base ou pela Golden Perfect." },
+				Desc = "56x. Exige a FORMA PERFEITA e 50% de maestria divina, e entra pela base ou pela Golden Perfect." },
 
 		// ==================================================================================
 		// A FORMA PURA DO CORRUPTED MAJIN -- `Magic/MajinSaga.dm:510-577` e o sistema do amigo do dono (2026-10-16)
@@ -5388,6 +5453,7 @@ public static class Catalogo
 		// escuro -- escolha minha, pra quem ve saber de longe que aquela cabeca ja se foi.
 		new() { Id = IdDaFormaPura, IdRede = 860, Linha = LinhaDeForma.MajinPuro, Ordem = 10,
 				Nome = "Forma Pura", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.NivelDaEvolucao,   // (2026-10-30, o pedido 184) 56x, o nivel do Blue Evolution: 12x
 				Mult = [Races.SagaDoMajin.MultDaPura], Dreno = [0],
 				PedeClasseUmaDe = [Races.SagaDoMajin.Classe],
 				Corpo = CorpoDeForma.MajinPuro,
@@ -5396,6 +5462,7 @@ public static class Catalogo
 					  + "dela -- e viver nela gasta a sanidade." },
 		new() { Id = IdDaFormaPuraInsana, IdRede = 861, Linha = LinhaDeForma.MajinPuro, Ordem = 20,
 				Nome = "Forma Pura (Insana)", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.NivelDaEvolucao,   // (2026-10-30, o pedido 184) idem
 				Mult = [Races.SagaDoMajin.MultDaPura, Races.SagaDoMajin.MultInsanoNoTopo], SobeNaLoucura = true, Dreno = [0],
 				PedeClasseUmaDe = [Races.SagaDoMajin.Classe],
 				Corpo = CorpoDeForma.MajinPuro,
@@ -5436,6 +5503,7 @@ public static class Catalogo
 					+ "de onde o Super Saiyajin 2 abre." },
 		new() { Id = "tensao_divina", IdRede = 920, Linha = LinhaDeForma.Tensao, Ordem = 30,
 				Nome = "Godly Tension", Intensidade = 4,
+				Marco = Stats.Milestones.TensaoDivina,   // (2026-10-30, o pedido 184) 32x, o nivel do Blue: 10x
 				Mult = [32], Absoluta = true, Dreno = [0.045],
 				PedeGodKi = 0,
 				Aura = "e6f0ff",
@@ -6123,6 +6191,7 @@ public static class Catalogo
 
 		// (2026-10-26) AS DIVINAS DO BIO-ANDROIDE VALEM O QUE FALTA ATE O NUMERO DELAS -- ver `FormaDef.SobreOImperfeito`: o degrau do bio
 		// (o perfeito do marco 3 e 10x) ja mora no BP base. E a conta da curva da Super Perfeita, que saiu, agora num campo de qualquer forma.
+		// (2026-10-29, o pedido 161) nenhuma forma liga o campo hoje: a Golden e a MAX valem sobre o BP base
 		if (d.SobreOImperfeito)
 			v /= Math.Max(Races.BioAndroids.MultAbsoluto(perfil.EstagioBio, perfil.MarcoBio), 1);
 

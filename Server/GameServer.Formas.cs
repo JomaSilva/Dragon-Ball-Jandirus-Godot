@@ -52,7 +52,8 @@ public partial class GameServer
 
 		// -1 = NAO DESPERTOU. O zero seria "despertou com 0% de maestria", que e outra coisa: o SSG
 		// pede exatamente 0%, entao confundir os dois daria a forma divina pra quem nunca a viu.
-		GodKi: pl.Ficha.godki is { awakened: true } g ? g.mastery : -1,
+		// (2026-10-29, o pedido 163) ...e o ritual dos cinco Saiyajins empresta o 0% enquanto dura: o SSG, e so ele, abre -- ver `GameServer.GodKi.cs`
+		GodKi: pl.Ficha.godki is { awakened: true } g ? g.mastery : pl.RitualDeusAte > 0 ? 0 : -1,
 		// AS DUAS ENERGIAS SAO A **REAL**, e nao a atual: o catalogo pergunta "esta forma esta
 		// destravada?", e destravar e permanente. A precisao atual escala BONUS, nao abre portas --
 		// senao a forma cairia sozinha quando a energia drenasse no meio da luta.
@@ -976,6 +977,22 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-10-29) TIRA (OU DEVOLVE) O POTENTIAL UNLEASHED DO C DUPLO e diz em que pe ficou -- o verb `mistico_c`, irmao do `divinas_c`, pelo
+	/// mesmo molde (gravado no personagem, na hora). O pedido 153; a regra mora no Core (`EstadoDeForma.CPeloMistico`, lida pelo `Proxima`).
+	/// </summary>
+	private void VerboMisticoNoC(ServerPlayer pl)
+	{
+		bool comMistico = pl.Forma.CPeloMistico ?? EstadoDeForma.CPeloMisticoDeFabrica;
+		pl.Forma.CPeloMistico = !comMistico;
+		Persistir(pl);
+
+		Avisar(pl, comMistico
+			? "o C duplo agora sobe pelas outras formas (o Super Saiyajin...): o Potential Unleashed só entra quando nenhuma outra subir "
+			  + "(a tecla dele continua indo direto pra ele)."
+			: "o C duplo volta a subir pelo Potential Unleashed.");
+	}
+
+	/// <summary>
 	/// "QUERO ESTA FORMA" -- o gesto que a tecla de forma do jogador estreou.
 	///
 	/// ============================ POR QUE ELE PRECISOU EXISTIR ============================
@@ -1038,7 +1055,7 @@ public partial class GameServer
 
 		// `pelaTecla`: a forma divina ja usada e a com 50% de maestria nela vao direto (2026-10-23) -- ver o cabecalho
 		RecusaForma r = est.Avaliar(id, pl.Ficha.BP, kiFracao, caido: false, perfil, pelaTecla: true);
-		if (r != RecusaForma.Pode) { Avisar(pl, FraseDaRecusa(est, d, r, pl.Race)); return; }
+		if (r != RecusaForma.Pode) { Avisar(pl, FraseDaRecusa(est, d, r, pl)); return; }
 
 		EntrarNaForma(pl, d);
 	}
@@ -1209,6 +1226,12 @@ public partial class GameServer
 			// Saiyajin", que e a porta do GRADE. Mesmo funil do `Proxima` -- ver `NoCaminhoDoC`.
 			if (!est.NoCaminhoDoC(d)) continue;
 
+			// (2026-10-30, o pedido 182) A FORMA DE UMA DISCIPLINA QUE ESTE CORPO NAO APRENDEU TAMBEM NAO EXPLICA NADA, pelo argumento da
+			// `NaoConcedida` aqui embaixo. Com o ki divino em 70% e nenhuma das duas escolhida, o `Catalogo.AbrirLinhas` abre o Ultra
+			// Instinto E o Ultra Ego, e o C no topo de qualquer escada respondia com o Ultra Instinct -Sign- a quem nunca pegou a skill (o
+			// relato do dono, num bio-androide na Super Perfeita 2). A tecla de forma, que NOMEIA a forma, continua ouvindo o que falta.
+			if (DisciplinaQueNaoAprendeu(pl, d)) continue;
+
 			RecusaForma r = est.Avaliar(d.Id, pl.Ficha.BP,
 										pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : 1,
 										CaidoPraForma(pl), perfil);
@@ -1241,8 +1264,13 @@ public partial class GameServer
 		}
 		if (candidato == null) return "nao ha mais degrau acima deste.";
 
-		return FraseDaRecusa(est, candidato, pior, pl.Race);
+		return FraseDaRecusa(est, candidato, pior, pl);
 	}
+
+	/// <summary>(2026-10-30, o pedido 182) A forma e de uma disciplina divina (Ultra Instinto, Poder da Destruicao) que este corpo nao aprendeu?</summary>
+	private static bool DisciplinaQueNaoAprendeu(ServerPlayer pl, FormaDef d) =>
+		(d.PedeProficienciaUi > 0 && !pl.UltraInstinct.Aprendida)
+		|| (d.PedeEnergiaUe > 0 && !pl.PoderDaDestruicao.Aprendida);
 
 	/// <summary>
 	/// A FRASE DE UMA RECUSA -- o texto que o jogador le quando uma forma nao vem.
@@ -1259,9 +1287,11 @@ public partial class GameServer
 	/// graca o que o jogo quer que se descubra tentando). Uma copia esquecida teria vazado o numero.
 	/// ==============================================================================================================
 	/// </summary>
-	/// <param name="raca">(2026-10-26) A raca de quem ouve: o SSJ2 e o SSJ3 do bio-androide tem nome proprio (`Catalogo.NomeNoBio`).</param>
-	private string FraseDaRecusa(EstadoDeForma est, FormaDef candidato, RecusaForma pior, string raca)
+	/// <param name="pl">Quem ouve: a raca (2026-10-26: o SSJ2 e o SSJ3 do bio-androide tem nome proprio, `Catalogo.NomeNoBio`) e (2026-10-30)
+	/// a maestria do Ultra Instinto.</param>
+	private string FraseDaRecusa(EstadoDeForma est, FormaDef candidato, RecusaForma pior, ServerPlayer pl)
 	{
+		string raca = pl.Race;
 		string nome = Catalogo.NomeDe(candidato, est.Maestria, raca);
 		string anterior = Catalogo.Anterior(candidato) is { } ant
 			? Catalogo.NomeDe(ant, est.Maestria, raca) : "a forma anterior";
@@ -1283,6 +1313,18 @@ public partial class GameServer
 			// voltava pela mensagem de erro. E o limiar e SORTEADO por personagem -- dize-lo entrega
 			// de graca o que o jogo quer que se descubra tentando.
 			RecusaForma.SemPoder => $"{nome} ainda esta alem do seu alcance.",
+			// (2026-10-30, o pedido 182) O `SemMaestria` DAS FORMAS DO ULTRA INSTINTO E A MAESTRIA DA DISCIPLINA (o passo 7 do `Avaliar`), e
+			// nao a da forma anterior: o Sign nao tem forma anterior nem `PedeMaestria`, e a frase saia "0% de maestria em a forma anterior
+			// (voce tem 0%)". Mesmo molde da linha de baixo, que e o que o dicionario de ingles ja traduz.
+			RecusaForma.SemMaestria when candidato.PedeMaestria <= 0 && candidato.PedeProficienciaUi > 0 =>
+				$"{nome} pede {candidato.PedeProficienciaUi:0}% de maestria em {Disciplinas.UltraInstinct.Nome} "
+				+ $"(voce tem {(pl.UltraInstinct.Aprendida ? pl.UltraInstinct.Real : 0):0.#}%).",
+			// (2026-10-30, o pedido 186) AS OUTRAS MAESTRIAS DO BLUE (o passo 7b do `Avaliar`): a primeira que falta, no mesmo molde -- sem esta
+			// linha a frase leria o `PedeMaestria` dele, que e zero, e diria "0% de maestria em Super Saiyajin God".
+			RecusaForma.SemMaestria when OutraMaestriaQueFalta(est, candidato) is { } falta =>
+				$"{nome} pede {falta.Pct:0}% de maestria em "
+				+ $"{(Catalogo.Def(falta.Forma) is { } outra ? Catalogo.NomeDe(outra, est.Maestria, raca) : falta.Forma)} "
+				+ $"(voce tem {est.Maestria.De(falta.Forma):0.#}%).",
 			RecusaForma.SemMaestria => $"{nome} pede {candidato.PedeMaestria:0}% de maestria em "
 									 + $"{deQuem} (voce tem {tenho:0.#}%).",
 			// ESTA E A MENSAGEM QUE MAIS ECONOMIZA TEMPO DO JOGADOR: sem ela, quem tem BP de sobra
@@ -1365,6 +1407,17 @@ public partial class GameServer
 
 			_ => "ainda nao.",
 		};
+	}
+
+	/// <summary>
+	/// (2026-10-30, o pedido 186) A PRIMEIRA DAS OUTRAS MAESTRIAS DA FORMA QUE ESTE CORPO AINDA NAO TEM, ou nulo -- a pergunta do passo 7b do
+	/// `Avaliar`, na mesma ordem (ver `FormaDef.PedeOutrasMaestrias`).
+	/// </summary>
+	private static (string Forma, double Pct)? OutraMaestriaQueFalta(EstadoDeForma est, FormaDef d)
+	{
+		foreach ((string forma, double pct) in d.PedeOutrasMaestrias)
+			if (est.Maestria.De(forma) < pct) return (forma, pct);
+		return null;
 	}
 
 	/// <summary>
@@ -1690,7 +1743,8 @@ public partial class GameServer
 		// (2026-10-26) E EM PONTOS DE KI, e nao mais numa fatia fixa do tanque -- o pedido 93 do dono: a forma tira os pontos que tirava de
 		// quem tem o BP em que ela libera, e quem tem mais Ki paga uma fatia menor (e quem tem menos, uma maior: pontos puros, o dono). Ver
 		// `Catalogo.PontosDeDrenoPorSegundo`.
-		double dreno = est.PontosDeDrenoPorSegundo(LiberacaoDoPoder(pl)) * dt * pl.Racial.Efeito.Dreno;
+		// (2026-11-01, o pedido 220) E O MORTO PAGA 25% MENOS -- *"(de tudo, ate de gasto de formas)"*. Ver `Fighter.FatorDeKiDoEstado`.
+		double dreno = est.PontosDeDrenoPorSegundo(LiberacaoDoPoder(pl)) * dt * pl.Racial.Efeito.Dreno * pl.Ficha.FatorDeKiDoEstado;
 		pl.Ficha.Ki -= dreno;
 
 		// (2026-10-19) A ESCADA DO FROST DEMON TAMBEM NAO CAI POR FALTA DE KI -- ver `FrostNaoCaiPorKi`.
@@ -2090,6 +2144,8 @@ public partial class GameServer
 		// (2026-10-21) ...menos o Low-Class antigo, que DESCE pra faixa nova do dono (so pra baixo: ninguem perde forma).
 		// A raca e a classe sao as do proprio save, que e de onde os limiares vieram.
 		if (c != null) pl.Forma.Limiares?.DescerAoSorteioDoLowClass(c.Raca, c.Ficha?.Class);
+		// (2026-10-30, o pedido 178) ...e o SSJ4 de toda classe desce pros 5 bilhoes do dono (vezes a faixa da classe)
+		if (c != null) pl.Forma.Limiares?.DescerOSsj4AoRequisito(c.Raca, c.Ficha?.Class);
 
 		// ============================ A PREFERENCIA DOS GRADES, E O NULO QUE VIRA `true` ============================
 		// **AQUI E QUE UM CORPO GANHA OPINIAO.** `EstadoDeForma.GradesLigados` nasce NULO de proposito
@@ -2108,6 +2164,8 @@ public partial class GameServer
 		// que nao diz nada (save de antes do botao, personagem novo) vira o lado de fabrica -- as divinas primeiro, o que o C ja fazia.
 		// Ver `EstadoDeForma.CPelasDivinas` e o verb `divinas_c` (`VerboFamiliaDoC`).
 		pl.Forma.CPelasDivinas = c?.CPelasDivinas ?? Jandirus.Core.Forms.EstadoDeForma.CPelasDivinasDeFabrica;
+		// (2026-10-29, o pedido 153) e o Potential Unleashed no C, pelo mesmo caminho. Ver `EstadoDeForma.CPeloMistico`.
+		pl.Forma.CPeloMistico = c?.CPeloMistico ?? Jandirus.Core.Forms.EstadoDeForma.CPeloMisticoDeFabrica;
 
 		// ============================ O NUMERO DA FORMA PASSA PELA MIGRACAO ============================
 		// O disco guarda forma por `FormaDef.IdRede`, e um numero que saiu do catalogo nao casa com
@@ -2198,6 +2256,9 @@ public partial class GameServer
 		pl.Ficha.fd_ki_locked = false;
 
 		AplicarForma(pl);
+
+		// (2026-10-30, o pedido 184) OS MARCOS QUE O SAVE GUARDA COM O VALOR VELHO sobem aqui, uma vez por entrada -- ver `RevisarOsMarcosNoLogin`
+		RevisarOsMarcosNoLogin(pl);
 
 		return maestriasDescartadas;
 	}

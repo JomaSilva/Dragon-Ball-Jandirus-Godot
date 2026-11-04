@@ -997,7 +997,7 @@ public partial class GameServer
 		ServerPlayer? alvo = AlvoParaArranque(a, alcance, longo ? AlcanceDoDashMarcado : alcance);
 		if (alvo == null) return false;
 
-		double custo = a.Ficha.MaxKi * CustoDashKi * (longo ? 1 : 0.5);
+		double custo = a.Ficha.MaxKi * CustoDashKi * (longo ? 1 : 0.5) * a.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (a.Ficha.Ki < custo) return false;
 
 		// PARA ONDE: a um TILE do alvo, na linha que liga os dois. Encostado, nao POR CIMA --

@@ -120,6 +120,8 @@ public sealed partial class Fighter
         Ekidef = StatCurves.StatCap(Rkidef);
         Ekiskill = StatCurves.StatCap(Rkiskill);
         Emagiskill = StatCurves.StatCap(Rmagiskill);
+        // (2026-10-30, o pedido 176) o piso de combate do Bills, DEPOIS do teto -- ver `PisoDeCombate`
+        if (PisoDeCombate is { } piso) AplicarOPisoDeCombate(piso);
 
         Epspeed = Math.Max(Espeed / (speedDIFF * dashingMod), 0);
 
@@ -224,6 +226,47 @@ public sealed partial class Fighter
     private static double CruPara(double r, double mod, double soma, double fator) =>
         Math.Max((r / Math.Max(fator, 1e-9) - soma) / Math.Max(mod, 0.1), 0.1);
 
+    /// <summary>
+    /// (2026-10-30, o pedido 176) OS STATS DE COMBATE ABAIXO DOS QUAIS ESTE CORPO NAO FICA -- os oito `E` do <see cref="Statify"/>, DEPOIS do teto
+    /// suave (`StatCurves.StatCap`). E o Bills, o dono: *"Bills assim como vilões de saga, deveria ter stats acima do jogador mais forte"*.
+    ///
+    /// O 1,25x que o chefe ganha no atributo cru (<see cref="FixarAtributos"/>, o `R` da aba Stats) quase some no teto: o `E` satura perto de 10
+    /// (o pico e em R ~40, e depois ele CAI devagar), entao o Bills ficava so 0-14% acima do mais forte no combate -- e igual a ele acima de R 40.
+    /// O piso vale depois do teto, e quem o escreve e o servidor (`GameServer.DarODobroAoChefe`). A aba Stats continua mostrando o `R`. Nulo = sem
+    /// piso, que e todo corpo que nao e o Bills. FORA DO SAVE: e do servidor, refeito a cada segundo.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore] public PisoDosStats? PisoDeCombate;
+
+    private void AplicarOPisoDeCombate(PisoDosStats p)
+    {
+        Ephysoff = Math.Max(Ephysoff, p.Physoff);
+        Ephysdef = Math.Max(Ephysdef, p.Physdef);
+        Etechnique = Math.Max(Etechnique, p.Technique);
+        Ekioff = Math.Max(Ekioff, p.Kioff);
+        Ekidef = Math.Max(Ekidef, p.Kidef);
+        Ekiskill = Math.Max(Ekiskill, p.Kiskill);
+        Espeed = Math.Max(Espeed, p.Speed);
+        Emagiskill = Math.Max(Emagiskill, p.Magiskill);
+    }
+
+    /// <summary>
+    /// (2026-10-30, o pedido 176) O PISO ACIMA DE QUEM JOGA: cada um dos oito stats de combate em <paramref name="vezes"/> o MAIOR entre os
+    /// <paramref name="jogadores"/> -- stat por stat, como as pericias do chefe (<see cref="PericiasNoMaximo"/>): o Bills nunca fica abaixo de
+    /// ninguem, nem do jogador que tem menos BP e mais defesa. Nulo sem ninguem jogando.
+    /// </summary>
+    public static PisoDosStats? PisoAcimaDe(IReadOnlyList<Fighter> jogadores, double vezes)
+    {
+        if (jogadores.Count == 0) return null;
+        double M(Func<Fighter, double> ler)
+        {
+            double m = 0;
+            foreach (Fighter j in jogadores) m = Math.Max(m, ler(j));
+            return vezes * m;
+        }
+        return new PisoDosStats(M(f => f.Ephysoff), M(f => f.Ephysdef), M(f => f.Etechnique), M(f => f.Ekioff), M(f => f.Ekidef),
+                                M(f => f.Ekiskill), M(f => f.Espeed), M(f => f.Emagiskill));
+    }
+
     /// <summary>Ajuste global de armadura de ki (era `globalkiarmormod`, um knob de admin).</summary>
     public static double GlobalKiArmorMod = 1;
 
@@ -244,3 +287,7 @@ public sealed partial class Fighter
         return check > 0 ? gap : baseKiMax - baseKi;
     }
 }
+
+/// <summary>(2026-10-30, o pedido 176) Os oito stats de combate (`E`) de um piso -- ver <see cref="Fighter.PisoDeCombate"/>.</summary>
+public readonly record struct PisoDosStats(double Physoff, double Physdef, double Technique, double Kioff, double Kidef, double Kiskill,
+                                           double Speed, double Magiskill);

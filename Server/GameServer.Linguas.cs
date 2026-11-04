@@ -10,8 +10,8 @@ namespace Jandirus.Server;
 /// <summary>
 /// AS LINGUAS NO SERVIDOR (2026-10-27) -- os pedidos 118 e 121 do dono; a regra pura e `Core/Races/Linguas.cs`.
 ///   * A LINGUA DO SAY: cada corpo fala na que escolheu no botao do chat (`lingua_falar:&lt;id&gt;`), e so numa que ele sabe inteira; quem
-///     nunca escolheu fala a Galactica. A fala sai com a etiqueta e cada ouvinte a le pela maestria DELE (`Mandar`, `GameServer.Chat.cs`) --
-///     e aprende um pouco ouvindo.
+///     nunca escolheu fala a Galactica. Cada ouvinte a le pela maestria DELE (`Mandar`, `GameServer.Chat.cs`) -- e aprende um pouco ouvindo.
+///     (2026-11-01, o pedido 221) A fala chega SEM a etiqueta da lingua, e o HABITANTE de cada planeta fala a nativa dele (`LinguaDoHabitante`).
 ///   * O ENSINO: um gesto pra quem esta colado (`lingua_ensinar`), a oferta espera o "sim" (`lingua_aceitar` / `lingua_recusar`) -- a
 ///     lingua NATIVA de quem ensina, +10% na hora e 2x pra sempre, uma vez por lingua.
 ///   * O PACOTE (`S2C.Linguas`): a lingua do say e a maestria de cada lingua que o corpo conhece, pro botao e pro cartao da aba Stats.
@@ -44,6 +44,15 @@ public sealed partial class GameServer
 	/// <summary>A LINGUA DO SAY deste corpo agora: a escolhida, se ele ainda a sabe inteira; senao, a Galactica.</summary>
 	private string LinguaDaFala(ServerPlayer pl) =>
 		_linguaDaFala.TryGetValue(pl.Id, out string? l) && Linguas.PodeFalar(pl.Ficha, l) ? l : Linguas.Galactica;
+
+	/// <summary>
+	/// (2026-11-01, o pedido 221) A LINGUA DO HABITANTE: *"faça npcs de cada planeta falar na lingua nativa deles"*. O NPC que mora num planeta
+	/// (o `Cidadao`: o habitante, o Rei Vegeta, o Patriarca, o Kaioshin) fala no say a nativa da raca dele, e cada ouvinte a le pela maestria
+	/// DELE -- e aprende ouvindo, como com a fala de uma pessoa. Nulo pra quem nao e habitante: chefe de saga, vilao, lutador de torneio,
+	/// soldado e bicho continuam na Galactica, e as almas do Outro Mundo e do Inferno tambem (nao sao de planeta nenhum).
+	/// </summary>
+	private static string? LinguaDoHabitante(ServerPlayer a) =>
+		a.Peer == null && a.Papel is { Tipo: Jandirus.Core.Npc.TipoDeNpc.Cidadao, Molde.Alma: false } ? Linguas.Nativas(a.Ficha).First() : null;
 
 	/// <summary>As linguas que o botao do chat oferece, na ordem em que ele as alterna: a Galactica, as nativas, a dos Deuses e as aprendidas inteiras.</summary>
 	private static List<string> LinguasQueFala(Fighter f)
@@ -170,5 +179,34 @@ public sealed partial class GameServer
 			? ""
 			: $"as esferas de Namek só respondem a quem fala a língua dos Namekuseijins: é preciso entender "
 			  + $"{Linguas.MaestriaDasEsferasDeNamek * 100:0}% dela, e você entende {m * 100:0.#}%.";
+	}
+
+	// =====================================================================
+	// (2026-10-29) OS CARGOS QUE FALAM TODAS AS LINGUAS -- o pedido 170
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"faça com q quem é do rank anjo, deus da destruiçao, ou qualquer nivel de kaio (grande kaio, kaioshin, kaio do norte etc),
+	/// saiba falar todas as linguas do unvierso em 100%"*. Os oito cargos, pela chave deste port (o Rei Yemma e o Guardiao nao sao Kaio).
+	/// </summary>
+	private static readonly string[] CargosQueFalamTodasAsLinguas = ["angel", "godofdestruction", "grandkai", "kaioshin", "nkai", "skai", "ekai", "wkai"];
+
+	/// <summary>TODAS AS LINGUAS DO UNIVERSO: a nativa de cada raca do jogo (`Linguas.NativaDaRaca`) e a dos Deuses. A Galactica todos ja sabem.</summary>
+	private IEnumerable<string> LinguasDoUniverso() =>
+		(_racas?.Protos.Keys ?? Enumerable.Empty<string>()).Select(Linguas.NativaDaRaca).Append(Linguas.DosDeuses).Distinct(StringComparer.Ordinal);
+
+	/// <summary>
+	/// QUEM TEM UM DOS OITO CARGOS PASSA A FALAR TODAS, inteiras: a maestria vai pra ficha como a de uma lingua aprendida -- e, como a lingua
+	/// dos Deuses, fica (perder o cargo nao desaprende). Chamada pelo `ConferirALingua`, que roda no login e na coroacao.
+	/// </summary>
+	private void ConferirTodasAsLinguas(ServerPlayer pl)
+	{
+		if (!CargosQueFalamTodasAsLinguas.Contains(CargoDe(pl.Conta), StringComparer.OrdinalIgnoreCase)) return;
+		List<string> novas = [.. LinguasDoUniverso().Where(l => !Linguas.PodeFalar(pl.Ficha, l))];
+		if (novas.Count == 0) return;
+		foreach (string l in novas) pl.Ficha.Linguas[l] = 1;
+		Persistir(pl);
+		MandarLinguas(pl);
+		Avisar(pl, "o seu cargo abre todas as línguas do universo: agora você fala cada uma delas por inteiro.");
+		GD.Print($"[server] {pl.Name} fala todas as linguas pelo cargo '{CargoDe(pl.Conta)}' (+{novas.Count})");
 	}
 }

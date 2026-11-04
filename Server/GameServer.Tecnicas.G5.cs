@@ -306,8 +306,7 @@ public sealed partial class GameServer
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = 2 * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10)
-					   * DanoDeKi.DanoGlobalDeKi,
+			BaseDano = DanoDeKi.PotenciaDeBolaDoDm(2, pl.Ficha.Ekioff, pl.Ficha.blastskill),   // (o pedido 177) o botao do DM fica no 2 de la
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
 			MultDeOnda = 1.2,        // `passbp = expressedBP*1.2`
@@ -464,8 +463,7 @@ public sealed partial class GameServer
 		var receita = new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = dano * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10)
-					   * DanoDeKi.DanoGlobalDeKi,
+			BaseDano = DanoDeKi.PotenciaDeBolaDoDm(dano, pl.Ficha.Ekioff, pl.Ficha.blastskill),   // (o pedido 177) o botao do DM fica no 2 de la
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
 			Nome = disperso ? "Tiro Disperso" : "Barragem de Energia",
@@ -557,8 +555,7 @@ public sealed partial class GameServer
 		var receita = new ReceitaDeProjetil
 		{
 			Tipo = converge ? TipoDeProjetil.Guided : TipoDeProjetil.Blast,
-			BaseDano = (converge ? 4 : 2) * pl.Ficha.Ekioff * DanoDeKi.Log10Min(pl.Ficha.blastskill, 10)
-					   * DanoDeKi.DanoGlobalDeKi,
+			BaseDano = DanoDeKi.PotenciaDeBolaDoDm(converge ? 4 : 2, pl.Ficha.Ekioff, pl.Ficha.blastskill),   // (o pedido 177) o botao do DM fica no 2 de la
 			Velocidade = 1,
 			AlcanceTiles = 200,      // ver abaixo: quem apaga estas bolas e o prazo, nao o alcance
 			Nome = converge ? "Hellzone Grenade" : "Campo Minado",

@@ -20,7 +20,7 @@ namespace Jandirus.Server;
 ///
 ///   K. O EMPURRAO NO MORTO DE PE -- o fantasma do Outro Mundo voa com o golpe como um vivo; so o cadaver nao (item 1).
 ///   V. O VIGOR E O KI QUE NAO ACABAM -- o Majin com o vigor travado no cheio; o androide perpetuo com o vigor e o Ki
-///      (item 12); e todo MORTO com o vigor no cheio (item 29).
+///      (item 12); e o MORTO, que desde o pedido 220 (2026-11-01) so tem o vigor infinito da raca (item 29).
 ///   W. OS PESOS QUE LEMBRAM A PORCENTAGEM -- o "ajustar" guarda, o "tirar" nao apaga, o "equipar" veste (item 28).
 ///   Q. O SCOUTER QUE VOLTA LIGADO -- o save leva o bit e o login o devolve, so com o aparelho na mochila (item 27).
 ///   X. O SANGUE DO BIO-ANDROIDE -- as regras do `SangueDoBio`: a raca com sangue, sozinho o bio nao tem nada, o Zenkai so
@@ -62,8 +62,8 @@ namespace Jandirus.Server;
 ///      (2026-10-26: o "modo Uub" do potencial antigo saiu).
 ///   T. O TRONO DE VEGETA -- o Rei Vegeta e o Principe nascem so com o trono vago; matar o Rei sendo Saiyajin o toma
 ///      (item 17).
-///   D. O DESEJO DE LIBERAR O POTENCIAL -- de toda raca (so o potencial); o Namekuseijin com o poder do ki divino ganha
-///      tambem o Mistico e o Orange (item 23).
+///   D. O DESEJO DE LIBERAR O POTENCIAL -- de toda raca (so o potencial); o Namekuseijin ganha tambem o Mistico e o Orange (item
+///      23). (2026-10-29) Ele e o desejo de PODER (o pedido 156), e abaixo do ki divino o Orange fica guardado ate o poder chegar (157).
 ///   U. A SUPERNOVA -- o ultimato do Freeza: o chefe ergue o sol e fica intocavel e parado ate a explosao (item 22).
 ///   F. OS ATAQUES DOS CHEFES -- o Freeza com o Death Beam e a Death Ball no arsenal da IA (item 5).
 ///   CC, GC, KK, GD. O ADENDO 12 -- o cano, a Genkidama em cima da cabeca, o Kaio-ken e a Genkidama que arrasta (itens 37 a
@@ -193,7 +193,7 @@ public sealed partial class GameServer
 		UltimatoSoSupernovaDeTeste = false;
 		SupernovaComAsMaosLivresDeTeste = false;
 		ChefeComRaioComumDeTeste = false;
-		Nutricao.MortoComMeioTanqueDeTeste = false;
+		Nutricao.MortoComVigorInfinitoDeTeste = false;
 		Jandirus.Core.Races.SangueDoBio.SangueNaoPassaDeTeste = false;
 		Jandirus.Core.Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste = false;
 		Alem.MenteDeitaOMortoDeTeste = false;
@@ -417,16 +417,18 @@ public sealed partial class GameServer
 	// =====================================================================
 	private void ODesejoDoPotencialV30()
 	{
-		GD.Print("[v030] --- D) o dragao libera o potencial de qualquer raca; o Namekuseijin com o poder do ki divino ganha o Mistico e o Orange (item 23) ---");
+		GD.Print("[v030] --- D) o desejo de PODER libera o potencial de qualquer raca; o Namekuseijin ganha o Mistico e o Orange -- guardado abaixo do ki divino (item 23; pedidos 156 e 157) ---");
 		LimparTudoDaBancada();
 		Vec2 c = TerraFirmeG12(4);
 		const float tile = ZoneCollision.TileSize;
 		var set = new SetDeEsferas();
 		string mistico = Jandirus.Core.Forms.Catalogo.IdMistico, orange = Jandirus.Core.Forms.Catalogo.IdOrange;
 
-		bool naTabela = Jandirus.Core.Magic.Desejos.Menu(1e12, 1, false, false, 0).Any(d => d.Id == "potencial")
-						&& Jandirus.Core.Magic.Desejos.Menu(1e12, 3, false, false, 100).Any(d => d.Id == "potencial");
-		AfirmarV30("**O DESEJO E DE TODA RACA**: a tabela do dragao o oferece sem olhar a raca (o Shenlong de um pedido e o Porunga de tres)", naTabela);
+		// (2026-10-29) O "LIBERAR O MEU POTENCIAL" ENTROU NO "PODER" (o pedido 156): a linha de toda raca e a do poder, e a do potencial saiu
+		bool naTabela = Jandirus.Core.Magic.Desejos.Menu(1e12, 1, false, false, 0).Any(d => d.Id == "poder")
+						&& Jandirus.Core.Magic.Desejos.Menu(1e12, 3, false, false, 100).Any(d => d.Id == "poder")
+						&& !Jandirus.Core.Magic.Desejos.Todos.Any(d => d.Id == "potencial");
+		AfirmarV30("**O DESEJO E DE TODA RACA**: a tabela do dragao oferece o 'Poder' sem olhar a raca (o Shenlong de um pedido e o Porunga de tres) -- e o 'Liberar o meu potencial' entrou nele (2026-10-29)", naTabela);
 
 		// O SAIYAJIN: o potencial, e mais nada -- e uma vez so
 		ServerPlayer saiyajin = ForjarV2("Kakarotto", c, 5_000_000, "Saiyan");
@@ -438,40 +440,57 @@ public sealed partial class GameServer
 		AfirmarV30("...as outras racas pedem a QUALQUER momento e so ganham a liberacao do potencial: o Saiyajin de cinco milhoes desperta o potencial e mais nada -- e pedir de novo e recusado sem gastar",
 				   soPotencial && deNovoNao, $"potencial {saiyajin.Ficha.unlockPotential}; BP {bp0:0} -> {saiyajin.Ficha.BP:0} | {Ultimos(doSaiyajin)}");
 
-		// O NAMEKUSEIJIN SEM O PODER DO KI DIVINO: nao pede (nada desperta, nada e gasto) -- e o motivo nao diz numero
+		// (2026-10-29, o pedido 157) O NAMEKUSEIJIN SEM O PODER DO KI DIVINO PEDE: o potencial e o Mistico na hora, e o Orange GUARDADO -- ate
+		// 2026-10-29 ele nao pedia. O Super Namekuseijin vai ensinado antes: o laco de baixo (o despertar dele) so mede o presente.
 		ServerPlayer namek = ForjarV2("Nail", c + new Vec2(2 * tile, 0), 5_000_000, "Namekian");
-		string? porqueFraco = PorQueNaoLiberaOPotencial(namek);
-		bool fracoRecusado = !DesejoDePotencial(namek, set) && namek.Ficha.unlockPotential < 1
-							 && !namek.Forma.Despertou(mistico) && !namek.Forma.Despertou(orange);
-		AfirmarV30("**O NAMEKUSEIJIN PRECISA DO PODER DO KI DIVINO DELE**: abaixo do requisito pessoal ele nao pede -- e a recusa nao diz numero de poder (a regra do BP)",
-				   porqueFraco != null && porqueFraco.Contains("ki divino", StringComparison.Ordinal) && !porqueFraco.Any(char.IsDigit) && fracoRecusado,
-				   porqueFraco ?? "(sem recusa)");
+		namek.Livro!.DarComoEnsinada(Jandirus.Core.Social.AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin);
+		List<string> doFraco = Ouvir(() => DesejoDePotencial(namek, set));
+		bool guardou = namek.Forma.Despertou(mistico) && !namek.Forma.Despertou(orange) && namek.Ficha.orangeDoDragao.Length > 0;
+		List<string> doPresente = [.. doFraco.Where(t => t.Contains("presente", StringComparison.Ordinal))];
+		AfirmarV30("**ABAIXO DO KI DIVINO O NAMEKUSEIJIN PEDE** (o pedido 157): ganha o Potential Unleashed na hora, e o Orange fica GUARDADO -- a frase fala do presente que dorme, sem numero de poder",
+				   guardou && doPresente.Count > 0 && !doPresente.Any(t => t.Any(char.IsDigit)),
+				   $"mistico {namek.Forma.Despertou(mistico)}; orange {namek.Forma.Despertou(orange)}; guardado '{namek.Ficha.orangeDoDragao}' | {Ultimos(doFraco)}");
+		string? jaGuardado = PorQueNaoLiberaOPotencial(namek);
+		AfirmarV30("...e com o presente guardado e o banco vazio, pedir de novo e recusado sem gastar",
+				   namek.Ficha.hiddenpotential <= 0 && jaGuardado != null && jaGuardado.Contains("presente", StringComparison.Ordinal) && !DesejoDePotencial(namek, set),
+				   jaGuardado ?? "(sem recusa)");
 
+		ServerPlayer semPresente = ForjarV2("Nail Dois", c + new Vec2(4 * tile, 0), 5_000_000, "Namekian");
 		RequisitoDoPotencialIgnoradoDeTeste = true;
-		bool semRequisito = PorQueNaoLiberaOPotencial(namek) == null;
-		RequisitoDoPotencialIgnoradoDeTeste = false;
-		AfirmarV30("   DEFEITO INJETADO (o requisito ignorado): o Namekuseijin de cinco milhoes ganharia o Mistico e o Orange -- a afirmacao de cima ficaria vermelha (defeito injetado: o Namek sem requisito)",
-				   semRequisito);
+		try { DesejoDePotencial(semPresente, set); }
+		finally { RequisitoDoPotencialIgnoradoDeTeste = false; }
+		AfirmarV30("   DEFEITO INJETADO (o requisito ignorado): o Namekuseijin de cinco milhoes ganharia o Orange NA HORA -- a afirmacao de cima ficaria vermelha (defeito injetado: o Orange sem o presente guardado)",
+				   semPresente.Forma.Despertou(orange) && semPresente.Ficha.orangeDoDragao.Length == 0);
+
+		// O PRESENTE DESPERTA QUANDO O PODER CHEGA, pelo laco de 5 Hz de producao (o despertar do Super Namekuseijin chama o presente)
+		ConferirODespertarDoSuperNamekuseijin(namek);
+		bool dormeAinda = !namek.Forma.Despertou(orange) && namek.Ficha.orangeDoDragao.Length > 0;
+		namek.Ficha.BP = Math.Max(namek.Ficha.BP, RequisitoDeGodKi(namek));
+		List<string> chegou = Ouvir(() => ConferirODespertarDoSuperNamekuseijin(namek));
+		AfirmarV30("**E O PRESENTE DESPERTA QUANDO O PODER CHEGA** (o pedido 157): abaixo do ki divino o laco nao mexe nele; no requisito pessoal o Orange desperta, a ficha esquece o presente e o chat avisa que FINALMENTE o presente do dragao faz efeito",
+				   dormeAinda && namek.Forma.Despertou(orange) && namek.Ficha.orangeDoDragao.Length == 0 && Disse(chegou, "finalmente o presente"),
+				   $"dormia {dormeAinda}; orange {namek.Forma.Despertou(orange)}; guardado '{namek.Ficha.orangeDoDragao}' | {Ultimos(chegou)}");
 
 		// COM O PODER: o potencial, o MISTICO e o ORANGE, num pedido so -- e depois nao ha mais o que pedir
-		namek.Ficha.BP = Math.Max(namek.Ficha.BP, RequisitoDeGodKi(namek));
-		List<string> doNamek = Ouvir(() => DesejoDePotencial(namek, set));
-		bool tudo = namek.Ficha.unlockPotential >= 1 && namek.Forma.Despertou(mistico) && namek.Forma.Despertou(orange);
-		bool acabou = PorQueNaoLiberaOPotencial(namek) is { } fim && fim.Contains("tudo", StringComparison.Ordinal) && !DesejoDePotencial(namek, set);
-		AfirmarV30("...com o poder do ki divino (o BP base no requisito pessoal) o Namekuseijin ganha o potencial, o MISTICO e o ORANGE num pedido so -- e depois nao ha mais o que pedir",
+		ServerPlayer forte = ForjarV2("Dende", c + new Vec2(6 * tile, 0), 5_000_000, "Namekian");
+		forte.Ficha.BP = Math.Max(forte.Ficha.BP, RequisitoDeGodKi(forte));
+		List<string> doNamek = Ouvir(() => DesejoDePotencial(forte, set));
+		bool tudo = forte.Ficha.unlockPotential >= 1 && forte.Forma.Despertou(mistico) && forte.Forma.Despertou(orange) && forte.Ficha.orangeDoDragao.Length == 0;
+		bool acabou = PorQueNaoLiberaOPotencial(forte) is { } fim && fim.Contains("tudo", StringComparison.Ordinal) && !DesejoDePotencial(forte, set);
+		AfirmarV30("...com o poder do ki divino (o BP base no requisito pessoal) o Namekuseijin ganha o potencial, o MISTICO e o ORANGE num pedido so, sem presente guardado -- e depois nao ha mais o que pedir",
 				   tudo && acabou && Disse(doNamek, "Potential Unleashed") && Disse(doNamek, "ORANGE"), Ultimos(doNamek));
 
 		// (2026-10-23, o dono) A FORMA DO DESEJO NAO SOME NO TIQUE SEGUINTE. Ate o Ritual Mistico do Velho Kaiohshin, a forma do Mistico
 		// (hoje o Potential Unleashed) seguia a skill `kai/Mystic` do kit do Kaioshin: a reconciliacao de 1 Hz dos cargos
 		// (`ReconciliarDadiva`, pelo `ReconciliarODomDoMistico`) fechava a forma de quem nao tinha a skill -- e o Namekuseijin que a
 		// ganhava do dragao a perdia 1 s depois. Agora a forma e um direito gravado: tres reconciliacoes depois, ela continua.
-		for (int i = 0; i < 3; i++) ReconciliarDadiva(namek);
-		bool ficou = namek.Forma.Despertou(mistico) && namek.Forma.Despertou(orange);
-		string comoFicou = $"mistico {namek.Forma.Despertou(mistico)}; orange {namek.Forma.Despertou(orange)}";
+		for (int i = 0; i < 3; i++) ReconciliarDadiva(forte);
+		bool ficou = forte.Forma.Despertou(mistico) && forte.Forma.Despertou(orange);
+		string comoFicou = $"mistico {forte.Forma.Despertou(mistico)}; orange {forte.Forma.Despertou(orange)}";
 		FormaSegueASkillDeTeste = true;
-		try { ReconciliarDadiva(namek); }
+		try { ReconciliarDadiva(forte); }
 		finally { FormaSegueASkillDeTeste = false; }
-		bool comODefeito = !namek.Forma.Despertou(mistico);
+		bool comODefeito = !forte.Forma.Despertou(mistico);
 		AfirmarV30("**A FORMA DO DESEJO NAO SOME NO TIQUE SEGUINTE** (2026-10-23): o Potential Unleashed que o dragao deu ao Namekuseijin continua depois de tres reconciliacoes dos cargos (a de 1 Hz) -- a forma nao segue mais a skill do Kaioshin",
 				   ficou, comoFicou);
 		AfirmarV30("   DEFEITO INJETADO (a forma que segue a skill, como antes do ritual): a mesma reconciliacao fecharia a forma do desejo -- a afirmacao de cima ficaria vermelha (defeito injetado: a forma segue a skill)",
@@ -690,7 +709,7 @@ public sealed partial class GameServer
 			NaMesa(Alem.PrecoDoPasseDoEnma);
 			EnmaPasse(pl, "Terra");
 			bool desceu = pl.Zone.Equals(terra);
-			pl.Combate!.Morrer();   // o fantasma "morre" de novo entre os vivos -- o `else if(dead)` do `Death()`
+			_ = pl.Combate!.Morrer();   // o fantasma "morre" de novo entre os vivos -- o `else if(dead)` do `Death()`
 			AfirmarV30("...quem VOLTA A VIDA no meio perde o passe calado (e fica onde esta); quem CAI entre os vivos acorda na mesa do Enma, e o passe acabou",
 					   vivoSemPasse && desceu && Alem.EhOAlem(pl.Zone) && pl.Ficha.passe_do_enma_ate == 0,
 					   $"vivo sem passe {vivoSemPasse}; desceu {desceu}; zona {pl.Zone.Name}; passe {pl.Ficha.passe_do_enma_ate}");
@@ -1353,7 +1372,12 @@ public sealed partial class GameServer
 		MoveToZone(p.Id, alem, new Vec2((NpcsDeConversa.SrKaiohX + 0.5f) * t, (NpcsDeConversa.SrKaiohY + 1.5f) * t));
 		p.Karma = 0;
 		List<string> vivo = Ouvir(() => SrKaiohFalar(p));
+		// (2026-10-29) SEM A SNAKE WAY CORRIDA o coracao limpo nao basta -- a regra do pedido 124d (2026-10-27, `Fighter.SnakeWayFeita`), que
+		// esta regua nao conhecia: ela pedia o Kaio-ken a quem nunca correu a estrada, e caia desde entao
 		p.Karma = 60;
+		List<string> semAEstrada = Ouvir(() => SrKaiohFalar(p));
+		bool aprendeuSemAEstrada = p.Livro.Sabe(NpcsDeConversa.SkillDoKaioken);
+		p.Ficha.SnakeWayFeita = true;
 		List<string> kaioken = Ouvir(() => SrKaiohFalar(p));
 		bool sabeKaioken = p.Livro.Sabe(NpcsDeConversa.SkillDoKaioken);
 		p.Karma = 100;
@@ -1362,16 +1386,24 @@ public sealed partial class GameServer
 		AfirmarV30("**A CONVERSA DO SR. KAIOH**: o vivo sem karma ouve a piada; com o coração limpo e força ele ensina o KAIO-KEN; com o coração no máximo, a GENKIDAMA (as duas entram no livro)",
 						   Disse(vivo, "ainda está vivo") && Disse(kaioken, "KAIO-KEN") && sabeKaioken && Disse(genki, "GENKIDAMA") && sabeGenki,
 						   $"{Ultimos(vivo)} / {Ultimos(kaioken)} / {Ultimos(genki)}");
+		AfirmarV30("...e SEM A SNAKE WAY corrida (o pedido 124d) o coração limpo e a força não bastam: ele não ensina o Kaio-ken",
+						   !aprendeuSemAEstrada && !Disse(semAEstrada, "KAIO-KEN"), Ultimos(semAEstrada));
 
 		// O MORTO SEM LICAO NENHUMA: a acolhida e a dica pelo KARMA -- e o BP nao aparece (a regra principal do dono)
 		ServerPlayer q = ForjarV2("Alma do Kaioh", TerraFirmeG12(4), 50_000);
 		MoveToZone(q.Id, alem, new Vec2((NpcsDeConversa.SrKaiohX - 0.5f) * t, (NpcsDeConversa.SrKaiohY + 1.5f) * t));
 		q.Ficha.dead = true;
 		q.Karma = 10;
+		// (2026-10-29) quem nao correu a estrada ouve o caminho dela; quem correu, a dica pelo karma (o pedido 124d)
+		List<string> mortoSemAEstrada = Ouvir(() => SrKaiohFalar(q));
+		q.Ficha.SnakeWayFeita = true;
 		List<string> morto = Ouvir(() => SrKaiohFalar(q));
 		bool semBp = !morto.Exists(l => l.Contains("8000") || l.Contains("8.000") || l.Contains($"{q.Ficha.BP:0}"));
 		AfirmarV30("...o morto e acolhido (\"Bem-vindo ao meu pequeno planeta!\") e ouve a dica pelo karma -- SEM o BP, que no DM aparecia: *\"sem scouter vc n tem como saber seu bp\"*",
 						   Disse(morto, "Bem-vindo") && Disse(morto, "karma 10/50") && semBp, Ultimos(morto));
+		AfirmarV30("...e o morto que NÃO correu a Snake Way ouve o caminho dela (\"corra a SNAKE WAY\"), e não a dica pelo karma",
+						   Disse(mortoSemAEstrada, "Bem-vindo") && Disse(mortoSemAEstrada, "SNAKE WAY") && !Disse(mortoSemAEstrada, "karma 10/50"),
+						   Ultimos(mortoSemAEstrada));
 		q.Ficha.dead = false;
 
 		// O KORIN, no topo da Torre: na entrada (a celula logo acima dele) a fala; longe dela, a recusa do alcance
@@ -1484,19 +1516,23 @@ public sealed partial class GameServer
 		AfirmarV30("...o cadeado do Ki do androide so segura o PISO: carregado a 130%, ele continua em 130%",
 				   Math.Abs(dr.Ki / dr.MaxKi - 1.3) < 1e-9, $"{dr.Ki / dr.MaxKi:P1}");
 
-		// MORTO (item 29 -- o dono: *"mortos tem vigor infinito"*): TODO morto trava o vigor no cheio -- o Majin, o androide e o
-		// Humano. E o Ki do androide morto TAMBEM trava (dono, 2026-10-20: *"eles mortos ficam sem energia infinita"* -- o motor perpetuo
-		// parava com a morte, e isso era o bug); o Humano morto continua com o Ki onde estava. O bio com o motor no sangue vai junto.
+		// MORTO (item 29, e desde 2026-11-01 o pedido 220): o vigor infinito do MORTO comum saiu -- *"faça com q pessoas mortas nao tenham
+		// mais stamina infinita"* -- e o de RACA fica: o Majin e o androide mortos continuam travados no cheio, e o Humano morto queima o
+		// vigor como um vivo. E o Ki do androide morto TAMBEM trava (dono, 2026-10-20: *"eles mortos ficam sem energia infinita"* -- o motor
+		// perpetuo parava com a morte, e isso era o bug); o Humano morto continua com o Ki onde estava. O bio com o motor no sangue vai junto.
 		m.dead = true;
 		dr.dead = true;
 		h.dead = true;
 		Gastar();
-		Nutricao.QueimarVigor(h);   // o estomago nao o queima nem o crava em meio tanque
+		double humanoAntes = h.stamina;
+		Nutricao.QueimarVigor(h);   // (o pedido 220) o estomago queima o morto como queima o vivo
 		Nutricao.ManterOsInfinitos(m);
 		Nutricao.ManterOsInfinitos(dr);
 		Nutricao.ManterOsInfinitos(h);
-		bool mortosCheios = m.stamina >= m.maxstamina - 1e-9 && dr.stamina >= dr.maxstamina - 1e-9 && h.stamina >= h.maxstamina - 1e-9;
-		string vigoresMortos = $"majin {m.stamina / m.maxstamina:P0}; droide vigor {dr.stamina / dr.maxstamina:P0} ki {dr.Ki / dr.MaxKi:P0}; humano {h.stamina / h.maxstamina:P0}";
+		bool mortosDeRacaCheios = m.stamina >= m.maxstamina - 1e-9 && dr.stamina >= dr.maxstamina - 1e-9;
+		bool humanoMortoQueima = h.stamina < humanoAntes && h.stamina < h.maxstamina * 0.5;
+		string vigoresMortos = $"majin {m.stamina / m.maxstamina:P0}; droide vigor {dr.stamina / dr.maxstamina:P0} ki {dr.Ki / dr.MaxKi:P0}; "
+							   + $"humano {humanoAntes / h.maxstamina:P3} -> {h.stamina / h.maxstamina:P3}";
 		var bioMorto = new Fighter { Race = Jandirus.Core.Races.BioAndroids.Raca, bio_racas_dna = ["Android"], bio_dna_infinito = true, dead = true };
 		bioMorto.Ki = bioMorto.MaxKi * 0.30;
 		Nutricao.ManterOsInfinitos(bioMorto);
@@ -1514,7 +1550,7 @@ public sealed partial class GameServer
 			kiDoBioComDefeito = bioMorto.Ki / bioMorto.MaxKi;
 		}
 		finally { Nutricao.MotorParaNaMorteDeTeste = false; }
-		Nutricao.MortoComMeioTanqueDeTeste = true;
+		Nutricao.MortoComVigorInfinitoDeTeste = true;
 		double humanoComDefeito;
 		try
 		{
@@ -1523,18 +1559,18 @@ public sealed partial class GameServer
 			Nutricao.ManterOsInfinitos(h);
 			humanoComDefeito = h.stamina / h.maxstamina;
 		}
-		finally { Nutricao.MortoComMeioTanqueDeTeste = false; }
+		finally { Nutricao.MortoComVigorInfinitoDeTeste = false; }
 		m.dead = false;
 		dr.dead = false;
 		h.dead = false;
-		AfirmarV30("**O MORTO TEM VIGOR INFINITO** (item 29: *\"mortos tem vigor infinito\"*): o Majin, o androide e o Humano mortos ficam com o vigor no CHEIO",
-				   mortosCheios, vigoresMortos);
+		AfirmarV30("**O MORTO NAO TEM MAIS VIGOR INFINITO; A RACA TEM** (item 29 e o pedido 220: *\"faça com q pessoas mortas nao tenham mais stamina infinita\"*): o Majin e o androide mortos ficam com o vigor no CHEIO, e o Humano morto queima como um vivo",
+				   mortosDeRacaCheios && humanoMortoQueima, vigoresMortos);
 		AfirmarV30("**O MOTOR PERPETUO NAO PARA COM A MORTE** (dono, 2026-10-20: *\"eles mortos ficam sem energia infinita\"*): o androide de energia infinita morto -- e o bio com o motor dele no sangue -- volta ao Ki CHEIO no cadeado do corpo; o Humano morto, nao",
 				   motorDosMortos, kisMortos);
 		AfirmarV30("(defeito injetado: o motor para com a morte, o jogo de antes) o Ki do androide morto e o do bio com o motor ficam nos 30% -- a regua de cima REPROVA",
 				   kiDoDroideComDefeito < 0.31 && kiDoBioComDefeito < 0.31, $"droide {kiDoDroideComDefeito:P0}; bio {kiDoBioComDefeito:P0}");
-		AfirmarV30("(defeito injetado: o meio tanque do DM, `StaminaDrain.dm:35-36`) o Humano morto fica cravado em 50% -- *\"Mortos atualmente o vigor fica preso em 50%\"*",
-				   Math.Abs(humanoComDefeito - 0.5) < 1e-9, $"{humanoComDefeito:P1}");
+		AfirmarV30("(defeito injetado: o vigor infinito de todo morto, o jogo de antes do pedido 220) o Humano morto volta a travar no CHEIO -- a regua de cima REPROVA",
+				   Math.Abs(humanoComDefeito - 1) < 1e-9, $"{humanoComDefeito:P1}");
 
 		Nutricao.VigorDoMajinComPisoDeTeste = true;
 		Nutricao.KiDoAndroideSemPisoDeTeste = true;
@@ -2098,8 +2134,11 @@ public sealed partial class GameServer
 		double furadeira = PorSegundo();
 		var drill = new Jandirus.Core.Tech.DrillDaObra { Nivel = 1, ContadoAteMs = 1_000_000 };
 		double cemSegundos = Jandirus.Core.Tech.Drill.Pedido(drill, 1_000_000 + 100_000);
-		AfirmarV30("**DEZ VEZES** (*\"aumente em 10x os ganhos de recursos da drill, furadeira e pa\"*): com a pa 60 por segundo (eram 6), com a furadeira 120 (eram 12), e a Drill de nivel 1 junta 1.000 em 100 s (eram 100) -- e a mao, que nao estava no pedido, continua nos 3",
-				   mao == 3 && pa == 60 && furadeira == 120 && Math.Abs(cemSegundos - 1000) < 1e-6 && Jandirus.Core.Tech.Drill.Taxa(10) == 100,
+		// (2026-11-01) E O PEDIDO 217 POR CIMA DESTE (*"a shovel e a furadeira q vc usa pessoalmente pode ter os ganhos triplicados"*, *"Drills
+		// tb vao ser 10x melhor"*): a pa e a furadeira x3 (60 -> 180, 120 -> 360) e a Drill x10 (10/s -> 100/s por nivel). Esta linha ainda
+		// cobrava os numeros da v0.3.0 e caiu na primeira rodada que a rodou depois do 217 (a vizinha `v030` do ciclo do 218).
+		AfirmarV30("**DEZ VEZES**, e o pedido 217 por cima (*\"aumente em 10x os ganhos de recursos da drill, furadeira e pa\"*; 2026-11-01: a pa e a furadeira x3, a Drill x10): com a pa 180 por segundo (eram 6; 60 na v0.3.0), com a furadeira 360 (eram 12; 120 na v0.3.0), e a Drill de nivel 1 junta 10.000 em 100 s (eram 100; 1.000 na v0.3.0) -- e a mao, que nao estava em nenhum dos dois, continua nos 3",
+				   mao == 3 && pa == 180 && furadeira == 360 && Math.Abs(cemSegundos - 10_000) < 1e-6 && Jandirus.Core.Tech.Drill.Taxa(10) == 1_000,
 				   $"mao {mao}; pa {pa}; furadeira {furadeira}; Drill em 100 s {cemSegundos:0.##}; nivel 10 {Jandirus.Core.Tech.Drill.Taxa(10)}/s");
 	}
 

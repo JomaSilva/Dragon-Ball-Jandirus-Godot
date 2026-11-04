@@ -165,7 +165,8 @@ public partial class GameServer
 		// KiMod nasce protegido contra zero no `Fighter.FromGenome`, mas um save antigo pode
 		// trazer qualquer coisa -- e uma divisao por zero aqui viraria custo infinito.
 		double kiMod = Math.Max(pl.Ficha.KiMod, 0.01);
-		double custo = pl.Ficha.MaxKi / divisorDaMordida * MordidaDaArmaDeKi(pl, id) / kiMod;   // `KiBladeDrain`/`KiSwordDrain`
+		// `KiBladeDrain`/`KiSwordDrain`; (2026-11-01, o pedido 220) o morto paga 25% menos
+		double custo = pl.Ficha.MaxKi / divisorDaMordida * MordidaDaArmaDeKi(pl, id) / kiMod * pl.Ficha.FatorDeKiDoEstado;
 
 		if (pl.Ficha.Ki < custo)
 		{

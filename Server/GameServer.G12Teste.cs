@@ -455,8 +455,9 @@ public partial class GameServer
 				   tiros.Count >= 5 && tiros.All(t => t.Rumo.X > 0.99 && Math.Abs(t.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9), $"{tiros.Count} vivas");
 		AfirmarG12("...nascidas num LEQUE de +-45 graus (o Y das vivas varia entre tres fileiras)",
 				   tiros.Select(t => Math.Round(t.Pos.Y)).Distinct().Count() >= 2 && tiros.All(t => Math.Abs(t.Pos.Y - pl.Pos.Y) <= 32.5));
-		AfirmarG12("...com o dano do DM: 0,7 x Ekioff x log10(max(blastskill,10)) x dano global x os dois logs do `mods`",
-				   tiros.All(t => Math.Abs(t.BaseDano - 0.7 * f.Ekioff * DanoDeKi.Log10Min(f.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2)) < 1e-6));
+		// (2026-10-30, o pedido 177) o "dano global" daqui e o 2 do DM, escrito -- o botao do jogo caiu pra 1 e nao entra na potencia da bola
+		AfirmarG12("...com o dano do DM: 0,7 x Ekioff x log10(max(blastskill,10)) x o 2 do DM (o `globalKiDamage` de la, fixo desde o pedido 177) x os dois logs do `mods`",
+				   tiros.All(t => Math.Abs(t.BaseDano - 0.7 * f.Ekioff * DanoDeKi.Log10Min(f.blastskill, 10) * 2 * DanoDeKi.Log10Min(f.kieffusionskill, 2) * DanoDeKi.Log10Min(f.blastskill, 2)) < 1e-6));
 
 		// ============================ A PISCADA LEVA A RAJADA JUNTO (`click.dm:54` nao le `canmove`) ============================
 		// O `canmove = 0` do verb (`blasts.dm:270`) e a trava do PASSO (`movement handler.dm:130`) -- e o `turf/DblClick`
@@ -536,7 +537,7 @@ public partial class GameServer
 				   && giros.All(t => Math.Abs(t.Rumo.LengthSquared - 1) < 1e-3),
 				   $"{rumosDistintos} rumos distintos em {cuspidas} cuspidas; {giros.Count(t => t.Rumo.X > 0.99)} de {giros.Count} vivas pra leste");
 		AfirmarG12("...com 1,1x o dano das Balas Continuas",
-				   giros.All(t => Math.Abs(t.BaseDano - 1.1 * g.Ekioff * DanoDeKi.Log10Min(g.blastskill, 10) * DanoDeKi.DanoGlobalDeKi * DanoDeKi.Log10Min(g.kieffusionskill, 2) * DanoDeKi.Log10Min(g.blastskill, 2)) < 1e-6));
+				   giros.All(t => Math.Abs(t.BaseDano - 1.1 * g.Ekioff * DanoDeKi.Log10Min(g.blastskill, 10) * 2 * DanoDeKi.Log10Min(g.kieffusionskill, 2) * DanoDeKi.Log10Min(g.blastskill, 2)) < 1e-6));
 		ApertarEOuvir(giro, "Spin_Blast");
 		TiquesG12(1);
 		AfirmarG12("...e a espera dela e de 8 s (`reload = 80`)",

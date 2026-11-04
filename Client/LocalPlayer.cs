@@ -709,6 +709,9 @@ public partial class LocalPlayer : Node2D
 	/// <summary>Ao leme, a nave nao anda com as pernas do piloto: as duas regras de perna nao valem (como no servidor).</summary>
 	private static bool AoLeme => GameClient.Instance is { VeiculoMontado.Length: > 0 };
 
+	/// <summary>(2026-10-31) Este corpo pede a corrida agora? SO PRA BANCADA (`--diagpodtanque`, o shift ao leme).</summary>
+	internal bool CorrendoDeTeste => _correndo;
+
 	/// <summary>
 	/// DEFEITO INJETADO (`--diagcapital`): ao leme, a pose volta a ser a de voo -- o jogo de antes de 2026-10-18 (*"o personagem fica voando quando
 	/// eu piloto a nave"*). Falso em jogo, sempre.
@@ -842,8 +845,48 @@ public partial class LocalPlayer : Node2D
 
 	public void ReceberCarregador(Node2D? quem) => _carregador = quem;
 
+	// (2026-11-01, o pedido 219) ...OU DENTRO DE UMA GOSMA: *"a camera do jogador segue a gosma"* -- o `LevadoPor` e a gosma, e o corpo vai onde
+	// ela e desenhada, pelo mesmo caminho do colo (a camera e filha do corpo). Ver `ReceberGosma`.
 	private bool LevadoNoColo =>
-		_agarrado && !RemotePlayer.AgarradoVemAtrasadoDeTeste && _carregador != null && IsInstanceValid(_carregador);
+		(_agarrado || (_naGosma && !GosmaSemCameraDeTeste)) && !RemotePlayer.AgarradoVemAtrasadoDeTeste && _carregador != null
+		&& IsInstanceValid(_carregador);
+
+	/// <summary>
+	/// (2026-11-01, o pedido 219) ENGOLIDO POR UMA GOSMA DE MAJIN, a caminho dele -- o `Ocupacao.NaGosma` do MEU corpo no snapshot (o `World`
+	/// entrega). O dono: *"o corpo desse jogador fica invisivel, a camera do jogador segue a gosma"*. Os outros ja nao me veem (o `Oculto`); na
+	/// MINHA tela o boneco e o que vai junto com ele somem aqui (a camera fica: e ela que segue), e voltam quando a gosma me entrega ou se
+	/// desfaz. A posicao e a da gosma desenhada (`LevadoNoColo`).
+	/// </summary>
+	public void ReceberGosma(bool dentro)
+	{
+		if (dentro == _naGosma) return;
+		_naGosma = dentro;
+		if (dentro)
+		{
+			foreach (Node n in GetChildren())
+				if (n is not Camera2D && n is CanvasItem { Visible: true } c)
+				{
+					c.Visible = false;
+					_sumidosNaGosma.Add(c);
+				}
+			return;
+		}
+		foreach (CanvasItem c in _sumidosNaGosma)
+			if (IsInstanceValid(c)) c.Visible = true;
+		_sumidosNaGosma.Clear();
+	}
+
+	private bool _naGosma;
+	private readonly List<CanvasItem> _sumidosNaGosma = [];
+
+	/// <summary>Dentro de uma gosma agora? So bancada.</summary>
+	public bool NaGosmaDeTeste => _naGosma;
+
+	/// <summary>Quantos pedacos do meu corpo estao escondidos pela gosma. So bancada.</summary>
+	public int SumidosNaGosmaDeTeste => _sumidosNaGosma.Count;
+
+	/// <summary>DEFEITO INJETADO (`--diaggosma`): a camera nao segue a gosma -- o corpo engolido fica onde foi pego. Falso em jogo, sempre.</summary>
+	public static bool GosmaSemCameraDeTeste;
 
 	/// <summary>
 	/// ============================ POR QUE O CORPO NAO ANDA AGORA -- UM LUGAR SO ============================
@@ -996,6 +1039,8 @@ public partial class LocalPlayer : Node2D
 		: Observando                             ? "observando a nave de fora (E pra voltar ao corpo)"
 		: Possuido                               ? "possuido por um Neo Tuffle (voce so assiste)"
 		: _empurrado                             ? "arremessado"
+		// (2026-11-01, o pedido 219) ANTES DO CAIDO: o engolido pode estar nocauteado, e e a gosma que o leva -- ver `ReceberGosma`
+		: _naGosma                               ? "engolido por uma gosma (ela te leva pro Majin)"
 		// (2026-10-23) ...menos quem SO A GRAVIDADE segura: o desmaiado por ela e o prensado de pe se arrastam (`SoRasteja`)
 		: _caido && !SoRasteja                   ? "caido (nocaute ou morte)"
 		: _agarrado                              ? "agarrado (a tecla de andar e a luta pra se soltar)"
@@ -1329,7 +1374,10 @@ public partial class LocalPlayer : Node2D
 		if (_shift && tentandoAndar && SemPernaPraCorrer)
 			AvisarDoMembro(Jandirus.Core.Combat.DebuffsDeMembro.AvisoDeCorrida);
 		// (2026-10-23) ...e QUEM SE ARRASTA NAO CORRE: o servidor recusa (`GameServer.Rastejo.cs`), entao este cliente nem pede.
-		bool querCorrer = _shift && tentandoAndar && !_carregando && (!SoRasteja || RastejoCorreDeTeste)
+		// (2026-10-31, o pedido 207) ...e AO LEME O SHIFT NAO CORRE: a nave anda na velocidade dela, e o servidor nao concede a corrida a
+		// quem pilota (`GameServer.AplicarInput`) -- pedir seria prever um passo que la e recusado (o tranco), com o rastro e o som do
+		// arranque de quem corre. O dono: *"Ta dando pra apertar shift na pod ou capital ship pra fazer ela voar mais rapido"*.
+		bool querCorrer = _shift && tentandoAndar && !_carregando && (!SoRasteja || RastejoCorreDeTeste) && !AoLeme
 			&& (_altitude > 0f || (_temKiPraCorrer && !SemPernaPraCorrer));
 		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, RemotePlayer.VolumeDoArranque);
 		_correndo = querCorrer;

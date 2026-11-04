@@ -135,6 +135,7 @@ public sealed partial class GameServer
 			case "nave_pegar":
 			case "nave_recondicionar":
 			case "nave_abastecer":   // (2026-10-18) o combustivel -- ver `GameServer.Combustivel.cs`
+			case "nave_tanque":      // (2026-10-31, o pedido 209) o tanque maior -- idem
 			// A CAMADA 2 entra pelo MESMO canal, e nao por um paralelo: `nave_embarcar` e
 			// `nave_pilotar` sao a mesma familia de "mexer com a nave" que `nave_usar`, e o despacho
 			// de la ja sabe separar as tres naves. Um segundo `case` aqui pra cada verbo novo faria
@@ -203,8 +204,9 @@ public sealed partial class GameServer
 	{
 		Obra? saco = ObraQueAceita(pl, "treinar_saco");
 		if (saco == null) { Avisar(pl, "não há saco de pancada por perto."); return; }
-		// (2026-10-27, o pedido 136) o saco que ja estava numa Sala do Tempo nao rende -- ver `BonusDeTreinoPerto`
-		if (Jandirus.Core.World.LugarDeObra.NaoRendeAqui(saco.Zona, saco.Tipo)) { Avisar(pl, Jandirus.Core.World.LugarDeObra.NaoRendeNaSala); return; }
+		// (2026-10-27, o pedido 136) o saco que ja estava numa Sala do Tempo nao rende -- ver `BonusDeTreinoPerto`. (2026-10-29, o pedido 164)
+		// nem o da zona segura de quem nasce: `PorQueNaoRende`.
+		if (PorQueNaoRende(saco) is { } naoRende) { Avisar(pl, naoRende); return; }
 		if (!saco.Aparafusada) { Avisar(pl, "aparafuse o saco antes de bater nele."); return; }
 
 		Avisar(pl, "você começa a bater no saco. Enquanto estiver por perto, o treino rende o dobro.");
@@ -222,8 +224,9 @@ public sealed partial class GameServer
 		{
 			if (!o.Zona.Equals(pl.Zone) || !o.Aparafusada) continue;
 			if (o.Tipo is not ("Punching_Bag" or "Punching_Machine")) continue;
-			// (2026-10-27, o pedido 136) o saco e a maquina de socos que ja estavam numa Sala do Tempo nao dobram o treino la dentro
-			if (Jandirus.Core.World.LugarDeObra.NaoRendeAqui(o.Zona, o.Tipo)) continue;
+			// (2026-10-27, o pedido 136) o saco e a maquina de socos que ja estavam numa Sala do Tempo nao dobram o treino la dentro -- (2026-10-29,
+			// o pedido 164) nem na zona segura de quem nasce: `PorQueNaoRende`
+			if (PorQueNaoRende(o) != null) continue;
 			if (Math.Abs(o.X - pl.Pos.X) > AlcanceDeUso || Math.Abs(o.Y - pl.Pos.Y) > AlcanceDeUso) continue;
 			return DobraDoSaco;
 		}

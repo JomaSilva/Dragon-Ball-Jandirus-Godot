@@ -198,3 +198,58 @@ public static class TransmissaoEmNiveis
 		if (cat.Get(Path) is { } s) s.MaxNivel = NivelMaximo;
 	}
 }
+
+/// <summary>
+/// (2026-10-29) O BLOQUEIO DE TELEPORTE -- a skill do port no TIER 2 DA ARVORE DE MAGIA (o pedido 158, o dono: *"adicione uma skill da tree
+/// de magia q permite vc a dar block em teleporte, assim enquanto estiver ativo, ninguem pode teleportar em vc , sendo uma skill tier 2 sendo
+/// um botao q vc ativa ou desativa quando quiser"*). Sem par no DM, ela entra no catalogo pelo molde do Sleep do Majin (`SonoDoMajin.Aplicar`):
+/// com os numeros de uma vizinha de tier 2 da mesma arvore (a `Magic_Workout`), com o botao dela (`Teleport_Block`, que liga e desliga --
+/// `GameServer.BloqueioDeTeleporteG11`) e pendurada nos galhos da arvore. Ligada, ninguem chega pelo Instant Transmission: o pedido e recusado,
+/// e a chegada tambem (quando ela e ligada no meio da concentracao de alguem).
+/// </summary>
+public static class BloqueioDeTeleporte
+{
+	public const string Path = "/datum/skill/Teleport_Block";
+
+	/// <summary>O botao (o verbo da skill e o id do buff que fica aceso enquanto o selo dura).</summary>
+	public const string Verbo = "Teleport_Block";
+
+	public const string ArvoreDeMagia = "/datum/skill/tree/Magic";
+
+	/// <summary>A vizinha de tier 2 da arvore de Magia de onde saem o custo e o resto dos numeros.</summary>
+	public const string Vizinha = "/datum/skill/Magic_Workout";
+
+	public const int Tier = 2;
+
+	public const string Descricao =
+		"Seal your own energy: while it is on, nobody can teleport to you with Instant Transmission. Press it again to turn it off.";
+
+	/// <summary>DEFEITO INJETADO (`--teleporteteste`): o catalogo carrega sem o Bloqueio -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool SemOBloqueioDeTeste;
+
+	/// <summary>POE A SKILL NO CATALOGO e o galho na arvore de Magia. Sem a vizinha ou sem a arvore (uma bancada de mesa), nao faz nada.</summary>
+	internal static void Aplicar(SkillCatalog cat)
+	{
+		if (SemOBloqueioDeTeste) return;
+		if (cat.Get(Vizinha) is not { } molde || cat.Get(ArvoreDeMagia) is not { } arvore) return;
+		cat.Acrescentar(new Skill
+		{
+			Path = Path,
+			Nome = "Teleport Block",
+			Desc = Descricao,
+			Tipo = molde.Tipo,
+			Tier = Tier,
+			Custo = molde.Custo,
+			MaxNivel = 1,
+			Folga = molde.Folga,
+			Comum = molde.Comum,
+			Ligada = true,
+			Ensinavel = molde.Ensinavel,
+			CustoDeEnsino = molde.CustoDeEnsino,
+			CustoFixo = molde.CustoFixo,
+			Esquecivel = true,
+			Verbos = [Verbo],
+		});
+		if (!arvore.Galhos.Contains(Path, StringComparer.OrdinalIgnoreCase)) arvore.Galhos = [.. arvore.Galhos, Path];
+	}
+}

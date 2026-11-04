@@ -19,15 +19,16 @@ namespace Jandirus.Server;
 /// pelo `RestaurarFormaEDisciplina`.
 ///
 /// ============================ AS OITO FAMILIAS ============================
-///   1. A TABELA -- o `ussj` saiu, os dois graus entraram (x2,25 e x2,5, escada crescente), o resto e o do
-///      DM numero por numero, e TODA etiqueta tem dono: uma forma, outro sistema, ou "nao existe neste port".
+///   1. A TABELA -- o `ussj` saiu, os dois graus entraram (x2,67 e x3,33 desde o pedido 188, escada crescente), cada etiqueta vale 2
+///      elevado ao NIVEL dela (o do DM menos um; os divinos do pedido 184), e TODA etiqueta tem dono: uma forma, outro sistema, ou "nao
+///      existe neste port".
 ///   2. O CATALOGO -- as 22 formas que concedem marco e a etiqueta de cada uma, contra a lista levantada no DM.
 ///   3. A ESTREIA -- forma por forma: entrar nela e passar um tique de fichas poe o ganho no valor da tabela;
 ///      as formas SEM marco nao mexem em nada.
 ///   4. O GESTO DE VERDADE -- o host aperta C, sobe o primeiro degrau da linha dele e ouve o marco; a
 ///      conferencia e idempotente; o ganho de treino multiplica de fato.
-///   5. NAO EMPILHA, E OS DOIS GRAUS -- a escada inteira do Super Saiyajin pela tecla de forma (x2, x2,25,
-///      x2,5, x3, x4: nunca o produto), a ordem trocada dos graus, e quem ja tem o ki divino.
+///   5. NAO EMPILHA, E OS DOIS GRAUS -- a escada inteira do Super Saiyajin pela tecla de forma (x2, x2,67,
+///      x3,33, x4, x8: nunca o produto), a ordem trocada dos graus, e quem ja tem o ki divino.
 ///   6. QUEM NAO TEM A FORMA -- o Humano que aperta C, o Saiyajin comum que pede a forma do Lendario, e o
 ///      corpo SEM DONO (o NPC, que nasce com a escada na biografia).
 ///   7. O RETROATIVO NO LOGIN -- o save de antes dos marcos (o novo e o de antes dos dois bits), o segundo
@@ -57,7 +58,8 @@ public partial class GameServer
 
 	/// <summary>
 	/// O `BP_MILESTONES` DO DM (`Stats/BP/LinearGain.dm:19-26`), menos o `ussj` -- copiado a mao DE PROPOSITO:
-	/// e a regua contra a qual a tabela do port e conferida. O dono mandou nao mexer em nenhum outro numero.
+	/// e a regua contra a qual a tabela do port e conferida. (2026-10-30, o pedido 188) Hoje e dela que sai o NIVEL de cada etiqueta: o
+	/// valor do DM menos um (o `ssj` 2 e o nivel 1); o port vale 2 elevado ao nivel, e o 1,5 (o `potential` e o `bio1`) fica 1,5.
 	/// </summary>
 	private static readonly Dictionary<string, double> TabelaDoDmSemOUssj = new(StringComparer.Ordinal)
 	{
@@ -68,6 +70,20 @@ public partial class GameServer
 		["frost_final"] = 2, ["frost_golden"] = 3,
 		["asc5"] = 2, ["asc10"] = 3, ["asc20"] = 4,
 		["potential"] = 1.5, ["godki"] = 5, ["blue"] = 6,
+	};
+
+	/// <summary>
+	/// (2026-10-30, o pedido 184) OS NIVEIS DIVINOS DO DONO, POR CIMA DO DM -- escritos a mao como a tabela de cima: *"faça com q milestone de
+	/// god ki/ssj4 e tudo acima disso dobre [...] e todas as formas e ascenscoes desses niveis tb"*, e o marco novo do Ultra Instinto e do Ultra
+	/// Ego. (o pedido 188) Os valores sao os 2^x do dono: *"ssj4/godki = 16x blue/rose/ssj4fp = 32x evolution/rose2/ssj4lb = 64x UI/UE=
+	/// 128x"* (eram 8, 10, 12 e 20). O que nao esta aqui sai do nivel do DM.
+	/// </summary>
+	private static readonly Dictionary<string, double> NiveisDivinosDoDono = new(StringComparer.Ordinal)
+	{
+		["ssj4"] = 16, ["godki"] = 16, ["frost_final"] = 16, ["golden_perfect"] = 16, ["asc_deus"] = 16,
+		["ssj4fp"] = 32, ["blue"] = 32, ["lssj3"] = 32, ["lssj4"] = 32, ["tensao_divina"] = 32, ["asc_blue"] = 32,
+		["blue_evolution"] = 64, ["ssj4lb"] = 64, ["nivel_evolution"] = 64, ["blue_kaioken"] = 64,
+		["ui_ue"] = 128,
 	};
 
 	/// <summary>
@@ -82,12 +98,21 @@ public partial class GameServer
 		[Catalogo.IdWrathful] = "lssj1", ["c_type"] = "lssj2", ["legendary"] = "lssj3",
 		["primal_c_type"] = "ssj", ["primal_legendary"] = "ssj2", ["primal_legendary2"] = "ssj3",
 		["primal_legendary3"] = "ssj3", ["primal_legendary4"] = "ssj4", ["primal_legendary4_full_power"] = "ssj4fp",
-		["blue"] = "blue", ["blue_evolution"] = "blue", ["rose"] = "blue", ["rose2"] = "blue",
+		// (2026-10-30, o pedido 184) o Blue Evolution e o Rose 2 sairam da `blue`: o nivel deles (56x) e outro
+		["blue"] = "blue", ["blue_evolution"] = "blue_evolution", ["rose"] = "blue", ["rose2"] = "blue_evolution",
 		["frost7"] = "frost_final",
+		// (2026-10-30, o pedido 184) as formas dos niveis divinos que nao tinham marco
+		["ssj4_limit_breaker"] = "ssj4lb", ["primal_legendary4_limit_breaker"] = "ssj4lb",
+		["beast"] = "nivel_evolution", [Catalogo.IdOrange] = "nivel_evolution", ["bio_max"] = "nivel_evolution",
+		[Catalogo.IdDaFormaPura] = "nivel_evolution", [Catalogo.IdDaFormaPuraInsana] = "nivel_evolution",
+		["golden_perfect"] = "golden_perfect", ["tensao_divina"] = "tensao_divina",
+		["ui_sign"] = "ui_ue", ["ui_perfected"] = "ui_ue", ["destroyer"] = "ui_ue", ["ultra_ego"] = "ui_ue",
 	};
 
 	/// <summary>As etiquetas que OUTRO sistema concede (e onde), e as que nada concede neste port (e por que).</summary>
-	private static readonly string[] MarcosDeOutroSistema = ["bio1", "bio2", "bio3", "bio_ssj2", "asc5", "asc10", "asc20", "potential", "godki"];
+	// (2026-10-30, o pedido 184) o Blue Kaio-ken (`GameServer.MarcosDeForma.PagarOBlueKaioken`) e a Ascensao divina (`Fighter.CheckAscensionMilestone`)
+	private static readonly string[] MarcosDeOutroSistema = ["bio1", "bio2", "bio3", "bio_ssj2", "asc5", "asc10", "asc20", "potential", "godki",
+															 "blue_kaioken", "asc_deus", "asc_blue"];
 	private static readonly string[] MarcosSemDonoNoPort = ["lssj4", "majin2", "majin3", "frost_golden"];
 
 	/// <summary>Chamado do `TickDoGodKi` (fora do laco de fichas): roda UMA vez, no primeiro tique em que ha um jogador de verdade.</summary>
@@ -133,6 +158,7 @@ public partial class GameServer
 			MfQuemNaoTemAForma(pl, forjados);
 			MfORetroativo(pl, forjados);
 			MfOsCaminhosForaDaTecla(pl, forjados);
+			MfOsNiveisDivinos(pl, forjados);   // (2026-10-30, o pedido 184)
 
 			AfirmarMf("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')", true);
 		}
@@ -176,23 +202,31 @@ public partial class GameServer
 	// =====================================================================
 	private void MfATabela()
 	{
-		GD.Print("[marcos] -- 1) a tabela: o `ussj` saiu, os dois graus entraram, e o resto e o do DM --");
+		GD.Print("[marcos] -- 1) a tabela: o `ussj` saiu, os dois graus entraram, e cada patamar vale 2 elevado ao nivel dele --");
 		Dictionary<string, double> t = Milestones.Tabela;
 
 		AfirmarMf("o `ussj` SAIU da tabela (o Ultra Super Saiyajin nao existe mais: ha os dois graus)", !t.ContainsKey("ussj"));
-		AfirmarMf("os dois graus valem o que o dono confirmou: Grau 2 x2,25 e Grau 3 x2,5 (o topo dos graus e o que o USSJ valia)",
-				  Milestones.Valor(Milestones.SsjGrau2) == 2.25 && Milestones.Valor(Milestones.SsjGrau3) == 2.5,
+		AfirmarMf("(o pedido 188) **OS DOIS GRAUS ENTRE O SSJ E O SSJ2, EM TERCOS**: Grau 2 x2,67 (8/3) e Grau 3 x3,33 (10/3) -- eram x2,25 e x2,5",
+				  Math.Abs(Milestones.Valor(Milestones.SsjGrau2) - 8.0 / 3) < 1e-12 && Math.Abs(Milestones.Valor(Milestones.SsjGrau3) - 10.0 / 3) < 1e-12,
 				  $"grau 2 x{Milestones.Valor(Milestones.SsjGrau2)}, grau 3 x{Milestones.Valor(Milestones.SsjGrau3)}");
-		AfirmarMf("a escada continua CRESCENTE: Super Saiyajin x2 < Grau 2 < Grau 3 < Super Saiyajin 2 x3",
+		AfirmarMf("a escada continua CRESCENTE: Super Saiyajin x2 < Grau 2 < Grau 3 < Super Saiyajin 2 x4",
 				  Milestones.Valor(Milestones.Ssj) == 2 && Milestones.Valor(Milestones.Ssj) < Milestones.Valor(Milestones.SsjGrau2)
 				  && Milestones.Valor(Milestones.SsjGrau2) < Milestones.Valor(Milestones.SsjGrau3)
-				  && Milestones.Valor(Milestones.SsjGrau3) < Milestones.Valor(Milestones.Ssj2) && Milestones.Valor(Milestones.Ssj2) == 3);
+				  && Milestones.Valor(Milestones.SsjGrau3) < Milestones.Valor(Milestones.Ssj2) && Milestones.Valor(Milestones.Ssj2) == 4);
 
 		var semGraus = t.Where(par => par.Key != Milestones.SsjGrau2 && par.Key != Milestones.SsjGrau3).ToDictionary(par => par.Key, par => par.Value);
-		List<string> diferentes = [.. TabelaDoDmSemOUssj.Where(par => !semGraus.TryGetValue(par.Key, out double v) || v != par.Value).Select(par => par.Key),
-								   .. semGraus.Keys.Where(k => !TabelaDoDmSemOUssj.ContainsKey(k))];
-		AfirmarMf($"NENHUM OUTRO NUMERO MUDOU: as {TabelaDoDmSemOUssj.Count} etiquetas que sobram sao as do `BP_MILESTONES` do DM, valor por valor",
+		// (2026-10-30, o pedido 188) o esperado: 2 elevado ao nivel do DM (o valor dele menos um; o 1,5 fica), com os niveis divinos do dono por cima
+		var esperado = TabelaDoDmSemOUssj.ToDictionary(par => par.Key, par => par.Value == 1.5 ? 1.5 : Math.Pow(2, par.Value - 1), StringComparer.Ordinal);
+		foreach ((string k, double v) in NiveisDivinosDoDono) esperado[k] = v;
+		List<string> diferentes = [.. esperado.Where(par => !semGraus.TryGetValue(par.Key, out double v) || v != par.Value).Select(par => $"{par.Key} x{Milestones.Valor(par.Key)} (esperado x{par.Value})"),
+								   .. semGraus.Keys.Where(k => !esperado.ContainsKey(k))];
+		AfirmarMf($"(o pedido 188) **CADA PATAMAR VALE 2 ELEVADO AO NIVEL DELE**: SSJ x2, SSJ2 x4, SSJ3 x8 -- e as {esperado.Count} etiquetas no nivel de antes (o do DM menos "
+				  + "um: `bio3`, `asc10`, `majin3` x4; `bio_ssj2`, `asc20`, `lssj2` x8), com o `potential` e o `bio1` em x1,5",
 				  diferentes.Count == 0, diferentes.Count == 0 ? "" : "diferem: " + string.Join(", ", diferentes));
+		List<string> foraDoDono = [.. NiveisDivinosDoDono.Where(par => Milestones.Valor(par.Key) != par.Value).Select(par => $"{par.Key} x{Milestones.Valor(par.Key)}")];
+		AfirmarMf("(o pedido 184) **OS NIVEIS DIVINOS DO DONO NA TABELA** (em 2^x desde o pedido 188): SSJ4 e ki divino x16, Blue e SSJ4 FP x32, Blue Evolution, "
+				  + "Limit Breaker e Blue Kaio-ken x64, Ultra Instinto e Ultra Ego x128 -- e as formas e ascensoes de cada nivel",
+				  foraDoDono.Count == 0, string.Join(", ", foraDoDono));
 
 		// TODA ETIQUETA TEM DONO. E a classe de defeito que este trabalho veio consertar: regra na tabela, e ninguem pra liga-la.
 		var deForma = new HashSet<string>(MarcosDeForma.ComMarco.Select(d => d.Marco), StringComparer.Ordinal);
@@ -268,7 +302,7 @@ public partial class GameServer
 			GkRecolher(c);
 			forjados.Remove(c);
 		}
-		AfirmarMf($"as {semMarco} formas SEM marco (God, os Limit Breaker, Mistico, Beast, disciplinas, Frost 1 a 6, Namek, Heran, Alien, Super Perfeita) nao mexem no ganho",
+		AfirmarMf($"as {semMarco} formas SEM marco (God, Mistico, Fury, Frost 1 a 6, Super Namekuseijin, Heran, Alien, Super Majin, as Tensoes mortais) nao mexem no ganho",
 				  semMarco > 0 && mexeram.Count == 0, "mexeram: " + string.Join(", ", mexeram));
 	}
 
@@ -351,7 +385,7 @@ public partial class GameServer
 		sj.Forma.Maestria.Por("ssj2", 60);
 
 		(string Id, double Ganho)[] escada =
-			[("ssj1", 2), ("grade2", Milestones.ValorDoGrau2), ("grade3", Milestones.ValorDoGrau3), ("ssj2", 3), ("ssj3", 4)];
+			[("ssj1", 2), ("grade2", Milestones.ValorDoGrau2), ("grade3", Milestones.ValorDoGrau3), ("ssj2", 4), ("ssj3", 8)];
 		double produto = 1;
 		foreach ((string id, double ganho) in escada)
 		{
@@ -361,16 +395,16 @@ public partial class GameServer
 					  entrou && sj.Ficha.bp_milestone_mult == ganho && Disse(tique, $"x{ganho:0.##}"),
 					  $"forma {sj.Forma.Atual} | ganho x{sj.Ficha.bp_milestone_mult:0.####} | gesto: {Ultimos(gesto)} | tique: {Ultimos(tique)}");
 		}
-		AfirmarMf("os cinco marcos estao na ficha, e o ganho e o do MAIOR (x4): SSJ3 depois de SSJ2 nao e x12",
-				  sj.Ficha.bp_milestone_mult == 4 && new[] { "ssj", "ssjg2", "ssjg3", "ssj2", "ssj3" }.All(sj.Ficha.bp_milestones_done.Contains),
+		AfirmarMf("os cinco marcos estao na ficha, e o ganho e o do MAIOR (x8): SSJ3 depois de SSJ2 nao e x32",
+				  sj.Ficha.bp_milestone_mult == 8 && new[] { "ssj", "ssjg2", "ssjg3", "ssj2", "ssj3" }.All(sj.Ficha.bp_milestones_done.Contains),
 				  string.Join(",", sj.Ficha.bp_milestones_done));
 
 		// DESCER E VOLTAR: nada muda.
 		Ouvir(() => Transformar(sj, subir: false));
 		sj.CenaSegundos = 0;
 		(bool voltou, _, List<string> semFrase) = MfPedirAForma(sj, "ssj1");
-		AfirmarMf("descer ao normal e voltar ao Super Saiyajin nao repete marco nenhum: continua x4, sem frase",
-				  voltou && sj.Ficha.bp_milestone_mult == 4 && !Disse(semFrase, "MARCO DE PODER"), Ultimos(semFrase));
+		AfirmarMf("descer ao normal e voltar ao Super Saiyajin nao repete marco nenhum: continua x8, sem frase",
+				  voltou && sj.Ficha.bp_milestone_mult == 8 && !Disse(semFrase, "MARCO DE PODER"), Ultimos(semFrase));
 
 		// OS GRAUS FORA DE ORDEM: o Grau 3 primeiro (a tecla de forma deixa), depois o Grau 2.
 		ServerPlayer troca = MfForjarSaiyajin("GrausTrocados", pl, forjados);
@@ -381,12 +415,12 @@ public partial class GameServer
 		(bool noTres, _, _) = MfPedirAForma(troca, "grade3");
 		double depoisDoTres = troca.Ficha.bp_milestone_mult;
 		(bool noDois, _, List<string> tiqueDoDois) = MfPedirAForma(troca, "grade2");
-		AfirmarMf("o Grau 3 ANTES do Grau 2: x2,5 na estreia do 3, e a estreia do 2 nao DESCE o ganho (a etiqueta entra, sem frase)",
+		AfirmarMf("o Grau 3 ANTES do Grau 2: x3,33 na estreia do 3, e a estreia do 2 nao DESCE o ganho (a etiqueta entra, sem frase)",
 				  noTres && noDois && depoisDoTres == Milestones.ValorDoGrau3 && troca.Ficha.bp_milestone_mult == Milestones.ValorDoGrau3
 				  && troca.Ficha.bp_milestones_done.Contains(Milestones.SsjGrau2) && !Disse(tiqueDoDois, "MARCO DE PODER"),
 				  $"depois do 3: x{depoisDoTres:0.##}; depois do 2: x{troca.Ficha.bp_milestone_mult:0.##} | {Ultimos(tiqueDoDois)}");
 
-		// QUEM JA TEM O KI DIVINO (x5): o Super Saiyajin (x2) entra calado; o Blue (x6) passa por cima.
+		// QUEM JA TEM O KI DIVINO (x16 desde o pedido 188): o Super Saiyajin (x2) entra calado; o Blue (x32) passa por cima.
 		ServerPlayer deus = MfForjarSaiyajin("DeusDaBancada", pl, forjados);
 		DespertarDivino.Despertar(deus.Ficha);
 		double comOKiDivino = deus.Ficha.bp_milestone_mult;
@@ -395,8 +429,8 @@ public partial class GameServer
 		bool ssjCalado = deus.Ficha.bp_milestone_mult == comOKiDivino && deus.Ficha.bp_milestones_done.Contains(Milestones.Ssj) && !Disse(calado, "MARCO DE PODER");
 		deus.Forma.Entrar("blue");
 		List<string> azul = Ouvir(() => Treinar(deus));
-		AfirmarMf("quem ja tem o `godki` (x5) vira Super Saiyajin SEM frase e sem descer; o Blue (x6) passa por cima e avisa",
-				  comOKiDivino == 5 && ssjCalado && deus.Ficha.bp_milestone_mult == 6 && Disse(azul, "x6"),
+		AfirmarMf("quem ja tem o `godki` (x16) vira Super Saiyajin SEM frase e sem descer; o Blue (x32) passa por cima e avisa",
+				  comOKiDivino == 16 && ssjCalado && deus.Ficha.bp_milestone_mult == 32 && Disse(azul, "x32"),
 				  $"ki divino x{comOKiDivino:0.##} -> ssj x? calado={ssjCalado} -> blue x{deus.Ficha.bp_milestone_mult:0.##} | {Ultimos(azul)}");
 	}
 
@@ -414,11 +448,11 @@ public partial class GameServer
 		List<string> gesto = Ouvir(() => Transformar(semEscada, subir: true));
 		List<string> tique = Ouvir(() => { Treinar(semEscada); Treinar(semEscada); });
 		// (2026-10-23) E A ASCENSAO E DELE: o Tsujin e uma das racas sem transformacao que o dono pos na Ascensao (`Races.Ascensao`), e com
-		// 1e13 de BP base ela esta no teto (16x) -- o `Treinar` a escreve e o marco de ganho dela vem junto, com o aviso (`asc20`, x4: o do
+		// 1e13 de BP base ela esta no teto (16x) -- o `Treinar` a escreve e o marco de ganho dela vem junto, com o aviso (`asc20`, x8: o do
 		// Saiyajin no SSJ3). O que esta familia cobra continua de pe: ele nao tem forma, entao nenhuma etiqueta de FORMA -- a unica que ele
 		// ganha e a da Ascensao.
-		AfirmarMf("o TSUJIN com poder de sobra aperta C: a raca nao tem a escada, ele fica na base e nao ganha etiqueta de forma -- so a da Ascensao (`asc20`, x4)",
-				  semEscada.Forma.NaBase && semEscada.Ficha.bp_milestone_mult == 4
+		AfirmarMf("o TSUJIN com poder de sobra aperta C: a raca nao tem a escada, ele fica na base e nao ganha etiqueta de forma -- so a da Ascensao (`asc20`, x8)",
+				  semEscada.Forma.NaBase && semEscada.Ficha.bp_milestone_mult == 8
 				  && semEscada.Ficha.bp_milestones_done.SetEquals(new[] { "asc20" })
 				  && Disse(gesto, "nao tem essa escada") && Disse(tique, "MARCO DE PODER"),
 				  $"forma {semEscada.Forma.Atual} | marcos {string.Join(",", semEscada.Ficha.bp_milestones_done)} x{semEscada.Ficha.bp_milestone_mult:0.##} | {Ultimos(gesto)}");
@@ -454,8 +488,8 @@ public partial class GameServer
 		bool nadaSemDono = semDono.Ficha.bp_milestone_mult == 1 && semDono.Ficha.bp_milestones_done.Count == 0 && !Disse(mudo, "MARCO DE PODER");
 		semDono.Peer = pl.Peer;
 		List<string> comDono = Ouvir(() => Treinar(semDono));
-		AfirmarMf("o corpo SEM DONO (o NPC, com o SSJ1 e o SSJ2 na biografia) nao recebe marco nenhum; o mesmo corpo COM dono recebe o x3",
-				  nadaSemDono && semDono.Ficha.bp_milestone_mult == 3 && Disse(comDono, "x3"),
+		AfirmarMf("o corpo SEM DONO (o NPC, com o SSJ1 e o SSJ2 na biografia) nao recebe marco nenhum; o mesmo corpo COM dono recebe o x4",
+				  nadaSemDono && semDono.Ficha.bp_milestone_mult == 4 && Disse(comDono, "x4"),
 				  $"sem dono: nada={nadaSemDono} | com dono: x{semDono.Ficha.bp_milestone_mult:0.##} | {Ultimos(comDono)}");
 	}
 
@@ -500,13 +534,13 @@ public partial class GameServer
 				  antigo.Forma.JaViuAEstreia("ssj1") && antigo.Forma.JaViuAEstreia("ssj2") && antigo.Forma.Atual != "ssj2" && antigo.Ficha.bp_milestone_mult == 1,
 				  $"forma {antigo.Forma.Atual} | ganho x{antigo.Ficha.bp_milestone_mult:0.##}");
 		List<string> falas = Ouvir(() => Treinar(antigo));
-		AfirmarMf("**O RETROATIVO**: no primeiro tique de fichas ele recebe o MAIOR marco das formas que ja estreou (SSJ2 = x3, e nao x2 nem x6) e le a frase da divida antiga",
-				  antigo.Ficha.bp_milestone_mult == 3 && antigo.Ficha.bp_milestones_done.SetEquals(["ssj", "ssj2"])
-				  && Disse(falas, "já tinha despertado") && Disse(falas, "x3") && !Disse(falas, "rompeu um novo patamar")
+		AfirmarMf("**O RETROATIVO**: no primeiro tique de fichas ele recebe o MAIOR marco das formas que ja estreou (SSJ2 = x4, e nao x2 nem x8) e le a frase da divida antiga",
+				  antigo.Ficha.bp_milestone_mult == 4 && antigo.Ficha.bp_milestones_done.SetEquals(["ssj", "ssj2"])
+				  && Disse(falas, "já tinha despertado") && Disse(falas, "x4") && !Disse(falas, "rompeu um novo patamar")
 				  && falas.Count(x => x.Contains("MARCO DE PODER", StringComparison.Ordinal)) == 1,
 				  $"ganho x{antigo.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
 		falas = Ouvir(() => { Treinar(antigo); Treinar(antigo); });
-		AfirmarMf("...uma vez: os tiques seguintes nao repetem", antigo.Ficha.bp_milestone_mult == 3 && !Disse(falas, "MARCO DE PODER"), Ultimos(falas));
+		AfirmarMf("...uma vez: os tiques seguintes nao repetem", antigo.Ficha.bp_milestone_mult == 4 && !Disse(falas, "MARCO DE PODER"), Ultimos(falas));
 
 		// ---------------------------------------------------------------- (b) O SEGUNDO LOGIN
 		conta.Slots[0] = AccountStore.DeJogador(antigo, NowMs());
@@ -515,8 +549,8 @@ public partial class GameServer
 		forjados.Remove(antigo);
 		ServerPlayer deNovo = MfLogar(pl, forjados);
 		falas = Ouvir(() => { Treinar(deNovo); Treinar(deNovo); });
-		AfirmarMf("o SEGUNDO login nao concede de novo: o ganho x3 e as etiquetas voltaram do disco, e nao ha frase",
-				  deNovo.Ficha.bp_milestone_mult == 3 && deNovo.Ficha.bp_milestones_done.SetEquals(["ssj", "ssj2"]) && !Disse(falas, "MARCO DE PODER"),
+		AfirmarMf("o SEGUNDO login nao concede de novo: o ganho x4 e as etiquetas voltaram do disco, e nao ha frase",
+				  deNovo.Ficha.bp_milestone_mult == 4 && deNovo.Ficha.bp_milestones_done.SetEquals(["ssj", "ssj2"]) && !Disse(falas, "MARCO DE PODER"),
 				  $"ganho x{deNovo.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
 		GkRecolher(deNovo);
 		forjados.Remove(deNovo);
@@ -530,8 +564,8 @@ public partial class GameServer
 		_store.Gravar(conta);
 		ServerPlayer maisVelho = MfLogar(pl, forjados);
 		falas = Ouvir(() => Treinar(maisVelho));
-		AfirmarMf("o save de antes de existir a lista de estreias (so as formas liberadas): SSJ3 liberado vira x4 no login",
-				  maisVelho.Forma.JaViuAEstreia("ssj3") && maisVelho.Ficha.bp_milestone_mult == 4 && Disse(falas, "já tinha despertado"),
+		AfirmarMf("o save de antes de existir a lista de estreias (so as formas liberadas): SSJ3 liberado vira x8 no login",
+				  maisVelho.Forma.JaViuAEstreia("ssj3") && maisVelho.Ficha.bp_milestone_mult == 8 && Disse(falas, "já tinha despertado"),
 				  $"ganho x{maisVelho.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
 		GkRecolher(maisVelho);
 		forjados.Remove(maisVelho);
@@ -545,8 +579,8 @@ public partial class GameServer
 		_store.Gravar(conta);
 		ServerPlayer divino = MfLogar(pl, forjados);
 		falas = Ouvir(() => Treinar(divino));
-		AfirmarMf("quem loga com um marco MAIOR ja pago (`godki`, x5) e so o SSJ1 estreado: a etiqueta entra, o ganho nao desce e nao ha frase",
-				  divino.Ficha.bp_milestone_mult == 5 && divino.Ficha.bp_milestones_done.Contains(Milestones.Ssj) && !Disse(falas, "MARCO DE PODER"),
+		AfirmarMf("quem loga com um marco MAIOR ja pago (`godki`, x16 desde o pedido 188) e so o SSJ1 estreado: a etiqueta entra, o ganho nao desce e nao ha frase",
+				  divino.Ficha.bp_milestone_mult == 16 && divino.Ficha.bp_milestones_done.Contains(Milestones.Ssj) && !Disse(falas, "MARCO DE PODER"),
 				  $"ganho x{divino.Ficha.bp_milestone_mult:0.##} | {string.Join(",", divino.Ficha.bp_milestones_done)} | {Ultimos(falas)}");
 		GkRecolher(divino);
 		forjados.Remove(divino);
@@ -566,8 +600,8 @@ public partial class GameServer
 		primal.Forma.Liberar("ssj4");
 		primal.Forma.Atual = "ssj4";
 		List<string> falas = Ouvir(() => Treinar(primal));
-		AfirmarMf("quem cai do Oozaru Dourado em SSJ4 (liberado, SEM estreia) recebe o `ssj4` (x5) ali mesmo, com a frase de quem acabou de entrar",
-				  !primal.Forma.JaViuAEstreia("ssj4") && primal.Ficha.bp_milestone_mult == 5 && Disse(falas, "rompeu um novo patamar"),
+		AfirmarMf("quem cai do Oozaru Dourado em SSJ4 (liberado, SEM estreia) recebe o `ssj4` (x16 desde o pedido 188) ali mesmo, com a frase de quem acabou de entrar",
+				  !primal.Forma.JaViuAEstreia("ssj4") && primal.Ficha.bp_milestone_mult == 16 && Disse(falas, "rompeu um novo patamar"),
 				  $"ganho x{primal.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
 
 		// O `admin_forma`, pelo despacho de producao: a forma forcada tambem e uma forma em que o corpo esteve.
@@ -575,15 +609,118 @@ public partial class GameServer
 		Ouvir(() => Verbo(pl, "admin_forma", "ssj3"));
 		pl.CenaSegundos = 0;
 		falas = Ouvir(() => Treinar(pl));
-		AfirmarMf("o `admin_forma ssj3` poe o host em Super Saiyajin 3, e o tique seguinte paga o `ssj3` (x4)",
-				  pl.Forma.Atual == "ssj3" && pl.Ficha.bp_milestone_mult == 4 && Disse(falas, "x4"),
+		AfirmarMf("o `admin_forma ssj3` poe o host em Super Saiyajin 3, e o tique seguinte paga o `ssj3` (x8)",
+				  pl.Forma.Atual == "ssj3" && pl.Ficha.bp_milestone_mult == 8 && Disse(falas, "x8"),
 				  $"forma {pl.Forma.Atual} | ganho x{pl.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
 
 		// O `Assess Target` e onde o admin LE o numero (o jogador so tem a frase do chat).
 		falas = Ouvir(() => Verbo(pl, "admin_ficha", "0"));
-		AfirmarMf("o `Assess Target` mostra o ganho e os patamares do alvo: \"ganho de poder x4 · patamares rompidos: ssj3\"",
-				  Disse(falas, "ganho de poder x4") && Disse(falas, "patamares rompidos: ssj3"),
+		AfirmarMf("o `Assess Target` mostra o ganho e os patamares do alvo: \"ganho de poder x8 · patamares rompidos: ssj3\"",
+				  Disse(falas, "ganho de poder x8") && Disse(falas, "patamares rompidos: ssj3"),
 				  string.Join(" | ", falas.Where(x => x.Contains("ganho de poder", StringComparison.Ordinal))));
+	}
+
+	// =====================================================================
+	// 9) (2026-10-30, o pedido 184) OS NIVEIS DIVINOS: O LOGIN E O BLUE KAIO-KEN
+	// =====================================================================
+	/// <summary>
+	/// O PEDIDO 184 no que a tabela e o catalogo nao mostram (as familias 1 e 2 cobram os numeros e as etiquetas; a 3, a estreia de cada forma
+	/// nova): (a) o save de antes, com o Blue pago a x6, entra no valor novo pelo login; (b) os 50% de maestria divina pagam o marco do Blue
+	/// Kaio-ken a quem o tem -- o Saiyajin de classe media no Blue --, e nao ao Elite, que nao aguenta o Kaio-ken no Blue (o 56x dele e o Blue
+	/// Evolution); (c) quem ja tinha passado dos 50% recebe o Blue Kaio-ken no login. E o pedido 185: (d) o Blue Kaio-ken pede tambem 50% de
+	/// maestria no proprio Blue -- com 49% nele os 50% do ki divino nao o pagam, e os 50% do Blue, no tique de quem esta nele, pagam.
+	/// </summary>
+	private void MfOsNiveisDivinos(ServerPlayer pl, List<ServerPlayer> forjados)
+	{
+		GD.Print("[marcos] -- 9) (o pedido 184) os niveis divinos: o login reve os marcos e os 50% pagam o Blue Kaio-ken (e o 185: a metade do Blue) --");
+		if (_store == null) { AfirmarMf("(montagem) o servidor tem pasta de contas", false); return; }
+		Fighter f = pl.Ficha;
+		string classeDoHost = f.Class, linhagemDoHost = f.SaiyanLineage;
+		GodKiState? kiDoHost = f.godki;
+		double blueDoHost = pl.Forma.Maestria.De(Catalogo.IdBlue);
+		var conta = new AccountSave { Conta = ContaDaBancadaDosMarcos, CriadaEm = NowMs() };
+		try
+		{
+			// (a) O SAVE DE ANTES: o Blue pago com o valor velho (x6), e sem ki divino (o Blue Kaio-ken nao entra nesta conta)
+			MfZerarOHost(pl);
+			f.godki = null;
+			f.bp_milestones_done.Add(Milestones.Blue);
+			f.bp_milestone_mult = 6;
+			conta.Slots[0] = AccountStore.DeJogador(pl, NowMs());
+			_store.Gravar(conta);
+			ServerPlayer velho = MfLogar(pl, forjados);
+			double noLogin = velho.Ficha.bp_milestone_mult;
+			List<string> falas = Ouvir(() => Treinar(velho));
+			AfirmarMf("(o pedido 184) **O LOGIN REVE OS MARCOS JA PAGOS**: o save com o Blue pago a x6 (o valor velho) entra a x32 (o 2^x do pedido 188), e o primeiro tique avisa",
+					  noLogin == 32 && velho.Ficha.bp_milestone_mult == 32 && Disse(falas, "valem mais agora") && Disse(falas, "x32"),
+					  $"no login x{noLogin:0.##}, depois x{velho.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
+			falas = Ouvir(() => { Treinar(velho); Treinar(velho); });
+			AfirmarMf("...uma vez: os tiques seguintes nao repetem o aviso", !Disse(falas, "valem mais agora"), Ultimos(falas));
+			GkRecolher(velho);
+			forjados.Remove(velho);
+
+			// (b) OS 50% NO BLUE: o Saiyajin de classe media, e o Elite de controle -- os dois com 60% de maestria no Blue (o pedido 185)
+			ServerPlayer NoBlue(string nome, string classe, double maestriaNoBlue)
+			{
+				ServerPlayer c = MfForjarSaiyajin(nome, pl, forjados);
+				c.Ficha.Class = classe;
+				c.Ficha.godki = new GodKiState { awakened = true, mastery = 49.9 };
+				c.Forma.Liberar(Catalogo.IdBlue);
+				c.Forma.Entrar(Catalogo.IdBlue);
+				c.Forma.Maestria.Por(Catalogo.IdBlue, maestriaNoBlue);
+				return c;
+			}
+			ServerPlayer media = NoBlue("BlueKaiokenNormal", "Normal", 60);
+			falas = Ouvir(() => TickDaMaestriaDivina(media, 3600));
+			AfirmarMf("(o pedido 184) **AOS 50% DE MAESTRIA DIVINA, O MARCO DO BLUE KAIO-KEN**: o Saiyajin de classe media no Blue (60% de maestria nele) cruza os 50% e o ganho vai a x64",
+					  media.Ficha.godki!.mastery >= 50 && media.Ficha.bp_milestones_done.Contains(Milestones.BlueKaioken) && media.Ficha.bp_milestone_mult == 64
+					  && Disse(falas, "Blue com Kaio-ken") && Disse(falas, "x64"),
+					  $"{media.Ficha.godki?.mastery:0.##}% x{media.Ficha.bp_milestone_mult:0.##} | {Ultimos(falas)}");
+			ServerPlayer elite = NoBlue("BlueKaiokenElite", Catalogo.ClasseElite, 60);
+			falas = Ouvir(() => TickDaMaestriaDivina(elite, 3600));
+			AfirmarMf("(o pedido 184) **SO QUEM TEM O KAIO-KEN NO BLUE**: o Elite cruza os mesmos 50% no Blue e NAO recebe o Blue Kaio-ken (o 56x dele e o Blue Evolution)",
+					  elite.Ficha.godki!.mastery >= 50 && !elite.Ficha.bp_milestones_done.Contains(Milestones.BlueKaioken) && !Disse(falas, "Blue com Kaio-ken"),
+					  $"{elite.Ficha.godki?.mastery:0.##}% {string.Join(",", elite.Ficha.bp_milestones_done)} | {Ultimos(falas)}");
+
+			// (d) (o pedido 185) A METADE DO BLUE: a mesma classe media com 49% no Blue cruza os 50% do ki divino sem o marco, e os 50% do Blue o
+			// pagam no tique de quem esta nele (o `Treinar`, que e o laco de fichas)
+			ServerPlayer crua = NoBlue("BlueKaiokenCru", "Normal", 49);
+			falas = Ouvir(() => { TickDaMaestriaDivina(crua, 3600); Treinar(crua); });
+			AfirmarMf("(o pedido 185) **O BLUE KAIO-KEN PEDE 50% DE MAESTRIA NO BLUE**: a classe media com 49% no Blue cruza os 50% de maestria divina e NAO recebe o marco",
+					  crua.Ficha.godki!.mastery >= 50 && !crua.Ficha.bp_milestones_done.Contains(Milestones.BlueKaioken) && !Disse(falas, "Blue com Kaio-ken"),
+					  $"{crua.Ficha.godki?.mastery:0.##}% e {crua.Forma.Maestria.De(Catalogo.IdBlue):0.##}% no Blue | {string.Join(",", crua.Ficha.bp_milestones_done)} | {Ultimos(falas)}");
+			crua.Forma.Maestria.Por(Catalogo.IdBlue, 50);
+			falas = Ouvir(() => Treinar(crua));
+			AfirmarMf("(o pedido 185) **OS 50% DO BLUE PAGAM O BLUE KAIO-KEN NO TIQUE**: o mesmo corpo chega aos 50% no Blue com o ki divino ja nos 50%, e o tique dentro do Blue leva o ganho a x64 com o aviso",
+					  crua.Ficha.bp_milestones_done.Contains(Milestones.BlueKaioken) && crua.Ficha.bp_milestone_mult == 64 && Disse(falas, "Blue com Kaio-ken") && Disse(falas, "x64"),
+					  $"x{crua.Ficha.bp_milestone_mult:0.##} | {string.Join(",", crua.Ficha.bp_milestones_done)} | {Ultimos(falas)}");
+
+			// (c) QUEM JA TINHA OS 50%: o Blue Kaio-ken no login -- com 60% de maestria no Blue (o pedido 185)
+			MfZerarOHost(pl);
+			f.Class = "Normal";
+			f.SaiyanLineage = "Saiyan";
+			f.godki = new GodKiState { awakened = true, mastery = 60 };
+			int blue = Catalogo.Rede(Catalogo.IdBlue);
+			pl.Forma.Liberadas = [blue];
+			pl.Forma.EstreiaVista = [blue];
+			pl.Forma.Maestria.Por(Catalogo.IdBlue, 60);
+			conta.Slots[0] = AccountStore.DeJogador(pl, NowMs());
+			_store.Gravar(conta);
+			ServerPlayer antigo = MfLogar(pl, forjados);
+			falas = Ouvir(() => Treinar(antigo));
+			AfirmarMf("(o pedido 184) **O BLUE KAIO-KEN NO LOGIN**: quem ja tinha 60% de maestria divina e 60% no Blue entra com o marco do Blue Kaio-ken (x64) e o aviso",
+					  antigo.Ficha.bp_milestones_done.Contains(Milestones.BlueKaioken) && antigo.Ficha.bp_milestone_mult == 64 && Disse(falas, "Blue com Kaio-ken"),
+					  $"x{antigo.Ficha.bp_milestone_mult:0.##} | {string.Join(",", antigo.Ficha.bp_milestones_done)} | {Ultimos(falas)}");
+			GkRecolher(antigo);
+			forjados.Remove(antigo);
+		}
+		finally
+		{
+			f.Class = classeDoHost;
+			f.SaiyanLineage = linhagemDoHost;
+			f.godki = kiDoHost;
+			pl.Forma.Maestria.Por(Catalogo.IdBlue, blueDoHost);
+		}
 	}
 
 	// =====================================================================

@@ -41,6 +41,13 @@ public partial class Fighter
 	public bool NeoTuffle;
 
 	/// <summary>
+	/// (2026-10-31, o pedido 201) A COPIA DO HOSPEDEIRO ETERNO DO NEO TUFFLE: o BP que o corpo tinha quando foi roubado (o TETO -- a copia
+	/// nunca o passa) e o DOMINIO do Tuffle sobre ela (0-100): a copia rende de 10% do roubado (dominio 0) a 100% (dominio 100). So a ficha
+	/// da copia os tem (zero em todo o resto), e vao pro disco com ela (`HospedeiroSalvo.Ficha`). Ver `GameServer.NeoTuffle.cs`.
+	/// </summary>
+	public double tuffle_bp_roubado, tuffle_dominio;
+
+	/// <summary>
 	/// A POSTURA DOS COLETORES ABERTOS (`ki_absorb_stance`) -- o verb `Absorb Ki`.
 	///
 	/// Enquanto ela esta de pe o corpo NAO ANDA (`canmove = 0` no laco do original) e todo ataque de

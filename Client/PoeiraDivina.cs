@@ -13,8 +13,9 @@ namespace Jandirus.Client;
 /// O unico brilho ligado a atmosfera divina era o HALO DOURADO do disco do planeta no espaco (um clarao de 1,55
 /// raio em volta dele, `PlanetaDesenhado.Divino.cs`), e ele saiu por este pedido -- por algumas horas: o dono o quis
 /// de volta no mesmo dia (*"o halo no planeta de god ki em si vc pode deixar"*). Ficaram OS DOIS sinais: o halo no
-/// espaco e, na SUPERFICIE, uns poucos pontos de luz derivando pelo ar enquanto se esta num mundo divino. A carta
-/// estelar continua marcando esses mundos de dourado -- e por ela que se acha um antes de pousar.
+/// espaco e, na SUPERFICIE, uns poucos pontos de luz derivando pelo ar enquanto se esta num mundo divino. (2026-10-29, o
+/// pedido 174) A carta estelar NAO marca mais esses mundos -- *"n deixe aparecer god ki planets no nav system"*: acha-se um
+/// voando (o halo) ou pousando.
 ///
 /// (Um circulo em volta do PERSONAGEM, preso ao lugar, nunca existiu neste port: o que ha no corpo sao os aneis de
 /// luz do DESPERTAR do ki divino, uma vez so -- `World.KiDivino.cs`.)

@@ -214,7 +214,15 @@ public sealed partial class GameServer
 		double fator = MenteOponentes.Fator(npc.Ficha.expressedBP, dono.Ficha.expressedBP);
 		double antes = dono.Ficha.BP;
 		int passes = (int)Math.Round(MenteOponentes.SegundosDeTreinoDaVitoria / SegundosPorFicha * fator);
-		for (int i = 0; i < passes; i++) dono.Ficha.TrainGain(_rng, 6.0 / (1 + Math.Log(2)));   // o fator do passe do T, o mesmo do `Treinar`
+		// (2026-10-29, o pedido 160) O PREMIO NAO PAGA O PEDAGIO DA MENTE: la dentro o ganho de zona e 1/4 (`GainKnobs.MindDimensionMult`), e
+		// o premio e do treino de verdade -- o mesmo do spar com habitante. O corte volta no fim (quem o escreve de novo e o lugar).
+		double zonaDaMente = dono.Ficha.zoneGainMult;
+		dono.Ficha.zoneGainMult = Math.Max(zonaDaMente, 1);
+		try
+		{
+			for (int i = 0; i < passes; i++) dono.Ficha.TrainGain(_rng, 6.0 / (1 + Math.Log(2)));   // o fator do passe do T, o mesmo do `Treinar`
+		}
+		finally { dono.Ficha.zoneGainMult = zonaDaMente; }
 		string nome = npc.Name;
 		DesfazerOOponente(dono, "");
 		MandarFicha(dono);

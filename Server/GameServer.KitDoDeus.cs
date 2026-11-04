@@ -471,7 +471,8 @@ public partial class GameServer
 	/// (`NPCs/SkyNPCs.dm:189`) -- *"apagado por HAKAI: o Enma cobra o dobro pra reconstruir a alma"*.
 	/// </summary>
 	private static double PrecoDoEnmaPara(ServerPlayer pl) =>
-		Alem.PrecoDoReviveDoEnma * (pl.Ficha.hakai_mark && !HakaiNaoEncareceDeTeste ? KitDoDeus.HakaiPrecoDoRevive : 1);
+		// (2026-11-01, o pedido 213) o preco e o multiplicador sao os do servidor (`World.CustosDoAlem`), e nao mais as constantes
+		CustosDoAlem.PrecoDoRevive * (pl.Ficha.hakai_mark && !HakaiNaoEncareceDeTeste ? CustosDoAlem.MultiplicadorDoHakai : 1);
 
 	/// <summary>
 	/// O que o Enma acrescenta a fala do preco pra quem foi apagado (`SkyNPCs.dm:191`: *"A God of Destruction erased
@@ -619,6 +620,11 @@ public partial class GameServer
 	///
 	/// DIVERGENCIA DECLARADA: no DM o tiro nasce depois do `sleep` mesmo que o corpo tenha caido no meio dele (o verb
 	/// nao pergunta de novo). Aqui a carga se perde com o corpo nocauteado ou morto -- o Ki ja foi cobrado, como la.
+	///
+	/// (2026-10-30, o pedido 181) A ESFERA DEIXOU DE SER BOLA: o dono, *"ela por mais q seja uma esfera meio q funciona como um beam, mas
+	/// levemente diferente"*. Ela e uma esfera grande (`KitDoDeus.EscalaDaEsfera`) que ENGOLE quem fere (`ReceitaDeProjetil.Engole`, ver o
+	/// `Acertar`), com o triplo do dano do DM (`KitDoDeus.EsferaBaseDano`) e a vantagem da destruicao numa colisao de ki
+	/// (`KitDoDeus.EsferaVantagemNoEmbate`). O Fury continua o tiro do DM.
 	/// </summary>
 	private void SoltarOTiroDoKit(ServerPlayer pl, EstadoDoKit e)
 	{
@@ -639,6 +645,10 @@ public partial class GameServer
 			ZonaCerta = esfera ? "" : "torso",         // `A.selectzone = "torso"` (`:279`)
 			Dom = qual,
 			Nome = esfera ? "Destroyer Sphere" : "Destruction God's Fury",
+			// (2026-10-30, o pedido 181) a esfera grande que engole, e a vantagem dela na colisao -- ver o cabecalho
+			EscalaVisual = esfera ? KitDoDeus.EscalaDaEsfera : 0,
+			Engole = esfera,
+			VantagemNoEmbate = esfera ? KitDoDeus.EsferaVantagemNoEmbate : 1,
 		}, verbo: esfera ? KitDoDeus.TiroDaEsfera : KitDoDeus.TiroDaFuria);
 		GanhoDeKi(pl);   // `usr.Blast_Gain()` (`:287`, `:330`) -- vai no pacote do tiro de cima
 	}
@@ -650,7 +660,8 @@ public partial class GameServer
 	///   * `godfury` (`:253-256`): `if(M.blocking) { M.blocking = 0; ... }` -- a guarda CAI. Ela ainda dividiu o dano
 	///     deste tiro (a conta do `Bump` vem antes, `objects.dm:342-343`); o que ela nao faz e continuar de pe.
 	///   * `goddestroyer` (`:296-299`): `P.god_hakai_try(M, "Destroyer Sphere")` -- o Hakai, pelos mesmos dois
-	///     criterios do agarrao, medidos DEPOIS do dano da esfera.
+	///     criterios do agarrao, medidos DEPOIS do dano da esfera. (2026-10-30, o pedido 181) Ela fere quem engoliu a cada
+	///     0,2 s do caminho, e cada batida pergunta: o Hakai apaga quem chega ao criterio la dentro.
 	/// </summary>
 	private void AoFerirComTiroDoKit(Projetil p, ServerPlayer dono, ServerPlayer alvo)
 	{
@@ -664,6 +675,19 @@ public partial class GameServer
 		}
 		else if (p.Dom == DomDeProjetil.Hakai) TentarHakai(dono, alvo);
 	}
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) AS BOLAS DE KI DO BILLS VESTEM A ESFERA DO HAKAI, PEQUENA -- o dono: *"As bolas de ki q o bills jogar devem
+	/// ter o mesmo efeito da esfera de destruicao porem pequenas e dando menos dano e funcionando como uma bola de ki normal, so mudando a
+	/// skin dela"*. A arte e a do Fury (`ArteDeKi.HakaiFuria`: a esfera do Hakai em 10 px, a menor); o dano, o tamanho do impacto e o resto
+	/// sao os da bola que ele atirou. Muda o que o 2026-10-23 tinha deixado (*"o Ki Wave e o Basic Blast do Bills ficam como estao"*): as
+	/// BOLAS. O raio (o Ki Wave), a esfera grande (que tem tamanho dela), o tiro de mentira e o que ninguem ve ficam como eram.
+	/// </summary>
+	private static ArteDeKi ArteDasBolasDoBills(ServerPlayer pl, ReceitaDeProjetil r, ArteDeKi arte) =>
+		EhOBills(pl) && r.Tipo != TipoDeProjetil.Beam && r.EscalaVisual <= 0 && !r.Colossal && !r.Fisico && !r.Invisivel
+		&& arte is not (ArteDeKi.HakaiEsfera or ArteDeKi.HakaiFuria)
+			? ArteDeKi.HakaiFuria
+			: arte;
 
 	// =====================================================================
 	// A ENERGY NULLIFICATION -- o verb `God_Energy_Nullification` (`:336-357`)

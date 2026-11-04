@@ -132,9 +132,103 @@ public partial class GameServer
 		}
 	}
 
+	/// <summary>
+	/// (2026-10-31, o pedido 199) OS CORPOS DAS SALAS DO PASSO S5, CONHECIDOS do jogador: o NaSala, tres tiles ao lado do ponto de chegada da
+	/// Sala da Terra (onde o jogador aparece quando entra), e o NaSalaDePlaneta, na instancia da sala de um mundo sorteado. Falso sem jogador.
+	/// </summary>
+	internal bool PalcoSN_Salas(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? eu)) return false;
+		ServerPlayer Em(string nome, ZoneKey zona, Vec2 onde)
+		{
+			ServerPlayer o = StCorpo(nome, onde, 20_000);
+			ZoneList(o.Zone.Hash).Remove(o);
+			o.Zone = zona;
+			ZoneList(o.Zone.Hash).Add(o);
+			eu.Social.Fotografar(o.Assinatura, o.Name, o.Race, "Male", 25, NowMs());
+			return o;
+		}
+		ZoneKey sala = ZoneKey.Premade(ZonaDaSala);
+		Em("NaSala", sala, PontoDeNascimento(sala) + new Vec2(3 * ZoneCollision.TileSize, 0));
+		ZoneKey dePlaneta = SalaDePlaneta.Interior(4242UL);
+		Em("NaSalaDePlaneta", dePlaneta, PontoDeNascimento(sala));
+		return true;
+	}
+
+	/// <summary>Onde o jogador estava antes de o passo S5 o levar pra Sala -- pra devolver.</summary>
+	private (ZoneKey Zona, Vec2 Pos)? _casaDoPalcoSN;
+
+	/// <summary>
+	/// (2026-10-31, o pedido 199) O jogador ENTRA na Sala da Terra (a viagem de producao, `MoveToZone`, pro ponto de chegada dela) ou volta
+	/// pro lugar de onde saiu. Falso sem jogador.
+	/// </summary>
+	internal bool PalcoSN_NaSala(int id, bool entrar)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		if (entrar)
+		{
+			_casaDoPalcoSN ??= (pl.Zone, pl.Pos);
+			ZoneKey sala = ZoneKey.Premade(ZonaDaSala);
+			MoveToZone(id, sala, PontoDeNascimento(sala));
+			return true;
+		}
+		if (_casaDoPalcoSN is { } casa)
+		{
+			_casaDoPalcoSN = null;
+			MoveToZone(id, casa.Zona, casa.Pos);
+		}
+		return true;
+	}
+
+	/// <summary>O Majin do passo S6 -- o id dele e a chave do interior. Zero antes do palco.</summary>
+	private int _majinDoPalcoSN;
+
+	/// <summary>A celula do interior onde o jogador cai no passo S6; os dois absorvidos ficam tres tiles a cada lado dela.</summary>
+	private static readonly (int X, int Y) CelulaDoPalcoSN = (50, 50);
+
+	/// <summary>
+	/// (2026-11-02, o pedido 224) OS CORPOS DO PASSO S6, CONHECIDOS do jogador: o Majin, tres tiles a oeste dele, e dois absorvidos no
+	/// INTERIOR desse Majin (`InteriorDoMajin.De`, a zona pra onde a absorcao leva) -- o Absorvido e o OutroAbsorvido, um de cada lado da
+	/// celula onde o jogador cai quando entra (<see cref="PalcoSN_NaBarriga"/>). Falso sem jogador.
+	/// </summary>
+	internal bool PalcoSN_Absorvidos(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? eu)) return false;
+		ServerPlayer Conhecido(ServerPlayer o)
+		{
+			eu.Social.Fotografar(o.Assinatura, o.Name, o.Race, "Male", 25, NowMs());
+			return o;
+		}
+		ServerPlayer majin = Conhecido(StCorpo("Majin", Em(eu.Pos, -3, 0), 20_000));
+		_majinDoPalcoSN = majin.Id;
+		ZoneKey barriga = InteriorDoMajin.De(majin.Id);
+		foreach ((string nome, int lado) in new[] { ("Absorvido", 3), ("OutroAbsorvido", -3) })
+		{
+			ServerPlayer o = Conhecido(StCorpo(nome, Em(InteriorDoMajin.PixelDe(CelulaDoPalcoSN), lado, 0), 20_000));
+			ZoneList(o.Zone.Hash).Remove(o);
+			o.Zone = barriga;
+			ZoneList(o.Zone.Hash).Add(o);
+		}
+		return true;
+	}
+
+	/// <summary>
+	/// (2026-11-02, o pedido 224) O jogador ENTRA no interior do Majin do passo S6 (a viagem de producao, `MoveToZone`), na celula do meio,
+	/// entre os dois absorvidos. A volta e a da Sala (`PalcoSN_NaSala(id, false)`: o mesmo lugar guardado). Falso sem jogador ou sem o palco.
+	/// </summary>
+	internal bool PalcoSN_NaBarriga(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _majinDoPalcoSN == 0) return false;
+		_casaDoPalcoSN ??= (pl.Zone, pl.Pos);
+		MoveToZone(id, InteriorDoMajin.De(_majinDoPalcoSN), InteriorDoMajin.PixelDe(CelulaDoPalcoSN));
+		return true;
+	}
+
 	/// <summary>Tira os corpos do palco, o scouter e a skill, e devolve o BP (e o ki divino do passo S4).</summary>
 	internal void PalcoSN_Limpar(int id)
 	{
+		PalcoSN_NaSala(id, false);   // ...e de dentro do Majin do passo S6, que guarda o mesmo lugar
+		_majinDoPalcoSN = 0;
 		PalcoSN_Despertar(id, false);
 		PalcoSN_MeuPoder(id, -1);
 		PalcoSN_Scouter(id, false);

@@ -718,11 +718,16 @@ public partial class GameServer
 		AdiantoDoRelogioDeTeste += (long)(KitDoDeus.TiquesDeCarga(deus.Ficha.Eactspeed) * TempoDoDm.MsPorTique) + 1;
 		PulsoDoKitDoDeus();
 		List<Projetil> tiros = TirosDe(deus);
-		AfirmarGdk("a esfera nasce: `basedamage` 2, sem deflexao, sem zona propria, com o dom do HAKAI (`goddestroyer`, `:294-299`) -- e a "
-				  + "arte e a ESFERA DO HAKAI (dono, 2026-10-23)",
-				  tiros.Count == 1 && Math.Abs(tiros[0].BaseDano - 2) < 1e-9 && !tiros[0].Deflectivel && tiros[0].ZonaCerta.Length == 0
-				  && tiros[0].Dom == DomDeProjetil.Hakai && tiros[0].Arte == ArteDeKi.HakaiEsfera,
-				  tiros.Count == 1 ? $"base {tiros[0].BaseDano} zona '{tiros[0].ZonaCerta}' dom {tiros[0].Dom} arte {tiros[0].Arte}" : $"{tiros.Count} tiro(s)");
+		// (2026-10-30, o pedido 181) a potencia deixou de ser o `basedamage` 2 do DM: e o triplo do dano (2 x raiz de 3, a potencia entra ao
+		// quadrado) -- e a esfera virou esfera GRANDE, uma vez e meia a bola, que engole. O numero vai LITERAL: a regua nao le a constante.
+		AfirmarGdk("a esfera nasce: sem deflexao, sem zona propria, com o dom do HAKAI (`goddestroyer`, `:294-299`), a arte da ESFERA DO HAKAI "
+				  + "(dono, 2026-10-23) -- e (o pedido 181) **A POTENCIA DO TRIPLO DO DANO** (2 x raiz de 3, no lugar do `basedamage` 2), uma "
+				  + "esfera GRANDE (1,5x) que ENGOLE",
+				  tiros.Count == 1 && Math.Abs(tiros[0].BaseDano - 2 * Math.Sqrt(3)) < 1e-9 && !tiros[0].Deflectivel && tiros[0].ZonaCerta.Length == 0
+				  && tiros[0].Dom == DomDeProjetil.Hakai && tiros[0].Arte == ArteDeKi.HakaiEsfera
+				  && Math.Abs(tiros[0].EscalaVisual - 1.5) < 1e-9 && tiros[0].EsferaGrande && tiros[0].Engole,
+				  tiros.Count == 1 ? $"base {tiros[0].BaseDano:0.####} zona '{tiros[0].ZonaCerta}' dom {tiros[0].Dom} arte {tiros[0].Arte} escala "
+									 + $"{tiros[0].EscalaVisual} grande {tiros[0].EsferaGrande} engole {tiros[0].Engole}" : $"{tiros.Count} tiro(s)");
 		LimparTudoDaBancada([deus]);
 
 		// O MEMBRO E SORTEADO, entao a prova e por INVARIANTE em varias rodadas: com o golpe nao-letal um impacto no
@@ -749,6 +754,81 @@ public partial class GameServer
 		finally { TiroDoKitSemDomDeTeste = false; }
 
 		AArteDoHakai(deus, chao);
+		AEsferaQueEngole();   // (2026-10-30) o pedido 181
+	}
+
+	/// <summary>
+	/// 5c) (2026-10-30, o pedido 181) A DESTROYER SPHERE COMO O DONO A PEDIU: *"ao bater no inimigo, o inimigo vai ficar dentro da esfera
+	/// sendo levado junto com ela e tomando dano, no final recebendo o dano, e essa esfera por ser feita de energia da destruicao deve dar
+	/// bastante dano (acima dos padroes de ki) e alem disso ter vantagem em colisao de ki"*. O tiro de verdade (o verb, sem a carga) voa pelo
+	/// tique de producao ate um corpo UMA VEZ E MEIA mais forte que ela -- que a escada do raio NAO levaria (`KiContraCorpo.Arrasta`: so o
+	/// mais fraco) -- e a bancada segue os dois, tique a tique, ate o estouro.
+	/// </summary>
+	private void AEsferaQueEngole()
+	{
+		GD.Print("[godkit] -- 5c) A ESFERA QUE ENGOLE (o pedido 181): dentro dela, levado, apanhando, e o estouro no fim --");
+		const int T = ZoneCollision.TileSize;
+		(ServerPlayer deus, Vec2 chao) = CenaDoKit(tiles: 40);
+		ServerPlayer v = ForjarGdk("Engolido", chao + new Vec2(5 * T, 0), deus.Ficha.expressedBP * 1.5);
+		if (TiroDoKitNaHora(deus, KitDoDeus.VerbEsfera) is not { } p) { AfirmarGdk("(montagem) a esfera nasce do verb", false); return; }
+		double razao = KiContraCorpo.Razao(v.Ficha.expressedBP, p.Bp);
+
+		// ---- o voo: o passo livre dela, o contato, o caminho com ele dentro e o estouro ----
+		int explosoesAntes = ExplosoesDoFimDoAlcanceDeTeste, tiquesLevado = 0, tiquesPreso = 0;
+		bool engoliu = false;
+		float passoLivre = 0, doMeio = float.MaxValue, andouLevado = 0;
+		double vidaNoContato = -1, vidaAntesDoEstouro = -1;
+		for (int i = 0; i < 600 && p.Vivo; i++)
+		{
+			Vec2 esferaAntes = p.Pos, alvoAntes = v.Pos;
+			double vida = v.Ficha.HP;
+			TickDosProjeteis(Protocol.TickSeconds);
+			if (!engoliu && p.Arrastando == v.Id)
+			{
+				engoliu = true;
+				doMeio = Vec2.Distance(v.Pos, p.Pos);
+				vidaNoContato = vida;
+			}
+			else if (!engoliu) passoLivre = MathF.Max(passoLivre, Vec2.Distance(p.Pos, esferaAntes));
+			else if (p.Vivo && p.Arrastando == v.Id)
+			{
+				tiquesLevado++;
+				andouLevado += Vec2.Distance(v.Pos, alvoAntes);
+				if (v.Combate.Stun > 0) tiquesPreso++;
+				vidaAntesDoEstouro = v.Ficha.HP;
+			}
+		}
+		float passoLevado = andouLevado / Math.Max(1, tiquesLevado);
+		bool estourou = !p.Vivo && p.Fim == FimDeProjetil.Explodiu && ExplosoesDoFimDoAlcanceDeTeste == explosoesAntes + 1;
+
+		AfirmarGdk("(o pedido 181) **A ESFERA ENGOLE QUEM FERE**: o corpo uma vez e meia mais forte que ela (que a escada do raio deixaria onde "
+				  + "esta) vai pro MEIO dela no contato",
+				  razao > 1.2 && razao < KiContraCorpo.VezesDaParede && engoliu && doMeio < 2,
+				  $"razao {razao:0.##}; engoliu {engoliu}; a {doMeio:0.#} px do meio dela (o raio dela: {Projetil.RaioDeImpacto * p.EscalaVisual:0} px)");
+		AfirmarGdk("(o pedido 181) **...E O LEVA NA VELOCIDADE DELA, PRESO**: la dentro ele anda o que ela anda (e nao o passo lento do mais "
+				  + "forte que um raio empurra), atordoado o caminho inteiro",
+				  tiquesLevado > 5 && passoLevado >= 0.8f * passoLivre && tiquesPreso == tiquesLevado,
+				  $"{tiquesLevado} tiques levado; {passoLevado:0.#} px por tique (ela, solta: {passoLivre:0.#}); preso em {tiquesPreso}");
+		AfirmarGdk("(o pedido 181) **...APANHANDO NO CAMINHO, E COM O ESTOURO NO FIM**: a vida cai la dentro, e o fim do alcance estoura nele",
+				  vidaNoContato > 0 && vidaAntesDoEstouro >= 0 && vidaAntesDoEstouro < vidaNoContato && estourou && v.Ficha.HP < vidaAntesDoEstouro,
+				  $"vida {vidaNoContato:0.#} no contato -> {vidaAntesDoEstouro:0.#} antes do estouro -> {v.Ficha.HP:0.#}; fim {p.Fim}; "
+				  + $"explosoes {ExplosoesDoFimDoAlcanceDeTeste - explosoesAntes}");
+
+		// ---- o dano da destruicao e a vantagem na colisao: as contas de producao, com a esfera de verdade ----
+		// O triplo do dano: a mesma batida com a potencia do DM (o `basedamage` 2 LITERAL -- a regua nao le a constante que o pedido mudou).
+		double batida = DanoDeKi.Final(p.ModsAgora(), p.BaseDano, p.MaxDano, p.Bp, v.Combate, false, p.Fisico);
+		double batidaDoDm = DanoDeKi.Final(p.ModsAgora() / p.BaseDano * 2, 2, p.MaxDano, p.Bp, v.Combate, false, p.Fisico);
+		AfirmarGdk("(o pedido 181) **O DANO DA DESTRUICAO E O TRIPLO**: a batida da esfera contra a mesma batida com o `basedamage` 2 do DM",
+				  batidaDoDm > 0 && Math.Abs(batida / batidaDoDm - 3) < 0.01, $"{batida:0.##} contra {batidaDoDm:0.##} ({batida / Math.Max(batidaDoDm, 1e-9):0.###}x)");
+		// A vantagem: contra um tiro com o MESMO poder de antes da vantagem (o mesmo BP, os mesmos mods e a mesma potencia), num raio, a
+		// esfera vence o choque -- o empate de dois iguais seria a faixa de 0,7 a 1,3 (`KiContraKi.Decidir`).
+		double semAVantagem = EmbateDeKi.PoderDoFeixe(p.Bp, p.ModsAgora(), p.BaseDano);
+		AfirmarGdk("(o pedido 181) **A VANTAGEM NA COLISAO DE KI**: o poder dela num embate e o dobro do que o tiro de mesmo poder teria, e "
+				  + "contra ele ela vence o choque",
+				  Math.Abs(p.PoderDeEmbate() / semAVantagem - 2) < 1e-9
+				  && KiContraKi.Decidir(p.PoderDeEmbate(), semAVantagem, souRaio: false, eleERaio: true) == FimDoChoqueDeKi.EuVenco,
+				  $"{p.PoderDeEmbate():0.###e0} contra {semAVantagem:0.###e0} ({p.PoderDeEmbate() / semAVantagem:0.##}x)");
+		LimparTudoDaBancada([deus]);
 	}
 
 	/// <summary>

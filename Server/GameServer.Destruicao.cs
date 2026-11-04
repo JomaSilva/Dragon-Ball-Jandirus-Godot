@@ -1104,6 +1104,16 @@ public partial class GameServer
 		ServerPlayer? algoz = e.IdDoAlgoz != 0 && _players.TryGetValue(e.IdDoAlgoz, out ServerPlayer? a)
 							  && !a.Ficha.dead ? a : null;
 
+		// (2026-10-29, o pedido 150) O MUNDO ENTRA NA CONTA DE QUEM O DESTRUIU (so gente: o chefe de saga nao conta) -- quem destroi muitos vira
+		// ameaca pro Deus da Destruicao. Ver `EhAmeacaAoEquilibrio`.
+		if (algoz != null && EhPessoa(algoz))
+		{
+			algoz.Ficha.planetasDestruidos++;
+			Persistir(algoz);
+			// (2026-10-31, o pedido 198) ...e na ficha da Patrulha Galactica: destruir um planeta e o crime que mais pesa.
+			CrimeDePlaneta(algoz, zona.Name);
+		}
+
 		// ============================ A FURIA DO MUNDO, MEDIDA UMA VEZ ============================
 		// Fora do laco de proposito: ela e do PLANETA e nao de quem esta nele, entao calcula-la por
 		// corpo seria a mesma conta N vezes -- e, pior, abriria a porta pra alguem um dia enfiar um
@@ -1223,6 +1233,10 @@ public partial class GameServer
 		ForcarClima(zona, TipoDeClima.Limpo, 0);
 
 		AnunciarNoMundo($"{NomeDoMundo(zona)} NÃO EXISTE MAIS.");
+		// (2026-10-31, o pedido 198) O JORNAL GALACTICO conta o planeta destruido, e por quem -- ver `GameServer.JornalGalactico.cs`.
+		Noticiar(TipoDeNoticia.PlanetaDestruido, algoz != null
+			? $"o planeta {NomeDoMundo(zona)} foi destruído por {algoz.Name}."
+			: $"o planeta {NomeDoMundo(zona)} foi destruído.");
 
 		// ============================ E AS ESFERAS DO DRAGAO DAQUI VAO JUNTO ============================
 		// **Depois** do anuncio de proposito: a ordem em que as duas linhas chegam ao chat e a ordem dos
@@ -1802,7 +1816,9 @@ public partial class GameServer
 
 		// 2. O CUSTO -- os dois numeros do `1A Defines` do original.
 		double bpExigido = MortePlanetaria.BpExigido(pl.Ficha.Planetgrav);
-		if (pl.Ficha.Ki < MortePlanetaria.KiDaDestruicao || pl.Ficha.expressedBP < bpExigido)
+		// (2026-11-01, o pedido 220) o morto paga 25% menos -- o portao, a frase e o desconto pelo mesmo numero
+		double kiDaDestruicao = MortePlanetaria.KiDaDestruicao * pl.Ficha.FatorDeKiDoEstado;
+		if (pl.Ficha.Ki < kiDaDestruicao || pl.Ficha.expressedBP < bpExigido)
 		{
 			// O PODER DE QUEM PEDE SO SAI EM NUMERO COM SCOUTER (a regra principal do BP; ver `PoderNaFrase`). Sem
 			// ele NAO vai porcentagem: o limiar e do MUNDO e esta escrito nesta mesma frase -- limiar vezes fracao
@@ -1810,14 +1826,14 @@ public partial class GameServer
 			string meuPoder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, pl.Ficha.expressedBP))
 				? $"{pl.Ficha.expressedBP:0} de BP"
 				: pl.Ficha.expressedBP < bpExigido ? "um poder que ainda não alcança isso" : "um poder que alcança";
-			Avisar(pl, $"você não tem energia. São {MortePlanetaria.KiDaDestruicao:0} de Ki e "
+			Avisar(pl, $"você não tem energia. São {kiDaDestruicao:0} de Ki e "
 					   + $"{bpExigido:0} de BP expresso aqui (a gravidade deste planeta é "
 					   + $"{pl.Ficha.Planetgrav:0.##}x). Você tem {pl.Ficha.Ki:0} de Ki e {meuPoder}.");
 			return;
 		}
 
 		// 4. O KI SAI AGORA (`:338`).
-		pl.Ficha.Ki -= MortePlanetaria.KiDaDestruicao;
+		pl.Ficha.Ki -= kiDaDestruicao;
 
 		// 6. `var/mexpressedBP = usr.expressedBP` (`:342`) -- fixado AQUI, antes da carga.
 		_cargaDoPlanetDestroy[pl.Id] = (MortePlanetaria.SegundosDeCarga, zona, pl.Ficha.expressedBP);
@@ -1930,6 +1946,9 @@ public partial class GameServer
 		// `EnterrarSetsDeMundosMortos`.
 		// ================================================================================
 		ErguerOSetEterno();
+
+		// (2026-10-29, o pedido 151) E A SAGA QUE ESPERAVA ESTE PLANETA CHEGA AGORA, e nao na proxima virada do dia -- ver `SagaEsperaOPlaneta`.
+		VirouODia(soAsChegadasDeHoje: true);
 
 		GD.Print($"[server] '{zona.Name}' RESTAURADO -- fora da lista de mortos");
 		return true;

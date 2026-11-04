@@ -626,8 +626,25 @@ public sealed partial class GameServer
 		}
 		w.Put((byte)QuantasSupersTem(pl.Assinatura));
 		w.Put(sinal);
+
+		// (2026-10-29, o pedido 173) O SUPER RADAR: com ele na mochila, as SETE no mapa do espaco -- longe ou perto, de onde o corpo estiver.
+		// Vem no FIM do pacote, e o cliente so le se veio (servidor velho). A esfera nao sai do lugar dela (a posse e um registro), entao a
+		// marca nao entrega onde mora ninguem. Ver `TemSuperRadar`.
+		List<SuperEsfera> noMapa = TemSuperRadar(pl) ? _supers : [];
+		w.Put((byte)noMapa.Count);
+		foreach (SuperEsfera s in noMapa)
+		{
+			Vec2 p = OndeEstaASuper(s.Numero);
+			w.Put((byte)s.Numero);
+			w.Put(p.X);
+			w.Put(p.Y);
+			w.Put(s.Dono.Length > 0);
+		}
 		return w;
 	}
+
+	/// <summary>(2026-10-29, o pedido 173) O Super Radar esta na mochila? E o portao das sete no mapa (`MontarPacoteDeSupers`).</summary>
+	private static bool TemSuperRadar(ServerPlayer pl) => pl.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.SuperRadar) > 0;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--verbsteste`): o sinal dourado sai pra quem NAO tem o Dragon Radar -- o que

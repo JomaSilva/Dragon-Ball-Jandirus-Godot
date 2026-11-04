@@ -43,6 +43,12 @@ public partial class GameServer
 	private sealed class ConfiguracaoDoServidor
 	{
 		public string ModoDeRacas { get; set; } = "padrao";
+
+		// (2026-11-01, o pedido 213) OS CUSTOS DO OUTRO MUNDO -- ver `Core/World/CustosDoAlem.cs`. O arquivo de antes nao os tem: o padrao vale.
+		public double PrecoDaVoltaNoEnma { get; set; } = Jandirus.Core.World.Alem.PrecoDoReviveDoEnma;
+		public double MultiplicadorDoHakaiNoEnma { get; set; } = Jandirus.Core.Ranks.KitDoDeus.HakaiPrecoDoRevive;
+		public double PrecoDoPasseDoEnma { get; set; } = Jandirus.Core.World.Alem.PrecoDoPasseDoEnma;
+		public int DiasDoPasseDoEnma { get; set; } = Jandirus.Core.World.Alem.DiasDoPasseDoEnma;
 	}
 
 	private static string TextoDoModo(ModoDeRacas modo) => modo == ModoDeRacas.Aleatorio ? "aleatorio" : "padrao";
@@ -82,6 +88,8 @@ public partial class GameServer
 	{
 		ModoDeRacas = LerModo(Path.Combine(_store?.Pasta ?? PastaDosSaves(), NomeDoArquivoDoServidor));
 		GD.Print($"[server] racas dos personagens novos: {SorteioDeRaca.Nome(ModoDeRacas)}");
+		// (2026-11-01, o pedido 213) e os custos do Outro Mundo, do mesmo arquivo -- ver `GameServer.CustosDoAlem.cs`
+		CarregarCustosDoAlem(Path.Combine(_store?.Pasta ?? PastaDosSaves(), NomeDoArquivoDoServidor));
 	}
 
 	/// <summary>
@@ -91,15 +99,7 @@ public partial class GameServer
 	public void EscolherModoDeRacas(ModoDeRacas modo, string quem)
 	{
 		ModoDeRacas = modo;
-		string pasta = _store?.Pasta ?? PastaDosSaves();
-		try
-		{
-			Directory.CreateDirectory(pasta);
-			string caminho = Path.Combine(pasta, NomeDoArquivoDoServidor);
-			File.WriteAllText(caminho, JsonSerializer.Serialize(new ConfiguracaoDoServidor { ModoDeRacas = TextoDoModo(modo) },
-																 new JsonSerializerOptions { WriteIndented = true }));
-		}
-		catch (Exception e) { GD.PushWarning($"[server] nao deu pra gravar o {NomeDoArquivoDoServidor}: {e.Message}"); }
+		GravarConfiguracaoDoServidor();
 		GD.Print($"[server] racas dos personagens novos: {SorteioDeRaca.Nome(modo)} (por {quem})");
 	}
 
@@ -107,6 +107,31 @@ public partial class GameServer
 	/// AS VAGAS VAZIAS NO MODO DE AGORA, antes de toda lista de vagas: no aleatorio, cada vaga vazia sem sorteio ganha o
 	/// dela; no padrao (e em vaga ocupada), sorteio velho nenhum fica pendurado. Grava a conta quando muda alguma coisa.
 	/// </summary>
+	/// <summary>
+	/// (2026-11-01, o pedido 213) O `servidor.json` INTEIRO: o modo das racas e os custos do Outro Mundo. As duas portas que o mudam (o modo e
+	/// os custos) gravam por aqui, e por isso uma nao apaga o que a outra guardou. Quem grava antes de o boot ler os custos (a tela de
+	/// hospedar escolhe o modo antes de o servidor subir) le os do arquivo primeiro -- senao gravaria o padrao por cima deles.
+	/// </summary>
+	private void GravarConfiguracaoDoServidor()
+	{
+		string pasta = _store?.Pasta ?? PastaDosSaves();
+		try
+		{
+			Directory.CreateDirectory(pasta);
+			string caminho = Path.Combine(pasta, NomeDoArquivoDoServidor);
+			if (!_custosDoAlemLidos) CarregarCustosDoAlem(caminho);
+			File.WriteAllText(caminho, JsonSerializer.Serialize(new ConfiguracaoDoServidor
+			{
+				ModoDeRacas = TextoDoModo(ModoDeRacas),
+				PrecoDaVoltaNoEnma = Jandirus.Core.World.CustosDoAlem.PrecoDoRevive,
+				MultiplicadorDoHakaiNoEnma = Jandirus.Core.World.CustosDoAlem.MultiplicadorDoHakai,
+				PrecoDoPasseDoEnma = Jandirus.Core.World.CustosDoAlem.PrecoDoPasse,
+				DiasDoPasseDoEnma = Jandirus.Core.World.CustosDoAlem.DiasDoPasse,
+			}, new JsonSerializerOptions { WriteIndented = true }));
+		}
+		catch (Exception e) { GD.PushWarning($"[server] nao deu pra gravar o {NomeDoArquivoDoServidor}: {e.Message}"); }
+	}
+
 	private void PrepararVagas(AccountSave acc)
 	{
 		bool mudou = false;

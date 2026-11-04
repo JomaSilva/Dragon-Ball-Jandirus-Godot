@@ -107,6 +107,11 @@ public partial class GameServer
 	// =====================================================================
 	private void TickDaTropa()
 	{
+		// (2026-10-31, o pedido 198g) os viloes de saga SOLTOS carregam (e penduram o tique deles) daqui, desde o boot -- e o pulso de 10 Hz,
+		// que se desliga sozinho sem trabalho, e REARMADO enquanto houver vilao solto. Ver `GameServer.ViloesSoltos.cs`.
+		GarantirOsSoltos();
+		if (_soltos.Count > 0) LigarPulso();
+
 		// QUEM SAIU DO MUNDO (o laco de combate tirou o morto, a bancada o removeu) sai do registro -- e a vaga dele volta pra reposicao.
 		foreach (int id in _tropa.Keys.Where(id => !_players.ContainsKey(id)).ToList()) _tropa.Remove(id);
 
@@ -272,6 +277,9 @@ public partial class GameServer
 		s.Esfera = null;
 		s.Coleira = RaioDePerseguicao;
 		string caca = Array.Find(_cadeia, e => string.Equals(e.Id, s.Elo, StringComparison.OrdinalIgnoreCase))?.Tropa?.Caca ?? "";
+		// (2026-10-31, o pedido 198g) A TROPA DE UM VILAO SOLTO ataca o povo de QUALQUER raca do planeta que invade (o dono: *"atacam a
+		// populacao"*), e nao a raca de uma saga. Ver `GameServer.ViloesSoltos.cs`.
+		if (!SoldadoSoltoSoNaRacaDeTeste && s.Elo.StartsWith(ViloesSoltos.PrefixoDaTropaSolta, StringComparison.Ordinal)) caca = QualquerRaca;
 
 		// 1. QUEM O ATACOU, enquanto o rancor durar -- seja quem for (o rancor e o mesmo de todo corpo, `MarcarAgressao`).
 		if (NowMs() < npc.RancorAte && _players.TryGetValue(npc.UltimoAgressor, out ServerPlayer? agressor)
@@ -317,6 +325,12 @@ public partial class GameServer
 		}
 	}
 
+	/// <summary>A "raca" da tropa de um vilao solto: qualquer uma (menos os chefes de saga, que sao do lado dela).</summary>
+	private const string QualquerRaca = "*";
+
+	/// <summary>DEFEITO INJETADO (`--soltosteste`): a tropa solta so caca a raca de uma saga (nenhuma) -- o povo nao apanha. Falso em jogo, sempre.</summary>
+	internal static bool SoldadoSoltoSoNaRacaDeTeste;
+
 	/// <summary>O corpo de pe da raca cacada mais perto, dentro do raio -- jogador OU NPC (a tropa existe pra atacar o povo).</summary>
 	private ServerPlayer? OMaisPertoDoPovo(ServerPlayer npc, string caca, float raio)
 	{
@@ -324,7 +338,8 @@ public partial class GameServer
 		float perto = raio >= float.MaxValue ? float.MaxValue : raio * raio;
 		foreach (ServerPlayer o in ZoneList(npc.Zone.Hash))
 		{
-			if (!string.Equals(o.Race, caca, StringComparison.OrdinalIgnoreCase) || !PresaDoSoldado(npc, o, float.MaxValue)) continue;
+			bool daRaca = caca == QualquerRaca ? o.Papel?.DaSaga != true : string.Equals(o.Race, caca, StringComparison.OrdinalIgnoreCase);
+			if (!daRaca || !PresaDoSoldado(npc, o, float.MaxValue)) continue;
 			float d2 = (o.Pos - npc.Pos).LengthSquared;
 			if (d2 >= perto) continue;
 			perto = d2;

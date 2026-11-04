@@ -193,6 +193,9 @@ public static class SorteioDeNpc
 			foreach ((string p, int n) in talentos)
 				if (n > 0) niveis.Por(p, Math.Max(n, (int)molde.NivelDasSkills));
 			niveis.Aplicar(f);
+
+			// (2026-10-30, o pedido 176) o Bills leva a vocacao inteira, no nivel -- ver `ComprarTodaAVocacao`
+			if (molde.TodasDaVocacao) ComprarTodaAVocacao(livro, niveis, skills, f, raca, f.Class, molde);
 		}
 
 		// --- 5. FECHAR A FICHA ---------------------------------------------
@@ -336,6 +339,121 @@ public static class SorteioDeNpc
 			EfeitosDeSkill.Aplicar(f, cat, livro.Aprendidas);
 			livro.Recalcular(cat, ContextoDeRegra.De(f, raca, classe), raca, classe);
 		}
+	}
+
+	/// <summary>
+	/// (2026-10-30, o pedido 176) TODA A VOCACAO, NO NIVEL -- o Bills, o dono: *"por ser um dos chefes mais fortes skills no maximo"*. Depois do
+	/// sorteio de sempre, compra CADA skill das arvores da vocacao -- as dele e as sub-arvores que elas abrem (<see cref="GalhosDaVocacao"/>: a
+	/// Mind abre a Effusive Mastery e a Ki Buff Mastery) -- que a ficha puder aprender, pelas MESMAS portas do jogador (raca, classe, tier, as
+	/// regras que acendem cada galho, recalculadas a cada compra), pagando com marcos concedidos no custo exato.
+	///
+	/// AS PORTAS PEDEM PERICIA E NIVEL: a sub-arvore abre com `kieffusionskill >= 1`, a Basic Ki Efficiency acende com `kiefficiencyskill >= 5`,
+	/// e o nivel de uma skill sobe pericia e tier (os degraus do `niveis.json`). Por isso as pericias de luta vao pro maximo ANTES (o mesmo
+	/// `PericiasNoMaximo` que o servidor reaplica a cada segundo, `GameServer.DarODobroAoChefe`), e a compra roda em rodadas: compra o que abriu,
+	/// poe no `nivelDasSkills`, aplica os degraus e tenta de novo, ate nada mais abrir.
+	///
+	/// Fora da vocacao nada muda: sao "as skills dele", e nao o livro inteiro do jogo. Com a Basic Ki Effusion no 100 vem a armadura de ki (20)
+	/// que o Bills nao tinha.
+	///
+	/// E NENHUMA TECNICA NOVA PRO CEREBRO: a skill (ou a concessao de degrau) que traria uma tecnica que a IA usa -- de longe (`TecnicasDeLonge`)
+	/// ou de perto (`TecnicasDeLuta`) -- e que ele ainda nao sabe fica de fora. A r1 do ag/billsforte deu a ele as sub-arvores inteiras (Masenko,
+	/// Death Ball, Kienzan e mais treze de longe) e o cerebro largou o kit do Deus da Destruicao (a Fury e a Destroyer Sphere), o jeito de lutar
+	/// que o dono pediu; a r2, so sem as de longe, ainda dava trinta e sete de perto (Wolf Fang Fist, Zanzoken Rush, Hold, Ki Blade...), e a luta
+	/// dele passou a andar pelo mapa -- o Whis nao achava mais de onde assistir. As maestrias e as passivas entram; tecnica nova, nao (a Basic Ki
+	/// Efficiency, que traria o buff Efficiency, fica de fora com a armadura dela).
+	/// </summary>
+	private static void ComprarTodaAVocacao(SkillBook livro, NiveisDeSkill niveis, SkillCatalog cat, Fighter f, string raca, string classe,
+											MoldeDeNpc molde)
+	{
+		HashSet<string> galhos = GalhosDaVocacao(cat, molde.Vocacao);
+		var sabidos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (string p in livro.Aprendidas)
+			if (cat.Get(p) is { } s)
+				foreach (string v in TecnicasDoCerebroDe(s)) sabidos.Add(v);
+		bool SemTecnicaNova(Skill s) => TecnicasDoCerebroDe(s).All(sabidos.Contains);
+		f.PericiasNoMaximo(PericiaDoChefe, []);
+		for (int rodada = 0; rodada < 20; rodada++)
+		{
+			var novas = new List<string>();
+			// O MESMO CONTEXTO DO SERVIDOR (`GameServer.Skills`): a ficha ao vivo, e o galho que um degrau de nivel acende
+			ContextoDeRegra ctx = ContextoDeRegra.De(f, raca, classe);
+			ctx.DestravadasPorDegrau = () => niveis.Destravadas();
+			for (int volta = 0; volta < 400; volta++)
+			{
+				livro.Recalcular(cat, ctx, raca, classe);
+				// `SemMarcos` tambem: o orcamento do sorteio ja foi gasto, e o que falta e concedido logo abaixo, no custo exato
+				Skill? proxima = livro.Ofertas(cat, raca, classe, vilao: false)
+					.Where(o => o.Estado is Recusa.Pode or Recusa.SemMarcos && galhos.Contains(o.Skill.Path) && SemTecnicaNova(o.Skill))
+					.Select(o => o.Skill)
+					.OrderBy(s => s.Tier)
+					.ThenBy(s => s.Path, StringComparer.Ordinal)
+					.FirstOrDefault();
+				if (proxima == null) break;
+
+				livro.Conceder(SkillCatalog.CustoDe(proxima));
+				if (livro.Aprender(cat, proxima.Path, raca, classe, vilao: false) != Recusa.Pode) break;
+				novas.Add(proxima.Path);
+				EfeitosDeSkill.Aplicar(f, cat, livro.Aprendidas);
+			}
+			// O QUE UM DEGRAU DE NIVEL CONCEDE (o `ConcederPorDegrau` do servidor), ja no nivel do molde
+			foreach ((string p, int n) in niveis.ConcessoesPendentes(livro).ToList())
+			{
+				if (cat.Get(p) is not { Arvore: false } dada || !SemTecnicaNova(dada)) continue;
+				livro.Dar(p);
+				niveis.Por(p, Math.Max(n, (int)molde.NivelDasSkills));
+				novas.Add(p);
+			}
+			if (novas.Count == 0) break;
+			if (molde.NivelDasSkills > 0)
+				foreach (string p in novas) niveis.Por(p, Math.Max(niveis.Nivel(p), (int)molde.NivelDasSkills));
+			niveis.Aplicar(f);
+			EfeitosDeSkill.Aplicar(f, cat, livro.Aprendidas);
+		}
+	}
+
+	/// <summary>A pericia de luta do chefe: o teto da escala do DM -- a mesma do servidor (`GameServer.PericiaDoChefe`).</summary>
+	private const double PericiaDoChefe = 100;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 176) AS TECNICAS QUE O CEREBRO USARIA E QUE ESTA SKILL TRAZ: os verbos dela e os dos degraus de nivel dela
+	/// (`niveis.json`) que estao no arsenal da IA -- de longe (`TecnicasDeLonge`) ou de perto (o `Gate` de uma linha da `TecnicasDeLuta`).
+	/// </summary>
+	private static IEnumerable<string> TecnicasDoCerebroDe(Skill s)
+	{
+		foreach (string v in s.Verbos)
+			if (EhDoCerebro(v)) yield return v;
+		if (RegrasDeNivel.Get(s.Path) is not { } regra) yield break;
+		foreach (Jandirus.Core.Skills.Degrau d in regra.Degraus)
+			foreach (string v in d.Verbos)
+				if (EhDoCerebro(v)) yield return v;
+	}
+
+	private static bool EhDoCerebro(string verbo) => TecnicasDeLonge.Get(verbo) != null || GatesDeLuta.Contains(verbo);
+
+	private static HashSet<string>? _gatesDeLuta;
+
+	/// <summary>Os verbos que destravam uma tecnica de perto da IA (o `Gate` de cada linha da `TecnicasDeLuta`). Montado na primeira pergunta.</summary>
+	private static HashSet<string> GatesDeLuta =>
+		_gatesDeLuta ??= new HashSet<string>(TecnicasDeLuta.Todas.ToArray().Select(l => l.Gate), StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// (2026-10-30, o pedido 176) OS GALHOS DAS ARVORES DA VOCACAO: os das arvores dela e os das que as regras `arvore;` delas abrem (a Mind
+	/// abre a Effusive Mastery e a Ki Buff Mastery), recursivamente.
+	/// </summary>
+	private static HashSet<string> GalhosDaVocacao(SkillCatalog cat, string[] vocacao)
+	{
+		var galhos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var vistas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var fila = new Queue<string>(vocacao);
+		while (fila.Count > 0)
+		{
+			string p = fila.Dequeue();
+			if (!vistas.Add(p) || cat.Get(p) is not { Arvore: true } arvore) continue;
+			foreach (string g in arvore.Galhos) galhos.Add(g);
+			foreach (RegraDeArvore r in arvore.RegrasDeGalho)
+				if (r.Tipo == TipoDeRegra.AbreArvore) fila.Enqueue(r.Alvo);
+		}
+		return galhos;
 	}
 
 	/// <summary>

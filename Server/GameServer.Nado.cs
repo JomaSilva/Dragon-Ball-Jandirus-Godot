@@ -423,7 +423,7 @@ public partial class GameServer
 		// equivalente disso pro nado: aqui tambem nao tem.
 		// ==========================================================================
 		f.swimmastery = Nado.SubirMaestria(f.swimmastery, dt);
-		f.Ki -= Nado.CustoPorSegundo(f.MaxKi, f.KiMod, f.swimmastery) * dt;
+		f.Ki -= Nado.CustoPorSegundo(f.MaxKi, f.KiMod, f.swimmastery) * dt * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (f.Ki < 0) f.Ki = 0;   // `if(Ki<0) Ki=0` (`Stats.dm:404`)
 
 		// O GANHO DE BP: `Swim_Gain()` (`Movement.dm:1-4`), e so quando a direcao muda.

@@ -82,8 +82,10 @@ public partial class GameServer
 	// QUEM
 	// =====================================================================
 	/// <summary>Este corpo e um Corrupted Majin -- o unico que anda na saga (`is_corrupted_majin()`, `MajinSaga.dm:43-44`).</summary>
+	// (2026-11-01, o pedido 218) O CHEFE FICA DE FORA: o Majin Boo da saga e da classe Corrupted Majin (o molde), mas a saga dele e a do
+	// `GameServer.SagaDoBuu.cs` -- absorver gente pela porta do Majin jogador nao pode subir a forma da saga do jogador nele.
 	private static bool CorrompidoDaSaga(ServerPlayer pl) =>
-		SagaDoMajin.EhCorrompido(pl.Race, pl.Ficha.ParentRace, pl.Ficha.Class);
+		pl.Papel is not { EhChefe: true } && SagaDoMajin.EhCorrompido(pl.Race, pl.Ficha.ParentRace, pl.Ficha.Class);
 
 	/// <summary>Este corpo destravou a Forma Pura -- e com ela o sistema inteiro da sanidade.</summary>
 	internal static bool ComAFormaPura(ServerPlayer pl) => pl.Ficha.majin_pure_unlocked && CorrompidoDaSaga(pl);
@@ -698,7 +700,7 @@ public partial class GameServer
 
 		pl.Forma.LoucuraSegundos += dt;
 		double mult = MultiplicadorDaForma(pl);
-		f.Ki = Math.Max(0, f.Ki - SagaDoMajin.DrenoInsano(mult) * f.MaxKi * dt);
+		f.Ki = Math.Max(0, f.Ki - SagaDoMajin.DrenoInsano(mult) * f.MaxKi * dt * f.FatorDeKiDoEstado);   // (2026-11-01, o pedido 220) o morto paga 25% menos
 
 		TomarAsRedeasDaLoucura(pl);
 

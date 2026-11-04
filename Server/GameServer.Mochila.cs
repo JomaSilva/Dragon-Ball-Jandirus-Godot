@@ -388,6 +388,22 @@ public sealed partial class GameServer
 			: PesoDeTreino.MaximoDe(pesos);
 
 	/// <summary>
+	/// (2026-10-29, o pedido 175) A PORCENTAGEM DO PESO IDEAL NESTA GRAVIDADE -- o dono: *"as pessoas tavam usando MUITO peso na gravidade e
+	/// sendo esmagadas ai n ganhavam nada, coloque um botao [...] q automaticamente ajusta o peso pro seu ideal naquela gravidade"*. O IDEAL e o
+	/// mais pesado que nao esmaga ALEM do que a gravidade ja esmaga: o esmagamento le o MAIOR dos dois (`Esmagamento.Razao` -- a razao da
+	/// gravidade e a do peso), entao ate a razao da gravidade, e no minimo 1 (o limite do corpo), o peso so rende. E nunca acima da razao em
+	/// que o ganho do peso chega no teto (`GainKnobs.WeightGainMax` / 2): dali pra cima ele so esmaga. A conta e a inversa do `WeightTick`
+	/// (`weight_ratio = Weighted x gravidade / weight_cap_hw`). Pode passar de 100: o peso maximo e leve demais pro ideal.
+	/// </summary>
+	private static double PorcentagemIdealDoPeso(Jandirus.Core.Stats.Fighter f, string pesos)
+	{
+		double gravidade = Math.Max(Jandirus.Core.Stats.Esmagamento.Gravidade(f), 1);
+		double razao = Math.Min(Math.Max(1, Jandirus.Core.Stats.Esmagamento.RazaoDaGravidade(f)), Jandirus.Core.Stats.GainKnobs.WeightGainMax / 2);
+		double kg = razao * Math.Max(f.weight_cap_hw, 1) / gravidade;
+		return 100 * kg / Math.Max(TetoDePeso(f, pesos), 1e-9);
+	}
+
+	/// <summary>
 	/// (2026-10-18) UM PESO MUDA DE ESTADO -- a melhoria, a arte: o id dele troca NO MESMO SLOT (`Inventario.Trocar`), e se era o vestido, o
 	/// vestido passa a ser o novo. Devolve o id novo.
 	/// </summary>
@@ -444,7 +460,12 @@ public sealed partial class GameServer
 
 	private void AjustarPeso(ServerPlayer pl, string pesos, string valor)
 	{
-		if (!double.TryParse(valor, out double pct) || !NumeroFinito(pct)) { Avisar(pl, "número inválido."); return; }
+		// (2026-10-29, o pedido 175) "ideal" no lugar do numero: o peso ideal desta gravidade -- ver `PorcentagemIdealDoPeso`
+		bool ideal = string.Equals(valor, PesoDeTreino.ArgumentoDoIdeal, StringComparison.Ordinal);
+		double pct;
+		if (ideal) pct = PorcentagemIdealDoPeso(pl.Ficha, pesos);
+		else if (!double.TryParse(valor, out pct) || !NumeroFinito(pct)) { Avisar(pl, "número inválido."); return; }
+		bool leveDemais = ideal && pct > PesoMaximoPct;
 		pct = Math.Clamp(pct, 0, PesoMaximoPct);
 
 		// `Weighted` E O QUANTO SE VESTE (em kg, na escala do `weight_cap_hw` -- ver `TetoDePeso`) e
@@ -483,6 +504,15 @@ public sealed partial class GameServer
 		// bancada pegou isso na segunda troca (50% e depois 100%), que e o gesto mais comum que existe.
 		// ====================================================================================================
 		pl.Ficha.Tick(agoraMs: NowMs());
+		// (2026-10-29, o pedido 175) O IDEAL E CONFERIDO DEPOIS DO TIQUE: o limite do corpo (`weight_cap_hw`) e um recorde que o tique pode ter
+		// subido com o peso novo -- a segunda conta, com ele, acerta o alvo
+		if (ideal && !leveDemais && PorcentagemIdealDoPeso(pl.Ficha, pesos) is var outra && Math.Abs(outra - pct) > 0.5 && outra <= PesoMaximoPct)
+		{
+			pct = outra;
+			pl.Ficha.Weighted = pct / 100.0 * TetoDePeso(pl.Ficha, pesos);
+			if (pct > 0 && !Jandirus.Core.Items.PesoDeTreino.PorcentagemEsquecidaDeTeste) pl.Ficha.pesoPct = pct;
+			pl.Ficha.Tick(agoraMs: NowMs());
+		}
 		RecalcularVelocidade(pl);
 		MandarFicha(pl);
 		pl.SigAtributos = "";
@@ -518,6 +548,12 @@ public sealed partial class GameServer
 			Avisar(pl, r >= Jandirus.Core.Stats.Esmagamento.RazaoQuePrende
 				? "ATENÇÃO: você não consegue nem andar com isso, e vai perder vida enquanto estiver assim."
 				: "seu corpo range sob o peso: você vai perder vida e velocidade enquanto estiver assim.");
+
+		// (2026-10-29, o pedido 175) o porque do numero, pra quem apertou o "peso ideal"
+		if (ideal)
+			Avisar(pl, leveDemais
+				? "nem o peso máximo deste chega no ideal desta gravidade -- melhore o peso máximo pra render mais."
+				: "esse é o peso ideal desta gravidade: o mais pesado que rende sem esmagar além do que a própria gravidade já esmaga.");
 	}
 
 	private void TirarPeso(ServerPlayer pl) => AjustarPeso(pl, pl.Ficha.pesoVestido, "0");

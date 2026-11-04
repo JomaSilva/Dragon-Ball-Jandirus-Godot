@@ -231,7 +231,7 @@ public partial class Aura : Node2D
     internal static Jandirus.Core.Forms.FolhaDeAura SimboloDaChama(Jandirus.Core.Forms.FolhaDeAura daForma, bool kaioken) =>
         KaiokenTomaADivinaDeTeste && kaioken ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : daForma;
 
-    private void VestirAChama() => _chama.DefinirFolha(SimboloDaChama(_folhaDaForma, _kaioken));
+    private void VestirAChama() => _chama.DefinirFolha(SimboloDaChama(_folhaDaForma, _kaioken), _kaioken);
 
     public override void _Ready()
     {
@@ -285,7 +285,9 @@ public partial class Aura : Node2D
         // O KAIO-KEN ESTA COM A FOLHA EMPRESTADA: a forma guarda a dela e a recebe de volta quando ele
         // apagar (ver `Kaioken`). Sem isto, transformar-se com o Kaio-ken aceso devolveria a chama da
         // forma por baixo do buff -- e no original a `kaioaura` fica por cima de tudo enquanto durar.
-        if (!_kaioken) _desenho.DefinirFolha(f);
+        // (2026-11-02, o pedido 223) ...MENOS SOBRE A LUZ DO BLUE: a chama dela leva o Kaio-ken por fora (o desenho 4, a chama
+        // vermelha), e o sprite vermelho fica mudo -- *"no blue kaioken o efeito da segunda imagem"*. Ver `ChamaDeAura.LevaOKaioken`.
+        _desenho.DefinirFolha(_kaioken && !ChamaDeAura.LevaOKaioken(f) ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : f);
     }
 
     /// <summary>A folha que a FORMA pediu, guardada enquanto o Kaio-ken usa o desenho. Ver <see cref="Kaioken"/>.</summary>
@@ -314,7 +316,9 @@ public partial class Aura : Node2D
     {
         if (_kaioken == ligado) return;
         _kaioken = ligado;
-        _desenho.DefinirFolha(ligado ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
+        // (2026-11-02, o pedido 223) ...MENOS SOBRE A LUZ DO BLUE: a chama dela leva o Kaio-ken por fora (o desenho 4, a chama
+        // vermelha), e o sprite vermelho fica mudo -- *"no blue kaioken o efeito da segunda imagem"*. Ver `ChamaDeAura.LevaOKaioken`.
+        _desenho.DefinirFolha(ligado && !ChamaDeAura.LevaOKaioken(_folhaDaForma) ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
         VestirAChama();
         Aplicar();
     }

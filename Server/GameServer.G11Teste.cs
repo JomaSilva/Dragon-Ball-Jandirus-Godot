@@ -77,6 +77,7 @@ public sealed partial class GameServer
 			G11CongelarEFio();
 			G11ObservarEPotencial();
 			G11DarPoderETimeStore();
+			G11ORitualDosCinco();   // (2026-10-29) o pedido 163
 		}
 		finally
 		{
@@ -996,6 +997,99 @@ public sealed partial class GameServer
 	// =====================================================================
 	// 13) DAR PODER E O TEMPO GUARDADO
 	// =====================================================================
+	// =====================================================================
+	// 13b. (2026-10-29, o pedido 163) O RITUAL DOS CINCO SAIYAJINS
+	// =====================================================================
+	private void G11ORitualDosCinco()
+	{
+		GD.Print("[g11] -- 13b) (o pedido 163) o ritual dos cinco Saiyajins: o Give Power de cinco vira o Super Saiyajin God por 5 minutos --");
+		Vec2 chao = TerraFirmeG12(14);
+		const float t = ZoneCollision.TileSize;
+		ServerPlayer alvo = Forjar("Escolhido", chao, bp: 5_000);
+		alvo.Race = alvo.Ficha.Race = "Saiyan";
+		// a linhagem do Saiyajin puro, como o `Birth` a da (`Birth.cs:183`): o corpo forjado nasce Humano e sem ela o SSG nao e da
+		// origem dele (`PedeOrigemUmaDe`) -- o C nao o acharia, e a 13f mediria a forja e nao o ritual
+		alvo.Ficha.SaiyanLineage = "Saiyan";
+		alvo.Karma = 60;
+		alvo.Ficha.BP = Math.Max(alvo.Ficha.BP, RequisitoDeGodKi(alvo));
+		alvo.Ficha.Statify();
+		var doadores = new List<ServerPlayer>();
+		for (int i = 0; i < DoadoresDoRitual; i++)
+		{
+			ServerPlayer d = ForjarG11($"Doador do Ritual {i + 1}", chao + new Vec2((i + 1) * t, 2 * t), 5_000, PathGivePowerG11T);
+			d.Race = d.Ficha.Race = "Saiyan";
+			d.Karma = i == 0 ? 40 : 60;   // o primeiro ainda nao tem o coracao pra isso
+			d.Forma.Liberar("ssj1");
+			d.AlvoId = alvo.Id;
+			doadores.Add(d);
+		}
+		long relogioAntes = AdiantoDoRelogioDeTeste;
+		try
+		{
+			foreach (ServerPlayer d in doadores) { d.Ficha.Ki = d.Ficha.MaxKi; UsarHabilidade(d, "Give_Power"); }
+			TickDoEfetorG11();
+			bool semRitualComUmDeKarmaBaixo = alvo.RitualDeusAte == 0 && alvo.Forma.Atual != IdDoSsgDoRitual;
+			AfirmarG11("13b. (o pedido 163) **COM UM DOS CINCO DE KARMA 40, NAO HA RITUAL**: o Give Power de cinco Saiyajins ao mesmo Saiyajin so conta "
+					   + "doador de karma acima de 50", semRitualComUmDeKarmaBaixo, $"ritual ate {alvo.RitualDeusAte}; forma {alvo.Forma.Atual}");
+
+			// (2026-10-29) O LENDARIO FICA DE FORA -- o dono: *"lssj fica fora do ritual"*: com os cinco de coracao justo, o mesmo alvo com a
+			// classe Legendary nao recebe nada (e a classe de verdade volta antes da dose que faz o ritual)
+			doadores[0].Karma = 60;
+			string classeDoAlvo = alvo.Ficha.Class;
+			alvo.Ficha.Class = "Legendary";
+			TickDoEfetorG11();
+			bool lendarioFora = alvo.RitualDeusAte == 0 && alvo.Forma.Atual != IdDoSsgDoRitual;
+			alvo.Ficha.Class = classeDoAlvo;
+			AfirmarG11("13h. (o dono, 2026-10-29) **O LENDARIO FICA FORA DO RITUAL**: com os cinco de coracao justo, o alvo de classe Legendary nao "
+					   + "vira Super Saiyajin God", lendarioFora, $"ritual ate {alvo.RitualDeusAte}; forma {alvo.Forma.Atual}");
+
+			TickDoEfetorG11();
+			PassarACena(alvo);   // a estreia do SSG nao segura o corpo nas medidas de baixo
+			bool comecou = alvo.RitualDeusAte > NowMs() && alvo.Forma.Atual == IdDoSsgDoRitual;
+			bool semKiDivino = alvo.Ficha.godki is not { awakened: true };
+			int redeDoSsg = Jandirus.Core.Forms.Catalogo.Def(IdDoSsgDoRitual)?.IdRede ?? -1;
+			bool foraDoDisco = !AccountStore.DeJogador(alvo, NowMs()).FormasDespertadas.Contains(redeDoSsg) && alvo.Forma.Despertou(IdDoSsgDoRitual);
+			AfirmarG11("13c. **OS CINCO DE CORACAO JUSTO FAZEM O RITUAL**: o sexto vira Super Saiyajin God -- sem o ki divino desperto",
+					   comecou && semKiDivino, $"forma {alvo.Forma.Atual}; ate {alvo.RitualDeusAte}; ki divino {alvo.Ficha.godki?.awakened}");
+			AfirmarG11("13d. ...e a forma e EMPRESTADA: o save nao a grava (um logout no meio nao a deixa dele)", foraDoDisco,
+					   $"no disco {AccountStore.DeJogador(alvo, NowMs()).FormasDespertadas.Contains(redeDoSsg)}");
+
+			double maestria = alvo.Forma.Maestria.De(IdDoSsgDoRitual);
+			SubirPeloPoder(alvo, IdDoSsgDoRitual, 5, out _);
+			AfirmarG11("13e. ...a barra do SSG nao anda no ritual (*\"n ganha maestria\"*)", alvo.Forma.Maestria.De(IdDoSsgDoRitual) == maestria,
+					   $"{maestria} -> {alvo.Forma.Maestria.De(IdDoSsgDoRitual)}");
+
+			foreach (ServerPlayer d in doadores) if (_doacaoG11.ContainsKey(d.Id)) UsarHabilidade(d, "Give_Power");   // param (e desmaiam)
+			TickDoEfetorG11();
+			Transformar(alvo, subir: false);
+			PassarACena(alvo);
+			alvo.Ficha.Ki = alvo.Ficha.MaxKi;
+			Transformar(alvo, subir: true);
+			PassarACena(alvo);
+			bool voltaPeloC = alvo.Forma.Atual == IdDoSsgDoRitual;
+			AfirmarG11("13f. ...e dentro dos 5 minutos, se ele sair do SSG, o C o leva de volta (o ritual empresta o 0% de maestria divina)",
+					   voltaPeloC, $"forma {alvo.Forma.Atual}");
+
+			AdiantoDoRelogioDeTeste += DuracaoDoRitualMs + 1_000;
+			ConferirORitualSaiyajin(alvo);
+			bool acabou = comecou && alvo.RitualDeusAte == 0 && alvo.Forma.NaBase && !alvo.Forma.Despertou(IdDoSsgDoRitual)
+						  && alvo.Forma.Maestria.De(IdDoSsgDoRitual) == maestria;
+			PassarACena(alvo);
+			alvo.Ficha.Ki = alvo.Ficha.MaxKi;
+			Transformar(alvo, subir: true);
+			PassarACena(alvo);
+			AfirmarG11("13g. **AOS 5 MINUTOS O PODER SE APAGA**: a base, o SSG devolvido (nao e mais dele), a maestria de antes -- e o C nao o leva mais ao SSG",
+					   acabou && alvo.Forma.Atual != IdDoSsgDoRitual, $"ritual {alvo.RitualDeusAte}; forma {alvo.Forma.Atual}; liberado {alvo.Forma.Despertou(IdDoSsgDoRitual)}");
+		}
+		finally
+		{
+			AdiantoDoRelogioDeTeste = relogioAntes;
+			foreach (ServerPlayer d in doadores) _doacaoG11.Remove(d.Id);
+			alvo.RitualDeusAte = 0;
+			alvo.FormaEmprestadaPeloRitual = 0;
+		}
+	}
+
 	private void G11DarPoderETimeStore()
 	{
 		GD.Print("[g11] -- 13) GIVE POWER (o Heal ao contrario, que termina em desmaio) E TIME STORE (o corpo preso no tempo)");

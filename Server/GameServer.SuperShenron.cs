@@ -296,6 +296,19 @@ public sealed partial class GameServer
 				if (alvo != pl) Avisar(pl, $"a riqueza foi para {alvo.Name} -- você apenas pronunciou.");
 				return true;
 
+			// -------------------------------------------------- (2026-10-29, o pedido 169) TODOS os planetas de volta
+			// No lugar do "Curar um planeta" (o Super nao o repete mais): cada mundo destruido passa pela porta unica, o `RessuscitarPlaneta`
+			// (o livro dos mortos, o Porunga que volta com Namek, a saga que esperava o planeta). Sem mundo destruido, nada se gasta.
+			case Desejos.IdDeRestaurarTodos:
+			{
+				List<(string Chave, string Nome, ZoneKey Zona)> mortos = MundosMortos();
+				if (mortos.Count == 0) { Avisar(pl, "nenhum mundo foi destruído. Nenhum pedido foi gasto."); return false; }
+				AnunciarInvocacaoDoSuper(pl);
+				int voltaram = mortos.Count(m => RessuscitarPlaneta(m.Zona));
+				AnunciarSupers($"SUPER SHENLONG atendeu {pl.Name}: TODOS os mundos destruídos voltam a existir ({voltaram})!");
+				return voltaram > 0;
+			}
+
 			// -------------------------------------------------- reviver (:1606-1618)
 			case "sdb_reviver":
 			{
@@ -375,6 +388,11 @@ public sealed partial class GameServer
 				// aqui o falante E o pedinte. Nao ha alvo a proteger: o molde continua inteiro.
 				AnunciarInvocacaoDoSuper(pl);
 				return DesejoDeCorpoSaiyajin(pl, null, nome);
+
+			// -------------------------------------------------- (2026-10-31, o pedido 197) revelar a Sala do Tempo escolhida
+			// A escolha (anos por dia) vem no argumento, da segunda etapa da janela; a resposta e do PEDINTE. Ver `GameServer.ChaveDaSala.cs`.
+			case Desejos.IdDaSalaRevelada:
+				return DesejoDaSalaRevelada(pl, alvo, nome);
 
 			// -------------------------------------------------- (2026-10-21) a lista inteira das Black Star, a 4x
 			// Os desejos do Shenron que o Super nao tinha (dono: *"super shenlong seria 4 vezes o poder da black star em tudo, menos no

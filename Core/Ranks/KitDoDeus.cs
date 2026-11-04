@@ -136,8 +136,29 @@ public static class KitDoDeus
 	/// <summary>`GOD_SPHERE_KI 60` (`:27`): o custo da Destroyer Sphere, vezes o `BaseDrain`.</summary>
 	public const double EsferaKi = 60;
 
-	/// <summary>`A.basedamage = 2` (`:320`).</summary>
-	public const double EsferaBaseDano = 2;
+	/// <summary>`A.basedamage = 2` (`:320`) -- o da Destroyer Sphere no DM.</summary>
+	public const double EsferaBaseDanoDoDm = 2;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) O DANO DA DESTRUICAO: o TRIPLO do da esfera do DM -- o dono: *"essa esfera por ser feita de energia da
+	/// destruicao deve dar bastante dano (acima dos padroes de ki)"*. A potencia entra AO QUADRADO na conta (`DanoDeKi.Bruto`: no `mods` e
+	/// no `basedamage`), entao o triplo do dano e a potencia vezes a raiz de 3 -- o caminho do Final Flash (ag/raiosembp, 2026-10-27). Pela
+	/// mesma conta (`EmbateDeKi.PoderDoFeixe`) a esfera ja pesa o triplo numa colisao de ki, e a <see cref="EsferaVantagemNoEmbate"/> vai por cima.
+	/// </summary>
+	public static readonly double EsferaBaseDano = EsferaBaseDanoDoDm * Math.Sqrt(3);
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) A VANTAGEM DA ESFERA NUMA COLISAO DE KI (`ReceitaDeProjetil.VantagemNoEmbate`): o dobro do poder que o dano
+	/// dela ja da -- o dono, *"e alem disso ter vantagem em colisao de ki"*.
+	/// </summary>
+	public const double EsferaVantagemNoEmbate = 2;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) O TAMANHO DA DESTROYER SPHERE (`ReceitaDeProjetil.EscalaVisual`): uma vez e meia a bola -- 48 px de diametro,
+	/// onde cabe o corpo que ela engole (*"o inimigo vai ficar dentro da esfera"*). Acima de `Projetil.EscalaDaEsferaGrande`, entao ela e uma
+	/// esfera grande: leva quem fere, bate a cada 0,2 s e estoura no fim do alcance (a explosao de 6 tiles e a cratera grande).
+	/// </summary>
+	public const double EscalaDaEsfera = 1.5;
 
 	/// <summary>`maxdistance = 30` / `distance = 30`: o alcance de todo `obj/attack` que nao escreve o dele (`objects.dm:17-18`).</summary>
 	public const double AlcanceDosTiros = 30;

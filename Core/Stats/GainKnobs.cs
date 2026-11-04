@@ -120,8 +120,12 @@ public static class GainKnobs
 	/// QUANTO DO BANCO CADA LIBERADOR SOLTA (o dono, 2026-10-25): o Grande Patriarca 1,25x, a Agua Ultra Divina 1x, o ritual do Kaioshin 2x
 	/// (alem do Potential Unleashed), o desejo ao dragao 1,5x e o Unlock Potential de um jogador em outro 1x. O que sai vai pro BP base e
 	/// fica. (2026-10-26) E o Android Upgrade, a porta do androide de absorcao (o pedido 95c): 1x, a escolha do dono.
+	/// (2026-10-29) E O DESEJO DE PODER, QUE VIROU ESTA LIBERACAO (o pedido 156 -- o dono: *"esfera do dragao normal daria 1,5x a pool do
+	/// potencial, black star 2x e super esfera 3x sendo a melhor"*): `LiberaODesejo` no Shenlong, no Porunga e nos sets de jogador,
+	/// `LiberaABlackStar` nas Black Star, `LiberaOSuper` no Super Shenlong -- ver `Desejos.LiberacaoDoPoder`.
 	/// </summary>
 	public const double LiberaOGuru = 1.25, LiberaAAgua = 1, LiberaORitual = 2, LiberaODesejo = 1.5, LiberaOJogador = 1, LiberaOUpgrade = 1;
+	public const double LiberaABlackStar = 2, LiberaOSuper = 3;
 
 	/// <summary>
 	/// A RECARGA ENTRE DUAS LIBERACOES DO MESMO CORPO: uma hora de relogio real -- o `nextUnlockUse` do DU (`Skills.dm:2280`); o dono:

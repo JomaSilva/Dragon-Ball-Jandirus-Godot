@@ -494,7 +494,8 @@ public partial class RoboDeBills : Node
 		Afirmar("**PARAR** encerra o treino: o Whis volta ao posto, parado e sem luta -- e na tela ele esta de novo onde estava",
 				srv.DivinoDeTeste(whis: true) is { Modo: "Parado", Parceiro: 0, Disciplina: false }
 				&& (mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis) < 2f,
-				$"{(mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis):0.0} px do posto");
+				$"{(mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis):0.0} px do posto; no servidor, Bills a "
+				+ $"{srv.DistanciasDosPostosDeTeste().Bills:0.0} px do posto dele e Whis a {srv.DistanciasDosPostosDeTeste().Whis:0.0}");
 
 		// =====================================================================
 		// 5) O DESAFIO: A FURY NA TELA
@@ -563,6 +564,7 @@ public partial class RoboDeBills : Node
 			whisVoltou = srv.WhisDeTeste() is { Assiste: false } && (mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis) < 2f;
 		}
 		Afirmar("...e o Whis VOLTA pro lado do Bills: na tela ele esta de novo no posto dele",
-				whisVoltou, $"{(mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis):0.0} px do posto");
+				whisVoltou, $"{(mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis):0.0} px do posto; no servidor, Bills a "
+				+ $"{srv.DistanciasDosPostosDeTeste().Bills:0.0} px do posto dele e Whis a {srv.DistanciasDosPostosDeTeste().Whis:0.0}");
 	}
 }

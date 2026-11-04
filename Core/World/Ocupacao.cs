@@ -160,6 +160,25 @@ public enum Ocupacao : byte
 	/// outra ocupacao o acorda -- por isso ele e o ULTIMO da cadeia do <see cref="CorpoOcupado.De"/>.
 	/// </summary>
 	Dormindo = 17,
+
+	/// <summary>
+	/// (2026-11-01, o pedido 218) O KID BOO ERGUENDO A ESFERA ROSA -- a mesma regra da <see cref="DeathBallDoUltimato"/> (parado e intocavel
+	/// ate a explosao), com a esfera rosa: e por este valor que a tela a desenha sobre ele. Estendido (o byte no fim do pacote), como o 15.
+	/// </summary>
+	EsferaRosaDoUltimato = 18,
+
+	/// <summary>
+	/// (2026-11-01, o pedido 219) ESTE CORPO E A GOSMA DE UM MAJIN (`Races.GosmaDoMajin`) -- e por este valor que a tela troca o boneco pela
+	/// gosma (`Client/GosmaDesenhada.cs`). Primeiro da cadeia: a gosma nao e outra coisa nunca. Estendido, como o 15.
+	/// </summary>
+	Gosma = 19,
+
+	/// <summary>
+	/// (2026-11-01, o pedido 219) ENGOLIDO POR UMA GOSMA, a caminho do Majin que a pos: o corpo some (o `Oculto` pros outros; a tela do
+	/// dono o esconde por este valor) e a camera dele segue a gosma. Logo depois da <see cref="Gosma"/>: quem esta la dentro pode estar
+	/// nocauteado, e o que importa e onde ele esta.
+	/// </summary>
+	NaGosma = 20,
 }
 
 /// <summary>
@@ -184,6 +203,9 @@ public static class CorpoOcupado
 
 		/// <summary>(2026-10-17) O mesmo, com a Death Ball (`ServerPlayer.AtaqueDoUltimato`) -- o Freeza de Namek.</summary>
 		public bool DeathBall;
+
+		/// <summary>(2026-11-01, o pedido 218) O mesmo, com a esfera rosa -- o Kid Boo.</summary>
+		public bool EsferaRosa;
 
 		/// <summary>`Ficha.KO` ou morto ainda deitado no mundo dos vivos.</summary>
 		public bool Nocauteado;
@@ -226,6 +248,12 @@ public static class CorpoOcupado
 
 		/// <summary>(2026-10-18) `ServerPlayer.SonoDesde` -- o Sleep do Majin.</summary>
 		public bool Dormindo;
+
+		/// <summary>(2026-11-01, o pedido 219) Este corpo e uma gosma de Majin (`GameServer.EhGosma`).</summary>
+		public bool Gosma;
+
+		/// <summary>(2026-11-01, o pedido 219) Este corpo vai dentro de uma gosma, a caminho do Majin (`GameServer.NaGosma`).</summary>
+		public bool NaGosma;
 	}
 
 	/// <summary>
@@ -241,7 +269,11 @@ public static class CorpoOcupado
 	/// ==========================================================
 	/// </summary>
 	public static Ocupacao De(in Sinais s) =>
-		  s.Desfeito      ? Ocupacao.Desfeito
+		// (2026-11-01, o pedido 219) A GOSMA E QUEM VAI DENTRO DELA, antes de tudo: e o desenho do corpo (a gosma no lugar do boneco, o corpo
+		// sumido) que estes dois valores decidem, e um engolido nocauteado continua sendo, antes de tudo, um engolido.
+		  s.Gosma         ? Ocupacao.Gosma
+		: s.NaGosma       ? Ocupacao.NaGosma
+		: s.Desfeito      ? Ocupacao.Desfeito
 		// (2026-10-17) ANTES do nocaute, como o desfeito: a vitima da execucao do bio ESTA nocauteada (e a condicao da execucao), e o nome
 		// tem que dizer o que acontece com ela -- e por este valor que a tela a desenha secando.
 		: s.Secando       ? Ocupacao.Secando
@@ -250,6 +282,7 @@ public static class CorpoOcupado
 		// da cena -- a Supernova escreve o `CenaSegundos` pra prender o chefe, e sem esta linha ele leria "em cena".
 		: s.Supernova     ? Ocupacao.Supernova
 		: s.DeathBall     ? Ocupacao.DeathBallDoUltimato
+		: s.EsferaRosa    ? Ocupacao.EsferaRosaDoUltimato
 		// (v0.4.0) A CARGA DO DEMONIC SAIYAN, logo depois dos ultimatos e pela mesma razao: a esfera e o desenho do corpo enquanto ela
 		// dura. O nocaute vem antes porque ele desfaz a carga (o corpo caido nao carrega nada).
 		: s.CargaDemoniaca ? Ocupacao.CargaDemoniaca
@@ -285,6 +318,7 @@ public static class CorpoOcupado
 		Ocupacao.Desfeito      => "desfeito em pedacos (o Majin se refazendo)",
 		Ocupacao.Supernova     => "concentrando a Supernova (o ultimato do chefe)",
 		Ocupacao.DeathBallDoUltimato => "concentrando a Death Ball (o ultimato do chefe)",
+		Ocupacao.EsferaRosaDoUltimato => "concentrando a esfera rosa (o Kid Boo)",
 		Ocupacao.Nocauteado    => "nocauteado (ou morto no chao)",
 		Ocupacao.NoEmbate      => "num embate",
 		Ocupacao.EmCena        => "numa cinematica de transformacao",
@@ -299,6 +333,8 @@ public static class CorpoOcupado
 		Ocupacao.Secando      => "secando (bebido pela execucao de um bio-androide)",
 		Ocupacao.GritoDoDesabafo => "gritando o desabafo do Lendario (a esfera verde)",
 		Ocupacao.Dormindo     => "dormindo (o Sleep do Majin)",
+		Ocupacao.Gosma        => "a gosma de um Majin",
+		Ocupacao.NaGosma      => "engolido por uma gosma, a caminho do Majin",
 		_ => "",
 	};
 
@@ -307,8 +343,8 @@ public static class CorpoOcupado
 	/// corrompido) vira <see cref="Ocupacao.Livre"/> e nao um estado inventado -- errar pro lado de
 	/// "nao barra" e o unico erro que nao prende ninguem.
 	/// </summary>
-	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.Dormindo ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
+	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.NaGosma ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
 
 	/// <summary>(2026-10-17) O chefe esta erguendo a esfera de um ultimato -- a Supernova ou a Death Ball (as duas tem o mesmo desenho).</summary>
-	public static bool NoUltimato(Ocupacao o) => o is Ocupacao.Supernova or Ocupacao.DeathBallDoUltimato;
+	public static bool NoUltimato(Ocupacao o) => o is Ocupacao.Supernova or Ocupacao.DeathBallDoUltimato or Ocupacao.EsferaRosaDoUltimato;
 }

@@ -11,7 +11,8 @@ namespace Jandirus.Client;
 /// </summary>
 public static class HabilidadesDoRitual
 {
-	public static void Registrar() =>
+	public static void Registrar()
+	{
 		Verbos.Registrar(new Verbo(
 			RitualDoKaioshin.Nome,
 			Verbos.Skills,
@@ -21,4 +22,15 @@ public static class HabilidadesDoRitual
 			+ "é gasto. No meio do ritual, este botão o interrompe -- e quem recebe o ritual também o vê.",
 			() => GameClient.Instance?.SendHabilidade(RitualDoKaioshin.Verbo))
 			{ Chave = RequisitosDosVerbos.PrefixoDeHabilidade + RitualDoKaioshin.Verbo });
+
+		// (2026-10-29, o pedido 149) O KAIOSHIN RESTAURA UM MUNDO DESTRUIDO -- a linha `hab:kai_restaurar` da tabela (o trono). Ver
+		// `GameServer.UsarVerboDeRestaurar`.
+		Verbos.Registrar(new Verbo(
+			MissoesDeCargo.NomeDeRestaurar,
+			Verbos.Skills,
+			"Traz de volta um planeta destruído: o da sua tarefa de Reconstruir, se houver, ou o último que foi destruído. É a tarefa "
+			+ "de cargo do Kaioshin enquanto houver mundos destruídos.",
+			() => GameClient.Instance?.SendHabilidade(MissoesDeCargo.VerboDeRestaurar))
+			{ Chave = RequisitosDosVerbos.PrefixoDeHabilidade + MissoesDeCargo.VerboDeRestaurar });
+	}
 }

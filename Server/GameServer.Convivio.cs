@@ -299,6 +299,9 @@ public partial class GameServer
 	///
 	/// Cravar um numero proprio aqui daria duas verdades sobre "quem estava presente", e a primeira
 	/// vez que alguem mudasse a vista do jogo so uma das duas mudaria.
+	///
+	/// (2026-10-31, o pedido 193) A MORTE DO AMIGO SAIU DESTE RAIO: ela se ve pela TELA (`ViuAMorte`, o retangulo do corpo achado do
+	/// pedido 192), por decisao do dono. Aqui ficaram o nocaute, o anuncio da raiva e o resto do luto.
 	/// ====================================================================================================
 	/// </summary>
 	private const float RaioDeTestemunha = RaioDaVista;
@@ -325,7 +328,8 @@ public partial class GameServer
 	///      or environmental death"*.
 	///   2. **QUEM DERRUBOU NAO SE ENFURECE COM O PROPRIO CRIME** (`Death.dm:78`, `KO.dm:35`) --
 	///      e a declaracao pode ser de mao unica, entao nao adianta confiar na lista dele.
-	///   3. **TEM QUE ESTAR VENDO** -- o <see cref="RaioDeTestemunha"/>, e na MESMA zona.
+	///   3. **TEM QUE ESTAR VENDO** -- o <see cref="RaioDeTestemunha"/>, e na MESMA zona. A MORTE, desde o pedido 193 (2026-10-31), so com o
+	///      corpo NA TELA (`ViuAMorte`): *"Sim so dentro do campo de visao"*; o nocaute ficou no raio.
 	///   4. (2026-10-18) **O ALGOZ TAMBEM E INIMIGO AOS OLHOS DE QUEM ASSISTE** -- regra do dono, e nao do DM (la so a lista da vitima e
 	///      perguntada): *"se um amigo seu derruba seu outro amigo, n deveria triggar raiva"*. Ver `Convivio.AlgozEhInimigo`.
 	/// =========================================================================================
@@ -378,8 +382,9 @@ public partial class GameServer
 			// pedido 110: o alt que apanha na frente do principal nao acende a raiva dele). Ver `GameServer.MesmoIp.cs`.
 			if (MesmoIp(o, vitima) || MesmoIp(o, algoz)) continue;
 
-			Jandirus.Core.World.Vec2 d = o.Pos - vitima.Pos;      // (3)
-			if (d.X * d.X + d.Y * d.Y > raio2) continue;
+			// (3) ESTAVA VENDO. (2026-10-31, o pedido 193) A MORTE so se ve com o corpo NA TELA (`ViuAMorte`, a mesma regra do corpo
+			// achado): quem estava fora dela nao viu, e o corpo fica pra ser achado por ele. O nocaute continua no raio da fala (o pedido e a morte).
+			if (morreu ? !ViuAMorte(o, vitima) : (o.Pos - vitima.Pos).LengthSquared > raio2) continue;
 
 			// A DECLARACAO DO OBSERVADOR SOBRE A VITIMA. A lista da morte e mais larga que a da queda
 			// (ver `Convivio.EnfurecePorMorte` / `EnfurecePorQueda`).
@@ -501,6 +506,11 @@ public partial class GameServer
 		CampeaoDoWipeFoiDerrotado(vitima, algoz, morreu);
 		// (2026-10-19) O NOCAUTE QUE CONTA NUM SERVICO DO OUTRO MUNDO (as almas, os fujoes do Inferno). Ver `GameServer.ServicosDoAlem.cs`.
 		ServicoDoAlemAoDerrotar(vitima, algoz);
+		// (2026-10-31, o pedido 198) A PATRULHA GALACTICA: o procurado nocauteado por um patrulheiro vai preso, e o patrulheiro derrubado pelo
+		// procurado e mais um crime. Ver `GameServer.PatrulhaGalactica.cs`.
+		PatrulhaAoDerrotar(vitima, algoz, morreu);
+		// (2026-10-31, o pedido 198g) A REVANCHE: o vilao de saga solto derrotado sai do jogo. Ver `GameServer.ViloesSoltos.cs`.
+		SoltoFoiDerrotado(vitima, algoz, morreu);
 
 		// ============================ CAIR SEPARA A FUSAO ============================
 		// `defuse_on_downed()` (`Fusion.dm:75`), chamado do `KO()` do original. Ela entra AQUI e nao

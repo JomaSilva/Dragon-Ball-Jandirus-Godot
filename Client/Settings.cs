@@ -143,6 +143,12 @@ public sealed class Settings
     public int Zoom = 3;
 
     /// <summary>
+    /// (2026-10-31, o pedido 194) A CAMERA DO LOCK-ON: com um alvo travado, a camera fica no meio do jogador e do alvo e afasta o zoom
+    /// quando os dois se afastam (ver `World.CameraDoLockOn`). Ligada de fabrica; e a caixa "câmera do lock-on" do menu de pausa (Esc).
+    /// </summary>
+    public bool CameraDoLockOn = true;
+
+    /// <summary>
     /// QUALIDADE GRAFICA: 0 baixo, 1 medio, 2 alto. Hoje ela decide UMA coisa -- o filtro da
     /// sombra das luzes --, e por isso o nome e generico de proposito: e o lugar onde o proximo
     /// ajuste de custo visual entra sem virar mais uma opcao solta na tela.

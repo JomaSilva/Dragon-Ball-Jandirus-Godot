@@ -133,6 +133,7 @@ public partial class GameServer
 			OServicoEAVerba(mestre, aluno, presidente, kaio);
 			ORelogio(guardiao, vilao);
 			OsTextosDasTarefas();
+			OKaioshinEODestruidor(kaio, aluno);   // (2026-10-29) os pedidos 149 e 150 -- o aluno: gente comum, sem selo e de karma neutro
 		}
 		catch (Exception e) { AfirmarMis($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -164,6 +165,73 @@ public partial class GameServer
 	// =====================================================================
 	// 1. AS REGRAS PURAS
 	// =====================================================================
+	// =====================================================================
+	// (2026-10-29, os pedidos 149 e 150) O KAIOSHIN RECONSTROI, E QUEM DESTROI MUITOS MUNDOS VIRA AMEACA
+	// =====================================================================
+	private void OKaioshinEODestruidor(ServerPlayer kaio, ServerPlayer destruidor)
+	{
+		GD.Print("[missoes] -- (149/150) o Kaioshin reconstroi o mundo destruido, e quem destroi muitos vira ameaca pro Deus da Destruicao --");
+		RankDef kaioshin = Cargos.Get(MissoesDeCargo.CargoQueReconstroi)!;
+		AfirmarMis("(o pedido 149) **O KAIOSHIN SO RECONSTROI COM UM MUNDO DESTRUIDO**: com um, a tarefa e RECONSTRUIR; sem nenhum, o servico de "
+				   + "sempre -- e o Kaioh do Norte continua no servico",
+			MissoesDeCargo.Escolher(kaioshin, false, haMundoDestruido: true) == TipoDeTarefa.Reconstruir
+			&& MissoesDeCargo.Escolher(kaioshin, false, haMundoDestruido: false) == TipoDeTarefa.Servico
+			&& MissoesDeCargo.Escolher(Cargos.Get("nkai")!, false, haMundoDestruido: true) == TipoDeTarefa.Servico);
+
+		ZoneKey arlia = ZoneKey.Premade("Arlia");
+		using PalcoDeMortes palco = PalcoDeMortesDeBancada();
+		try
+		{
+			int antes = destruidor.Ficha.planetasDestruidos;
+			ComecarDestruicao(arlia, 1, "bancada-missoes", destruidor.Id);
+			for (int i = 0; i < 400 && MorteDaZona(arlia)?.Fase == FaseDaMorte.Explodindo; i++) TickDaDestruicao(1);
+			AfirmarMis("(montagem, o pedido 149) Arlia foi destruida pela destruicao de producao", ZonaMorta(arlia), $"{MorteDaZona(arlia)?.Fase}");
+			AfirmarMis("(o pedido 150) **O MUNDO DESTRUIDO ENTRA NA CONTA DE QUEM O DESTRUIU**: o algoz soma um planeta",
+				destruidor.Ficha.planetasDestruidos == antes + 1, $"{antes} -> {destruidor.Ficha.planetasDestruidos}");
+
+			int contaVerdadeira = destruidor.Ficha.planetasDestruidos;
+			destruidor.Karma = 0;   // as mortes de Arlia pesaram no karma dele: a regra medida e so a dos mundos
+			destruidor.Ficha.planetasDestruidos = MissoesDeCargo.MundosDoDestruidor - 1;
+			bool abaixo = EhAmeacaAoEquilibrio(destruidor, "bancada_ninguem");
+			destruidor.Ficha.planetasDestruidos = MissoesDeCargo.MundosDoDestruidor;
+			bool no = EhAmeacaAoEquilibrio(destruidor, "bancada_ninguem");
+			destruidor.Ficha.planetasDestruidos = contaVerdadeira;
+			AfirmarMis($"(o pedido 150) **QUEM DESTRUIU {MissoesDeCargo.MundosDoDestruidor} PLANETAS VIRA AMEACA PRO DEUS DA DESTRUICAO** (sem selo e com "
+					   + "karma neutro) -- com um a menos, ainda nao",
+				!abaixo && no, $"com {MissoesDeCargo.MundosDoDestruidor - 1}: {abaixo}; com {MissoesDeCargo.MundosDoDestruidor}: {no}");
+
+			// O KAIOSHIN NO TRONO: a volta do motor da a tarefa de reconstruir Arlia -- a primeira volta so ANCORA (a ficha nasce com o
+			// intervalo inteiro pela frente, como a do Guardiao la em cima); passado o intervalo, a tarefa chega
+			_tronos[MissoesDeCargo.CargoQueReconstroi] = kaio.Conta;
+			_missoes.Remove(MissoesDeCargo.CargoQueReconstroi);
+			UmaVoltaDoMotor();
+			AdiantarMundo(MissoesDeCargo.SegundosDeIntervalo);
+			UmaVoltaDoMotor();
+			FichaDeMissao? f = _missoes.GetValueOrDefault(MissoesDeCargo.CargoQueReconstroi);
+			string chaveDeArlia = ChaveDePlaneta.Da(arlia)?.Texto ?? "?";
+			AfirmarMis("(o pedido 149) **COM ARLIA DESTRUIDA, O KAIOSHIN RECEBE 'RECONSTRUIR ARLIA'**",
+				f is { Tarefa: TipoDeTarefa.Reconstruir } && f.PlanetaChave == chaveDeArlia,
+				f == null ? "sem ficha" : $"{f.Tarefa} '{f.PlanetaChave}' (Arlia e '{chaveDeArlia}')");
+
+			List<string> recusa = Ouvir(() => UsarVerboDeRestaurar(destruidor, MissoesDeCargo.VerboDeRestaurar));
+			bool continuaMorta = ZonaMorta(arlia);
+			int cumpridasAntes = f?.Cumpridas ?? 0;
+			List<string> restaurou = Ouvir(() => UsarVerboDeRestaurar(kaio, MissoesDeCargo.VerboDeRestaurar));
+			bool voltou = !ZonaMorta(arlia);
+			UmaVoltaDoMotor();
+			FichaDeMissao? depois = _missoes.GetValueOrDefault(MissoesDeCargo.CargoQueReconstroi);
+			AfirmarMis("(o pedido 149) **O BOTAO RESTAURAR PLANETA TRAZ ARLIA DE VOLTA, E A TAREFA SE CUMPRE** -- e quem nao e o Kaioshin ouve que nao pode",
+				Disse(recusa, "só o Kaioshin") && continuaMorta && voltou && depois != null && depois.Cumpridas == cumpridasAntes + 1,
+				$"recusa: {Ultimos(recusa)}; voltou {voltou}; cumpridas {cumpridasAntes} -> {depois?.Cumpridas} | {Ultimos(restaurou)}");
+		}
+		finally
+		{
+			if (ZonaMorta(arlia)) RessuscitarPlaneta(arlia);
+			_tronos.Remove(MissoesDeCargo.CargoQueReconstroi);
+			_missoes.Remove(MissoesDeCargo.CargoQueReconstroi);
+		}
+	}
+
 	private void AsRegrasSaoPuras()
 	{
 		// ---- as quatro listas do DM, DERIVADAS da tabela de cargos ----

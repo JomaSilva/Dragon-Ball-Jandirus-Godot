@@ -8,7 +8,8 @@ namespace Jandirus.Client;
 /// <summary>
 /// O ROBO DA ESFERA DO HAKAI EM JOGO (`--diaghakaibills`, 2026-10-23). O dono: *"e faca bills usar skills de hakai q tem esse efeito
 /// nos ataques de ki dele como na imagem"* -- e decidiu: "os tiros do kit" (a Destroyer Sphere e a Fury saem como a esfera roxa da
-/// imagem; o Ki Wave e o Basic Blast do Bills ficam como estao) e "o titulo tambem" (quem tem o titulo solta a mesma). O laboratorio
+/// imagem; o Ki Wave e o Basic Blast do Bills ficam como estao -- ate 2026-10-30: desde o pedido 181 as BOLAS dele vestem a esfera pequena,
+/// a `HakaiFuria`, `GameServer.ArteDasBolasDoBills`) e "o titulo tambem" (quem tem o titulo solta a mesma). O laboratorio
 /// (`--diagartedeki`, familia 9) mede a esfera parada, peca por peca; este robo a fotografa NO JOGO: o Bills de verdade, na Terra,
 /// soltando os dois tiros pelo verb de producao, e o jogador com o titulo soltando a esfera pelo verb do botao.
 ///

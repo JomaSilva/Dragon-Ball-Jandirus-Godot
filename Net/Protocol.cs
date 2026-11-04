@@ -295,6 +295,9 @@ public static class Protocol
         // ficar facil de ver"*. Sao recados do servidor como o `Sistema` (moram na aba Sistema), so que pintados.
         AvisoDeRaiva = 201,
         AvisoDeZenkai = 202,
+        // (2026-11-01, o pedido 216) O AVISO URGENTE -- o dono: *"o player deus da destruição recebe um aviso urgente q alguem ta matando um
+        // kaioshin"*. Vermelho no chat e um cartao na tela (`AvisoUrgenteNaTela`). Ver `GameServer.VidaLigada.cs`.
+        AvisoUrgente = 203,
     }
 
     /// <summary>
@@ -863,6 +866,37 @@ public static class Protocol
         /// quando foram vistos); o reflexo e o jogador de ficha antiga o cliente ja guarda. Ver `GameServer.MenteLista.cs`.
         /// </summary>
         MenteOponentes = 185,
+
+        /// <summary>
+        /// (2026-10-31, o pedido 198) O JORNAL GALACTICO -- a ultima edicao: `bool aviso` (verdadeiro = edicao nova, o aviso no canto
+        /// inferior direito; falso = quem pediu pelo `jornal_ler`, a janela abre na hora) + `long dia` + `string data` + `byte n` e n x
+        /// (`byte tipo` (ver `GameServer.TipoDeNoticia`) + `string texto`). O texto vem em portugues, e a tela o traduz. Ver
+        /// `GameServer.JornalGalactico.cs` e `Client/JornalGalactico.cs`.
+        /// </summary>
+        Jornal = 186,
+
+        /// <summary>
+        /// (2026-10-31, o pedido 198i) A MISSAO DA PATRULHA de um membro: `bool membro` + (membro) `bool temMissao` + (missao) `string texto` +
+        /// `bool naCarta` + (na carta) `int sx`, `int sy`, `byte orbita`, `ulong semente` -- o endereco do planeta da missao, como o da casa
+        /// do Bills. Pessoal, e so quando muda. Ver `GameServer.CargoDaPatrulha.cs` e `Client/GameClient.Patrulha.cs`.
+        /// </summary>
+        MissaoDaPatrulha = 187,
+
+        /// <summary>
+        /// (2026-10-31) O NOME DE QUEM JOGA MUDOU NO SERVIDOR: `string nome` (ate <see cref="MaxNomeNoFio"/>), so pro proprio jogador. O
+        /// cliente grava o nome do personagem uma vez, no `JoinAccepted`, e o painel do canto o lia ate relogar -- o bio-androide recem-nascido
+        /// (o parto troca a persona: "Bio-Androide de ..." ou o nome escrito ao gestar, o pedido 204) aparecia com o nome do criador. So o
+        /// RENOME de verdade manda isto: o disfarce e a posse do Neo Tuffle mudam o que o MUNDO ve (`PeerLook`), e o painel mostra quem voce e.
+        /// Ver `GameServer.MandarMeuNome` e `GameClient.MeuNomeMudou`.
+        /// </summary>
+        MeuNome = 188,
+
+        /// <summary>
+        /// (2026-11-01, o pedido 213) OS CUSTOS DO OUTRO MUNDO DESTE SERVIDOR: `double volta` + `double multiplicador do Hakai` + `double passe`
+        /// + `int dias`. No login e quando um admin os muda (`admin_custos_alem`), pra todo jogador: os botoes da mesa do Enma e o cartao da
+        /// aba Admin os escrevem. Ver `Core/World/CustosDoAlem.cs` e `GameServer.CustosDoAlem.cs`.
+        /// </summary>
+        CustosDoAlem = 189,
 
         /// <summary>
         /// O QUE DA PRA LEVAR DE QUEM ESTA NOCAUTEADO AO MEU ALCANCE -- a resposta do verbo `saquear` (item 9b do

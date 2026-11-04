@@ -175,7 +175,7 @@ public sealed partial class GameServer
 		string pedido = destino.Trim();
 		if (pedido.Length == 0)
 		{
-			Avisar(pl, $"Enma Daioh abre o livro dos mundos: \"Por {Alem.PrecoDoPasseDoEnma:N0} zeni, {Alem.DiasDoPasseDoEnma} dias "
+			Avisar(pl, $"Enma Daioh abre o livro dos mundos: \"Por {CustosDoAlem.PrecoDoPasse:N0} zeni, {CustosDoAlem.DiasDoPasse} dias "
 					 + $"entre os vivos -- morto, de auréola. Escolha o mundo: {lista}.\"");
 			// (v0.3.2) E A MESMA LISTA VAI PRO MENU, um botao por mundo -- o dono: *"deveria ser uma lista e nao ter q digitar o nome"*.
 			if (!PasseSemListaDeTeste) MandarEscolhas(pl, "enma_passe", destinos.Select(d => d.Nome));
@@ -196,8 +196,9 @@ public sealed partial class GameServer
 			return;
 		}
 
-		// SO EM ZENI, como a volta paga: o dono, 2026-10-10 -- *"o enma mantenha so zeni"*.
-		double custo = EnmaNaoCobraDeTeste ? 0 : Alem.PrecoDoPasseDoEnma;
+		// SO EM ZENI, como a volta paga: o dono, 2026-10-10 -- *"o enma mantenha so zeni"*. (2026-11-01, o pedido 213) O preco e os dias sao os
+		// do servidor (`World.CustosDoAlem`): o admin os muda na aba Admin, sem recompilar.
+		double custo = EnmaNaoCobraDeTeste ? 0 : CustosDoAlem.PrecoDoPasse;
 		if (pl.Ficha.Zeni < custo)
 		{
 			Avisar(pl, $"Enma Daioh: \"O passe custa {custo:N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"");
@@ -205,16 +206,16 @@ public sealed partial class GameServer
 		}
 
 		pl.Ficha.Zeni -= custo;
-		pl.Ficha.passe_do_enma_ate = NowMs() + Alem.MsDoPasseDoEnma;
+		pl.Ficha.passe_do_enma_ate = NowMs() + CustosDoAlem.MsDoPasse;
 		pl.AvisadoDoFimDoPasse = false;
-		Avisar(pl, $"Enma Daioh carimba um passe na sua ficha: \"{Alem.DiasDoPasseDoEnma} dias entre os vivos -- nem um a mais. "
+		Avisar(pl, $"Enma Daioh carimba um passe na sua ficha: \"{CustosDoAlem.DiasDoPasse} dias entre os vivos -- nem um a mais. "
 				 + "Você continua MORTO: a auréola fica, e quando o prazo acabar a sua alma volta pra cá.\"");
 		MandarProBerco(pl, chegada);
 		if (!Espaco.EhEspaco(pl.Zone))
-			Avisar(pl, $"você desce em {nome}, de auréola na cabeça. O passe vence em {Alem.DiasDoPasseDoEnma} dias do jogo.");
+			Avisar(pl, $"você desce em {nome}, de auréola na cabeça. O passe vence em {CustosDoAlem.DiasDoPasse} dias do jogo.");
 		MandarFicha(pl);
 		Persistir(pl);
-		GD.Print($"[server] {pl.Name} comprou o passe do Enma ({custo:N0} zeni): {Alem.DiasDoPasseDoEnma} dias em {nome} ({zona})");
+		GD.Print($"[server] {pl.Name} comprou o passe do Enma ({custo:N0} zeni): {CustosDoAlem.DiasDoPasse} dias em {nome} ({zona})");
 	}
 
 	/// <summary>
@@ -275,7 +276,7 @@ public sealed partial class GameServer
 		long agora = NowMs();
 		if (agora < ate || PasseSemVoltaDeTeste)
 		{
-			if (!pl.AvisadoDoFimDoPasse && ate - agora <= Alem.MsDoPasseDoEnma / Alem.DiasDoPasseDoEnma)
+			if (!pl.AvisadoDoFimDoPasse && ate - agora <= CustosDoAlem.MsDoPasse / CustosDoAlem.DiasDoPasse)
 			{
 				pl.AvisadoDoFimDoPasse = true;
 				Avisar(pl, "falta um dia pro seu passe do Enma vencer -- depois disso, a sua alma volta pro Outro Mundo.");

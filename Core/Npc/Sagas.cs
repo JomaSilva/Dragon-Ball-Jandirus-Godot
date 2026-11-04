@@ -117,6 +117,31 @@ public sealed class ChefeDaSaga
 
 	/// <summary>O que a morte dele anuncia.</summary>
 	public string AnuncioDaQueda = "";
+
+	/// <summary>
+	/// (2026-11-01, o pedido 210) ELE CHEGA DE SPACE POD: a pod cai num lugar sorteado de terra firme do planeta (a escolha do dono), longe das
+	/// pods que acabaram de cair, abre a cratera dos pods e fica no chao; o chefe sai ao lado dela. O dono: *"raditz ira pousar na terra com
+	/// sua spacepod fazendo a cratera etc"*. Vale so pra CHEGADA: quem volta de um reinicio ou do alem nasce como sempre.
+	/// </summary>
+	public bool ChegaDePod;
+
+	/// <summary>
+	/// (2026-11-01, o pedido 210) ELE SO OBSERVA ENQUANTO ESTE CHEFE (o molde) ESTIVER DE PE -- o dono: *"Vegeta n luta e fica so observando o
+	/// nappa lutar, quando nappa perder ai sim vegeta começa a lutar"*. O molde tem de ser de outro chefe do MESMO elo. Vazio = luta desde a
+	/// chegada, como todo chefe. Ver `GameServer.SagaSaiyajin.cs`.
+	/// </summary>
+	public string ObservaAteCair = "";
+
+	/// <summary>O que ele anuncia quando para de observar e entra na luta (o parceiro caiu). Vazio = entra calado.</summary>
+	public string AnuncioAoEntrarNaLuta = "";
+
+	/// <summary>
+	/// (2026-11-01, o pedido 214) QUEM O PLANTOU: o molde de outro chefe do MESMO elo, que vem ANTES na lista (a ordem da lista e a do
+	/// nascimento). Ele brota ao lado de quem o plantou, sem pod e sem cena de chegada, e enquanto espera a vez (`ObservaAteCair`) fica na
+	/// fileira ao pe dele. O dono: *"Quando nappa e vegeta chegarem antes do nappa lutar ele ira colocar 6 saibamens, cada um com 1500 de
+	/// poder de luta, um luta de cada vez"*. Vazio = chega como todo chefe. Ver `GameServer.SagaSaiyajin.cs`.
+	/// </summary>
+	public string PlantadoPor = "";
 }
 
 /// <summary>
@@ -148,6 +173,12 @@ public sealed class EloDaSaga
 	/// (BossEvents.dm:164), que a saga 1 exige e as outras tres nao.
 	/// </summary>
 	public string GatilhoRaca = "";
+
+	/// <summary>
+	/// (2026-11-01, o pedido 210) SO CONTA QUEM ESTA NO PLANETA DO ELO -- o dono: *"quando um jogador na terra bater 500 de bp"*. Falso = o
+	/// marco de sempre, de qualquer lugar. Com ele, a auditoria do boot nao procura o marco no disco: quem saiu do jogo nao esta no planeta.
+	/// </summary>
+	public bool GatilhoNoPlaneta;
 
 	public ChefeDaSaga[] Chefes = [];
 
@@ -198,6 +229,12 @@ public sealed class EloDaSaga
 	/// o `s2_deadline` so e armado dentro do `freeza_transform` na forma final (BossEvents.dm:672-673).
 	/// </summary>
 	public bool UltimatoSoNoUltimoDegrau;
+
+	/// <summary>
+	/// (2026-10-29, o pedido 167) O DEGRAU (contado de 1) a partir do qual o ultimato corre; 0 = desde a chegada (ou o ultimo, pelo campo
+	/// de cima). O dono: *"Os 5 minutos do freeza so deveriam comecar quando ele atingisse a forma 4/5 dele"* -- a Forma Final, e nao a 100%.
+	/// </summary>
+	public int UltimatoDesdeODegrau;
 
 	public string AnuncioDoUltimato = "";
 
@@ -346,6 +383,15 @@ public sealed class EstadoDoChefe
 	/// </summary>
 	public bool NoTorneio;
 
+	/// <summary>
+	/// (2026-11-01, o pedido 218) QUANTOS SEGUNDOS ELE ESTA NESTE DEGRAU com o corpo no mundo -- o relogio da divisao do Fat Boo
+	/// (`SagaDoBuu.SegundosAteADivisao`). Vai pro disco: a divisao nao recomeca a cada reinicio.
+	/// </summary>
+	public double SegundosNoDegrau;
+
+	/// <summary>(2026-11-01, o pedido 218) O KID BOO JA FUGIU PRO CEU: volta de um reinicio la, e nao na Terra. Vai pro disco.</summary>
+	public bool NoCeu;
+
 	/// <summary>Id do corpo no `_players`. **NAO PERSISTE** -- corpo nao atravessa reinicio.</summary>
 	[System.Text.Json.Serialization.JsonIgnore]
 	public int Corpo;
@@ -488,6 +534,7 @@ public static class Sagas
 				Planeta = Txt(e, "planeta"),
 				GatilhoBp = Num(e, "gatilhoBp", 0),
 				GatilhoRaca = Txt(e, "gatilhoRaca"),
+				GatilhoNoPlaneta = Bit(e, "gatilhoNoPlaneta", false),   // (2026-11-01, o pedido 210)
 				AnuncioDoMarco = Txt(e, "anuncioDoMarco"),
 				AnuncioDiario = Txt(e, "anuncioDiario"),
 				AnuncioDaVitoria = Txt(e, "anuncioDaVitoria"),
@@ -496,6 +543,7 @@ public static class Sagas
 				MinutosDeOcio = Num(e, "minutosDeOcio", 18),
 				MinutosDeLuta = Num(e, "minutosDeLuta", 6),
 				UltimatoSoNoUltimoDegrau = Bit(e, "ultimatoSoNoUltimoDegrau", false),
+				UltimatoDesdeODegrau = (int)Num(e, "ultimatoDesdeODegrau", 0),
 				AtaqueDoUltimato = Supernova.AtaquePorNome(Txt(e, "ataqueDoUltimato")),
 			};
 
@@ -516,6 +564,11 @@ public static class Sagas
 						DiasAteOTorneio = (int)Num(c, "diasAteOTorneio", 5),
 						AnuncioDaChegada = Txt(c, "anuncioDaChegada"),
 						AnuncioDaQueda = Txt(c, "anuncioDaQueda"),
+						// (2026-11-01, o pedido 210) a space pod e o chefe que observa -- ver os campos
+						ChegaDePod = Bit(c, "chegaDePod", false),
+						ObservaAteCair = Txt(c, "observaAteCair"),
+						AnuncioAoEntrarNaLuta = Txt(c, "anuncioAoEntrarNaLuta"),
+						PlantadoPor = Txt(c, "plantadoPor"),   // (2026-11-01, o pedido 214) os Saibamen do Nappa -- ver o campo
 					});
 				elo.Chefes = [.. cl];
 			}
@@ -637,6 +690,22 @@ public static class Sagas
 						+ "ele morreria de vez, sem a volta que encerra o torneio");
 				if (c.TorneioNoDegrau > 0 && c.DiasAteOTorneio < 1)
 					p.Add($"saga '{e.Id}' / '{c.Molde}': diasAteOTorneio {c.DiasAteOTorneio} -- o torneio e marcado pra pelo menos um dia depois");
+
+				// (2026-11-01, o pedido 210) QUEM OBSERVA ESPERA UM PARCEIRO DO MESMO ELO -- um molde que nao esta aqui faria ele observar pra sempre
+				// (intocavel, sem lutar), e o elo nunca fecharia.
+				if (c.ObservaAteCair.Length > 0
+					&& (string.Equals(c.ObservaAteCair, c.Molde, StringComparison.OrdinalIgnoreCase)
+						|| !Array.Exists(e.Chefes, o => string.Equals(o.Molde, c.ObservaAteCair, StringComparison.OrdinalIgnoreCase))))
+					p.Add($"saga '{e.Id}' / '{c.Molde}': observaAteCair '{c.ObservaAteCair}' nao e outro chefe deste elo -- ele observaria pra sempre");
+
+				// (2026-11-01, o pedido 214) QUEM E PLANTADO PRECISA DE QUEM O PLANTE, e de quem nasca ANTES dele (a ordem da lista): senao ele
+				// brotaria sem ninguem do lado, num lugar qualquer do planeta.
+				if (c.PlantadoPor.Length > 0)
+				{
+					int plantador = Array.FindIndex(e.Chefes, o => string.Equals(o.Molde, c.PlantadoPor, StringComparison.OrdinalIgnoreCase));
+					if (plantador < 0 || plantador >= Array.IndexOf(e.Chefes, c))
+						p.Add($"saga '{e.Id}' / '{c.Molde}': plantadoPor '{c.PlantadoPor}' nao e um chefe deste elo que nasce antes dele");
+				}
 
 				// ABSORVER PRECISA DE QUEM ABSORVER, e de degrau pra onde subir.
 				if (c.Absorve && e.Chefes.Length < 2)

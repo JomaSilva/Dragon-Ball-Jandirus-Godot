@@ -38,6 +38,21 @@ public sealed partial class Fighter
     }
 
     /// <summary>
+    /// (2026-10-30, o pedido 184) O VALOR DE UM MARCO JA PAGO SUBIU (o dono dobrou os do ki divino pra cima): o ganho vai ao MAIOR valor de
+    /// hoje entre as etiquetas que o personagem ja rompeu. So SOBE, e devolve o novo multiplicador quando subiu (pro chamador avisar), ou 0.
+    /// Quem chama e o login (`GameServer.RevisarOsMarcosNoLogin`): o save de antes guarda o ganho com o valor velho, e o `ReachMilestone` nao
+    /// paga de novo uma etiqueta que ja esta na ficha.
+    /// </summary>
+    public double ReajustarOsMarcos()
+    {
+        double maior = 0;
+        foreach (string t in bp_milestones_done) maior = Math.Max(maior, Milestones.Valor(t));
+        if (maior <= bp_milestone_mult) return 0;
+        bp_milestone_mult = maior;
+        return maior;
+    }
+
+    /// <summary>
     /// Marcos de ASCENSAO, pras racas que nao tem forma: o degrau e o proprio BPBoost.
     ///
     /// (2026-10-23) NAS PORTAS DA RAMPA DO DONO, e nao nos 5/10/20 do DM (`LinearGain.dm:48-51`). Os valores sao os do DM (x2, x3, x4 --
@@ -50,6 +65,11 @@ public sealed partial class Fighter
     public double CheckAscensionMilestone()
     {
         bool doDm = Races.Ascensao.MarcosNoDegrauDoDmDeTeste;
+        // (2026-10-30, o pedido 184) A ASCENSAO DIVINA (o pedido 183) TEM OS MARCOS DO NIVEL DELA: o do SSG (x8) e o do Blue (x10), os do ki
+        // divino e do Blue do Saiyajin -- "todas as formas e ascenscoes desses niveis". O x12 do Blue Kaio-ken e do servidor (aos 50% de
+        // maestria divina: `GameServer.MarcosDeForma`).
+        if (!doDm && BPBoost >= Races.Ascensao.NoKiDoBlue) return ReachMilestone(Milestones.AscensaoBlue);
+        if (!doDm && BPBoost >= Races.Ascensao.NoKiDivino) return ReachMilestone(Milestones.AscensaoDeus);
         if (BPBoost >= (doDm ? 20 : Races.Ascensao.NaPortaDoSsj3)) return ReachMilestone("asc20");
         if (BPBoost >= (doDm ? 10 : Races.Ascensao.NaPortaDoSsj2)) return ReachMilestone("asc10");
         if (BPBoost >= (doDm ? 5 : Races.Ascensao.NaPortaDoSsj1)) return ReachMilestone("asc5");
@@ -301,6 +321,12 @@ public sealed partial class Fighter
     public double GanhoDeAtividade(double ganho)
     {
         if (ganho <= 0) return ganho;
+        // (2026-10-29, o pedido 159) O NEO TUFFLE NAO GANHA BP FORA DO HOSPEDEIRO -- o dono: *"Neotuffles n poderiam ganhar bp fora do
+        // host"*. No proprio corpo a ficha e a dele (com a marca); dentro de outro corpo a ficha e a COPIA do hospede, sem a marca.
+        // (2026-10-31, o pedido 201) E NEM NO HOSPEDEIRO ETERNO: *"vc n consegue treinar nem seu corpo original nem corpos invadidos"* -- a
+        // copia que guarda o BP do roubo so cresce pelo dominio, ate o poder que o corpo tinha -- e 110% dele no dominio completo, o
+        // adendo 201d (`GameServer.DominarOHospedeiro`).
+        if (NeoTuffle || tuffle_bp_roubado > 0) return 0;
         // (2026-10-26) E O BANCO DO ZENKAI, so pra quem tem sangue Saiyajin: de 5 a 15% do mesmo ganho (o DU). Ver `SoltarOZenkai`.
         if (HasZenkai())
             zenkaiGuardado += ganho * (GainKnobs.ZenkaiDoGanhoMin
@@ -315,6 +341,7 @@ public sealed partial class Fighter
 
     /// <summary>DEFEITO INJETADO (`--ganhoteste`): o ganho nao guarda nada no banco. Lido pela <see cref="GanhoDeAtividade"/>. Falso em jogo, sempre.</summary>
     public static bool PotencialSemBancoDeTeste;
+
 
     /// <summary>Ha potencial guardado pra soltar? Menos de 1 de BP nao e nada (um corpo novo nasce com 1).</summary>
     public bool TemPotencialGuardado => hiddenpotential >= 1;

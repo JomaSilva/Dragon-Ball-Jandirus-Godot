@@ -424,6 +424,28 @@ public partial class GameServer
 					  kai.Zone.Name == "Namek" && EscutaDaTransmissao.Count == 4, $"claroes {ClaroesEmTexto(EscutaDaTransmissao)}");
 		}
 		finally { KaiKaiClaraoNaHoraDeTeste = false; }
+
+		// ---- 5j (2026-10-29, o pedido 166): o CHEFE DE SAGA e o CELL JR colados nao vao de carona -- o Kai salta sozinho
+		(kai, _, _) = CenaKK();
+		ZoneKey terra = kai.Zone;
+		ServerPlayer? chefe = NascerNpc("freeza_namek", terra, kai.Pos + new Vec2(ZoneCollision.TileSize, 0), 988_771);
+		ServerPlayer? jr = NascerNpc(Jandirus.Core.Npc.TorneioDoCell.MoldeDoCellJr, terra, kai.Pos - new Vec2(ZoneCollision.TileSize, 0), 988_772);
+		if (chefe?.Papel != null) chefe.Papel.DaSaga = true;
+		if (jr != null) _cellJrs.Add(jr.Id);
+		try
+		{
+			UsarHabilidade(kai, "Kai_Kai:Namek");
+			TerminarOKaiKaiDeTeste(kai.Id);
+			AfirmarKK("5j. (2026-10-29, o pedido 166) **O CHEFE DE SAGA E O CELL JR COLADOS NAO VAO DE CARONA**: o Kai chega em Namek, e os dois ficam "
+					  + "na Terra (*\"o vilao continua no planeta e so o jogador q vai teleportar\"*)",
+					  kai.Zone.Name == "Namek" && chefe != null && chefe.Zone.Equals(terra) && jr != null && jr.Zone.Equals(terra),
+					  $"kai {kai.Zone.Name}, chefe {chefe?.Zone.Name}, cell jr {jr?.Zone.Name}");
+		}
+		finally
+		{
+			if (jr != null) { _cellJrs.Remove(jr.Id); RemoverNpc(jr); }
+			if (chefe != null) RemoverNpc(chefe);
+		}
 	}
 
 	// =====================================================================

@@ -204,6 +204,8 @@ public partial class GameServer
 			// (2026-10-18) A TROPA DEPOIS DOS CHEFES: o `MonitorarElos` acabou de dizer quem caiu, e a tropa de um chefe que caiu vai embora
 			// neste mesmo tique. Ver `GameServer.TropaDaSaga.cs`.
 			TickDaTropa();
+			// (2026-11-01, o pedido 210) a cena de quem chegou de pod e esperou a vez -- ver `GameServer.SagaSaiyajin.cs`
+			TickDasCenasDePod();
 		}
 		catch (Exception e) { GD.PushError($"[server] cadeia de sagas quebrou neste tique: {e}"); }
 	}
@@ -304,6 +306,9 @@ public partial class GameServer
 			// **BP BASE**, e nao `expressedBP`. Armadilha 6 da PARTE 3: o expresso e outra escala.
 			if (pl.Ficha.BP < elo.GatilhoBp) continue;
 			if (!ContaProMarco(pl, elo.GatilhoRaca)) continue;
+			// (2026-11-01, o pedido 210) ...e, quando o elo pede, SO QUEM ESTA NO PLANETA DELE -- o dono: *"quando um jogador na terra bater 500 de
+			// bp"*. O registro (`MarcoBatidoPor`) sai daqui tambem, entao ele so anota quem bateu o marco la.
+			if (elo.GatilhoNoPlaneta && !pl.Zone.Equals(ZoneKey.Premade(elo.Planeta))) continue;
 			return pl;
 		}
 		return null;
@@ -401,12 +406,13 @@ public partial class GameServer
 				// aberto) ele espera ela vagar -- quem o poe la depois e a `ChegadaAdiadaDoCell` (`GameServer.TorneioDoCell.cs`).
 				if (ec.NoTorneio)
 				{
-					if (ec.DiasRestantes <= 0) { if (!TorneioAtivo) NascerChefeDaSaga(elo, est, ec); }
+					if (ec.DiasRestantes <= 0) { if (!TorneioAtivo && !SagaEsperaOPlaneta(elo, ec)) NascerChefeDaSaga(elo, est, ec); }
 					else if (!soAsChegadasDeHoje) AnunciarNoMundo(TorneioDoCell.Lembrete(_moldes?.Get(ec.Molde)?.Nome ?? ec.Molde, ec.DiasRestantes));
 					continue;
 				}
 
-				if (ec.DiasRestantes <= 0) NascerChefeDaSaga(elo, est, ec);
+				// (2026-10-29) ...e num planeta destruido (ou explodindo) ele espera o planeta voltar -- ver `SagaEsperaOPlaneta`
+				if (ec.DiasRestantes <= 0) { if (!SagaEsperaOPlaneta(elo, ec)) NascerChefeDaSaga(elo, est, ec); }
 				else menor = Math.Min(menor, ec.DiasRestantes);
 			}
 
@@ -417,6 +423,31 @@ public partial class GameServer
 				AnunciarNoMundo(elo.AnuncioDiario.Replace("{dias}", menor.ToString()));
 		}
 		if (!soAsChegadasDeHoje) SalvarSagas();
+	}
+
+	/// <summary>Os chefes que ja disseram ao mundo que esperam o planeta deles voltar (o aviso sai uma vez por espera). So memoria.</summary>
+	private readonly HashSet<EstadoDoChefe> _chefesEsperandoOPlaneta = [];
+
+	/// <summary>
+	/// (2026-10-29) A SAGA NUM PLANETA DESTRUIDO ESPERA ELE VOLTAR -- o dono, pedido 151: *"sagas q acontecem em planetas destruidos n
+	/// acontecem, elas esperam o planeta voltar"*. Com o planeta da saga destruido OU explodindo, o chefe continua a caminho: a chegada e
+	/// tentada de novo a cada virada do dia e na hora em que o planeta e restaurado (`RessuscitarPlaneta`). O mundo ouve uma vez por espera.
+	/// </summary>
+	private bool SagaEsperaOPlaneta(EloDaSaga elo, EstadoDoChefe ec)
+	{
+		// (2026-11-01, o pedido 218) O KID BOO NO CEU nao espera a Terra que ele mesmo condenou -- ver `NasceNoCeu`.
+		if (NasceNoCeu(elo, ec)) { _chefesEsperandoOPlaneta.Remove(ec); return false; }
+		var zona = ZoneKey.Premade(elo.Planeta);
+		if (!ZonaCondenada(zona))   // (condenada = qualquer morte em curso ou consumada: morrendo, explodindo ou destruida)
+		{
+			_chefesEsperandoOPlaneta.Remove(ec);
+			return false;
+		}
+		if (_chefesEsperandoOPlaneta.Add(ec))
+			AnunciarNoMundo($"{_moldes?.Get(ec.Molde)?.Nome ?? ec.Molde} vinha para {NomeDoPlaneta(elo.Planeta)}, mas o planeta não existe mais "
+						  + "-- a ameaça espera ele voltar.");
+		GD.Print($"[server] SAGA '{elo.Id}': '{ec.Molde}' espera {elo.Planeta} voltar (destruido ou explodindo)");
+		return true;
 	}
 
 	// =====================================================================
@@ -450,7 +481,9 @@ public partial class GameServer
 	private void NascerChefeDaSaga(EloDaSaga elo, EstadoDoElo est, EstadoDoChefe ec,
 								   ComoChegou como = ComoChegou.Agora)
 	{
-		var zona = ZoneKey.Premade(elo.Planeta);
+		// (2026-11-01, o pedido 218) O KID BOO QUE JA FUGIU volta de um reinicio NO CEU, e nao na Terra -- ver `GameServer.SagaDoBuu.cs`.
+		bool noCeu = NasceNoCeu(elo, ec);
+		var zona = noCeu ? ZoneKey.Premade(SagaDoBuu.ZonaDoKid) : ZoneKey.Premade(elo.Planeta);
 		if (_catalogo?.Get(zona) == null)
 		{
 			GD.PushError($"[server] saga '{elo.Id}': zona '{elo.Planeta}' sumiu do manifesto");
@@ -459,7 +492,16 @@ public partial class GameServer
 		}
 
 		ulong lugar = ++_lugarDasSagas;
-		ServerPlayer? npc = NascerNpc(ec.Molde, zona, PontoDeHabitante(zona, lugar), lugar);
+		// (2026-11-01, o pedido 210) QUEM CHEGA DE SPACE POD (o Raditz, o Nappa, o Vegeta) cai num lugar sorteado de terra firme do planeta -- a
+		// escolha do dono -- e sai ao lado da pod. So na CHEGADA: quem volta de um reinicio ou do alem nasce como sempre. Ver
+		// `GameServer.SagaSaiyajin.cs`.
+		Vec2? pod = como == ComoChegou.Agora && Array.Find(elo.Chefes, c => c.Molde == ec.Molde) is { ChegaDePod: true }
+			? PousoDaPodDoChefe(zona) : null;
+		// (2026-11-01, o pedido 214) QUEM E PLANTADO (os Saibamen do Nappa) brota ao lado de quem o plantou, na fileira dele -- ver
+		// `GameServer.SagaSaiyajin.cs`. Quem volta do alem nasce como sempre.
+		ChefeDaSaga? plantado = Array.Find(elo.Chefes, c => c.Molde == ec.Molde) is { PlantadoPor.Length: > 0 } fp ? fp : null;
+		Vec2? aoPeDeQuemPlantou = plantado != null && como != ComoChegou.Ressurgindo ? PontoDoPlantado(elo, est, plantado, zona) : null;
+		ServerPlayer? npc = NascerNpc(ec.Molde, zona, pod is { } p ? AoLadoDaPod(zona, p) : aoPeDeQuemPlantou ?? PontoDeHabitante(zona, lugar), lugar);
 		if (npc?.Papel == null)
 		{
 			GD.PushError($"[server] saga '{elo.Id}': o chefe '{ec.Molde}' nao nasceu");
@@ -482,10 +524,16 @@ public partial class GameServer
 		EntrarNoDegrau(npc, cura: 0, anunciar: false);
 
 		ec.Corpo = npc.Id;
+		if (noCeu) ec.NoCeu = true;
 		ec.Fase = FaseDoChefe.NoMundo;
 		ec.Engajou = false;
 		ec.Carregando = false;
 		est.Fase = FaseDaSaga.EmCurso;
+
+		// (2026-11-01, o pedido 210) A POD NO CHAO E A CRATERA, e o chefe que so observa enquanto o parceiro esta de pe (o Vegeta) -- ver
+		// `GameServer.SagaSaiyajin.cs`.
+		if (pod is { } ondeCaiu) PorAPodDoChefe(zona, ondeCaiu);
+		ComecarAObservarSeFor(elo, est, ec, npc);
 
 		// O RELOGIO DO ULTIMATO comeca a correr na CHEGADA (o `s1_spawn_time`, BossEvents.dm:466).
 		ec.UltimatoEm = elo.DestroiPlaneta ? _relogioDoMundo + elo.MinutosDeOcio * 60 : 0;
@@ -501,7 +549,8 @@ public partial class GameServer
 		string frase = como switch
 		{
 			ComoChegou.Retomando =>
-				$"{npc.Name} CONTINUA em {NomeDoPlaneta(elo.Planeta)} -- a ameaça não passou.",
+				noCeu ? $"{npc.Name} CONTINUA no Céu -- a ameaça não passou."
+					  : $"{npc.Name} CONTINUA em {NomeDoPlaneta(elo.Planeta)} -- a ameaça não passou.",
 
 			// A FRASE DO DEGRAU: pro Cell que volta Super Perfeito e a mesma linha que ele diria se
 			// tivesse chegado ali por dano. Sem ela ele ressuscitaria anunciando a propria estreia.
@@ -511,12 +560,22 @@ public partial class GameServer
 
 			_ => ficha?.AnuncioDaChegada ?? "",
 		};
-		AnunciarNoMundo(frase);
+		// (2026-11-01, o pedido 214) o plantado so fala na chegada (a fala do primeiro conta os seis), e nao tem jornal nem cena: e semente do Nappa
+		if (plantado == null || como == ComoChegou.Agora) AnunciarNoMundo(frase);
+		// (2026-10-31, o pedido 198) O JORNAL GALACTICO conta o vilao de saga que chegou causando problema, e onde -- ver `GameServer.JornalGalactico.cs`.
+		if (como != ComoChegou.Retomando && plantado == null)
+			Noticiar(TipoDeNoticia.VilaoAtacando, $"{npc.Name} apareceu em {NomeDoPlaneta(elo.Planeta)} e ameaça o planeta.");
 
 		// (v0.3.0) A CENA DA CHEGADA, pra TODOS (*"uma cutscene q aparece pra todos quando um boss de saga aparece"*) -- a de quem
 		// chega e a de quem volta da morte. Quem RETOMA nao chegou: ele ja estava no mundo antes do reinicio. Ver
 		// `GameServer.ChefeDeSaga.cs`.
-		if (como != ComoChegou.Retomando) AnunciarChegadaDoChefe(npc, elo.Planeta, frase);
+		// (2026-11-01, o pedido 210) ...e a de quem chegou de pod entra em FILA: o Nappa e o Vegeta caem na mesma virada do dia, e a segunda cena
+		// tiraria a primeira da tela (`World.AoChegarOChefe`). Ver `AnunciarChegadaDePod`.
+		if (como != ComoChegou.Retomando && plantado == null)
+		{
+			if (pod != null) AnunciarChegadaDePod(npc, elo.Planeta, frase);
+			else AnunciarChegadaDoChefe(npc, elo.Planeta, frase);
+		}
 
 		GD.Print($"[server] SAGA '{elo.Id}': '{npc.Name}' chegou em {elo.Planeta} | degrau "
 			   + $"{npc.Papel.Estagio + 1}/{npc.Papel.Molde.Estagios.Length} | BP PINADO "
@@ -649,6 +708,8 @@ public partial class GameServer
 			}
 
 			if (est.Disparou || est.MarcoBatidoPor.Length > 0) continue;
+			// (2026-11-01, o pedido 210) O MARCO DE QUEM ESTA NO PLANETA nao se acha no disco: quem saiu do jogo nao esta la agora.
+			if (elo.GatilhoNoPlaneta) continue;
 			doDisco ??= QuemEstaNoDisco();
 			foreach ((string nome, string raca, double bp) in doDisco)
 			{
@@ -805,8 +866,13 @@ public partial class GameServer
 			if (elo.DestroiPlaneta)
 			{
 				ec.UltimatoEm = _relogioDoMundo + elo.MinutosDeLuta * 60;
-				AnunciarNoMundo($"A batalha contra {corpo.Name} começou em {NomeDoPlaneta(elo.Planeta)}! "
-							  + $"Derrotem-no antes que ele perca a paciência (~{elo.MinutosDeLuta:0} min).");
+				// (2026-10-29, o pedido 167) com o prazo esperando um degrau, os minutos ainda nao correm -- e a frase nao os promete
+				MoldeDeNpc? moldeDaBriga = _moldes?.Get(ec.Molde);
+				AnunciarNoMundo(PrazoAindaNaoCorre(elo, ec, moldeDaBriga)
+					? $"A batalha contra {corpo.Name} começou em {NomeDoPlaneta(elo.Planeta)}! Derrotem-no antes que ele chegue à "
+					  + $"{NomeDoDegrauDoPrazo(elo, moldeDaBriga)}."
+					: $"A batalha contra {corpo.Name} começou em {NomeDoPlaneta(elo.Planeta)}! "
+					  + $"Derrotem-no antes que ele perca a paciência (~{elo.MinutosDeLuta:0} min).");
 			}
 		}
 
@@ -990,8 +1056,11 @@ public partial class GameServer
 		}
 
 		if (ficha is { AnuncioDaQueda.Length: > 0 }) AnunciarNoMundo(ficha.AnuncioDaQueda);
+		// (2026-11-01, o pedido 210) ...e quem so observava este chefe (o Vegeta, o Nappa) entra na luta agora -- ver `GameServer.SagaSaiyajin.cs`
+		AcordarOsQueObservavam(est, ec.Molde);
 
-		PagarOHeroi(elo, ec, corpo, ficha?.Recompensa ?? Reputacao.HeroiPorChefe);
+		// (2026-11-01, o pedido 214) quem foi PLANTADO (os Saibamen do Nappa) paga so a reputacao dele -- ver `PagarOHeroi`
+		PagarOHeroi(elo, ec, corpo, ficha?.Recompensa ?? Reputacao.HeroiPorChefe, soAFama: ficha is { PlantadoPor.Length: > 0 });
 		SalvarSagas();
 	}
 
@@ -1011,7 +1080,11 @@ public partial class GameServer
 	/// SEM MATADOR, NINGUEM RECEBE -- e o console diz. Um chefe que morre de queda, de sol ou nas maos
 	/// de outro NPC nao fez ninguem heroi, e inventar um beneficiario seria pior que nao pagar.
 	/// </summary>
-	private void PagarOHeroi(EloDaSaga elo, EstadoDoChefe ec, ServerPlayer corpo, double quanto)
+	/// <param name="soAFama">
+	/// (2026-11-01, o pedido 214) SO A REPUTACAO, CALADO: o Saibaman que o Nappa plantou e semente, e nao vilao -- seis seguidas dariam seis
+	/// aclamacoes de heroi no chat, seis noticias e seis vezes o karma de derrubar um chefe. A reputacao pequena da ficha dele fica.
+	/// </param>
+	private void PagarOHeroi(EloDaSaga elo, EstadoDoChefe ec, ServerPlayer corpo, double quanto, bool soAFama = false)
 	{
 		if (!_players.TryGetValue(corpo.UltimoAgressor, out ServerPlayer? matador) || !EhJogador(matador))
 		{
@@ -1021,6 +1094,7 @@ public partial class GameServer
 		}
 
 		SomarReputacao(elo.Planeta, matador, quanto, "chefe-de-saga-derrotado");
+		if (soAFama) return;
 
 		// ============================ E A ALMA DELE MUDA, NAO SO A FAMA ============================
 		// `gain_boss_kill_karma` (`SkyNPCs.dm:145-147`), que no original pendura no MESMO
@@ -1035,6 +1109,8 @@ public partial class GameServer
 		KarmaPorDerrotarChefe(matador);
 
 		AnunciarNoMundo($"{matador.Name} é aclamado(a) como HERÓI pelo povo de {NomeDoPlaneta(elo.Planeta)}!");
+		// (2026-10-31, o pedido 198) ...e o JORNAL GALACTICO conta quem derrotou o vilao de saga -- ver `GameServer.JornalGalactico.cs`.
+		Noticiar(TipoDeNoticia.VilaoDerrotado, $"{matador.Name} derrotou {corpo.Name} em {NomeDoPlaneta(elo.Planeta)} e foi aclamado(a) como herói.");
 	}
 
 	// =====================================================================
@@ -1046,6 +1122,23 @@ public partial class GameServer
 	/// </summary>
 	internal static bool EsferaSobeNoChaoDeTeste;
 
+	/// <summary>
+	/// (2026-10-29, o pedido 167) O DEGRAU (contado de 1) a partir do qual o ultimato corre: o do dado (`ultimatoDesdeODegrau`), o ultimo da
+	/// ficha pelo dado antigo (`ultimatoSoNoUltimoDegrau`), ou 0 = desde a chegada.
+	/// </summary>
+	private static int DegrauDoPrazo(EloDaSaga elo, MoldeDeNpc? molde) =>
+		elo.UltimatoDesdeODegrau > 0 ? elo.UltimatoDesdeODegrau
+		: elo.UltimatoSoNoUltimoDegrau && molde != null ? molde.Estagios.Length
+		: 0;
+
+	/// <summary>O chefe ainda nao chegou ao degrau do prazo: os minutos do ultimato nao correm.</summary>
+	private static bool PrazoAindaNaoCorre(EloDaSaga elo, EstadoDoChefe ec, MoldeDeNpc? molde) =>
+		DegrauDoPrazo(elo, molde) is var d && d > 0 && ec.Degrau + 1 < d;
+
+	/// <summary>O degrau do prazo pras frases, como o dono conta as formas: "forma 4/5".</summary>
+	private static string NomeDoDegrauDoPrazo(EloDaSaga elo, MoldeDeNpc? molde) =>
+		DegrauDoPrazo(elo, molde) is var d && molde != null && d >= 1 && d <= molde.Estagios.Length ? $"forma {d}/{molde.Estagios.Length}" : "forma final";
+
 	private void CorrerOUltimato(EloDaSaga elo, EstadoDoElo est, EstadoDoChefe ec, ServerPlayer corpo)
 	{
 		MoldeDeNpc? molde = _moldes?.Get(ec.Molde);
@@ -1053,15 +1146,22 @@ public partial class GameServer
 		// ============================ A SAGA 2 SO ARMA O PRAZO NA FORMA FINAL ============================
 		// No original o `s2_deadline` e escrito DENTRO do `freeza_transform`, no ramo da ultima forma
 		// (BossEvents.dm:672). Aqui isso e uma linha de dado (`ultimatoSoNoUltimoDegrau`) porque a
-		// pergunta "ele esta no ultimo degrau?" a ficha ja responde.
+		// pergunta "ele esta no ultimo degrau?" a ficha ja responde. (2026-10-29, o pedido 167) E o degrau e do dado: o Freeza de Namek
+		// corre o prazo desde a Forma Final (4/5), e nao so na 100% -- ver `DegrauDoPrazo`.
 		// ==========================================================================================
-		if (elo.UltimatoSoNoUltimoDegrau && molde != null && ec.Degrau < molde.Estagios.Length - 1)
+		if (PrazoAindaNaoCorre(elo, ec, molde))
 		{
 			ec.UltimatoEm = 0;
 			return;
 		}
 		if (ec.UltimatoEm <= 0)
+		{
 			ec.UltimatoEm = _relogioDoMundo + (ec.Engajou ? elo.MinutosDeLuta : elo.MinutosDeOcio) * 60;
+			// (2026-10-29, o pedido 167) O PRAZO QUE ESPERAVA UM DEGRAU AVISA QUANDO COMECA: e so daqui que os minutos valem
+			if (DegrauDoPrazo(elo, molde) > 0)
+				AnunciarNoMundo($"{corpo.Name} chegou à {NomeDoDegrauDoPrazo(elo, molde)}! O planeta {NomeDoPlaneta(elo.Planeta)} será destruído em "
+							  + $"~{(ec.Engajou ? elo.MinutosDeLuta : elo.MinutosDeOcio):0} min se ele não for derrotado.");
+		}
 
 		// ============================ SERVIDOR VAZIO: O ULTIMATO ESPERA ============================
 		// **LITERAL** e pela mesma razao escrita no original: sem ninguem online pra reagir, o planeta
@@ -1181,6 +1281,10 @@ public partial class GameServer
 
 		// O PLANETA DA SAGA E UM PRE-FEITO por construcao (`elo.Planeta` e nome de zona do
 		// manifesto: Vegeta, Namek, Earth). Nao ha caso procedural aqui.
+		// (2026-10-31, o pedido 198g) O CHEFE QUE VENCEU FICA SOLTO (o Freeza de Namek, o Cell, o Boo) -- lido aqui, antes de o corpo sair de
+		// cena: o degrau e o BP pinado sao os dele agora. Ver `GameServer.ViloesSoltos.cs`.
+		SoltarOVilao(elo, ec, corpo);
+
 		if (!ComecarDestruicao(ZoneKey.Premade(elo.Planeta), bpDoChefe,
 							   $"saga '{elo.Id}': {corpo.Name}", idDoChefe))
 			GD.PushWarning($"[server] a saga '{elo.Id}' consumou sobre '{elo.Planeta}', mas a "

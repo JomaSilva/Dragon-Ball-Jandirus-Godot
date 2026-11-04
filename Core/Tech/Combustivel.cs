@@ -25,6 +25,9 @@ namespace Jandirus.Core.Tech;
 ///
 /// O FOGUETE NAO TEM TANQUE: ele e uma janela de 25 s no espaco que volta sozinha (`Naves.SegundosEmOrbita`) -- nao ha viagem pra
 /// pagar.
+///
+/// (2026-10-31, o pedido 209) O TANQUE CRESCE POR DEGRAUS -- *"adicione uma forma de melhoria na pod e capital ship de aumentar o tanque
+/// de combustivel"*. Ver <see cref="DegrausDoTanque"/>.
 /// ==========================================================================================================
 /// </summary>
 public static class Combustivel
@@ -32,9 +35,13 @@ public static class Combustivel
 	/// <summary>Esta nave tem tanque? O pod (as duas entradas do catalogo) e a Capital Ship; o foguete nao.</summary>
 	public static bool TemTanque(string tipo) => Naves.EhPod(tipo) || NaveGrande.EhNaveGrande(tipo);
 
-	/// <summary>O tanque cheio desta nave, em unidades de combustivel. Zero pra quem nao tem tanque.</summary>
-	public static double Capacidade(string tipo) =>
-		Naves.EhPod(tipo) ? TanqueDoPod : NaveGrande.EhNaveGrande(tipo) ? TanqueDaNaveGrande : 0;
+	/// <summary>
+	/// O tanque cheio desta nave, em unidades de combustivel, com os <paramref name="degraus"/> de melhoria que ela tem (o pedido 209;
+	/// zero = o de fabrica). Zero pra quem nao tem tanque.
+	/// </summary>
+	public static double Capacidade(string tipo, int degraus = 0) =>
+		(Naves.EhPod(tipo) ? TanqueDoPod : NaveGrande.EhNaveGrande(tipo) ? TanqueDaNaveGrande : 0)
+		* (1 + FracaoPorDegrau * Math.Clamp(degraus, 0, DegrausDoTanque));
 
 	/// <summary>O tanque do pod. Ver a tabela do cabecalho.</summary>
 	public const double TanqueDoPod = 1_000;
@@ -50,7 +57,8 @@ public static class Combustivel
 	public const double GastoPorTileDaNaveGrande = 0.20;
 
 	/// <summary>Quantos tiles um tanque cheio leva esta nave. So conta -- quem gasta e o <see cref="GastoDoPasso"/>.</summary>
-	public static double TilesDeAlcance(string tipo) => GastoPorTile(tipo) > 0 ? Capacidade(tipo) / GastoPorTile(tipo) : 0;
+	public static double TilesDeAlcance(string tipo, int degraus = 0) =>
+		GastoPorTile(tipo) > 0 ? Capacidade(tipo, degraus) / GastoPorTile(tipo) : 0;
 
 	/// <summary>
 	/// O MAIOR PASSO DE UM TIQUE QUE CONTA COMO VIAGEM: o dobro do passo da nave mais rapida (39x, ~208 px por tique). Um salto maior que
@@ -80,9 +88,34 @@ public static class Combustivel
 	public const double FolgaDoCheio = 0.5;
 
 	/// <summary>O tanque desta nave esta cheio (com a folga)?</summary>
-	public static bool Cheio(string tipo, double nivel) => nivel >= Capacidade(tipo) - FolgaDoCheio;
+	public static bool Cheio(string tipo, double nivel, int degraus = 0) => nivel >= Capacidade(tipo, degraus) - FolgaDoCheio;
 
 	/// <summary>A fracao do tanque (0 a 1). Zero pra quem nao tem tanque.</summary>
-	public static double Fracao(string tipo, double nivel) =>
-		Capacidade(tipo) > 0 ? Math.Clamp(nivel / Capacidade(tipo), 0, 1) : 0;
+	public static double Fracao(string tipo, double nivel, int degraus = 0) =>
+		Capacidade(tipo, degraus) > 0 ? Math.Clamp(nivel / Capacidade(tipo, degraus), 0, 1) : 0;
+
+	// =====================================================================
+	// (2026-10-31, o pedido 209) O TANQUE MAIOR
+	// =====================================================================
+	/// <summary>
+	/// QUANTOS DEGRAUS O TANQUE SOBE. O dono: *"adicione uma forma de melhoria na pod e capital ship de aumentar o tanque de
+	/// combustivel"*. Os numeros foram ESCOLHA MINHA, e o dono os confirmou em 2026-11-01 (*"Legal, ta bom assim oq vc escolheu"*):
+	/// cada degrau soma METADE do tanque de fabrica (<see cref="FracaoPorDegrau"/>: o pod +500, a Capital Ship +2.500), e no ultimo o
+	/// tanque e 6x o de fabrica -- o pod vai 120 mil tiles sem parar (a Terra->Namek e a volta), a Capital Ship 150 mil. O espaco novo vem
+	/// VAZIO (ver `GameServer.MelhorarOTanque`): o tanque maior poupa paradas, e nao combustivel.
+	/// </summary>
+	public const int DegrausDoTanque = 10;
+
+	/// <summary>O que cada degrau soma, em fracao do tanque de fabrica.</summary>
+	public const double FracaoPorDegrau = 0.5;
+
+	/// <summary>
+	/// O PRECO DE UM DEGRAU: a escada da velocidade (`Naves.CustoDoUpgrade`, o degrau seguinte custa mais) no tamanho do tanque --
+	/// 10 zeni por unidade que o degrau soma, vezes o numero do degrau. O pod: 5.000 zeni o primeiro, 50.000 o decimo (275 mil os dez);
+	/// a Capital Ship, cinco vezes isso. Em recursos, o dobro (a regra de toda melhoria, `Recurso.CustoEmRecursos`).
+	/// </summary>
+	public static double CustoDoDegrau(string tipo, int degraus) =>
+		ZeniPorUnidadeDoDegrau * Capacidade(tipo) * FracaoPorDegrau * (Math.Max(degraus, 0) + 1);
+
+	public const double ZeniPorUnidadeDoDegrau = 10;
 }

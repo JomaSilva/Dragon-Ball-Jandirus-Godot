@@ -78,6 +78,9 @@ public sealed partial class GameServer
 		/// <summary>O raio que saiu da mao (nulo na carga), e se a ultima disputa dele EMPATOU.</summary>
 		public Projetil? Raio;
 		public bool Empatou;
+
+		/// <summary>(2026-11-02, o pedido 227o) O Kamehameha do CELL SOLTO, no fim dos dois dias num planeta: chegando, explode o planeta dele.</summary>
+		public bool DoSolto;
 	}
 
 	private KamehamehaDoCellVivo? _kamehamehaDoCell;
@@ -721,6 +724,12 @@ public sealed partial class GameServer
 	/// <summary>O Kamehameha chegou: o torneio (se havia) acaba e a Terra comeca a explodir (o gancho de destruicao das sagas, o do ultimato).</summary>
 	private void ExplodirATerraPeloCell(KamehamehaDoCellVivo k, ServerPlayer cell)
 	{
+		// (2026-11-02, o pedido 227o) o do Cell solto explode o planeta que ele invade, e nao a Terra da saga -- ver `GameServer.ViloesInvasores.cs`
+		if (k.DoSolto)
+		{
+			ExplodirPeloKamehamehaDoSolto(cell);
+			return;
+		}
 		_kamehamehaDoCell = null;
 		EloDaSaga? elo = Array.Find(_cadeia, e => e.Id == k.Elo);
 		EstadoDoElo? est = elo == null ? null : _sagas.Do(elo.Id);

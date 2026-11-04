@@ -23,6 +23,10 @@ namespace Jandirus.Client;
 ///       com a roupa da criacao por cima (a escolha do dono; a foto `tuffle-2b-virou` e esta). Dois CONTRA-EXEMPLOS: o pacote sem a marca do
 ///       corpo (`TuffleSemCorpoDoBabyDeTeste`, ele volta a cara da criacao) -- foto `tuffle-2c-defeito-sem-corpo-do-baby`; e o boneco que veste
 ///       o cabelo e os olhos da ficha por cima do Baby (`CharacterVisual.TuffleComCabeloDeTeste`) -- foto `tuffle-2d-defeito-com-cabelo`.
+///   N7. (2026-10-31, o pedido 201) o Neo Tuffle toma de vez um Vegeta caido: a copia comeca com 10% do poder dele -- foto
+///       `tuffle-7-hospedeiro-10`; N8. dominando o corpo (10%), ela ja rende 20% do poder que tinha (a linha reta de 10% a 110% do
+///       adendo 201d) -- foto `tuffle-8-dominio`.
+///   N9. (2026-10-31, o adendo 201d) dominada por inteiro, ela rende 110% do poder que ele tinha -- foto `tuffle-9-dominio-completo`.
 ///
 /// O ROBO SAIYAJIN (o Vegeta) e o HOSPEDE, possuido por um Neo Tuffle de palco (o Baby -- careca de fraque na ficha, que o mundo ve na folha do
 /// Baby, de fraque por cima):
@@ -222,6 +226,36 @@ public partial class RoboDoTuffle : Node
 		Conferir(comCabelo && carecaDeNovo,
 				 "N2d. CONTRA-EXEMPLO (defeito injetado: o boneco veste o cabelo e os olhos da ficha): eles voltam por cima da folha do Baby -- a "
 				 + $"regua do N2b REPROVA [no defeito {noDefeito}; de volta {Contar(Desenho(eu))}]");
+
+		// ---------------------------------------------------------- N7. (2026-10-31, o pedido 201) o hospedeiro eterno comeca com 10%
+		int vitima = srv.PalcoN_Vitima(eu, 1.5f);
+		await Segundos(1.0);
+		bool tomou = vitima > 0 && srv.PalcoN_Hospedar(eu, vitima);
+		bool disse10 = await Ate(() => Disse("que começa com 10% do poder dele"), 6);
+		await Segundos(1.5);
+		Fotografar("user://tuffle-7-hospedeiro-10.png");
+		Conferir(tomou && disse10, $"N7. (o pedido 201) O NEO TUFFLE TOMA O VEGETA CAIDO DE VEZ: a copia comeca com 10% do poder dele, e o chat diz "
+				 + $"[ouvi: {UltimasDitas()}]");
+
+		// ---------------------------------------------------------- N8. o dominio libera o poder
+		srv.PalcoN_Dominio(eu, 9.999);
+		bool disse20 = await Ate(() => Disse("você domina 10% do corpo") && Disse("já rende 20% do poder"), 6);
+		await Segundos(1.0);
+		Fotografar("user://tuffle-8-dominio.png");
+		Conferir(disse20, $"N8. (o pedido 201) DOMINANDO O CORPO, O PODER VEM: com 10% de dominio a copia ja rende 20% do poder que ele tinha "
+				 + "(a linha reta de 10% a 110%, o adendo 201d) "
+				 + $"[ouvi: {UltimasDitas()}]");
+
+		// ---------------------------------------------------------- N9. (2026-10-31, o adendo 201d) dominado por inteiro: 110%
+		srv.PalcoN_Dominio(eu, 99.999);
+		bool disse110 = await Ate(() => Disse("por inteiro: ele rende 110%"), 6);
+		(double bpDaCopia, double roubado) = srv.PalcoN_Poder(eu);
+		await Segundos(1.0);
+		Fotografar("user://tuffle-9-dominio-completo.png");
+		Conferir(disse110 && roubado > 0 && Math.Abs(bpDaCopia - roubado * 1.10) <= roubado * 1e-6,
+				 $"N9. (o adendo 201d) DOMINADO POR INTEIRO, O CORPO RENDE 110% DO PODER QUE TINHA: o chat diz, e o BP da copia e 110% do roubo "
+				 + $"[BP {bpDaCopia:N0} de {roubado:N0}; ouvi: {UltimasDitas()}]");
+		srv.PalcoN_SairDoHospedeiro(eu);
 	}
 
 	/// <summary>Fecha o menu E se ele estiver aberto, e espera ele sair da tela.</summary>

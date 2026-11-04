@@ -306,7 +306,8 @@ public sealed partial class GameServer
 		if (qual == QualDragao.Super || (qual == QualDragao.Nenhum && Espaco.EhEspaco(pl.Zone)))
 			return new RetratoDoDragao(MenuDoSuperShenron(pl), -1, false);
 
-		if (_sets.Find(x => x.Zona.Hash == pl.Zone.Hash) is { } daqui)
+		// (2026-10-31, o pedido 195) Com as esferas POR JOGADOR, o dragao deste mundo e o da COPIA dele (a que ele ve); sem ela ainda, o do servidor.
+		if ((_sets.Find(x => x.Zona.Hash == pl.Zone.Hash && VeOSet(pl, x)) ?? _sets.Find(x => x.Zona.Hash == pl.Zone.Hash && x.Base == 0)) is { } daqui)
 			return new RetratoDoDragao(MenuDoDragaoComum(pl, daqui, null), daqui.Id, _invocacoes.ContainsKey(daqui.Id));
 
 		var vazio = new MenuDoDragao
@@ -478,6 +479,26 @@ public sealed partial class GameServer
 				return e;
 			}
 
+			// (2026-10-29, o pedido 168) PRA QUEM? Os desejos de si mesmo podem ir pra um conhecido online -- e cada escolha diz por si se pode
+			// (quem ja pediu os Marcos dele ainda os pede pra um amigo). Ver `DesejosPraOutro`.
+			if (DesejosPraOutro.Contains(d.Id) && ConhecidosOnline(pl) is { Count: > 0 } conhecidos)
+			{
+				e.Pergunta = "Pra quem?";
+				string? meu = PorQueNaoRecebe(d.Id, pl);
+				e.Escolhas.Add(new EscolhaDoDragao { Pedido = d.Id, Rotulo = ParaMim, Pode = meu == null, Nota = meu ?? "pra você mesmo" });
+				foreach (ServerPlayer o in conhecidos.OrderBy(o => o.Name, StringComparer.OrdinalIgnoreCase).Take(FioDoMenuDoDragao.MaxEscolhas - 1))
+				{
+					string? dele = PorQueNaoRecebe(d.Id, o);
+					e.Escolhas.Add(new EscolhaDoDragao
+					{
+						Pedido = $"{d.Id} #{o.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)}", Rotulo = o.Name, Pode = dele == null,
+						Nota = dele ?? Jandirus.Core.Races.NomeDaRaca.Bonito(o.Race),
+					});
+				}
+				if (!e.Escolhas.Exists(c => c.Pode)) { e.Pode = false; e.Motivo = meu ?? "Ninguém pode receber este desejo agora."; }
+				return e;
+			}
+
 			if (d.Id == "marcos" && JaPediuMarcos(pl))
 			{
 				e.Pode = false;
@@ -501,9 +522,9 @@ public sealed partial class GameServer
 				return e;
 			}
 
-			// (v0.3.0) A MESMA PERGUNTA DA RECUSA DO DESEJO: quem nao tem mais o que receber, e o Namekuseijin sem o poder do
-			// ki divino -- ver `PorQueNaoLiberaOPotencial`.
-			if (d.Id == "potencial" && PorQueNaoLiberaOPotencial(pl) is { } semPotencial)
+			// (v0.3.0) A MESMA PERGUNTA DA RECUSA DO DESEJO: quem nao tem mais o que receber -- ver `PorQueNaoLiberaOPotencial`. (2026-10-29)
+			// O "Poder" e a liberacao do potencial (o pedido 156), e o "Liberar o meu potencial" saiu da tabela.
+			if (d.Id == "poder" && PorQueNaoLiberaOPotencial(pl) is { } semPotencial)
 			{
 				e.Pode = false;
 				e.Motivo = semPotencial;
@@ -847,6 +868,22 @@ public sealed partial class GameServer
 
 		if (registrando && d.Id == _pedidoDoBenef)
 			e.Motivo = "É o pedido registrado agora" + (_alvoDoPedido.Length > 0 ? $": {_alvoDoPedido}." : ".");
+
+		// (2026-10-31, o pedido 197) QUAL SALA DO TEMPO O SUPER REVELA -- *"o jogador escolhe"*: uma resposta por linha da tabela de dilatacao,
+		// de 3 meses a 5 anos, com a parte das salas que cada uma e (as melhores sao as mais raras: a de 5 anos pode ficar longe). Aqui, e nao no
+		// `EntradaDoDesejo`: o desejo e do Super (`Desejos.DoSuper`), e a linha dele nasce nesta funcao. O efeito: `GameServer.ChaveDaSala.cs`.
+		if (d.Id == Desejos.IdDaSalaRevelada)
+		{
+			e.Pergunta = "Qual Sala do Tempo?";
+			foreach (Jandirus.Core.World.FaixaDeDilatacao f in Jandirus.Core.World.SalaDePlaneta.Tabela)
+				e.Escolhas.Add(new EscolhaDoDragao
+				{
+					Pedido = $"{d.Id} {f.AnosPorDia.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+					Rotulo = $"{Jandirus.Core.World.SalaDePlaneta.TextoDaDilatacao(f.AnosPorDia)} por dia",
+					Nota = $"{f.Peso}% das salas",
+				});
+			return e;
+		}
 
 		switch (d.Alvo)
 		{

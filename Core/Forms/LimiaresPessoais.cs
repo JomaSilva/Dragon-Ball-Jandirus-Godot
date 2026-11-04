@@ -256,7 +256,8 @@ public sealed class LimiaresPessoais
 		// --- a escada alta (statsaiyan.dm:52-56): igual pra toda classe no DM; aqui o Low-Class e o Elite tem a deles ---
 		ssj3at = Catalogo.Ssj3atInicial * FaixaDaEscada("ssj3at", classe);          // :52
 		ultrassjat = Catalogo.UltrassjatInicial * FaixaDaEscada("ultrassjat", classe); // :53
-		rawssj4at = Catalogo.RawSsj4atInicial * FaixaDaEscada("rawssj4at", classe); // :54
+		// (2026-10-30, o pedido 178) o SSJ4 do PRIMAL e o de fabrica, cravado -- ver `ClasseDoPrimal`
+		rawssj4at = Catalogo.RawSsj4atInicial * (ClasseDoPrimal(classe) ? 1 : FaixaDaEscada("rawssj4at", classe)); // :54
 		unrestssjat = UnrestSsjatInicial * Faixa("unrestssjat", 9, 13);          // :55
 		lssjat = LssjatInicial * Faixa("lssjat", 9, 13);                         // :56
 
@@ -317,6 +318,13 @@ public sealed class LimiaresPessoais
 	};
 
 	/// <summary>
+	/// (2026-10-30, o pedido 178) AS DUAS CLASSES DA LINHAGEM PRIMAL (`Birth.TabelaSaiyajin`: a Normal e a Lendaria). O dono, sobre a faixa da
+	/// classe no SSJ4: *"n tem classe baixa nem elite em primal, entao n precisa colocar variação neles"* -- o requisito do SSJ4 delas (o FP e
+	/// o LB leem o mesmo) e o de fabrica, sem sorteio. O SSJ3 e o Oozaru Dourado do Primal continuam com a faixa de antes.
+	/// </summary>
+	private static bool ClasseDoPrimal(string classe) => classe is "Normal Primal Saiyan" or "Legendary Primal Saiyan";
+
+	/// <summary>
 	/// (2026-10-21) O LOW-CLASS QUE JA NASCEU ACOMPANHA A FAIXA NOVA -- SO PRA BAIXO. Chamado no login.
 	///
 	/// Os limiares sao sorteados uma vez e gravados, entao a faixa nova de <see cref="RolarSaiyajin"/> so chegaria
@@ -344,6 +352,15 @@ public sealed class LimiaresPessoais
 
 	/// <summary>DEFEITO INJETADO (`--formasteste`): o login nao desce o Low-Class antigo -- ele fica com a faixa do DM.</summary>
 	public static bool LowClassAntigoParadoDeTeste;
+
+	/// <summary>
+	/// (2026-10-30, o pedido 178) O REQUISITO DO SSJ4 DESCE PROS 5 BILHOES NO LOGIN -- o dono: *"faça o requisito do ssj4 ser 5B (fp e lb mesma
+	/// coisa)"*. O `rawssj4at` gravado no nascimento (15 bi vezes a faixa da classe) vai pro que a semente dele sorteia HOJE (5 bi vezes a
+	/// MESMA faixa: o Low-Class continua o mais facil e o Elite o mais tarde, a escada da classe do dono de 2026-10-21; o Primal, cravado nos
+	/// 5 -- `ClasseDoPrimal`). SO PRA BAIXO, como o do Low-Class -- ninguem perde forma. O save que nunca sorteou desce pro numero cheio.
+	/// </summary>
+	public void DescerOSsj4AoRequisito(string raca, string? classe) =>
+		rawssj4at = Math.Min(rawssj4at, Rolado ? Rolar(raca, classe ?? "", Semente).rawssj4at : Catalogo.RawSsj4atInicial);
 
 	/// <summary>
 	/// statheran.dm:26-42.

@@ -214,10 +214,16 @@ public enum ArteDeKi : ushort
 	// citar: o desenho e so shader (`EsferaDeKi.gdshader`, o bloco do Hakai). Duas entradas e nao uma porque o tamanho e da
 	// arte (o servidor manda escala 1 nos dois, e escala e regra: alcance do impacto e da explosao) -- a esfera e maior.
 
-	/// <summary>A Destroyer Sphere (`God_Destroyer_Sphere`): a esfera do Hakai inteira, do tamanho do impacto.</summary>
+	/// <summary>
+	/// A Destroyer Sphere (`God_Destroyer_Sphere`): a esfera do Hakai inteira, do tamanho do impacto. (2026-10-30, o pedido 181) Uma vez e meia
+	/// a bola desde que ela engole quem fere (`Ranks.KitDoDeus.EscalaDaEsfera`).
+	/// </summary>
 	HakaiEsfera = 48,
 
-	/// <summary>O Destruction God's Fury (`God_Fury_Beam`): a mesma esfera, menor e mais agitada.</summary>
+	/// <summary>
+	/// O Destruction God's Fury (`God_Fury_Beam`): a mesma esfera, menor e mais agitada. (2026-10-30, o pedido 181) E a skin das bolas de ki
+	/// do Bills (`GameServer.ArteDasBolasDoBills`).
+	/// </summary>
 	HakaiFuria = 49,
 }
 

@@ -446,6 +446,8 @@ public sealed partial class GameServer
 	{
 		long agora = NowMs();
 
+		// (2026-11-01, o pedido 212) nenhuma fusao (Danca, Potara, Namekuseijin) entre personagens da mesma conexao -- ver `GameServer.MesmoIp.cs`
+		if (RecusaPeloMesmoIp(pl, outro)) return;
 		RecusaDeFusao r = AvaliarOConvite(pl, outro, tipo, agora);
 
 		if (r != RecusaDeFusao.Pode) { Avisar(pl, PorQueNaoFunde(r, tipo, pl, outro, agora)); return; }
@@ -1765,6 +1767,13 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-11-01, o pedido 211) Os dois se declararam "rival amigo" um do outro (a aba People)? A regra e do Core (`Fusao.SaoRivais`);
+	/// aqui so se busca a declaracao de cada lado pela assinatura do outro.
+	/// </summary>
+	private static bool FusaoDeRivais(ServerPlayer a, ServerPlayer b) =>
+		Fusao.SaoRivais(a.Social.RelacaoCom(b.Assinatura), b.Social.RelacaoCom(a.Assinatura));
+
+	/// <summary>
 	/// `Fuse()` (`Fusion.dm:260`): os dois viram um. <paramref name="dono"/> e quem convidou, e
 	/// **quem convidou controla** -- ver o cabecalho deste arquivo.
 	/// </summary>
@@ -1795,6 +1804,11 @@ public sealed partial class GameServer
 
 		// ---- 1. O PODER (`Fusion.dm:264-266`) ----
 		double baseDaFusao = Fusao.BpBase(dono.Ficha.BP, passageiro.Ficha.BP, estragada);
+		// (2026-11-01, o pedido 211) RIVAIS FUNDEM MAIS FORTE: os dois que se declararam "rival amigo" um do outro ganham 15% no BP base --
+		// na Danca e na Potara (as duas passam por aqui), bem-feita ou estragada. O `PassarOControle` herda o numero pelo `DeltaDeBp`, e o
+		// `Separar` o devolve inteiro pelo mesmo campo. Ver `Fusao.BonusDosRivais`.
+		bool rivais = FusaoDeRivais(dono, passageiro);
+		if (rivais) baseDaFusao *= Fusao.BonusDosRivais;
 		f.DeltaDeBp = baseDaFusao - dono.Ficha.BP;
 		dono.Ficha.FuseBuff += f.DeltaDeBp;
 
@@ -1896,6 +1910,10 @@ public sealed partial class GameServer
 		string comoFoi = estragada ? " -- e o resultado e uma piada de mau gosto" : "";
 		foreach (ServerPlayer o in ZoneList(dono.Zone.Hash))
 			Avisar(o, $"{dono.Name} e {passageiro.Name} se fundem em {f.NomeDaFusao}{comoFoi}!");
+		// (2026-11-01, o pedido 211) ...e o planeta fica sabendo por que esta fusao bate mais forte.
+		if (rivais)
+			foreach (ServerPlayer o in ZoneList(dono.Zone.Hash))
+				Avisar(o, $"a rivalidade entre {dono.Name} e {passageiro.Name} deixa {f.NomeDaFusao} {(Fusao.BonusDosRivais - 1) * 100:0}% mais forte!");
 
 		Avisar(dono, estragada
 			? $"voce e {f.NomeDaFusao}. A fusao saiu errada: voce esta mais fraco que qualquer um dos "
@@ -1914,7 +1932,7 @@ public sealed partial class GameServer
 						 + "voce volta quando a fusao acabar.");
 
 		GD.Print($"[server] FUSAO {tipo}{(estragada ? " ESTRAGADA" : "")}: {dono.Name} + {passageiro.Name} "
-			   + $"= {f.NomeDaFusao} | BP base {baseDaFusao:N0} | energia {f.EnergiaMax:0}");
+			   + $"= {f.NomeDaFusao} | BP base {baseDaFusao:N0} | energia {f.EnergiaMax:0}{(rivais ? " | rivais" : "")}");
 	}
 
 	/// <summary>

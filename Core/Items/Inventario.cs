@@ -84,6 +84,15 @@ public static class CatalogoDeItens
 	public const string Senzu = "Senzu";
 
 	/// <summary>
+	/// (2026-10-31, o pedido 196) A CHAVE DA SALA DO TEMPO (a "HTC Key" do dono): abre a porta da Sala da Terra SEM a autorizacao do
+	/// Guardiao, uma vez -- ela QUEBRA na entrada. A porta continua com as regras dela (fechada nos 2 primeiros dias do mundo ou ate alguem
+	/// chegar a 20 milhoes de BP, a lotacao e a recarga), e a chave so se gasta quando o corpo atravessa. Cai dos viloes da Terra (raro) e
+	/// e um desejo das esferas; vai direto pra mochila. A arte e a da chave do catalogo de construcoes (`Key`, `Misc/key.tres`). Ver
+	/// `GameServer.ChaveDaSala.cs`.
+	/// </summary>
+	public const string ChaveDaSala = "HTC_Key";
+
+	/// <summary>
 	/// OS BRINCOS POTARA -- o que o cargo de Kaioshin entrega, e a porta da fusao Potara.
 	///
 	/// (2026-10-23) O KAIOSHIN DA O PAR (dono: *"Kaioshin entrega o par"*): ele nao e mais insignia que volta pro cofre em 1 s da mao de
@@ -144,6 +153,13 @@ public static class CatalogoDeItens
 	/// ==========================================================================================
 	/// </summary>
 	public const string Radar = "Dragon_Radar";
+
+	/// <summary>
+	/// (2026-10-29, o pedido 173) O SUPER RADAR -- o dono: *"crie uma tech pra tech 100, mesmo sprite do radar do dragao, mas e o super radar,
+	/// ao qual ele procura super esferas, com ele equipado ele mostra as super esferas no nav system marcando as no mapa do espaco"*. Na
+	/// mochila, o pacote das Super leva as sete pro mapa (`GameServer.MontarPacoteDeSupers`), e a carta estelar as marca (`MapaEstelar`).
+	/// </summary>
+	public const string SuperRadar = "Super_Radar";
 
 	/// <summary>
 	/// O NAV SYSTEM -- `obj/items/Nav_System` (`PlanetTech.dm:2-21`), fabricado na bancada
@@ -288,6 +304,15 @@ public static class CatalogoDeItens
 			"res://Assets/Sprites/Misc/Objects/Items/Senzu Bean.tres", "",
 			Empilhavel: true, Nutricao: 10, Acoes: ["comer", "acudir"]),
 
+		// (2026-10-31, o pedido 196) A CHAVE DA SALA: sem acao -- a porta a usa sozinha quando falta a autorizacao do Guardiao. Empilha: cada
+		// entrada quebra uma.
+		[ChaveDaSala] = new ItemDef(
+			ChaveDaSala, "Chave da Sala do Tempo",
+			"Abre a porta da Sala do Tempo sem a autorização do Guardião -- uma vez só: ela quebra quando você atravessa. A porta continua "
+			+ "com as regras dela (só abre dois dias depois do começo do mundo ou quando alguém chega a 20 milhões de BP), a lotação e a recarga.",
+			"res://Assets/Sprites/Misc/key.tres", "",
+			Empilhavel: true, Acoes: []),
+
 		// O ESTADO E "radar" EM MINUSCULA, e o `construcoes.json` diz "Radar" com maiuscula. Os dois
 		// funcionam -- o `Sanear` do desenho baixa a caixa antes de procurar a animacao --, mas o que
 		// esta no `.tres` e o minusculo, e escrever o nome real e uma reclamacao a menos no log no dia
@@ -298,6 +323,13 @@ public static class CatalogoDeItens
 			+ "Esfera que ainda se refaz não aparece.",
 			"res://Assets/Sprites/Misc/Misc2.tres", "radar",
 			Empilhavel: false, Acoes: ["usar"]),
+
+		// (2026-10-29, o pedido 173) O SUPER RADAR: a arte do Dragon Radar, e nenhuma acao -- ele trabalha so de estar na mochila.
+		[SuperRadar] = new ItemDef(
+			SuperRadar, "Super Radar",
+			"Sente as SUPER ESFERAS do Dragão no universo inteiro: na mochila, marca as sete no mapa do espaço do Nav System.",
+			"res://Assets/Sprites/Misc/Misc2.tres", "radar",
+			Empilhavel: false),
 
 		// A ARTE E A MESMA DO RADAR (`Misc2.tres`, estado "Radar"): e o que o `construcoes.json` traz, e
 		// e o que o DM usa (`icon='Misc2.dmi'`, `icon_state="Radar"`, `PlanetTech.dm:4-5`). O estado vai

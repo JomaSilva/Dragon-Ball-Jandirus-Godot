@@ -368,6 +368,26 @@ public sealed partial class GameServer
 			Zerar = () => { _missoes.Clear(); _cofreDaTerra = 0; _proximaVoltaDasMissoes = 0; },
 		});
 
+		// ---------------------------------------------------------- a Patrulha Galactica e o Jornal Galactico (2026-10-31, o pedido 198)
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "a Patrulha Galactica (procurados, penas, recompensas) e o Jornal Galactico",
+			Arquivos = ["patrulha.json", "jornal.json"],
+			Unidade = "ficha(s) da Patrulha",
+			Contar = () => _patrulha.Count,
+			Zerar = ZerarAPatrulha,
+		});
+
+		// ---------------------------------------------------------- os viloes de saga soltos (2026-10-31, o pedido 198g)
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "os viloes de saga soltos (o chefe que venceu e explodiu Namek ou a Terra)",
+			Arquivos = ["viloes-soltos.json"],
+			Unidade = "vilao(oes) solto(s)",
+			Contar = () => _soltos.Count,
+			Zerar = ZerarOsSoltos,
+		});
+
 		// ---------------------------------------------------------- cargos
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{

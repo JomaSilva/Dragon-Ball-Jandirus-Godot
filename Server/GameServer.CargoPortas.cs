@@ -456,6 +456,7 @@ public partial class GameServer
 		string[] p = arg.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 		ServerPlayer? alvo = AlvoAoAlcance(pl, p.Length > 0 ? p[0] : "", TilesDeNomear, out ServerPlayer? longe);
 		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque o Namekuseijin que voce quer nomear (duplo clique nele).");
@@ -572,6 +573,8 @@ public partial class GameServer
 		}
 		ServerPlayer? alvo = AlvoAoAlcance(pl, arg, TilesDeHerdeiro, out ServerPlayer? longe);
 		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		// (2026-11-01, o pedido 212) nomear herdeiro quem joga da mesma conexao, nao; dispensar continua (o nomeado antes da regra sai)
+		if (nomear && RecusaPeloMesmoIp(pl, alvo)) return;
 		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque alguem antes (duplo clique nele).");

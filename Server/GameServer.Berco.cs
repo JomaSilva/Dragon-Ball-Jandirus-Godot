@@ -249,6 +249,46 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-10-29) ESTE PONTO ESTA NA ZONA SEGURA DE UM NASCIMENTO? A pergunta das OBRAS -- o pedido 164, o dono: *"N permita construir
+	/// nada em safezones, a galera ta colocando gravidade nos spaws pra ao morrerem pra gravidade eles voltarem e continuam a ganhar
+	/// maestria de gravidade, isso no outro mundo e em outros planetas. Entao proximo update faca qualquer construcao como gravidade etc,
+	/// deixarem de funcionar caso estejam dentro da safezone de spawn"*. Duas: a dos bercos (o mesmo raio e o mesmo centro da zona segura
+	/// da luta, <see cref="NaZonaSegura"/>) e a da CHEGADA DO OUTRO MUNDO, a mesa do Enma, onde todo morto cai -- la nao ha zona segura de
+	/// luta, so a das obras. A mesma regra de bancada da zona segura (desligada num processo de bancada, menos na familia que a pede).
+	/// QUEM PERGUNTA: o `Posicionar` e o `PorQueNaoConstroi`/`ErguerBloco` (nada se ergue), o `PorQueNaoRende` (a gravidade, o saco e a
+	/// maquina de socos que ja estavam la param) e o `LerOsCampos` (o campo nao pesa em quem esta la dentro, venha de onde vier).
+	/// </summary>
+	private bool NaZonaSeguraDoNascimento(ZoneKey zona, Vec2 ponto)
+	{
+		if (ZonaSeguraDesligadaDeTeste || (ProcessoDeBancada.Value && !ZonaSeguraNaBancadaDeTeste)) return false;
+		if (zona.Kind != ZoneKey.KindPremade) return false;
+		bool doBerco = PlanetasComZonaSegura.Contains(zona.Name);
+		bool daChegada = string.Equals(zona.Name, Alem.ZonaDoOutroMundo, StringComparison.Ordinal);
+		if (!doBerco && !daChegada) return false;
+		if (!_centroDaZonaSegura.TryGetValue(zona.Hash, out Vec2 centro))
+			_centroDaZonaSegura[zona.Hash] = centro = doBerco ? PontoDeNascimento(zona) : MesaDoEnma(zona);
+		return Vec2.Distance(ponto, centro) <= TilesDaZonaSegura * Jandirus.Core.World.ZoneCollision.TileSize;
+	}
+
+	/// <summary>(2026-10-29) A frase de quem tenta construir na zona segura de um nascimento.</summary>
+	internal const string FraseDaObraNaZonaSegura =
+		"aqui é a zona segura de quem nasce: nada se constrói nela -- afaste-se um pouco do ponto de nascimento.";
+
+	/// <summary>(2026-10-29) A frase de quem tenta ligar (ou treinar com) o que ja estava na zona segura de um nascimento.</summary>
+	internal const string FraseDaObraParadaNaZonaSegura =
+		"isso não funciona na zona segura de quem nasce: o que aumenta o ganho do treino não liga perto do ponto de nascimento.";
+
+	/// <summary>
+	/// (2026-10-29) POR QUE ESTA OBRA NAO RENDE AQUI -- nulo = rende. As que aumentam o ganho (`LugarDeObra.AumentamOGanho`: a gravidade, o
+	/// saco e a maquina de socos) param numa Sala do Tempo (o pedido 136) e na zona segura de um nascimento (o pedido 164). O ligar da
+	/// gravidade, o "Treinar aqui", o bonus de quem treina ao lado e o soco no saco perguntam aqui.
+	/// </summary>
+	private string? PorQueNaoRende(Obra o) =>
+		LugarDeObra.NaoRendeAqui(o.Zona, o.Tipo) ? LugarDeObra.NaoRendeNaSala
+		: LugarDeObra.AumentaOGanho(o.Tipo) && NaZonaSeguraDoNascimento(o.Zona, new Vec2(o.X, o.Y)) ? FraseDaObraParadaNaZonaSegura
+		: null;
+
+	/// <summary>
 	/// O DEFEITO INJETADO da `--diagberco` (familia 2b): ignorar o marco do mapa e voltar ao ponto unico.
 	/// **Falso em jogo, sempre.** Existe pra provar que a familia fica vermelha quando o marco e ignorado
 	/// -- sem isso ela estaria verde num servidor que nunca leu o manifesto.

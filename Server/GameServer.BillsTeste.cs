@@ -271,6 +271,8 @@ public partial class GameServer
 			BwOKitNaTerra(forjados);
 			BwOWhisNaTerra(forjados);
 			BwATerraQueAcompanha(forjados);
+			BwOPedido176(pl);
+			BwOPedido181();   // (2026-10-30) as bolas de ki do Bills
 			CasaDeBills? casa = BwADerrota(pl);
 			if (casa is not { } c) return;
 
@@ -1086,6 +1088,96 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-10-30) O PEDIDO 176 -- o dono: *"Bills assim como vilões de saga, deveria ter stats acima do jogador mais forte, e por ser um dos
+	/// chefes mais fortes  skills no maximo"*, depois do relato do one shot (um SSJ4 de 100 bilhoes, uma tecnica customizada de potencia 12 e o
+	/// Shattering the Limit). O mais forte do servidor e o HOST, com os oito atributos no teto (R 39,9: o `E` no pico do teto suave, ~10) -- um
+	/// corpo forjado sem dono na tela nao conta como jogador. Tres reguas: os oito stats de combate do Bills 25% acima dos dele (o 1,25x do
+	/// atributo cru o deixava IGUAL), as skills de armadura de ki no nivel 100 (e a armadura que vem delas), e a batida do caso do dono.
+	/// Os atributos e as pericias do host voltam no fim, e o piso do Bills com eles.
+	/// </summary>
+	private void BwOPedido176(ServerPlayer pl)
+	{
+		GD.Print("[bills] ---- 2e) (o pedido 176) o Bills acima do mais forte, com as skills no maximo");
+		if (BwCenaNaTerra() is not { } cena) { AfirmarBw("(montagem) a cena da Terra do pedido 176", false); return; }
+		ServerPlayer b = cena.B;
+		Fighter fb = b.Ficha, fj = pl.Ficha;
+		var crus = (fj.physoff, fj.physdef, fj.technique, fj.kioff, fj.kidef, fj.kiskill, fj.speed, fj.magiskill);
+		var pericias = (fj.kidefenseskill, fj.beamskill, fj.kieffusionskill);
+		double expressoDoBills = fb.expressedBP;
+		try
+		{
+			fj.FixarAtributos(39.9, 39.9, 39.9, 39.9, 39.9, 39.9, 39.9, 39.9);
+			fj.kidefenseskill = fj.beamskill = fj.kieffusionskill = 100;
+			DarODobroAoChefe(b);
+			// O TANQUE DA ARMADURA DE KI ENCHE UM PONTO POR STATIFY (o `superkiarmor` ate o `kiarmor`): no jogo o Bills nasce com o servidor e ja
+			// esta cheio quando alguem o acorda; aqui, cem passos.
+			for (int i = 0; i < 100; i++) fb.Statify();
+
+			double[] dele = [fb.Ephysoff, fb.Ephysdef, fb.Etechnique, fb.Ekioff, fb.Ekidef, fb.Ekiskill, fb.Espeed, fb.Emagiskill];
+			double[] doForte = [fj.Ephysoff, fj.Ephysdef, fj.Etechnique, fj.Ekioff, fj.Ekidef, fj.Ekiskill, fj.Espeed, fj.Emagiskill];
+			string L(double[] v) => string.Join("/", v.Select(x => x.ToString("0.00")));
+			AfirmarBw("(o pedido 176) **O BILLS FICA 25% ACIMA DO MAIS FORTE NOS STATS DE COMBATE** (os oito): contra o jogador NO TETO (o stat de combate ~10), o 1,25x do atributo cru o deixava igual a ele",
+					  Enumerable.Range(0, 8).All(i => dele[i] >= 1.25 * doForte[i] - 1e-6), $"Bills {L(dele)} x o mais forte {L(doForte)}");
+
+			// A SKILL DE ARMADURA QUE ELE PODE TER: a Basic Ki Effusion (sub-arvore Effusive Mastery). A Basic Ki Efficiency traria o buff
+			// Efficiency pro cerebro e fica de fora (ver a regua de baixo); a Perfect Defense Mastery e tier 6 numa sub-arvore que para no tier 4 --
+			// trancada pra todo mundo neste port.
+			string faltam = b.Livro.Sabe("/datum/skill/mind/Basic_Ki_Effusion") && b.Niveis.Nivel("/datum/skill/mind/Basic_Ki_Effusion") >= 100 ? "" : "Basic_Ki_Effusion";
+			AfirmarBw("(o pedido 176) **AS SKILLS DELE NO MAXIMO**: as maestrias e passivas das arvores dele no nivel 100 -- a Basic Ki Effusion inclusive, na sub-arvore Effusive Mastery --, e a armadura de ki dele chega a 20 (era 0)",
+					  faltam.Length == 0 && fb.kiarmor >= 19 && fb.Esuperkiarmor >= 19,
+					  $"faltam [{faltam}]; kiarmor {fb.kiarmor:0.#}, armadura no combate {fb.Esuperkiarmor:0.#}; {b.Livro.Aprendidas.Count} skills");
+
+			// E NENHUMA TECNICA NOVA PRO CEREBRO: a vocacao inteira trazia dezesseis de longe (o Masenko, a Death Ball, o Kienzan, a Hellzone...) e
+			// trinta e sete de perto (o Wolf Fang Fist, o Zanzoken Rush, o Hold, a Ki Blade...) -- e ele largava o kit do Deus da Destruicao e
+			// passeava a luta pelo mapa (as r1 e r2 do ag/billsforte derrubaram as cenas do kit e a do Whis assim).
+			string[] novidades = ["Masenko", "Death_Ball", "Kienzan", "Hellzone_Grenade", "Wolf_Fang_Fist", "Zanzoken_Rush", "Hold", "Ki_Blade", "Efficiency"];
+			string sabe = string.Join(", ", novidades.Where(v => SabeTecnica(b, v)));
+			AfirmarBw("(o pedido 176) ...e NENHUMA TECNICA NOVA PRO CEREBRO: ele luta como lutava -- o kit do Deus da Destruicao, sem o Masenko, a Death Ball, o Wolf Fang Fist, o Zanzoken Rush, o Hold, a Ki Blade e o Efficiency das sub-arvores",
+					  sabe.Length == 0, $"sabe [{sabe}]; arsenal de longe [{BwArsenal(b)}]");
+
+			// O CASO DO DONO: o raio de potencia 12 com o Shattering the Limit (o BP do tiro em dobro) de um SSJ4 de 100 bilhoes -- o host no teto,
+			// com as pericias de raio em 100 --, no Bills da Terra de 300 bilhoes. Por ponto do botao de ki (o pedido 177 o baixou pra 1).
+			fb.expressedBP = BillsEWhis.PoderNaTerra;
+			double mods = Projetil.ModsDoTiro(fj, TipoDeProjetil.Beam) * 12;
+			double batida = DanoDeKi.Final(mods, 12, 0, 2 * 100e9, b.Combate, bloqueando: false);
+			AfirmarBw("(o pedido 176) **O CASO DO DONO NAO E MAIS UM GOLPE SO**: a batida do raio de potencia 12 com o Shattering the Limit, de um SSJ4 de 100 bilhoes no teto dos stats, tira do Bills da Terra menos de 30 por ponto do botao de ki (eram 120-170 num membro de 100)",
+					  batida < 30 * DanoDeKi.DanoGlobalDeKi, $"{batida:0.0} por batida (botao de ki {DanoDeKi.DanoGlobalDeKi:0.##})");
+		}
+		finally
+		{
+			(fj.physoff, fj.physdef, fj.technique, fj.kioff, fj.kidef, fj.kiskill, fj.speed, fj.magiskill) = crus;
+			(fj.kidefenseskill, fj.beamskill, fj.kieffusionskill) = pericias;
+			fj.Statify();
+			fb.expressedBP = expressoDoBills;
+			DarODobroAoChefe(b);   // o piso volta a ser o de quem joga de verdade
+		}
+	}
+
+	/// <summary>
+	/// 2f) (2026-10-30, o pedido 181) AS BOLAS DE KI DO BILLS: a esfera do Hakai PEQUENA, e a bola que elas sao -- o dono, *"As bolas de ki q
+	/// o bills jogar devem ter o mesmo efeito da esfera de destruicao porem pequenas e dando menos dano e funcionando como uma bola de ki
+	/// normal, so mudando a skin dela"*. O funil e o de producao (`Disparar`, com o verb da tecnica): a Basic Blast do Bills, a do Whis (o
+	/// mesmo palco, e nao e o Bills) e o Ki Wave do Bills (um raio, que fica como era).
+	/// </summary>
+	private void BwOPedido181()
+	{
+		GD.Print("[bills] ---- 2f) (o pedido 181) as bolas de ki do Bills vestem a esfera do Hakai, pequena");
+		if (BwCenaNaTerra() is not { } cena) { AfirmarBw("(montagem) a cena da Terra do pedido 181", false); return; }
+		(ServerPlayer b, ServerPlayer w) = (cena.B, cena.W);
+		var bola = new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1 };
+		Projetil doBills = Disparar(b, bola, rumoDado: new Vec2(1, 0), verbo: "Basic_Blast");
+		Projetil doWhis = Disparar(w, bola, rumoDado: new Vec2(1, 0), verbo: "Basic_Blast");
+		Projetil raio = Disparar(b, new ReceitaDeProjetil { Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1 }, rumoDado: new Vec2(1, 0),
+								 verbo: "Ki_Wave");
+		AfirmarBw("(o pedido 181) **AS BOLAS DE KI DO BILLS VESTEM A ESFERA DO HAKAI, PEQUENA**: a Basic Blast dele sai com a `HakaiFuria` (a "
+				  + "menor), e e a bola de sempre -- o dano, o tamanho, sem engolir ninguem; a do Whis e o Ki Wave do Bills ficam como eram",
+				  doBills.Arte == ArteDeKi.HakaiFuria && Math.Abs(doBills.BaseDano - 1) < 1e-9 && Math.Abs(doBills.EscalaVisual - 1) < 1e-9
+				  && !doBills.EsferaGrande && !doBills.Engole && doWhis.Arte != ArteDeKi.HakaiFuria && raio.Arte != ArteDeKi.HakaiFuria,
+				  $"Bills {doBills.Arte} (base {doBills.BaseDano}, escala {doBills.EscalaVisual}); Whis {doWhis.Arte}; Ki Wave do Bills {raio.Arte}");
+		BwLimparOsTiros(TerraDaVisita);
+	}
+
+	/// <summary>
 	/// A CENA DA TERRA, do zero: os tiros somem, os dois renascem (o Bills cochilando), e os POSTOS vao pra faixa de
 	/// chao firme -- o do Bills NO MEIO dela (doze tiles livres a oeste, catorze a leste: quem a cena poe a leste dele
 	/// tem linha livre, e o Whis, que recua pro lado em que esta, tem chao pra recuar sem atravessar a luta), o do
@@ -1592,19 +1684,28 @@ public partial class GameServer
 			b.Knockback = false;   // (os socos dele nao arremessam nesta cena: a luta fica no lugar, e o mirante tambem)
 			double inicioDaLuta = _relogioDivino;
 			Zerar();
-			bool deLonge = BwLutar(16, () =>
+			// (2026-10-30, o pedido 176) O KI ZERADO A FORCA (o Bills sem Ki nao atira) NAO PODE VIRAR RECARGA: com as passivas de Ki no maximo ele
+			// sabe carregar, e o cerebro recuava seis tiles pra encher o tanque -- ate perto do mirante (a r3 e a r4 do ag/billsforte, a 5,8 tiles).
+			// Em jogo o Ki dele nao acaba (`KiDeChefe`), entao a recarga nunca e pedida; aqui ela e desligada pela chave de bancada do cerebro.
+			Cerebro.SoCarregaNoCriticoDeTeste = true;
+			bool deLonge;
+			try
 			{
-				b.Ficha.Ki = 0;
-				DePe(rival);
-				Olhar();
-				Colher();
-				return _whisAssiste && !w.Moving && (w.Pos - _miranteDoWhis).Length < 1
-					   && Tiles(w.Pos, b.Pos) >= BillsEWhis.TilesPertoDemais && Tiles(w.Pos, rival.Pos) >= BillsEWhis.TilesPertoDemais;
-			});
+				deLonge = BwLutar(16, () =>
+				{
+					b.Ficha.Ki = 0;
+					DePe(rival);
+					Olhar();
+					Colher();
+					return _whisAssiste && !w.Moving && (w.Pos - _miranteDoWhis).Length < 1
+						   && Tiles(w.Pos, b.Pos) >= BillsEWhis.TilesPertoDemais && Tiles(w.Pos, rival.Pos) >= BillsEWhis.TilesPertoDemais;
+				});
+			}
+			finally { Cerebro.SoCarregaNoCriticoDeTeste = false; }
 			Jandirus.Core.World.Facing praLuta = MoveRules.FacingFrom(b.Pos - w.Pos, w.Facing);
 			AfirmarBw("COMECOU A LUTA (alguem bateu no Bills): o Whis SE AFASTA andando e fica vendo de longe -- a pelo menos seis tiles do Bills e de quem o enfrenta (o mirante e a nove do meio da luta), virado pra ela",
 					  deLonge && andouW && maiorPassoW < 1.5f * T && w.Facing == praLuta,
-					  $"chegou={deLonge}, a {Tiles(w.Pos, b.Pos):0.0} tiles do Bills e {Tiles(w.Pos, rival.Pos):0.0} do rival, a {(w.Pos - _miranteDoWhis).Length:0.0} px do mirante, andando={w.Moving}, andou={andouW}, maior passo {maiorPassoW:0.0} px, virado pra {w.Facing} (a luta fica a {praLuta})");
+					  $"chegou={deLonge}, a {Tiles(w.Pos, b.Pos):0.0} tiles do Bills e {Tiles(w.Pos, rival.Pos):0.0} do rival, a {(w.Pos - _miranteDoWhis).Length:0.0} px do mirante, andando={w.Moving}, andou={andouW}, maior passo {maiorPassoW:0.0} px, virado pra {w.Facing} (a luta fica a {praLuta}); o Bills no plano {b.Cerebro?.Atual} ({b.Cerebro?.Porque})");
 			AfirmarBw("...INTOCAVEL do primeiro passo ao mirante: o modo dele continua o de objeto, sem mente",
 					  !tocavel && _whis.Modo == ModoDivino.Parado && w.Cerebro == null && w.Combate.Intocavel);
 
@@ -2335,6 +2436,14 @@ public partial class GameServer
 				  EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisComecaOTreino) && _bills.Modo == ModoDivino.Parado && b.Combate.Intocavel);
 		AfirmarBw("...e o golpe LETAL de quem treina foi desligado (treino nao mata nem aleija)", !pl.Combate.Letal);
 
+		// ---- (2026-10-31, o pedido 205) O WHIS NAO SE FERE: o golpe encosta (pelo funil unico do dano), e a vida dele fica ----
+		BodyPart? membroDoWhis = w.Combate.Corpo.Partes.FirstOrDefault(p => p.Papel == Vitalidade.Membro && !p.Decepado);
+		double vidaDoWhis = w.Combate.Corpo.Partes.Sum(p => p.Vida);
+		bool encostou = membroDoWhis != null && w.Combate.Ferir(membroDoWhis, membroDoWhis.VidaMax * 0.9, letal: true);
+		AfirmarBw("(o pedido 205) **O WHIS NAO SE FERE**: um golpe letal de 90% de um membro encosta, e a vida dele fica onde estava (vida infinita)",
+				  encostou && Math.Abs(w.Combate.Corpo.Partes.Sum(p => p.Vida) - vidaDoWhis) < 1e-6 && !w.Ficha.KO,
+				  $"encostou={encostou}, vida {vidaDoWhis:0.#} -> {w.Combate.Corpo.Partes.Sum(p => p.Vida):0.#}");
+
 		// ---- (2026-10-25) SEMPRE 3x o EXPRESSO de agora, no Instinto Perfeito que nao aumenta o poder dele -- ele ACOMPANHA, nas duas direcoes ----
 		double Vezes() => w.Ficha.expressedBP / Math.Max(pl.Ficha.expressedBP, 1);
 		BwPassar(0.3);
@@ -2616,8 +2725,13 @@ public partial class GameServer
 		EscutaDeFalas.Clear();
 		w.Combate.Nocautear(30);
 		BwPassar(0.1);
-		AfirmarBw("o WHIS cai (quase impossivel, mas a regra existe): a aula acaba com o elogio dele, e ele se levanta inteiro",
-				  _whis.Sessao == null && !w.Ficha.KO && w.Ficha.HP >= 99.9 && EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisFoiDerrubado));
+		// (2026-10-31, o pedido 205) ERA "o WHIS cai (quase impossivel, mas a regra existe)": a regra mudou -- o dono, *"ele so serve de treino
+		// e n da pra derrotar"*. O nocaute nao o derruba, e a aula continua; quem a encerra e o aluno.
+		AfirmarBw("(o pedido 205) **O WHIS NAO CAI**: o nocaute nao o derruba, e a aula continua -- ele so serve de treino, nao se derrota",
+				  _whis.Sessao != null && !w.Ficha.KO && !EscutaDeFalas.Any(e => e.Quem == w.Id && e.Texto == BillsEWhis.WhisFoiDerrubado),
+				  $"aula de pe={_whis.Sessao != null}, KO={w.Ficha.KO}");
+		ComandoDeInteracao(pl, BillsEWhis.VerboParar, "");   // quem encerra e o aluno
+		BwPassar(0.1);
 	}
 
 	// =====================================================================

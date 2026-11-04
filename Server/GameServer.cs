@@ -101,6 +101,13 @@ public sealed class ServerPlayer
 	/// </summary>
 	public int Karma;
 
+	// (2026-10-29, o pedido 163) O SUPER SAIYAJIN GOD DO RITUAL DOS CINCO SAIYAJINS -- nada disto vai pro disco: quando o ritual acaba (ms;
+	// 0 = sem ritual), o `IdRede` da forma que ele EMPRESTOU (o SSG, quando ela nao era liberada antes -- o save a deixa de fora, e o fim a
+	// devolve) e a maestria do SSG de antes (o ritual nao ensina nada). Ver `GameServer.GodKi.cs`.
+	public long RitualDeusAte;
+	public int FormaEmprestadaPeloRitual;
+	public double MaestriaDoSsgAntesDoRitual;
+
 	/// <summary>
 	/// O CEREBRO -- QUEM DIRIGE ESTE CORPO AGORA. Nulo = o dono (ou ninguem, num NPC parado).
 	/// Preenchido no clone da meditacao, no Oozaru sem controle e na furia lendaria.
@@ -2990,6 +2997,10 @@ public partial class GameServer : Node
 		// fim. So com a flag, e de preferencia em conta e porta proprias.
 		_esferaDeTeste = Array.IndexOf(args, "--esferateste") >= 0;
 		if (_esferaDeTeste) GD.Print("[server] BANCADA: esferas do dragao no 1o login");
+		// (2026-10-31, o pedido 198) `--patrulhateste`: a Patrulha Galactica e o jornal, no 1o login (o host e o procurado). Ver `GameServer.PatrulhaGalacticaTeste.cs`.
+		_patrulhaDeTeste = Array.IndexOf(args, "--patrulhateste") >= 0;
+		_soltosDeTeste = Array.IndexOf(args, "--soltosteste") >= 0;   // (2026-10-31, o pedido 198g) ver `GameServer.ViloesSoltosTeste.cs`
+		_cargoPgDeTeste = Array.IndexOf(args, "--cargopgteste") >= 0;   // (2026-10-31, o pedido 198i) ver `GameServer.CargoDaPatrulhaTeste.cs`
 
 		_negraDeTeste = Array.IndexOf(args, "--esferanegrateste") >= 0;
 		if (_negraDeTeste) GD.Print("[server] BANCADA: black star e o espalhamento aleatorio no 1o login");
@@ -3501,6 +3512,8 @@ public partial class GameServer : Node
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--poderteste") >= 0) RodarBancadaDoPoder();   // `--poderteste`: POWER UP E POWER DOWN -- baixar, subir com C, relaxar, esconder (e o que o Sense, o scouter e a IA dos outros leem); vizinha dos sentidos porque usa os corpos e a leitura dela. Ver `GameServer.PoderTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--regenformateste") >= 0) RodarBancadaDaRegenDaForma();   // (2026-10-19) `--regenformateste`: a forma NAO DOMINADA que consome Ki nao regenera sozinha (a meditacao e a tecla C seguem); vizinha do poder porque mede o mesmo tanque pelo mesmo tique de carga. Ver `GameServer.RegenDaFormaTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mesmoipteste") >= 0) RodarBancadaDoMesmoIp();   // (2026-10-27) o pedido 110
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--custosalemteste") >= 0) RodarBancadaDosCustosDoAlem();   // (2026-11-01) o pedido 213
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--vidaligadateste") >= 0) RodarBancadaDaVidaLigada();   // (2026-11-01) o pedido 216
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--naoletalteste") >= 0) RodarBancadaDoNaoLetal();   // (2026-10-19) `--naoletalteste`: o golpe nao-letal nao mata -- o baque, o arremesso do agarrao, a cambalhota e a fome param no piso, e as portas da morte so atendem o golpe letal. Ver `GameServer.NaoLetalTeste.cs`.
 
 			// `--arvoreteste`: O TIER DE VITRINE E O `enabled` LIDO COMO O DM LE -- pelo FUNIL do
@@ -3574,6 +3587,7 @@ public partial class GameServer : Node
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mentelistateste") >= 0) RodarBancadaDaListaDaMente();   // (2026-10-27) o pedido 124c
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--aliadosteste") >= 0) RodarBancadaDosAliados();   // (2026-10-21) amizade, treino e aliados -- ver GameServer.AliadosTeste.cs
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--yardratteste") >= 0) RodarBancadaDoYardrat();   // (2026-10-27) o pedido 109
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--civteste") >= 0) RodarBancadaDaCivilizacao();   // (2026-11-02) o pedido 227: as civilizacoes dos mundos sorteados
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--snakewayteste") >= 0) RodarBancadaDaSnakeWay();   // (2026-10-27) o pedido 124d
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--aposentadosteste") >= 0) RodarBancadaDosItensAposentados();   // `--aposentadosteste`: o item que saiu do jogo sai da mochila no login com a frase que diz por que, e sem zeni de volta. Ver `GameServer.ItensAposentadosTeste.cs`.
 
@@ -4147,7 +4161,9 @@ public partial class GameServer : Node
 	/// solta no despacho, pra bancada `--torneioteste` (4d) perguntar pela MESMA porta que o pacote atravessa.
 	/// </summary>
 	internal bool RecusaOComandoDeCorpo(ServerPlayer pl) =>
-		SemAsRedeas(pl) || EhOlhoDeFora(pl) || (pl.PossuidoPor != 0 && !HospedeComAsRedeasDeTeste) || NaContagemDoTorneio(pl);
+		SemAsRedeas(pl) || EhOlhoDeFora(pl) || (pl.PossuidoPor != 0 && !HospedeComAsRedeasDeTeste) || NaContagemDoTorneio(pl)
+		// (2026-11-01, o pedido 219) E QUEM VAI DENTRO DE UMA GOSMA, a caminho do Majin: nem soco, nem tecnica, nem carga -- ver `GameServer.GosmaDoMajin.cs`.
+		|| NaGosma(pl.Id);
 
 	private void Handle(NetPeer peer, NetPacketReader reader)
 	{
@@ -5210,6 +5226,9 @@ public partial class GameServer : Node
 		// so existe com conta e slot), o `MoveToZone` so mexe em quem esta no `_players`, e o claim da
 		// Super Esfera cai quando o disputante "saiu do mundo" -- que e literalmente `Peer == null`.
 		if (_esferaDeTeste) { _esferaDeTeste = false; RodarBancadaDasEsferas(pl); }
+		if (_patrulhaDeTeste) { _patrulhaDeTeste = false; RodarBancadaDaPatrulha(pl); }   // (2026-10-31, o pedido 198)
+		if (_soltosDeTeste) { _soltosDeTeste = false; RodarBancadaDosSoltos(pl); }   // (2026-10-31, o pedido 198g)
+		if (_cargoPgDeTeste) { _cargoPgDeTeste = false; RodarBancadaDoCargoDaPatrulha(pl); }   // (2026-10-31, o pedido 198i)
 		if (_negraDeTeste) { _negraDeTeste = false; RodarBancadaDasNegras(pl); }
 
 		// A DOS DESEJOS pelas MESMAS tres razoes da de cima, mais uma sua: o bloqueio do criador
@@ -5348,6 +5367,10 @@ public partial class GameServer : Node
 		// mente"), e um botao que so aparece depois de o jogador reencontrar o chefe no mundo seria
 		// um botao que ele nao sabe que tem. Ver `GameServer.Mente.cs`.
 		MandarChefesDaMente(pl);
+		// (2026-10-30, o pedido 180) QUEM SAIU DENTRO DO HOSPEDEIRO PERMANENTE VOLTA DENTRO DELE: o corpo de cima e o dele, e a copia que o save
+		// guardou entra por cima -- ANTES da gravidade (que pesa na ficha que anda) e do `Persistir` logo abaixo (que, sem a posse, gravaria
+		// so o corpo dele e apagaria a copia do disco). Ver `RetomarOHospedeiro`.
+		if (c?.Hospedeiro is { } hospedeiro) RetomarOHospedeiro(pl, hospedeiro);
 		AplicarGravidade(pl);
 		_byPeer[peer] = pl;
 
@@ -5392,6 +5415,7 @@ public partial class GameServer : Node
 		// nunca receberia o pacote de mudanca. Ver `S2C.Mortos`.
 		MandarMortos(pl);
 		MandarChefesNosPlanetas(pl);   // (2026-10-21) ...e onde ha chefe de saga no mundo: a trilha de combate do planeta -- ver `GameServer.SubZonas.cs`
+		MandarCustosDoAlem(pl);   // (2026-11-01, o pedido 213) os precos da mesa do Enma deste servidor -- ver `GameServer.CustosDoAlem.cs`
 
 		// E OS NOMES DADOS AOS PLANETAS, com a descoberta junto: esta e uma das duas portas de entrada no
 		// mundo (a outra e o `MoveToZone`), e quem nasce num mundo gerado em que ninguem pisou e o
@@ -5424,6 +5448,9 @@ public partial class GameServer : Node
 		// original (PlanetConquest.dm:208), e ele existe porque quase tudo o que acontece com um
 		// dominio -- invasao, perda, revolta do povo -- acontece com o dono offline.
 		EntregarRecadosDeConquista(pl);
+		// (2026-11-01, o pedido 216) O DEUS DA DESTRUICAO QUE ESTAVA FORA: os Kaioshins que cairam (o aviso urgente) e a morte que ele ficou
+		// devendo com o ultimo deles -- ver `GameServer.VidaLigada.cs`.
+		EntregarOQueOsKaioshinsDeixaram(pl, c);
 		// (2026-10-17) A DATA DE HOJE, e os anos que passaram com ele fora -- o `src<<checkthetimeidiot()` do `AgeCheck` (`Aging.dm:112`).
 		AvisarDoCalendarioNoLogin(pl, anosLaFora);
 		AvisarDoBebeNoLogin(pl);   // (2026-10-18) quanto falta pro bebe crescer -- ver GameServer.Bebe.cs
@@ -5769,7 +5796,10 @@ public partial class GameServer : Node
 		if (EstaFundido(pl.Id)) return;   // ver o item 3 do <remarks>
 		// (2026-10-18) O NEO TUFFLE DENTRO DE OUTRO CORPO, pelo mesmo motivo da fusao: a ficha que ele carrega e a copia do corpo do hospede.
 		// Sair do jogo o expulsa ANTES desta linha (o `Drop`), entao o que vai pro disco e ele. Ver `GameServer.NeoTuffle.cs`.
-		if (pl.CorpoDaPosse != null) return;
+		// (2026-10-30, o pedido 180) MENOS no hospedeiro permanente: a copia e dele ate morrer nela, e sair do jogo nao a desfaz (o dono:
+		// *"guarda a posse"*) -- o disco leva o corpo dele e a copia por cima (`SaveDoHospedeiro`).
+		PosseDoTuffle? hospedeiro = HospedeiroPermanenteDe(pl);
+		if (pl.CorpoDaPosse != null && hospedeiro == null) return;
 
 		// ============================ 4. PERSONAGEM CONSUMIDO NAO SE GRAVA -- ELE NAO EXISTE MAIS ============================
 		// Da familia das duas linhas acima, e a mais grave das tres: aqui o save **ja foi apagado do
@@ -5784,8 +5814,8 @@ public partial class GameServer : Node
 		if (acc == null && (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out acc))) return;
 
 		pl.Ficha.Class = pl.Class;
-		CharacterSave salvo = AccountStore.DeJogador(pl, NowMs());
-		salvo.Ficha = FichaSemOsBuffs(pl);   // (v0.3.1) o que esta aceso NAO vai pro disco -- ver `FichaSemOsBuffs`
+		CharacterSave salvo = hospedeiro != null ? SaveDoHospedeiro(pl, hospedeiro) : AccountStore.DeJogador(pl, NowMs());
+		if (hospedeiro == null) salvo.Ficha = FichaSemOsBuffs(pl);   // (v0.3.1) o que esta aceso NAO vai pro disco -- ver `FichaSemOsBuffs`
 		if (pl.EmPassagem) GravarAVoltaDaPassagem(salvo, pl);   // (v0.3.2) quem cai no meio dos 5 s acorda no Outro Mundo
 		acc.Slots[pl.Slot] = salvo;
 		acc.VistoEm = NowMs();
@@ -6033,6 +6063,12 @@ public partial class GameServer : Node
 		// A VELOCIDADE continua vindo do mesmo lugar: `MoveRules` multiplica por `correndo`, entao
 		// voar com shift e mais rapido exatamente como correr no chao e.
 		// =======================================================================================
+		// (2026-10-31, o pedido 207) AO LEME O SHIFT NAO ACELERA NADA: quem anda e a nave, na velocidade dela (`RecalcularVelocidade`), e
+		// quem paga e o tanque. O dono: *"Ta dando pra apertar shift na pod ou capital ship pra fazer ela voar mais rapido gastando ki (oq n
+		// deveria acontecer)"*. Num planeta pilotar conta como voar, e o shift dava o superflight -- a nave 1,6x mais rapida, de graca (o
+		// voo ao leme nao cobra); no espaco o piloto nao tem voo (a troca de zona o apaga), e o shift virava a corrida do chao, cobrada no
+		// Ki DELE pelo `PodeCorrer`. O cliente ja nem pede (`LocalPlayer`, o `querCorrer`).
+		if (EstaPilotando(pl.Id)) querCorrer = false;
 		MarchaDeVoo(pl, querCorrer);
 		// (e SEM UMA PERNA nao ha corrida no chao -- `speedy.dm:36`; ver `SemPernaPraCorrer`, `GameServer.Membros.cs`)
 		// (2026-10-23) ...e QUEM SE ARRASTA NAO CORRE (dono): o desmaiado ja nao corria (`PodeCorrer`); o prensado de pe, sim.
@@ -6173,7 +6209,8 @@ public partial class GameServer : Node
 		// O fantasma corre no Outro Mundo (a Serpentina e comprida); o cadaver dos 2 s, nao.
 		if ((pl.Ficha.dead && !pl.MortoDePe) || pl.Ficha.KO) return false;
 
-		double custo = pl.Ficha.MaxKi * CustoCorridaPorSegundo * Math.Min(dt, 0.25f);
+		// (2026-11-02, o pedido 220) o morto paga 25% menos (`Fighter.FatorDeKiDoEstado`)
+		double custo = pl.Ficha.MaxKi * CustoCorridaPorSegundo * Math.Min(dt, 0.25f) * pl.Ficha.FatorDeKiDoEstado;
 		if (pl.Ficha.Ki < custo) return false;
 
 		pl.Ficha.Ki -= custo;
@@ -6298,6 +6335,10 @@ public partial class GameServer : Node
 
 		_avisadosDeEspera.Remove(pl.Id);
 
+		// (2026-10-30, o pedido 180) E A POSSE DO HOSPEDEIRO PERMANENTE, que o logout NAO desfaz (`SoltarDaPosse`): ela ja foi pro disco no
+		// `Persistir` la em cima, e o login a remonta (`RetomarOHospedeiro`). Pelo mesmo motivo das linhas de cima: id se reusa.
+		if (HospedeiroPermanenteDe(pl) != null) _posses.Remove(pl.Id);
+
 		var w = Protocol.Begin(Protocol.S2C.PeerLeft);
 		w.Put(pl.Id);
 		foreach (ServerPlayer other in ZoneList(pl.Zone.Hash))
@@ -6360,6 +6401,7 @@ public partial class GameServer : Node
 		_aoEsquecer.Add(EsquecerOKitDoDeus);
 		_aoEsquecer.Add(EsquecerNiveisDoAdendo18);
 		_aoEsquecer.Add(EsquecerOMajinPuro);
+		_aoEsquecer.Add(EsquecerAsGosmas);   // (2026-11-01, o pedido 219) quem sai do jogo desfaz a gosma dele, e quem ia numa sai da conta
 	}
 
 	// ---------------------------------------------------------------------
@@ -6394,6 +6436,8 @@ public partial class GameServer : Node
 		TickDosRelogiosDoCorpo(Protocol.TickSeconds);
 		TickDasExecucoesDoBio();   // (2026-10-17) a absorcao de EXECUCAO do bio: 5 s parado junto do caido, e um passo desfaz -- ver `GameServer.Absorcao.cs`
 		TickDasTransmissoesProntas();   // (2026-10-23) o Instant Transmission com maestria concentra em 0,2 s: vence no tique cheio, e nao no de 5 Hz -- ver `GameServer.MaestriaDaTransmissao.cs`
+		TickDaFugaDoKid();   // (2026-11-01, o pedido 218) a esfera rosa do Kid Boo e o salto dele pro Ceu, nos tempos do IT -- ver `GameServer.SagaDoBuu.cs`
+		TickDasGosmas();     // (2026-11-01, o pedido 219) a gosma do Majin: espreita, caca, gruda, engole e voa pro dono -- ver `GameServer.GosmaDoMajin.cs`
 		TickDosSonos();   // (2026-10-18) o SLEEP do Majin: 5 s deitado, e qualquer incomodo acorda -- ver `GameServer.SonoDoMajin.cs`
 		TickDeBills(Protocol.TickSeconds);   // BILLS E WHIS (dono, 2026-10-11): a visita a Terra, quem existe, e as lutas da casa -- DEPOIS dos relogios do corpo (a precisao do Whis volta ao cheio logo apos drenar). Ver `GameServer.Bills.cs`
 
@@ -6627,6 +6671,8 @@ public partial class GameServer : Node
 			if (_tickCount % TicksPorSegundo == 0) TickDoGodKi();       // O KI DIVINO (dono, 2026-10-10): quem respira uma atmosfera divina enche o medidor do despertar, e a maestria de quem ja e deus sobe -- as constantes sao por segundo. Ver `GameServer.GodKi.cs`
 			if (_tickCount % TicksPorSegundo == 0) AnotarHabitantesVistos();   // (2026-10-27) OS HABITANTES QUE CADA UM VIU DE PERTO, pela lista da mente (o pedido 124c) -- ver GameServer.MenteLista.cs
 			if (_tickCount % TicksPorSegundo == 0) TickDosBebes(1.0);   // (2026-10-18) O BEBE CRESCE depois de uma hora no jogo -- ver `GameServer.Bebe.cs`
+			if (_tickCount % TicksPorSegundo == 0) TickDaVidaLigada();   // (2026-11-01, o pedido 216) o aviso urgente ao Deus da Destruicao e a morte dele com o ultimo Kaioshin -- ver `GameServer.VidaLigada.cs`
+			if (_tickCount % TicksPorSegundo == 0) TickDoBoo();   // (2026-11-01, o pedido 218) o relogio da divisao do Fat Boo, a caca do Super Boo e a virada pro Kid -- ver `GameServer.SagaDoBuu.cs`
 			TickDaSnakeWay();   // (2026-10-27) A CORRIDA DA SNAKE WAY a cada tique: o voo cancela, a chegada ao Sr. Kaioh fecha -- ver GameServer.SnakeWay.cs
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
@@ -6875,6 +6921,8 @@ public partial class GameServer : Node
 		// quem nao e Namekuseijin, entao o custo pro resto do servidor e uma comparacao de string.
 		// =========================================================================================================
 		ConferirODespertarDoSuperNamekuseijin(pl);
+		// (2026-10-29, o pedido 163) e o fim do Super Saiyajin God do ritual dos cinco, aos 5 minutos -- ver `GameServer.GodKi.cs`
+		ConferirORitualSaiyajin(pl);
 
 		// (2026-10-18) O PESO VESTIDO TEM DE ESTAR NA MOCHILA: se ele saiu por outra porta (o saque de um gemeo, o admin, uma troca), sai do
 		// corpo junto -- senao o corpo continuaria pesando com um peso que nao tem. Ver `Fighter.pesoVestido`.
@@ -6959,7 +7007,8 @@ public partial class GameServer : Node
 			return;
 		}
 		// (2026-10-27, o pedido 132) NEM O NPC DE SAGA: ele nasce no planeta da saga e ali fica (`EhDeSaga`) -- a rede, como a de cima.
-		if (EhDeSaga(pl) && !destino.Equals(pl.Zone))
+		// (2026-11-01, o pedido 218) ...menos o Kid Boo saltando pro Ceu (`LevarOKidProCeu`), a unica viagem de saga que o roteiro faz.
+		if (EhDeSaga(pl) && !destino.Equals(pl.Zone) && pl.Id != _booIndoProCeu)
 		{
 			GD.Print($"[server] {pl.Name} e de saga e nao sai de {pl.Zone.Name}: a viagem pra {destino.Name} foi recusada");
 			return;
@@ -6975,6 +7024,10 @@ public partial class GameServer : Node
 		// As portas que o jogador escolhe (decolar, nave, teleporte) ja recusaram; esta e a rede das que ninguem escolhe. Ver
 		// `GameServer.EsferasNaMochila.cs`.
 		SoltarAsEsferasQueNaoSaemDoPlaneta(pl, destino);
+
+		// (2026-11-01, o pedido 219) *"sair da zona desfaz as gosmas"*: as do Majin que sai se desfazem (quem ia dentro cai onde ela estava), e
+		// quem ia dentro de uma e muda de zona por outra porta sai dela. Ver `GameServer.GosmaDoMajin.cs`.
+		if (!destino.Equals(pl.Zone)) GosmaAoTrocarDeZona(pl);
 
 		ulong tEntrou = Time.GetTicksUsec();
 		ZoneKey saiuDe = pl.Zone;
@@ -7240,7 +7293,8 @@ public partial class GameServer : Node
 			// zumbido de quem esta perto segue. Ver `EntityState.Reunindo`.
 			Reunindo = pl.Carregando,
 			// QUEM ME LEVA NO COLO (2026-10-13): pra a tela desenhar os dois juntos -- ver `EntityState.LevadoPor`.
-			LevadoPor = SendoCarregado(pl) ? pl.AgarradoPorId : 0,
+			// (2026-11-01, o pedido 219) ...OU A GOSMA QUE O ENGOLIU: a tela dele o desenha nela, e a camera vai junto -- ver `GameServer.GosmaDoMajin.cs`.
+			LevadoPor = SendoCarregado(pl) ? pl.AgarradoPorId : GosmaQueLeva(pl.Id),
 			// ...E O CHAO TREMENDO em volta de quem comprime o Ki alem de 120%. A regra e do Core
 			// (`CargaDeKi.TremeOChao`) e a decisao e daqui, porque o Ki alheio nao viaja.
 			CargaAlta = Jandirus.Core.Combat.CargaDeKi.TremeOChao(pl.Ficha, pl.Carregando, pl.EstagioDaCarga),

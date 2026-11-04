@@ -238,8 +238,12 @@ public static class EmbateDeKi
 	/// como o primeiro degrau, e o jogo de antes (`KiContraCorpo.RegraDeAntesDeTeste`) repoe o corte.
 	///
 	/// BOTAO, E NAO CONSTANTE, como o <see cref="DanoDeKi.CorteDoFraco"/>: e balanceamento.
+	///
+	/// (2026-10-30, o pedido 177) E MEDIDO EM DANO, entao ACOMPANHA O BOTAO DO KI: os 20 eram com o `DanoDeKi.DanoGlobalDeKi` em 2 -- dez por
+	/// ponto dele. O nerf do pedido corta o dano de todo raio pela metade; com as maos fixas em 20, o mesmo raio contra as mesmas maos
+	/// passaria a perder o embate que ganhava, e o dono pediu menos dano, nao um embate novo.
 	/// </summary>
-	public static double DanoQueAsMaosEmpatam = 20;
+	public static double DanoQueAsMaosEmpatam = 10 * DanoDeKi.DanoGlobalDeKi;
 
 	/// <summary>
 	/// O PODER DE UM FEIXE -- `BP * mods * basedamage`.

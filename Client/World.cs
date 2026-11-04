@@ -319,6 +319,9 @@ public partial class World : Node2D
 		// SEGURA O TILESET antes de qualquer zona -- ver o campo _tilesetVivo. Feito uma vez por
 		// processo; sem ele, toda volta do espaco re-paga ~274 ms de montagem de atlas.
 		_tilesetVivo ??= ResourceLoader.Load<TileSet>("res://Assets/Maps/tileset.tres");
+		// (2026-11-02, o pedido 226) ...e poe o vento nas copas dele, uma vez por processo: cada quadro de arvore ganha o material que
+		// verga a copa e deixa o tronco parado. Antes de qualquer zona, pra nenhuma camada ter de se redesenhar. Ver `VentoNaVegetacao`.
+		VentoNaVegetacao.Preparar(_tilesetVivo);
 
 		MontarCenario();
 
@@ -1790,7 +1793,10 @@ public partial class World : Node2D
 		{
 			Name = $"Supernova{id}",
 			Ataque = ocupacao == Jandirus.Core.World.Ocupacao.DeathBallDoUltimato
-				? Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall : Jandirus.Core.Npc.AtaqueDoUltimato.Supernova,
+				? Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall
+				// (2026-11-01, o pedido 218) a esfera rosa do Kid Boo -- a Death Ball, pintada
+				: ocupacao == Jandirus.Core.World.Ocupacao.EsferaRosaDoUltimato
+					? Jandirus.Core.Npc.AtaqueDoUltimato.EsferaRosa : Jandirus.Core.Npc.AtaqueDoUltimato.Supernova,
 			Onde = () => Corpo(id) is { } c ? Desenhado(c) : null,
 			Estourar = EstouroNoMundo,
 		};
@@ -1891,6 +1897,24 @@ public partial class World : Node2D
 
 	/// <summary>DEFEITO INJETADO (robo `--diagsono`): a tela ignora o sono -- o corpo dorme sem "z" nenhum. Falso em jogo, sempre.</summary>
 	internal static bool SonoIgnoradoDeTeste;
+
+	/// <summary>
+	/// (2026-11-01, o pedido 219) ESTE CORPO E A GOSMA DE UM MAJIN -- irmao do <see cref="MarcarDesfeito"/>: pelo `Ocupacao.Gosma` do snapshot,
+	/// o boneco da lugar a gosma (<see cref="GosmaDesenhada"/>), filha do corpo -- morre com ele. Trabalho so quando o bit vira.
+	/// </summary>
+	private void MarcarGosma(int id, bool gosma)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		GosmaDesenhada? ja = corpo.GetNodeOrNull<GosmaDesenhada>(GosmaDesenhada.NomeDoNode);
+		if (gosma == (ja != null)) return;
+		if (ja != null)
+		{
+			corpo.RemoveChild(ja);
+			ja.QueueFree();
+			return;
+		}
+		corpo.AddChild(new GosmaDesenhada { Name = GosmaDesenhada.NomeDoNode });
+	}
 
 	private void MarcarDesfeito(int id, bool desfeito)
 	{
@@ -3467,6 +3491,10 @@ public partial class World : Node2D
 	public void AplicarZoom(int z)
 	{
 		if (_camera != null) _camera.Zoom = new Vector2(z, z);
+		// (2026-10-31, o pedido 194) E O QUADRO SEGUINTE REAPLICA A REGRA INTEIRA (a altura e a camera do lock-on, `EfeitosDaAltura`): sem
+		// esquecer o ultimo zoom escrito, um lock-on afastado em 2x ficaria no 4x da roda -- o degrau dele nao mudou, e quem escreve so
+		// escreve quando o degrau muda.
+		_zoomAgora = 0;
 	}
 
 	/// <summary>
@@ -3692,6 +3720,8 @@ public partial class World : Node2D
 				MarcarKaioken(e.Id, e.Kaioken);
 				// E O MAJIN EM PEDACOS, pela mesma frase: o dono do corpo desfeito ve os pedacos dele -- ver `MarcarDesfeito`.
 				MarcarDesfeito(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Desfeito);
+				// (2026-11-01, o pedido 219) E ENGOLIDO POR UMA GOSMA: o meu corpo some na minha tela, e ela me leva (o `LevadoPor` logo abaixo).
+				_local?.ReceberGosma(e.Ocupacao == Jandirus.Core.World.Ocupacao.NaGosma);
 				// (v0.3.0) E A SUPERNOVA, pela mesma frase (um corpo de jogador nunca a ergue, mas a regra e uma so) -- ver `MarcarSupernova`.
 				MarcarSupernova(e.Id, e.Ocupacao);
 				// (v0.4.0) E A ESFERA VERDE DO DEMONIC SAIYAN, pela mesma frase: quem carrega ve a propria carga -- ver `MarcarEsferaDemoniaca`.
@@ -3780,6 +3810,8 @@ public partial class World : Node2D
 			MarcarSobrecarga(e.Id, e.Sobrecarregado);
 			MarcarKaioken(e.Id, e.Kaioken);
 			MarcarDesfeito(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Desfeito);
+			// (2026-11-01, o pedido 219) ...E A GOSMA DO MAJIN: o boneco da lugar a gosma -- ver `MarcarGosma`.
+			MarcarGosma(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Gosma);
 			// (v0.3.0) ...E O SOL DO ULTIMATO SOBRE O CHEFE -- ver `MarcarSupernova`.
 			MarcarSupernova(e.Id, e.Ocupacao);
 			// (v0.4.0) ...E A ESFERA VERDE DE QUEM CARREGA O DEMONIC SAIYAN (e, 2026-10-17, de quem grita o desabafo) -- ver `MarcarEsferaDemoniaca`.
@@ -4672,6 +4704,9 @@ public partial class World : Node2D
 		int cheio = Math.Max(1, Boot.Config.Zoom);
 		int z = f < 0.5f ? cheio : Math.Max(PisoDoZoom, cheio - 1);
 		if (z > cheio) z = cheio;
+		// (2026-10-31, o pedido 194) A CAMERA DO LOCK-ON afasta mais, se os dois nao cabem -- o degrau que o `CameraDoLockOn` escolheu,
+		// nunca abaixo do piso do jogador. Escrito AQUI porque este e o unico lugar que escreve o zoom da camera a cada quadro.
+		if (_zoomDoLockOn is int zl && zl < z) z = zl;
 		if (z == _zoomAgora) return;
 		_zoomAgora = z;
 		_camera.Zoom = new Vector2(z, z);
@@ -5381,10 +5416,12 @@ public partial class World : Node2D
 	{
 		Vector2 alvo = Vector2.Zero;
 		bool cravar = false;
+		_zoomDoLockOn = null;
 		if (FocoDeTeste is { } fixo && _local != null && IsInstanceValid(_local))
 		{
 			alvo = fixo - _local.GlobalPosition;
 			cravar = true;
+			_olhoDoLockOn = false;
 		}
 		else if (_assistindo && _local != null && IsInstanceValid(_local) && _torneioNaTela is { } t)
 		{
@@ -5392,12 +5429,83 @@ public partial class World : Node2D
 			Vector2 foco = a != null && b != null ? (a.GlobalPosition + b.GlobalPosition) / 2f
 						 : a?.GlobalPosition ?? b?.GlobalPosition ?? new Vector2(t.Centro.X, t.Centro.Y);
 			alvo = foco - _local.GlobalPosition;
+			_olhoDoLockOn = false;
 		}
+		else if (CameraDoLockOn() is { } meio)
+		{
+			// (2026-10-31, o pedido 194) o meio de mim e do alvo travado -- e o zoom que o `CameraDoLockOn` escolheu (`EfeitosDaAltura`)
+			alvo = meio;
+			_olhoDoLockOn = true;
+		}
+		else _zoomDoLockOnAnterior = null;
 		_deslocDoEspectador = cravar ? alvo : _deslocDoEspectador.Lerp(alvo, Mathf.Clamp((float)delta * 4f, 0f, 1f));
 		if (_camera != null && _tremor <= 0) _camera.Offset = _deslocDoEspectador;
-		// O OLHO DO VEU VAI COM A CAMERA -- o `EYE_PERSPECTIVE` do DM (ver `Visao.OlhoEmprestado`).
-		_veu.OlhoEmprestado = OlhoDoEspectador();
+		// O OLHO DO VEU VAI COM A CAMERA -- o `EYE_PERSPECTIVE` do DM (ver `Visao.OlhoEmprestado`). Menos no lock-on (e na volta dele): quem
+		// trava um alvo continua no proprio corpo, e o corpo nunca sai da tela.
+		_veu.OlhoEmprestado = _olhoDoLockOn && !OlhoNaCameraDoLockOnDeTeste ? null : OlhoDoEspectador();
 	}
+
+	// =====================================================================
+	// A CAMERA DO LOCK-ON (dono, 2026-10-31, o pedido 194)
+	// =====================================================================
+	/// <summary>(o zoom que o lock-on pede neste quadro -- nulo sem lock-on -- e o do quadro anterior, pro degrau nao piscar na beirada)</summary>
+	private int? _zoomDoLockOn, _zoomDoLockOnAnterior;
+
+	/// <summary>(o deslocamento da camera e do lock-on, inclusive na volta dela pro corpo: o olho do veu fica o do jogador)</summary>
+	private bool _olhoDoLockOn;
+
+	/// <summary>A FOLGA ENTRE OS CORPOS E A BEIRADA DA TELA, em px do mundo: dois tiles pros lados, um e meio em cima e embaixo.</summary>
+	private const float FolgaDoLockOnX = 2 * Jandirus.Core.World.ZoneCollision.TileSize, FolgaDoLockOnY = 1.5f * Jandirus.Core.World.ZoneCollision.TileSize;
+
+	/// <summary>Pra VOLTAR um degrau de zoom os dois precisam caber com mais um tile de folga -- sem isso, na beirada, o zoom piscaria.</summary>
+	private const float FolgaPraVoltarODegrau = Jandirus.Core.World.ZoneCollision.TileSize;
+
+	/// <summary>DEFEITO INJETADO (`--diagcameratrava`): a camera ignora o lock-on -- o jogo de antes do pedido 194. Falso em jogo.</summary>
+	public static bool CameraDoLockOnDesligadaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--diagcameratrava`): o lock-on empresta o olho do veu ao centro da camera, como o torneio. Falso em jogo.</summary>
+	public static bool OlhoNaCameraDoLockOnDeTeste;
+
+	/// <summary>
+	/// O dono: *"quando vc tiver com lock in em alguem, a camera vai sempre ficar centralizada em vc e no inimigo, afastando o zoom se os
+	/// personagens se afastarem etc (mesma coisa de observar torneio) , e faca isso ser uma opção no menu de pausa (esc) podendo ativar ou
+	/// nao"*. Com um alvo marcado (a tecla de travar, <see cref="TravarNoMaisPerto"/>, ou o duplo clique -- a mesma marca) e a caixa do menu
+	/// de pausa ligada (`Settings.CameraDoLockOn`), a camera vai pro MEIO dos dois pelo mesmo deslocamento do espectador do torneio, e o zoom
+	/// desce em DEGRAUS INTEIROS (o zoom quebrado cintila -- ver <see cref="EfeitosDaAltura"/>) ate os dois caberem na tela com folga.
+	///
+	/// O PISO E O DO JOGADOR (`Settings.ZoomMin`), e nao 1x: ver mais longe que o outro numa luta em rede e vantagem, e e por isso que o menu
+	/// nao deixa ninguem passar dele -- o lock-on nao abre a porta que o menu fecha. Se nem no piso os dois cabem, a camera se inclina pro
+	/// alvo o quanto pode SEM o jogador sair da tela.
+	///
+	/// Devolve o deslocamento da camera (o meio, ja inclinado) e escreve o zoom pedido (<see cref="_zoomDoLockOn"/>); nulo sem lock-on.
+	/// </summary>
+	private Vector2? CameraDoLockOn()
+	{
+		if (!Boot.Config.CameraDoLockOn || CameraDoLockOnDesligadaDeTeste) return null;
+		if (GameClient.Instance is not { AlvoId: > 0 } cli || _local == null || !IsInstanceValid(_local)) return null;
+		if (!_remotos.TryGetValue(cli.AlvoId, out RemotePlayer? r) || !IsInstanceValid(r)) return null;
+
+		Vector2 d = r.GlobalPosition - _local.GlobalPosition;
+		Vector2 tela = GetViewport().GetVisibleRect().Size;
+		int cheio = Math.Max(1, Boot.Config.Zoom);
+		int piso = Math.Min(cheio, Settings.ZoomMin);
+		int anterior = _zoomDoLockOnAnterior ?? cheio;
+		int z = cheio;
+		while (z > piso && !Cabem(d, tela, z, z > anterior ? FolgaPraVoltarODegrau : 0)) z--;
+		_zoomDoLockOn = _zoomDoLockOnAnterior = z;
+
+		// O MEIO, inclinado ate onde o jogador ainda fica na tela (com a folga)
+		Vector2 meio = d / 2f;
+		Vector2 teto = new(Math.Max(0f, tela.X / z / 2f - FolgaDoLockOnX), Math.Max(0f, tela.Y / z / 2f - FolgaDoLockOnY));
+		return new Vector2(Math.Clamp(meio.X, -teto.X, teto.X), Math.Clamp(meio.Y, -teto.Y, teto.Y));
+	}
+
+	/// <summary>Os dois corpos, a <paramref name="d"/> um do outro, cabem na tela neste zoom com a folga (e mais <paramref name="extra"/> de cada lado)?</summary>
+	private static bool Cabem(Vector2 d, Vector2 tela, int z, float extra) =>
+		Math.Abs(d.X) + 2 * (FolgaDoLockOnX + extra) <= tela.X / z && Math.Abs(d.Y) + 2 * (FolgaDoLockOnY + extra) <= tela.Y / z;
+
+	/// <summary>O olho do veu emprestado agora (nulo = o do proprio corpo). Só bancada.</summary>
+	public Vector2? OlhoDoVeuDeTeste => _veu.OlhoEmprestado;
 
 	/// <summary>
 	/// DE ONDE O ESPECTADOR ENXERGA: do centro da camera, enquanto ela estiver longe do corpo -- e so
@@ -7331,6 +7439,9 @@ public partial class World : Node2D
 		// acidente, e nao por regra. Ver `AplicarContorno`.
 		AplicarContorno(id);
 	}
+
+	/// <summary>(2026-10-31) O meu boneco pede a corrida agora? SO PRA BANCADA (`--diagpodtanque`, o shift ao leme). Nulo sem boneco.</summary>
+	internal bool? CorrendoLocalDeTeste => _local != null && IsInstanceValid(_local) ? _local.CorrendoDeTeste : null;
 
 	/// <summary>O CharacterVisual do meu proprio boneco. SO PRA BANCADA (`--diagferida`).</summary>
 	public CharacterVisual? VisualLocalDeTeste =>

@@ -85,7 +85,8 @@ public static class Nutricao
 	{
 		// SO DIGERE QUEM PRECISA. O DM exige tanque com algo dentro, vivo, vigor abaixo do maximo e
 		// FORA DE COMBATE -- no meio da briga o corpo nao para pra processar comida.
-		if (f.dead || f.CurrentNutrition <= 0 || f.stamina >= f.maxstamina || f.IsInFight)
+		// (2026-11-01, o pedido 220) O MORTO DIGERE: sem o vigor infinito, e a comida que o devolve -- ver `MortoComVigorInfinitoDeTeste`.
+		if ((f.dead && MortoComVigorInfinitoDeTeste) || f.CurrentNutrition <= 0 || f.stamina >= f.maxstamina || f.IsInFight)
 			return (0, 0);
 
 		double metabolismo = Math.Max(f.Metabolism, 0.1);
@@ -175,19 +176,20 @@ public static class Nutricao
 	public static bool KiDoAndroideSemPisoDeTeste;
 
 	/// <summary>
-	/// O vigor deste corpo nunca sai do cheio: o do Majin (vivo ou fantasma) e o do androide de energia infinita vivo -- e, desde
-	/// a v0.3.0, o do bio com o sangue de um deles (`Races.SangueDoBio`: *"o gasto de vigor/ki das racas q foram usadas pra
-	/// criar ele"*) e o de TODO MORTO (*"mortos tem vigor infinito"* -- ver <see cref="MortoComMeioTanqueDeTeste"/>).
+	/// O vigor deste corpo nunca sai do cheio: o do Majin (vivo ou fantasma) e o do androide de energia infinita (vivo ou morto: o motor
+	/// nao para com a morte, <see cref="KiSempreCheio"/>) -- e, desde a v0.3.0, o do bio com o sangue de um deles (`Races.SangueDoBio`:
+	/// *"o gasto de vigor/ki das racas q foram usadas pra criar ele"*).
+	/// (2026-11-01, o pedido 220) O MORTO COMUM SAIU DAQUI -- ver <see cref="MortoComVigorInfinitoDeTeste"/>.
 	/// </summary>
 	public static bool VigorSempreCheio(Fighter f) =>
-		VigorDeMajin(f) || (EnergiaInfinita(f) && !f.dead) || (f.dead && !MortoComMeioTanqueDeTeste);
+		VigorDeMajin(f) || EnergiaInfinita(f) || (f.dead && MortoComVigorInfinitoDeTeste);
 
 	/// <summary>
 	/// O VIGOR QUE NUNCA ACABA PELA RACA, e nao pelo estado: o do Majin (vivo ou fantasma), o do androide de energia infinita e o do bio com o
-	/// sangue de um deles -- o <see cref="VigorSempreCheio"/> sem o MORTO comum. E a quem a mesa de tecnicas nao paga ponto pelo folego
-	/// (`Skills.TecnicaCustomizada.VendeFolego`); o dono, 2026-10-19: *"só as raças com vigor infinito perdem a opção de fôlego"* -- o morto
-	/// tem o vigor travado no cheio, mas revive, e a tecnica dele volta a cobrar. O androide conta MESMO MORTO: o motor nao para com a morte
-	/// (<see cref="KiSempreCheio"/>), e morto o vigor trava no cheio do mesmo jeito -- vivo ou morto, ele nunca paga folego.
+	/// sangue de um deles -- desde 2026-11-01 (o pedido 220) o proprio <see cref="VigorSempreCheio"/>, que perdeu o MORTO comum. E a quem a
+	/// mesa de tecnicas nao paga ponto pelo folego (`Skills.TecnicaCustomizada.VendeFolego`); o dono, 2026-10-19: *"só as raças com vigor
+	/// infinito perdem a opção de fôlego"*. O androide conta MESMO MORTO: o motor nao para com a morte (<see cref="KiSempreCheio"/>), e
+	/// o vigor dele tambem nao -- vivo ou morto, ele nunca paga folego.
 	/// </summary>
 	public static bool VigorInfinitoDaRaca(Fighter f) => VigorDeMajin(f) || EnergiaInfinita(f) || (f.dead && MortoComoRacaDeTeste);
 
@@ -198,18 +200,19 @@ public static class Nutricao
 	public static bool MortoComoRacaDeTeste;
 
 	/// <summary>
-	/// ============================ O MORTO TEM VIGOR INFINITO (dono, 2026-10-15) ============================
-	/// *"Mortos atualmente o vigor fica preso em 50% seria melhor deixar preso em 100% logo, mortos tem vigor infinito"*.
-	/// DESVIO DECLARADO DO ORIGINAL: no DM o morto fica cravado em meio tanque (`else if(dead) stamina = 0.5*maxstamina`,
-	/// `StaminaDrain.dm:35-36`); aqui o cadeado do tique do corpo o segura no cheio (<see cref="VigorSempreCheio"/>), e o
-	/// estomago nao o queima (<see cref="QueimarVigor"/>). O Ki do morto continua o de sempre -- menos o do androide de energia
-	/// infinita, que segue com o motor (<see cref="KiSempreCheio"/>, 2026-10-20).
+	/// ============================ O MORTO GASTA E RECUPERA VIGOR COMO O VIVO (dono, 2026-11-01, o pedido 220) ============================
+	/// *"faça com q pessoas mortas nao tenham mais stamina infinita, mas tenha uma reduçao de 25% do uso de ki (de tudo, ate de gasto de
+	/// formas)"*. De 2026-10-15 ate aqui o morto tinha o vigor travado no cheio (*"mortos tem vigor infinito"*), e o DM o cravava em meio
+	/// tanque (`else if(dead) stamina = 0.5*maxstamina`, `StaminaDrain.dm:35-36`). Agora ele QUEIMA (<see cref="QueimarVigor"/>) e o
+	/// estomago o DEVOLVE (<see cref="Digerir"/>, que no DM pedia o corpo vivo -- desvio declarado: sem o cadeado, sem digerir o morto
+	/// nunca mais sairia do zero). Em troca, ele paga 25% menos Ki em tudo (`Fighter.FatorDeKiDoEstado`). O vigor infinito de RACA
+	/// continua, vivo ou morto (o Majin, o androide de energia infinita, o bio com o sangue deles). Fome nao o machuca (<see cref="DanoDaFome"/>).
 	///
-	/// DEFEITO INJETADO (bancadas `--v030teste` e `--alemteste`): o morto volta a ficar em meio tanque -- o jogo de antes. Falso
-	/// em jogo, sempre.
+	/// DEFEITO INJETADO (bancadas `--v030teste` e `--alemteste`): o morto volta a ter o vigor infinito -- o jogo de antes. Falso em jogo,
+	/// sempre.
 	/// ====================================================================================================
 	/// </summary>
-	public static bool MortoComMeioTanqueDeTeste;
+	public static bool MortoComVigorInfinitoDeTeste;
 
 	/// <summary>
 	/// O Ki deste corpo nunca fica abaixo de 100%: o do androide de energia infinita (e o do bio que tem o motor dele no sangue), vivo
@@ -258,9 +261,8 @@ public static class Nutricao
 	/// </summary>
 	public static void QueimarVigor(Fighter f, double dreno = 1)
 	{
-		// (v0.3.0) O MORTO NAO QUEIMA: o vigor dele trava no cheio no tique do corpo -- ver `MortoComMeioTanqueDeTeste`, que
-		// devolve o meio tanque do DM.
-		if (f.dead) { if (MortoComMeioTanqueDeTeste) f.stamina = 0.5 * f.maxstamina; return; }
+		// (2026-11-01, o pedido 220) O MORTO QUEIMA COMO O VIVO -- ver `MortoComVigorInfinitoDeTeste`, que devolve o jogo de antes.
+		if (f.dead && MortoComVigorInfinitoDeTeste) return;
 
 		// ============================ O PISO DE MEIO TANQUE DO BIO-ANDROIDE (e do Majin, ate 2026-10-15) ============================
 		// `if(stamina<(maxstamina/2)&&(Race=="Majin"||Race=="Bio-Android")) stamina=(maxstamina/2)` -- a segunda
@@ -306,12 +308,14 @@ public static class Nutricao
 	/// QUANTO VIGOR VOLTA POR SEGUNDO AGORA, descansando: o pingo de cada passada do estomago (<see cref="Digerir"/>, o passo 2 -- com o
 	/// descanso de quem se contem e a recuperacao racial) menos o que a passada queima parado (<see cref="GastoParado"/>), vezes as
 	/// passadas por segundo (`Metabolism / SegundosPorPassada`: o metabolismo se cancela no pingo). Zero com o estomago vazio (o `Digerir`
-	/// sai na entrada) e no morto. So a conta do aviso de quanto falta (`Cansaco.SegundosAteAguentarTreinar`): fora da luta, e sem o
+	/// sai na entrada) -- e, desde o pedido 220, o morto conta como o vivo. So a conta do aviso de quanto falta
+	/// (`Cansaco.SegundosAteAguentarTreinar`): fora da luta, e sem o
 	/// pouco que a regen de Ki cobra.
 	/// </summary>
 	public static double VigorQueVoltaPorSegundo(Fighter f)
 	{
-		if (f.dead || f.CurrentNutrition <= 0) return 0;
+		// (2026-11-01, o pedido 220) o morto tambem: ele digere como o vivo
+		if ((f.dead && MortoComVigorInfinitoDeTeste) || f.CurrentNutrition <= 0) return 0;
 		double metabolismo = Math.Max(f.Metabolism, 0.1);
 		double pingo = PingoDeVigorPorPassada * f.maxstamina / metabolismo * PoderEmUso.FatorDeDescanso(f) * f.racialRegenVigor;
 		return Math.Max(pingo - GastoParado(f), 0) * metabolismo / SegundosPorPassada;

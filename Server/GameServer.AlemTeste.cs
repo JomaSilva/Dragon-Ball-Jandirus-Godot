@@ -565,32 +565,35 @@ public partial class GameServer
 		AfirmarAlem("...mas a MORTE em si solta, em dobro (senao a linha acima estaria medindo outra coisa)",
 					cobaia.SoltarOZenkai(morreuAgora: true, maioriaCritica: false, 0) > 0 && cobaia.zenkaiGuardado < 500);
 
-		// --- SEM DIGERIR, E O VIGOR TRAVADO NO CHEIO (v0.3.0, dono: *"mortos tem vigor infinito"*; o DM o cravava em 50%,
-		// `StaminaDrain.dm:35-36`) ---
+		// --- (2026-11-01, o pedido 220) O MORTO DIGERE E QUEIMA O VIGOR COMO O VIVO -- *"faça com q pessoas mortas nao tenham mais stamina
+		// infinita"*. De 2026-10-15 ate aqui o vigor dele travava no cheio sem digerir (e o DM o cravava em 50%, `StaminaDrain.dm:35-36`). ---
 		var estomago = new Fighter { Race = "Human", BP = 1000, dead = true };
 		estomago.Statify();
 		estomago.CurrentNutrition = Jandirus.Core.Stats.Nutricao.Tanque(estomago.Metabolism);
-		estomago.stamina = 0;
+		estomago.stamina = estomago.maxstamina * 0.5;
 		(double vigor, double ki) = Jandirus.Core.Stats.Nutricao.Digerir(estomago);
-		AfirmarAlem("MORTO nao digere -- a comida nao vira vigor nem Ki",
-					Mathf.IsZeroApprox((float)vigor) && Mathf.IsZeroApprox((float)ki));
+		AfirmarAlem("(220) o MORTO DIGERE: a comida vira vigor, como no vivo", vigor > 0, $"vigor +{vigor:0.####}, ki +{ki:0.####}");
 
+		estomago.stamina = estomago.maxstamina * 0.5;
 		Jandirus.Core.Stats.Nutricao.QueimarVigor(estomago);
-		bool naoQueimou = estomago.stamina == 0;   // o estomago nao mexe no morto: nem queima, nem crava a metade
+		double depoisDeQueimar = estomago.stamina;
 		Jandirus.Core.Stats.Nutricao.ManterOsInfinitos(estomago);
-		AfirmarAlem("...e o VIGOR trava no CHEIO (o cadeado do tique do corpo): o morto tem vigor infinito -- e o estomago nao o queima nem o crava em meio tanque",
-					naoQueimou && Math.Abs(estomago.stamina - estomago.maxstamina) < 1e-6,
-					$"{estomago.stamina:0.##}/{estomago.maxstamina:0.##}");
-		Jandirus.Core.Stats.Nutricao.MortoComMeioTanqueDeTeste = true;
+		AfirmarAlem("(220) ...e QUEIMA o vigor, que NAO trava mais no cheio (o cadeado do tique do corpo): o morto nao tem mais vigor infinito",
+					depoisDeQueimar < estomago.maxstamina * 0.5 && Math.Abs(estomago.stamina - depoisDeQueimar) < 1e-9,
+					$"{estomago.stamina:0.####}/{estomago.maxstamina:0.##}");
+		Jandirus.Core.Stats.Nutricao.MortoComVigorInfinitoDeTeste = true;
+		double vigorComDefeito;
 		try
 		{
-			estomago.stamina = 0;
+			estomago.stamina = estomago.maxstamina * 0.5;
+			(vigorComDefeito, _) = Jandirus.Core.Stats.Nutricao.Digerir(estomago);
 			Jandirus.Core.Stats.Nutricao.QueimarVigor(estomago);
 			Jandirus.Core.Stats.Nutricao.ManterOsInfinitos(estomago);
 		}
-		finally { Jandirus.Core.Stats.Nutricao.MortoComMeioTanqueDeTeste = false; }
-		AfirmarAlem("(defeito injetado: o meio tanque do DM) o morto volta a ficar cravado em METADE -- a regua de cima sabe reprovar",
-					Math.Abs(estomago.stamina - 0.5 * estomago.maxstamina) < 1e-6, $"{estomago.stamina:0.##}/{estomago.maxstamina:0.##}");
+		finally { Jandirus.Core.Stats.Nutricao.MortoComVigorInfinitoDeTeste = false; }
+		AfirmarAlem("(defeito injetado: o jogo de antes do pedido 220) o morto volta a NAO digerir e a ter o vigor travado no CHEIO -- as reguas de cima sabem reprovar",
+					Mathf.IsZeroApprox((float)vigorComDefeito) && Math.Abs(estomago.stamina - estomago.maxstamina) < 1e-6,
+					$"vigor da comida {vigorComDefeito:0.####}; {estomago.stamina:0.##}/{estomago.maxstamina:0.##}");
 
 		// --- O KI DRENA EM DOBRO (`CargaDeKi`, o ramo de dentro do teto) ---
 		// Dois corpos identicos, um vivo e um morto, com o MESMO dt: a diferenca so pode ser o `dead`.
@@ -605,8 +608,42 @@ public partial class GameServer
 					drenoVivo > 0 && Math.Abs(drenoMorto - 2 * drenoVivo) < drenoVivo * 0.01,
 					$"vivo {drenoVivo:0.####} / morto {drenoMorto:0.####}");
 
+		// --- (2026-11-01, o pedido 220) O MORTO PAGA 25% MENOS KI -- *"tenha uma reduçao de 25% do uso de ki (de tudo, ate de gasto de
+		// formas)"*. O mesmo par de fichas: o custo-base de toda tecnica, o soco, o voo e o escudo (os que moram no Core; o dreno da forma e
+		// medido no tique, na familia do toque duplo no C). O vazamento do excesso, acima, NAO e uso: ele continua o do DM. ---
+		Fighter vivoCusto = FichaDeDrenoDeKi(false), mortoCusto = FichaDeDrenoDeKi(true);
+		static bool UmQuartoAMenos(double vivo, double morto) => vivo > 0 && Math.Abs(morto / vivo - Fighter.KiDoMorto) < 1e-9;
+		double tecVivo = vivoCusto.BaseDrain(), tecMorto = mortoCusto.BaseDrain();
+		double socoVivo = Jandirus.Core.Stats.Cansaco.KiDoSoco(vivoCusto, 1), socoMorto = Jandirus.Core.Stats.Cansaco.KiDoSoco(mortoCusto, 1);
+		double vooVivo = Jandirus.Core.Stats.Cansaco.KiDoVooPorSegundo(vivoCusto, 10, false, true);
+		double vooMorto = Jandirus.Core.Stats.Cansaco.KiDoVooPorSegundo(mortoCusto, 10, false, true);
+		double escudoVivo = Jandirus.Core.Skills.Tecnicas.EscudoCustoKi(vivoCusto), escudoMorto = Jandirus.Core.Skills.Tecnicas.EscudoCustoKi(mortoCusto);
+		AfirmarAlem("(220) **O MORTO PAGA 25% MENOS KI**: o custo-base de TODA tecnica (`BaseDrain`), o soco, o voo e o escudo saem a 75% do vivo",
+					UmQuartoAMenos(tecVivo, tecMorto) && UmQuartoAMenos(socoVivo, socoMorto) && UmQuartoAMenos(vooVivo, vooMorto)
+					&& UmQuartoAMenos(escudoVivo, escudoMorto),
+					$"tecnica {tecVivo:0.####}/{tecMorto:0.####}; soco {socoVivo:0.####}/{socoMorto:0.####}; voo {vooVivo:0.####}/{vooMorto:0.####}; "
+					+ $"escudo {escudoVivo:0.####}/{escudoMorto:0.####}");
+
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		AfirmarAlem("...e o fantasma pode CORRER no Outro Mundo (a Serpentina e comprida)", PodeCorrer(pl, 0.033f));
+
+		// (2026-11-02, o pedido 220) ...e a CORRIDA do morto custa 25% menos: o mesmo corpo, o mesmo passo, vivo e morto
+		double CorridaDe(bool morto)
+		{
+			bool era = pl.Ficha.dead;
+			pl.Ficha.dead = morto;
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			double antes = pl.Ficha.Ki;
+			PodeCorrer(pl, 0.1f);
+			double gasto = antes - pl.Ficha.Ki;
+			pl.Ficha.dead = era;
+			return gasto;
+		}
+		double corridaViva = CorridaDe(false), corridaMorta = CorridaDe(true);
+		AfirmarAlem("(220) ...e a CORRIDA do morto custa 25% menos que a do vivo",
+					corridaViva > 0 && Math.Abs(corridaMorta / corridaViva - Fighter.KiDoMorto) < 1e-9,
+					$"vivo {corridaViva:0.####} / morto {corridaMorta:0.####}");
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
 	}
 
 	/// <summary>Duas fichas iguais menos pelo `dead` -- o par de controle do dreno de Ki.</summary>
@@ -1004,23 +1041,29 @@ public partial class GameServer
 		AfirmarAlem("REVIVE DE CARGO: a alma volta a vida", !alma.Ficha.dead);
 		AfirmarAlem("...e a volta e CONTADA (`M.ResurrectedCount += 1`)",
 					alma.Ficha.ResurrectedCount == 1, $"{alma.Ficha.ResurrectedCount}");
-		AfirmarAlem("...e a PRIMEIRA volta nao cobra nada de quem ressuscitou", !pl.Ficha.dead);
+		// (2026-10-29, o pedido 165) o dono: *"faça o revive tanto de kaio quanto dos ranks matarem o usuario, e n ser possivel usar enquanto morto"*
+		AfirmarAlem("(pedido 165) **...E QUEM RESSUSCITOU MORRE NO LUGAR -- JA NA PRIMEIRA VOLTA** (no DM so a segunda cobrava)", pl.Ficha.dead);
 
-		// ---- ...e a segunda cobra uma vida ---------------------------------
+		// ---- e MORTO ninguem usa o Revive ----------------------------------
+		alma.Combate.Morrer(ignorarSeguro: true);
+		List<string> doMorto = Ouvir(() => RessuscitarG4(pl));
+		AfirmarAlem("(pedido 165) **E MORTO NAO SE USA O REVIVE** (*\"e n ser possivel usar enquanto morto\"*): a alma continua morta, e quem tentou ouve por que",
+					pl.Ficha.dead && alma.Ficha.dead && Disse(doMorto, "precisa estar vivo"), Ultimos(doMorto));
+
+		// ---- ...e a segunda volta tambem cobra -----------------------------
 		// NO MUNDO DOS VIVOS o `Revive` puxa a alma aos pes de quem a trouxe (`PuxarParaG4`), e e ali que ela
 		// morre de novo: a segunda volta a acha sem ajuda da bancada. (Revivida dentro do Outro Mundo ela
 		// acordaria no berco -- era por isso que aqui havia um `MoveToZone` da alma.)
-		alma.Combate.Morrer(ignorarSeguro: true);
+		pl.Combate.Reviver();
+		pl.RelogioDaMorte = 0;
 		RessuscitarG4(pl);
 		AfirmarAlem("...a SEGUNDA volta da mesma alma tambem acontece",
 					!alma.Ficha.dead && alma.Ficha.ResurrectedCount == 2,
 					$"{alma.Ficha.ResurrectedCount}");
-		AfirmarAlem("...MAS quem ressuscitou MORRE no lugar (`usr.dead=1`, `OtherworldRankSkills.dm:243`)",
+		AfirmarAlem("...e quem ressuscitou MORRE no lugar de novo (`usr.dead=1`, `OtherworldRankSkills.dm:243`)",
 					pl.Ficha.dead);
 
-		// ---- E A SKILL RACIAL NAO COBRA, que e a metade que prova a separacao ----
-		// Sem esta linha, "o Revive cobra" ficaria verde com as DUAS skills cobrando -- e o DM as
-		// separa de proposito: `kai.dm:65` nao conta e nao mata ninguem.
+		// ---- E A SKILL RACIAL (a de Kai) TAMBEM COBRA desde 2026-10-29 -- e continua sem contar a volta ----
 		pl.Combate.Reviver();
 		pl.RelogioDaMorte = 0;
 		pl.Livro?.Esquecer("/datum/skill/rank/Revive");
@@ -1030,8 +1073,11 @@ public partial class GameServer
 		AfirmarAlem("SEM a skill de CARGO no livro, a mesma tecla ressuscita e NAO conta a volta",
 					!alma.Ficha.dead && alma.Ficha.ResurrectedCount == antes,
 					$"{antes} -> {alma.Ficha.ResurrectedCount}");
-		AfirmarAlem("...e nao cobra vida nenhuma, mesmo a alma ja tendo voltado duas vezes",
-					!pl.Ficha.dead);
+		AfirmarAlem("(pedido 165) **...E A DE KAI TAMBEM MATA QUEM USA** (*\"tanto de kaio quanto dos ranks\"*)", pl.Ficha.dead);
+
+		// o host volta vivo pro resto da bancada
+		pl.Combate.Reviver();
+		pl.RelogioDaMorte = 0;
 	}
 
 	// =====================================================================
@@ -1199,6 +1245,46 @@ public partial class GameServer
 			AfirmarAlem("(contraprova) com `MortoNaoTransformaDeTeste` as mesmas reguas REPROVAM: o tique desfaz a forma e o pedido ouve \"caido\"",
 						Disse(comDefeito, "voce cai") && Disse(pedidoComDefeito, "caido"),
 						$"tique: {string.Join(" | ", comDefeito)} || pedido: {string.Join(" | ", pedidoComDefeito)}");
+			// (2026-11-01, o pedido 220) O MORTO PAGA 25% MENOS NO DRENO DA FORMA -- *"(de tudo, ate de gasto de formas)"*: o mesmo corpo,
+			// um degrau que drena, um segundo de tique vivo e um morto -- com a MAESTRIA de antes nos dois (o segundo de tique sobe a maestria,
+			// e o dreno cai com ela)
+			Jandirus.Core.Forms.FormaDef? comDreno = Jandirus.Core.Forms.Catalogo.Todas
+				.FirstOrDefault(d => d.Id != Jandirus.Core.Forms.Catalogo.IdBase && d.Dreno.Length > 0 && pl.Forma.NoCaminhoDoC(d));
+			if (comDreno != null)
+			{
+				double maestriaAntes = pl.Forma.Maestria.De(comDreno.Id);
+				(double Gasto, string Conta) DrenoDeUmSegundo(bool morto)
+				{
+					bool era = pl.Ficha.dead;
+					pl.Ficha.dead = morto;
+					pl.Forma.Entrar(comDreno.Id);
+					// (r5) O PRIMEIRO TIQUE DEPOIS DO `Entrar` APLICA A FORMA NA FICHA: o teto de Ki sobe com ela (a r4 leu o vivo, medido primeiro,
+					// com o teto de antes, 140, e o tique o levou a 280 com o Ki junto -- um "gasto" de -67,9). Um tique de aquecimento, de tanque
+					// cheio (vazio a forma cairia), e so depois a maestria de antes, o meio tanque e a medida.
+					pl.Ficha.Ki = pl.Ficha.MaxKi;
+					Ouvir(() => TickDaForma(pl, 0.01));
+					pl.Forma.Maestria.Por(comDreno.Id, maestriaAntes);
+					// UM TIQUE DE CENTESIMO, a meio tanque, medido pelo Ki de ANTES: o corpo desta bancada tem ~140 de Ki maximo, e o dreno da forma
+					// em pontos por SEGUNDO passa disso -- na r1, na r2 e na r3 os dois (vivo e morto) iam a zero no primeiro tique, a forma se
+					// desfazia e a conta media outra coisa (o "pontos/s 0" da r3 era a forma ja desfeita). As parcelas sao lidas ANTES do tique.
+					pl.Ficha.Ki = pl.Ficha.MaxKi * 0.5;
+					double kiAntes = pl.Ficha.Ki;
+					string conta = $"pontos/s {pl.Forma.PontosDeDrenoPorSegundo(LiberacaoDoPoder(pl)):0.###}, liberacao {LiberacaoDoPoder(pl):0.##}, "
+								   + $"racial {pl.Racial.Efeito.Dreno:0.##}, fator {pl.Ficha.FatorDeKiDoEstado:0.##}, teto {pl.Ficha.MaxKi:0}";
+					Ouvir(() => TickDaForma(pl, 0.01));
+					double gasto = kiAntes - pl.Ficha.Ki;
+					pl.Ficha.dead = era;
+					return (gasto, conta);
+				}
+				(double drenoVivo, string contaViva) = DrenoDeUmSegundo(false);
+				(double drenoMorto, string contaMorta) = DrenoDeUmSegundo(true);
+				pl.Forma.Maestria.Por(comDreno.Id, maestriaAntes);
+				AfirmarAlem("(220) **O MORTO PAGA 25% MENOS NO DRENO DA FORMA** (*\"ate de gasto de formas\"*): o mesmo degrau, um tique de 0,01 s",
+							drenoVivo > 0 && Math.Abs(drenoMorto / drenoVivo - Fighter.KiDoMorto) < 0.02,
+							$"{comDreno.Id}: vivo {drenoVivo:0.####} ({contaViva}) / morto {drenoMorto:0.####} ({contaMorta})");
+			}
+			else AfirmarAlem("(montagem) ha um degrau de forma que drena no caminho do C deste corpo", false);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			if (pl.Forma.Atual != formaAntes) pl.Forma.Entrar(formaAntes);
 		}
 		else AfirmarAlem("(montagem) ha um degrau de forma no caminho do C deste corpo", false);
@@ -1353,7 +1439,7 @@ public partial class GameServer
 			ServerPlayer fantasma = ForjarCorpoDoAlem(forjados, proximo++, "bancada: fantasma que cai", alem, mesa + new Vec2(6 * t, 0));
 			fantasma.Combate.Morrer(ignorarSeguro: true);
 			PassoDaMorte(fantasma);
-			fantasma.Combate.Morrer();   // o morto que "morre" de novo: `AoMorrerDeNovo` -> `MorrerDeNovoNoAlem`
+			_ = fantasma.Combate.Morrer();   // o morto que "morre" de novo: `AoMorrerDeNovo` -> `MorrerDeNovoNoAlem`
 			AfirmarAlem("(montagem) o fantasma caiu pela \"morte de novo\": morto e de pe no Outro Mundo, CAIDO, e com a vida cheia",
 						fantasma.Ficha.dead && fantasma.MortoDePe && fantasma.Ficha.KO && fantasma.Ficha.HP >= 99.99, Relogio(fantasma));
 			GravarESair(fantasma);

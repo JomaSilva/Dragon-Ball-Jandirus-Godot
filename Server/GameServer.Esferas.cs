@@ -143,6 +143,13 @@ public sealed class SetDeEsferas
 	/// </summary>
 	public List<string> Desligados = [];
 
+	/// <summary>
+	/// (2026-10-31, o pedido 195) AS ESFERAS POR JOGADOR: o id do set do servidor de que este e a COPIA de um jogador (0 = o set e do servidor)
+	/// e a assinatura de quem a tem. Ver `GameServer.EsferasPorJogador.cs`. Vao pro disco: o que ele juntou continua juntado.
+	/// </summary>
+	public int Base;
+	public string SoDe = "";
+
 	/// <summary>Pro log: "#12 em Earth".</summary>
 	[JsonIgnore] public string Etiqueta => $"#{Id} em {ZonaNome}";
 }
@@ -311,6 +318,9 @@ public sealed partial class GameServer
 	{
 		public List<SetDeEsferas> Sets = [];
 		public List<Esfera> Esferas = [];
+
+		/// <summary>(2026-10-31, o pedido 195) O modo das esferas por jogador -- a chave do admin. Ver `GameServer.EsferasPorJogador.cs`.</summary>
+		public bool PorJogador;
 	}
 
 	private void CarregarEsferas()
@@ -338,7 +348,7 @@ public sealed partial class GameServer
 					System.IO.File.ReadAllText(CaminhoDasEsferas),
 					new JsonSerializerOptions { IncludeFields = true });
 
-				if (l != null) { _sets.AddRange(l.Sets); _esferas.AddRange(l.Esferas); }
+				if (l != null) { _sets.AddRange(l.Sets); _esferas.AddRange(l.Esferas); _esferasPorJogador = l.PorJogador; }
 			}
 		}
 		catch (Exception e) { GD.PushWarning($"[server] esferas.json ilegivel: {e.Message}"); }
@@ -353,8 +363,11 @@ public sealed partial class GameServer
 		// valido (1..999), e o zero e reservado ao eterno. Um save com id fora da faixa faria dois sets
 		// disputarem a mesma faixa de ids de tela (`set*10 + n`, ver `MandarEsferas`) -- e o cliente
 		// desenharia um por cima do outro, calado.
+		// (2026-10-31, o pedido 195) ...e a COPIA de um jogador (ids de `PrimeiroIdDeCopia` pra cima) vale enquanto o set de que ela e copia
+		// existir -- a copia orfa cai aqui junto.
 		int setsOrfaos = _sets.RemoveAll(
-			s => s.ZonaNome.Length == 0 || (!s.Eterno && !Esferas.SetDeJogador(s.Id)));
+			s => s.ZonaNome.Length == 0 || (s.Base == 0 ? !s.Eterno && !Esferas.SetDeJogador(s.Id) : s.Id < PrimeiroIdDeCopia));
+		setsOrfaos += _sets.RemoveAll(s => s.Base != 0 && !_sets.Any(b => b.Id == s.Base && b.Base == 0));
 		int esferasOrfas = _esferas.RemoveAll(e => !_sets.Any(s => s.Id == e.Set));
 		if (setsOrfaos > 0 || esferasOrfas > 0)
 			GD.PushWarning($"[server] esferas: {setsOrfaos} set(s) e {esferasOrfas} esfera(s) sem dona -- descartados");
@@ -416,7 +429,7 @@ public sealed partial class GameServer
 		if (_store == null || _limpezaEmCurso) return;
 		try
 		{
-			var l = new LivroDasEsferas { Sets = _sets, Esferas = _esferas };
+			var l = new LivroDasEsferas { Sets = _sets, Esferas = _esferas, PorJogador = _esferasPorJogador };
 			string tmp = CaminhoDasEsferas + ".tmp";
 			System.IO.File.WriteAllText(tmp, JsonSerializer.Serialize(l,
 				new JsonSerializerOptions { IncludeFields = true, WriteIndented = true }));
@@ -916,6 +929,10 @@ public sealed partial class GameServer
 		// O ZELADOR GRAVA SOZINHO o que ele muda, e por isso nao passa pelo `mexeu` deste tique. Ver nele.
 		ManterOSetEterno();
 
+		// (2026-10-31, o pedido 195) AS COPIAS DE CADA JOGADOR nascem (com o modo ligado), seguem a estatua delas e somem com ela -- depois de
+		// enterrar e de manter o eterno, pra a copia nunca nascer de um set que acabou de cair. Ver `GameServer.EsferasPorJogador.cs`.
+		ManterAsCopiasDasEsferas();
+
 		// ---------------------------------------------------------- 0. a divida do "Mais Forte do Universo"
 		// ============================ ELA PRECISA DE UM RELOGIO QUE ANDA SOZINHO ============================
 		// O `Aging.dm:114-122` mora no `AgeCheck`, que o DM chama do login e do virar do ANO -- e o virar
@@ -1122,7 +1139,7 @@ public sealed partial class GameServer
 	// PEGAR E LARGAR -- `Get()` / `Drop()` (:344-355)
 	// =====================================================================
 	private Esfera? EsferaPerto(ServerPlayer pl) => _esferas
-		.Where(e => e.Portador == 0 && e.Zona.Hash == pl.Zone.Hash
+		.Where(e => e.Portador == 0 && e.Zona.Hash == pl.Zone.Hash && VeAEsfera(pl, e)   // (2026-10-31, o pedido 195) so as que ele enxerga
 					&& Math.Abs(e.X - pl.Pos.X) <= Esferas.AlcanceDePegar
 					&& Math.Abs(e.Y - pl.Pos.Y) <= Esferas.AlcanceDePegar)
 		.OrderBy(e => (e.X - pl.Pos.X) * (e.X - pl.Pos.X) + (e.Y - pl.Pos.Y) * (e.Y - pl.Pos.Y))
@@ -1229,7 +1246,7 @@ public sealed partial class GameServer
 	/// ================================================================================================
 	/// </summary>
 	private List<Esfera> SeteJuntas(ServerPlayer pl, SetDeEsferas s) =>
-		[.. _esferas.Where(e => e.Set == s.Id
+		[.. _esferas.Where(e => e.Set == s.Id && VeOSet(pl, s)   // (2026-10-31, o pedido 195) so o set que ele enxerga
 			&& (e.Portador == pl.Id
 				|| (e.Portador == 0 && e.Zona.Hash == pl.Zone.Hash
 					&& Math.Abs(e.X - pl.Pos.X) <= Esferas.AlcanceDaInvocacao
@@ -1414,7 +1431,7 @@ public sealed partial class GameServer
 		foreach (Esfera e in _esferas)
 		{
 			if (e.Zona.Hash != pl.Zone.Hash) continue;
-			if (SetPorId(e.Set) is not { } s || !SetAtivo(s)) continue;
+			if (SetPorId(e.Set) is not { } s || !SetAtivo(s) || !VeOSet(pl, s)) continue;   // (2026-10-31, o pedido 195) so as dele
 
 			// A ESFERA NA MAO DE ALGUEM ESTA ONDE A PESSOA ESTA (`OndeEstaAEsfera`): o verb media do ponto em que
 			// ela foi pega, e passou a discordar do disco do radar no dia em que o disco nasceu.
@@ -1668,8 +1685,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void RefazerOSet(ServerPlayer pl, string arg)
 	{
-		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash);
+		// (2026-10-31, o pedido 195) a estatua e o set do SERVIDOR (`Base == 0`); com as esferas por jogador, refazer fica desligado
+		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash && x.Base == 0);
 		if (s == null) { Avisar(pl, "não há Estátua do Dragão neste mundo."); return; }
+		if (_esferasPorJogador && !RefazerComAsCopiasDeTeste) { Avisar(pl, FraseDoRefazerDesligado); return; }
 		if (s.Eterno) { Avisar(pl, "a estátua ancestral não responde a você."); return; }
 		if (!string.Equals(s.CriadorSig, pl.Assinatura, StringComparison.Ordinal))
 		{ Avisar(pl, "só quem ergueu a estátua pode reconfigurá-la."); return; }
@@ -1743,7 +1762,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ReviverOSet(ServerPlayer pl)
 	{
-		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash);
+		// (2026-10-31, o pedido 195) a estatua do SERVIDOR -- as copias de cada jogador seguem a inercia dela
+		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash && x.Base == 0);
 		if (s == null) { Avisar(pl, "não há Estátua do Dragão neste mundo."); return; }
 		bool semCriador = EstatuaSemCriador(s);
 		if (semCriador && !DoClaDoDragao(pl))
@@ -1764,7 +1784,7 @@ public sealed partial class GameServer
 	/// A ESTATUA DO DRAGAO AO ALCANCE DA MAO deste jogador, ou nula. Um lugar so pra quem derruba e pro menu
 	/// do dragao, que so oferece "Derrubar a estatua" a quem o verbo atenderia.
 	/// </summary>
-	private SetDeEsferas? EstatuaAoAlcance(ServerPlayer pl) => _sets.Find(x => x.Zona.Hash == pl.Zone.Hash
+	private SetDeEsferas? EstatuaAoAlcance(ServerPlayer pl) => _sets.Find(x => x.Zona.Hash == pl.Zone.Hash && x.Base == 0   // (o pedido 195) a do servidor
 		&& Math.Abs(x.Ex - pl.Pos.X) <= AlcanceDeUso && Math.Abs(x.Ey - pl.Pos.Y) <= AlcanceDeUso);
 
 	/// <summary>
@@ -1818,12 +1838,53 @@ public sealed partial class GameServer
 	/// </summary>
 	private void MandarEsferas(ZoneKey zona)
 	{
+		// (2026-10-31, o pedido 195) COM AS ESFERAS POR JOGADOR O PACOTE E DE CADA UM: as esferas e o dragao da copia dele, e nao os das
+		// copias dos outros (`OQueAZonaMostra`). Sem o modo, um pacote pra zona inteira, como sempre.
+		if (_esferasPorJogador)
+		{
+			foreach (ServerPlayer pl in _players.Values)
+			{
+				if (pl.Zone.Hash != zona.Hash || pl.Peer is not { } dele) continue;
+				LiteNetLib.Utils.NetDataWriter so = PacoteDasEsferas(zona, pl);
+				EscutaDoFioDasEsferas?.Add((pl.Id, so.CopyData()));
+				dele.Send(so, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+			}
+			return;
+		}
+
+		LiteNetLib.Utils.NetDataWriter w = PacoteDasEsferas(zona, null);
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			if (pl.Zone.Hash != zona.Hash || pl.Peer is not { } tela) continue;
+
+			// A BANCADA LE O FIO AQUI, por destinatario e so de quem tem dono na tela: o que se quer saber e o
+			// que CHEGOU pra alguem, e um corpo sem `Peer` nao recebe nada. `CopyData` porque o writer e o mesmo
+			// pra zona inteira. Nula em jogo: uma comparacao contra null por envio.
+			EscutaDoFioDasEsferas?.Add((pl.Id, w.CopyData()));
+			tela.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
+	}
+
+	/// <summary>
+	/// (2026-10-31, o pedido 195) O QUE A ZONA MOSTRA A QUEM ESTA NELA: as estatuas (as do servidor), as esferas no chao e os dragoes de pe.
+	/// Com as esferas por jogador, so as da copia de <paramref name="quem"/> (nulo = o pacote de todos, sem o modo: so os sets do servidor).
+	/// </summary>
+	internal (List<SetDeEsferas> Estatuas, List<Esfera> NoChao, List<Invocacao> Dragoes) OQueAZonaMostra(ZoneKey zona, ServerPlayer? quem)
+	{
+		bool Mostra(SetDeEsferas s) => quem == null ? s.Base == 0 : VeOSet(quem, s);
+		List<SetDeEsferas> estatuas = [.. _sets.Where(s => s.Zona.Hash == zona.Hash && s.Base == 0)];
+		List<Esfera> noChao = [.. EsferasNoChaoDe(zona).Where(e => SetPorId(e.Set) is not { } s || Mostra(s))];
+		List<Invocacao> dragoes = [.. _invocacoes.Values.Where(
+			i => SetPorId(i.Set) is { } s && s.Zona.Hash == zona.Hash && s.Id != EsferasNegras.IdDoSet && Mostra(s))];
+		return (estatuas, noChao, dragoes);
+	}
+
+	/// <summary>O pacote `S2C.Esferas` de uma zona, pra todos (<paramref name="quem"/> nulo) ou pra um so (as esferas por jogador).</summary>
+	private LiteNetLib.Utils.NetDataWriter PacoteDasEsferas(ZoneKey zona, ServerPlayer? quem)
+	{
 		var w = Protocol.Begin(Protocol.S2C.Esferas);
 
-		List<SetDeEsferas> setsDaqui = [.. _sets.Where(s => s.Zona.Hash == zona.Hash)];
-		List<Esfera> noChao = EsferasNoChaoDe(zona);
-		List<Invocacao> dragoes = [.. _invocacoes.Values.Where(
-			i => SetPorId(i.Set) is { } s && s.Zona.Hash == zona.Hash && s.Id != EsferasNegras.IdDoSet)];
+		(List<SetDeEsferas> setsDaqui, List<Esfera> noChao, List<Invocacao> dragoes) = OQueAZonaMostra(zona, quem);
 		List<EsferaNegra> negrasAqui = [.. _negras.Where(e => e.Portador == 0 && !e.PrecisaAssentar && e.Zona.Hash == zona.Hash)];
 		bool dragaoNegro = _invocacoes.ContainsKey(EsferasNegras.IdDoSet) && _zonaDoDragaoNegro.Hash == zona.Hash;
 
@@ -1836,7 +1897,8 @@ public sealed partial class GameServer
 			w.Put((byte)0);
 			w.Put(s.Ex);
 			w.Put(s.Ey);
-			w.Put(!SetAtivo(s));
+			// (o pedido 195) a estatua se desenha acesa ou apagada pelo set de QUEM OLHA: a copia dele, com o modo
+			w.Put(!SetAtivo(quem != null && CopiaDe(quem, s) is { } copia ? copia : s));
 			w.Put("estatua");
 		}
 
@@ -1866,17 +1928,7 @@ public sealed partial class GameServer
 			w.Put(false);
 			w.Put(s?.Dragao ?? "shenron");
 		}
-
-		foreach (ServerPlayer pl in _players.Values)
-		{
-			if (pl.Zone.Hash != zona.Hash || pl.Peer is not { } tela) continue;
-
-			// A BANCADA LE O FIO AQUI, por destinatario e so de quem tem dono na tela: o que se quer saber e o
-			// que CHEGOU pra alguem, e um corpo sem `Peer` nao recebe nada. `CopyData` porque o writer e o mesmo
-			// pra zona inteira. Nula em jogo: uma comparacao contra null por envio.
-			EscutaDoFioDasEsferas?.Add((pl.Id, w.CopyData()));
-			tela.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-		}
+		return w;
 	}
 
 	/// <summary>
@@ -1937,7 +1989,8 @@ public sealed partial class GameServer
 	/// <summary>O estado das esferas daqui, em texto. E o que substitui os `desc` do DM.</summary>
 	private void VerAsEsferas(ServerPlayer pl)
 	{
-		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash);
+		// (2026-10-31, o pedido 195) a COPIA dele, com as esferas por jogador (ou o set do servidor, se ela ainda nao nasceu)
+		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash && VeOSet(pl, x)) ?? _sets.Find(x => x.Zona.Hash == pl.Zone.Hash && x.Base == 0);
 		if (s == null)
 		{
 			Avisar(pl, "não há Estátua do Dragão neste mundo -- e sem estátua não há esferas.");
@@ -1955,7 +2008,7 @@ public sealed partial class GameServer
 			  + "com o mundo que a guarda, e só volta se ele voltar."
 			: $"  erguida por {s.CriadorNome}.");
 		Avisar(pl, $"  pedidos por invocação: {s.Desejos}"
-				 + (Esferas.SetDeJogador(s.Id) ? $", cada um com {ConfigDaEstatua.PorcentagemDaForca(s.Desejos)} da força do set" : "")
+				 + (EhSetDeJogador(s) ? $", cada um com {ConfigDaEstatua.PorcentagemDaForca(s.Desejos)} da força do set" : "")
 				 + $" (já usados nesta ativação: {s.Pedidos})");
 		// (2026-10-22) o que o criador desligou no menu da estatua
 		if (s.Desligados.Count > 0)
@@ -1973,5 +2026,8 @@ public sealed partial class GameServer
 		int comigo = _esferas.Count(e => e.Set == s.Id && e.Portador == pl.Id);
 		Avisar(pl, $"  com você: {comigo}/{Esferas.Total}"
 				 + (_invocacoes.ContainsKey(s.Id) ? $" | {s.NomeDoDragao} ESTÁ DE PÉ agora." : ""));
+		// (2026-10-31, o pedido 195) a copia diz que e copia: o jogador sabe que ninguem mais caca estas sete
+		if (s.Base != 0)
+			Avisar(pl, "  ESFERAS POR JOGADOR: estas sete são só suas -- ninguém mais as vê nem as junta, e o dragão delas só você vê.");
 	}
 }

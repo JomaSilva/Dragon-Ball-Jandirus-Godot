@@ -86,6 +86,9 @@ public static class PoderEmUso
 	/// </summary>
 	public const string VerboDoControle = "Power_Control";
 
+	/// <summary>(2026-10-29) O botao "Igualar ao alvo" (o pedido 162) -- o canal da habilidade, lido pelos dois lados. Ver `GameServer.IgualarAoAlvo`.</summary>
+	public const string VerboDeIgualar = "igualar_poder";
+
 	/// <summary>
 	/// O DIVISOR DA RAIVA QUE NAO DEIXA RELAXAR: `Anger > ((MaxAnger-100)/1.66)+100` (`:91`). E o mesmo
 	/// limiar em que o humor do DM vira "Angry" (`Stats.dm:448`).

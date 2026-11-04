@@ -24,11 +24,15 @@ public partial class GameServer
 	/// <summary>DEFEITO INJETADO (bancada `--ascensaoteste`): o NPC tambem ascende -- o jogo sem o "so jogadores" do dono. Falso em jogo, sempre.</summary>
 	internal static bool AscensaoProNpcDeTeste;
 
-	/// <summary>O `BPBoost` deste corpo, pela regra do Core: a raca e a classe do perfil de formas, o BP BASE e a forma de agora.</summary>
+	/// <summary>
+	/// O `BPBoost` deste corpo, pela regra do Core: a raca e a classe do perfil de formas, o BP BASE, a forma de agora e (2026-10-30, o
+	/// pedido 183) a maestria do ki divino desperto, que leva a Ascensao ao nivel do SSG e ao do Blue.
+	/// </summary>
 	private static void AfirmarAAscensao(ServerPlayer pl)
 	{
 		if (!EhJogador(pl) && !AscensaoProNpcDeTeste) return;
 		bool absoluta = Jandirus.Core.Forms.Catalogo.Def(pl.Forma?.Atual)?.Absoluta == true;
-		pl.Ficha.BPBoost = Ascensao.Fator(pl.Race, pl.Ficha.Class, pl.Ficha.BP, absoluta);
+		double godKi = pl.Ficha.godki is { awakened: true } g ? g.mastery : -1;
+		pl.Ficha.BPBoost = Ascensao.Fator(pl.Race, pl.Ficha.Class, pl.Ficha.BP, absoluta, godKi);
 	}
 }

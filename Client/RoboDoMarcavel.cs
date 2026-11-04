@@ -377,7 +377,7 @@ public partial class RoboDoMarcavel : Node
 		foreach (Medida m in medidas)
 		{
 			ChecaNoPixel($"{alvo}: estado {m.N} -- o pixel atras do texto e o que o tema declara",
-						 m.Atras.Length > 1, m.Atras == m.Declarada, $"medido {m.Atras} / declarado {m.Declarada}");
+						 m.Atras.Length > 1, BateComODeclarado(m.Atras, m.Declarada), $"medido {m.Atras} / declarado {m.Declarada}");
 			ChecaNoPixel($"{alvo}: estado {m.N} -- a cor atras do texto pertence a paleta do tema",
 						 m.Atras.Length > 1, NaPaleta(c, m.Atras), $"{m.Atras}");
 		}
@@ -394,16 +394,22 @@ public partial class RoboDoMarcavel : Node
 		ChecaNoPixel($"{alvo}: o estado 4 pinta chapa propria (nao e o painel nu da fabrica)",
 					 foto4, medidas[3].Atras != medidas[3].PainelNu,
 					 $"atras={medidas[3].Atras} painel nu={medidas[3].PainelNu}");
+		// (2026-11-01, o pedido 215) O BOTAO DO JOGO ACENDE EM AMARELO-LARANJA (o estilo das fotos do dono): o estado 4 e CLARO por desenho.
+		// "Nao e o retangulo branco/cinza da fabrica" passa a ser medido pela COR -- branco e cinza nao tem saturacao -- e nao mais pelo
+		// escuro da chapa do tema de antes (luminancia abaixo de 0,25).
 		ChecaNoPixel($"{alvo}: o estado 4 nao e branco nem cinza claro (o retangulo da foto do dono)",
-					 foto4, Lum(medidas[3].Atras) < 0.25, $"luminancia {Lum(medidas[3].Atras):0.000}");
+					 foto4, !BrancoOuCinzaClaro(medidas[3].Atras),
+					 $"{medidas[3].Atras}: saturacao {Sat(medidas[3].Atras):0.00}, luminancia {Lum(medidas[3].Atras):0.000}");
 
 		// ---- 4. a derivacao: acesa como hover, afundada como pressed ----
 		ChecaNoPixel($"{alvo}: o estado 4 e mais CLARO que o 3 (o mouse acende)",
 					 foto4, Lum(medidas[3].Atras) > Lum(medidas[2].Atras),
 					 $"{medidas[2].Atras} -> {medidas[3].Atras}");
-		ChecaNoPixel($"{alvo}: o estado 4 e mais ESCURO que o 1 (continua marcado)",
-					 foto4, Lum(medidas[3].Atras) < Lum(medidas[0].Atras),
-					 $"{medidas[3].Atras} < {medidas[0].Atras}");
+		// (2026-11-01, o pedido 215) "CONTINUA MARCADO" era "mais escuro que o 1" porque o marcado do tema de antes era a chapa afundada.
+		// No botao do jogo o marcado e AMARELO e o desmarcado AZUL: continuar marcado e ficar na familia do 3 -- mais perto dele que do 1.
+		ChecaNoPixel($"{alvo}: o estado 4 continua marcado (a chapa e da familia do 3, e nao da do 1)",
+					 foto4, DistDasCores(medidas[3].Atras, medidas[2].Atras) < DistDasCores(medidas[3].Atras, medidas[0].Atras),
+					 $"4 {medidas[3].Atras}, 3 {medidas[2].Atras}, 1 {medidas[0].Atras}");
 
 		// ---- 5. a letra ----
 		bool temGlifo = medidas.All(m => m.Letra.Length > 1);
@@ -453,7 +459,8 @@ public partial class RoboDoMarcavel : Node
 		BaseButton.DrawMode modo = c.GetDrawMode();
 		string caixa = CaixaDo(modo);
 		StyleBox sb = c.GetThemeStylebox(caixa);
-		string declarada = sb is StyleBoxFlat f ? Hex(f.BgColor) : "(VAZIO)";
+		// (2026-11-01, o pedido 215) a chapa em degrade do botao do jogo declara a FAIXA do alto ao pe -- ver `BateComODeclarado`
+		string declarada = sb is StyleBoxFlat f ? Hex(f.BgColor) : sb is EstiloDeBotao e ? FaixaDe(e) : "(VAZIO)";
 		string letraDecl = Hex(c.GetThemeColor(CorDo(modo)));
 		Rect2 r = c.GetGlobalRect();
 
@@ -473,9 +480,13 @@ public partial class RoboDoMarcavel : Node
 		// ============================ A COR ATRAS DO TEXTO ============================
 		// Nao e a moda do controle inteiro: e a moda da FAIXA ONDE A PALAVRA ESTA DESENHADA. E
 		// literalmente "o pixel atras do texto" que o dono descreveu, e nao "a cor geral do botao".
-		Rect2I faixa = FaixaDoTexto(img, r, dom);
-		(Color atras, float frac) = Moda(img, faixa);
-		Color letra = CorDaLetra(img, faixa, atras);
+		// (2026-11-01, o pedido 215) Na chapa INCLINADA EM DEGRADE do botao do jogo a faixa e a cor saem linha a linha, so por dentro do
+		// paralelogramo -- ver `FaixaNaChapaInclinada`.
+		(Rect2I faixa, Color atras, float frac) = sb is EstiloDeBotao inclinada
+			? FaixaNaChapaInclinada(img, r, inclinada)
+			: FaixaEModa(img, r, dom);
+		Color? contorno = c.GetThemeConstant("outline_size") > 0 ? c.GetThemeColor("font_outline_color") : null;
+		Color letra = CorDaLetra(img, faixa, atras, c.GetThemeColor(CorDo(modo)), contorno);
 
 		return new Medida(n, rotulo, modo, caixa, declarada, (float)sb.ContentMarginLeft,
 						  Hex(atras), frac, letra.A > 0 ? Hex(letra) : "", letraDecl,
@@ -566,6 +577,110 @@ public partial class RoboDoMarcavel : Node
 						  Math.Max(2, termino - comeco), Math.Max(2, ly - fy + 1));
 	}
 
+	/// <summary>A faixa do texto e a moda dela -- a passada de sempre, pra chapa de uma cor so.</summary>
+	private static (Rect2I, Color, float) FaixaEModa(Image img, Rect2 r, Color dom)
+	{
+		Rect2I faixa = FaixaDoTexto(img, r, dom);
+		(Color atras, float frac) = Moda(img, faixa);
+		return (faixa, atras, frac);
+	}
+
+	/// <summary>
+	/// ============================ (2026-11-01, o pedido 215) A FAIXA NA CHAPA DO BOTAO DO JOGO ============================
+	/// O botao novo (`EstiloDeBotao`) e um PARALELOGRAMO em DEGRADE, e as duas contas da passada de cima quebram nele -- MEDIDO na r1 do
+	/// agente botoes, no cartao de planeta da criacao (alto e estreito): a moda do retangulo inteiro virou o FUNDO (`#1a1e29` nos quatro
+	/// estados), porque os dois triangulos de fora do paralelogramo sao UMA cor so e cada linha do degrade e outra; e a "tinta" medida
+	/// contra uma cor so de chapa pegaria o proprio degrade, longe da linha da moda.
+	///
+	/// Entao aqui cada linha e lida SO POR DENTRO do paralelogramo -- a conta do `EstiloDeBotao._Draw` (o desvio pela altura, com teto num
+	/// quarto da largura), menos a borda e dois px do serrilhado --, e a chapa de cada linha e a moda DELA (o degrade e vertical: uma linha
+	/// e uma cor so). Tinta e o que foge da chapa da propria linha. A faixa e a ultima banda de linhas com tinta (o rotulo; o icone do
+	/// cartao fica acima), com os mesmos cortes do tique e da setinha; e a cor atras do texto e a chapa da LINHA DO MEIO da faixa -- a
+	/// mesma altura nos quatro estados, entao as quatro cores se comparam.
+	/// ==================================================================================================================
+	/// </summary>
+	private static (Rect2I, Color, float) FaixaNaChapaInclinada(Image img, Rect2 r, EstiloDeBotao e)
+	{
+		float desvio = Mathf.Min(r.Size.Y * e.Inclinacao, r.Size.X * 0.25f);
+		int folga = (int)Mathf.Ceil(e.LarguraDaBorda) + 2;
+		int y0 = Math.Max(0, (int)r.Position.Y + folga), y1 = Math.Min(img.GetHeight(), (int)r.End.Y - folga);
+
+		(int A, int B) Dentro(int y)
+		{
+			float t = (y + 0.5f - r.Position.Y) / r.Size.Y;
+			int a = (int)Mathf.Ceil(r.Position.X + desvio * (1 - t)) + folga;
+			int b = (int)Mathf.Floor(r.End.X - desvio * t) - folga;
+			return (Math.Max(0, a), Math.Min(img.GetWidth() - 1, b));
+		}
+
+		var chapas = new Dictionary<int, (Color Cor, float Frac)>();
+		(Color Cor, float Frac) Chapa(int y)
+		{
+			if (chapas.TryGetValue(y, out var ja)) return ja;
+			(int a, int b) = Dentro(y);
+			return chapas[y] = b < a ? (new Color(0, 0, 0), 0f) : Moda(img, new Rect2I(a, y, b - a + 1, 1));
+		}
+
+		bool Tinta(int x, int y)
+		{
+			Color c = img.GetPixel(x, y), ch = Chapa(y).Cor;
+			return Math.Abs(c.R - ch.R) + Math.Abs(c.G - ch.G) + Math.Abs(c.B - ch.B) > 0.25f;
+		}
+
+		bool Vazia(int y)
+		{
+			(int a, int b) = Dentro(y);
+			for (int x = a; x <= b; x++) if (Tinta(x, y)) return false;
+			return true;
+		}
+
+		// ---- a ultima banda de LINHAS com tinta ----
+		int ly = y1 - 1;
+		while (ly >= y0 && Vazia(ly)) ly--;
+		if (ly < y0)
+		{
+			int meioVazio = (y0 + y1) / 2;
+			(int va, int vb) = Dentro(meioVazio);
+			return (new Rect2I(va, y0, Math.Max(1, vb - va + 1), Math.Max(1, y1 - y0)), Chapa(meioVazio).Cor, Chapa(meioVazio).Frac);
+		}
+		int fy = ly;
+		while (fy > y0 && !Vazia(fy - 1)) fy--;
+
+		// ---- dentro dela, as bandas de COLUNAS (cada linha so por dentro do paralelogramo dela) ----
+		int xa = int.MaxValue, xb = int.MinValue;
+		for (int y = fy; y <= ly; y++) { (int a, int b) = Dentro(y); xa = Math.Min(xa, a); xb = Math.Max(xb, b); }
+		int larg = Math.Max(1, xb - xa + 1);
+		bool Coluna(int col)
+		{
+			int x = xa + col;
+			for (int y = fy; y <= ly; y++)
+			{
+				(int a, int b) = Dentro(y);
+				if (x >= a && x <= b && Tinta(x, y)) return true;
+			}
+			return false;
+		}
+
+		// os MESMOS cortes da passada de cima: o tique (ou o icone) na ponta esquerda, a setinha do OptionButton na direita
+		int cx = 0;
+		while (cx < larg && !Coluna(cx)) cx++;
+		int fim = cx;
+		while (fim < larg && Coluna(fim)) fim++;
+		int depois = fim;
+		while (depois < larg && !Coluna(depois)) depois++;
+		int comeco = depois - fim >= 3 && larg - depois >= 12 ? depois : cx;
+		int dx = larg - 1;
+		while (dx > comeco && !Coluna(dx)) dx--;
+		int inicioDoUltimo = dx;
+		while (inicioDoUltimo > comeco && Coluna(inicioDoUltimo - 1)) inicioDoUltimo--;
+		int antes = inicioDoUltimo;
+		while (antes > comeco && !Coluna(antes - 1)) antes--;
+		int termino = inicioDoUltimo - antes >= 3 && antes - comeco >= 12 ? antes : dx + 1;
+
+		int meio = (fy + ly) / 2;
+		return (new Rect2I(xa + comeco, fy, Math.Max(2, termino - comeco), Math.Max(2, ly - fy + 1)), Chapa(meio).Cor, Chapa(meio).Frac);
+	}
+
 	private static Rect2I Caixa(Rect2 r, int folga) => new(
 		(int)r.Position.X + folga, (int)r.Position.Y + folga,
 		Math.Max(1, (int)r.Size.X - folga * 2), Math.Max(1, (int)r.Size.Y - folga * 2));
@@ -643,7 +758,7 @@ public partial class RoboDoMarcavel : Node
 	/// solto de outra coisa nao virar a resposta). Num texto anti-serrilhado essa cor e exatamente a
 	/// dos pixels de cobertura cheia, que e a cor que o tema mandou pintar.
 	/// </summary>
-	private static Color CorDaLetra(Image img, Rect2I faixa, Color chapa)
+	private static Color CorDaLetra(Image img, Rect2I faixa, Color chapa, Color declarada, Color? contorno)
 	{
 		var conta = new Dictionary<uint, int>();
 		int x1 = Math.Min(img.GetWidth(), faixa.Position.X + faixa.Size.X);
@@ -661,9 +776,34 @@ public partial class RoboDoMarcavel : Node
 			return Math.Abs(c.R - chapa.R) + Math.Abs(c.G - chapa.G) + Math.Abs(c.B - chapa.B);
 		}
 
-		var candidatos = conta.Where(kv => kv.Value >= 3 && Dist(kv.Key) > 0.20)
+		// (2026-11-01, o pedido 215) A LETRA DO BOTAO DO JOGO TEM CONTORNO (4 px, roxo-escuro), e com ele a tinta "mais pura" da faixa
+		// passa a ser o CONTORNO, e nao o miolo do glifo -- MEDIDO na r1 do agente botoes (`#2e1740` lido como a letra do seletor). Entao
+		// primeiro se pergunta se a cor que o tema declara pro miolo ESTA na faixa (tres pixels exatos, a mesma regra de baixo); so sem ela
+		// a resposta e a tinta mais pura que nao e o contorno -- e e ela que a linha vermelha mostra.
+		if (conta.GetValueOrDefault(Chave(declarada)) >= 3) return Cor(Chave(declarada));
+		bool EContorno(uint k)
+		{
+			if (contorno is not { } o) return false;
+			Color c = Cor(k);
+			return Math.Abs(c.R - o.R) + Math.Abs(c.G - o.G) + Math.Abs(c.B - o.B) < 0.30;
+		}
+		var candidatos = conta.Where(kv => kv.Value >= 3 && Dist(kv.Key) > 0.20 && !EContorno(kv.Key))
 							  .OrderByDescending(kv => Dist(kv.Key)).ToList();
 		return candidatos.Count == 0 ? new Color(0, 0, 0, 0) : Cor(candidatos[0].Key);
+	}
+
+	/// <summary>(2026-11-01, o pedido 215) A saturacao (HSV) de uma cor da foto: branco e cinza ficam perto de zero.</summary>
+	private static double Sat(string hex) => hex.Length < 7 ? -1 : new Color(hex).S;
+
+	/// <summary>(2026-11-01, o pedido 215) O retangulo da foto do dono: sem cor (saturacao baixa) e claro.</summary>
+	private static bool BrancoOuCinzaClaro(string hex) => hex.Length >= 7 && Sat(hex) < 0.15 && Lum(hex) > 0.35;
+
+	/// <summary>(2026-11-01, o pedido 215) A distancia entre duas cores da foto: a soma dos tres canais.</summary>
+	private static double DistDasCores(string a, string b)
+	{
+		if (a.Length < 7 || b.Length < 7) return double.MaxValue;
+		Color x = new(a), y = new(b);
+		return Math.Abs(x.R - y.R) + Math.Abs(x.G - y.G) + Math.Abs(x.B - y.B);
 	}
 
 	private static double Lum(string hex)
@@ -680,8 +820,23 @@ public partial class RoboDoMarcavel : Node
 	private static bool NaPaleta(BaseButton c, string hex) =>
 		new[] { "normal", "hover", "pressed", "hover_pressed" }
 			.Select(n => c.GetThemeStylebox(n))
-			.OfType<StyleBoxFlat>()
-			.Any(f => Hex(f.BgColor) == hex);
+			.Any(s => s is StyleBoxFlat f ? Hex(f.BgColor) == hex : s is EstiloDeBotao e && BateComODeclarado(hex, FaixaDe(e)));
+
+	/// <summary>(2026-11-01, o pedido 215) A FAIXA que a chapa em degrade (`EstiloDeBotao`) declara: do alto ao pe ("alto..pe").</summary>
+	private static string FaixaDe(EstiloDeBotao e) => $"{Hex(e.CorDeCima)}..{Hex(e.CorDeBaixo)}";
+
+	/// <summary>
+	/// (2026-11-01, o pedido 215) O PIXEL MEDIDO E O QUE O TEMA DECLARA? Chapa de uma cor so: a mesma cor. Chapa em degrade (a do botao do
+	/// jogo desde o pedido 215): o pixel cai na FAIXA, canal por canal, entre o alto e o pe -- ele foi medido em alguma altura do degrade.
+	/// </summary>
+	private static bool BateComODeclarado(string medido, string declarado)
+	{
+		if (!declarado.Contains("..", StringComparison.Ordinal)) return medido == declarado;
+		string[] f = declarado.Split("..");
+		Color c = new(medido), a = new(f[0]), b = new(f[1]);
+		static bool Entre(float v, float x, float y) => v >= Math.Min(x, y) - 0.03f && v <= Math.Max(x, y) + 0.03f;
+		return Entre(c.R, a.R, b.R) && Entre(c.G, a.G, b.G) && Entre(c.B, a.B, b.B);
+	}
 
 	// =====================================================================
 	// A FOTO

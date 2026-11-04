@@ -1335,6 +1335,24 @@ public partial class GameServer
 				  PertoPs(inimigo.Ficha.racialPhysoff, 0.9) && PertoPs(inimigo.Ficha.racialKidef, 0.9),
 				  $"physoff {inimigo.Ficha.racialPhysoff:0.##}");
 		AfirmarPs("...e o AMIGO (Bom pra cima, na aba People) nao", PertoPs(amigo.Ficha.racialPhysoff, 1), $"physoff {amigo.Ficha.racialPhysoff:0.##}");
+
+		// (2026-10-30, o pedido 179) A MORTE NEGADA DESFAZ A EXECUCAO -- o corpo que nao pode morrer (o Bills derruba em vez de morrer, o seguro, a
+		// Aura of Destruction: o `CombatState.NegarMorte`) nao "morre devagar": nem o anuncio, nem o -10% em quem assiste. O primeiro caido sai
+		// da frente (ele esta morto ali), e a recarga de 5 min e zerada pra segunda execucao.
+		caido.Pos += new Vec2(0, 20 * T);
+		ServerPlayer protegido = ForjarPs("o caido que nao morre", Catalogo.RacaHumano, "", bp: 1e3, onde: mu.Pos + new Vec2(0.9f * T, 0));
+		ServerPlayer outro = ForjarPs("o outro que assiste", Catalogo.RacaHumano, "", bp: 1e3, onde: mu.Pos + new Vec2(5 * T, 0));
+		protegido.Combate.NegarMorte = _ => true;
+		protegido.Combate.Nocautear(600);
+		mu.Ficha.RecargasRaciais.Remove(Passivas.MenteCruel);
+		mu.PosDoTiqueRacial = mu.Pos;
+		UsarHabilidade(mu, Passivas.MenteCruel);
+		bool comecou = mu.Racial.ExecucaoAlvo == protegido.Id;
+		falas = Ouvir(() => AndarPs(mu, 3.5, dt: 0.5));
+		AndarPs(outro, 0.1);
+		AfirmarPs("(o pedido 179) **A MORTE NEGADA DESFAZ A EXECUCAO**: o caido que nao pode morrer continua vivo, ninguem ouve que ele 'morre devagar', e quem assiste nao leva os -10%",
+				  comecou && !protegido.Ficha.dead && !Disse(falas, "morre devagar") && Disse(falas, "se desfaz") && PertoPs(outro.Ficha.racialPhysoff, 1),
+				  $"comecou {comecou}, morto {protegido.Ficha.dead}, physoff de quem assiste {outro.Ficha.racialPhysoff:0.##} | {Ultimos(falas)}");
 		LimparABancadaDasPassivas();
 	}
 

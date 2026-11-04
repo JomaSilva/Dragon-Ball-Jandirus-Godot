@@ -1009,7 +1009,8 @@ public partial class GameServer
 					alvos.Add(v);
 			if (alvos.Count == 0) { Avisar(pl, "nenhum alvo marcado ao alcance."); return; }
 
-			double custo = pl.Ficha.MaxKi * Disciplinas.GdCustoKiPct / 100.0;   // o custo SO existe no segundo toque
+			// o custo SO existe no segundo toque; (2026-11-01, o pedido 220) o morto paga 25% menos
+			double custo = pl.Ficha.MaxKi * Disciplinas.GdCustoKiPct / 100.0 * pl.Ficha.FatorDeKiDoEstado;
 			if (pl.Ficha.Ki < custo) { Avisar(pl, $"Ki insuficiente pra fechar o Godly Display ({Disciplinas.GdCustoKiPct:0}% do maximo)."); return; }
 
 			pl.Ficha.Ki -= custo;
@@ -1193,7 +1194,7 @@ public partial class GameServer
 			return;
 		}
 
-		double custo = pl.Ficha.MaxKi * Disciplinas.HakaiCustoKiPct / 100.0;
+		double custo = pl.Ficha.MaxKi * Disciplinas.HakaiCustoKiPct / 100.0 * pl.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (pl.Ficha.Ki < custo) { Avisar(pl, "Ki insuficiente."); return; }
 
 		pl.Ficha.Ki -= custo;

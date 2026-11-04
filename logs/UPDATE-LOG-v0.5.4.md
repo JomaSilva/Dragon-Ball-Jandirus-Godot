@@ -9,7 +9,7 @@
 - A corrida da **Snake Way** agora termina no **fim da estrada** (a cabeça da serpente), a pé -- antes ela pedia chegar a pé no Sr. Kaioh, e a ilha dele só se alcança voando. Chegou na cabeça, ganha o BP e a marca; daí é só **voar** até o planeta dele pra aprender o Kaio-ken.
 ```
 
-## Mensagem 2 de 2 (827 caracteres)
+## Mensagem 2 de 2 (847 caracteres)
 
 ```
 ## Gravidade: maestria mais lenta e os degraus que derrubam
@@ -19,7 +19,7 @@
 - Gravidade **3x acima** da sua maestria: dano muito alto — você desmaia em uns 5 segundos, quase morto.
 - **Acima de 5x**: nocaute na hora, e quem fica lá caído **morre em 5 segundos**.
 - Caiu em qualquer gravidade e continuou tomando dano sem sair a tempo: uma hora morre.
-- A gravidade agora **mata** também o **Majin**, o **Bio-Android**, o **Meta**, o **Tsujin** e o **Yardrat** (antes eles se desfaziam ou entravam em coma).
+- A gravidade agora **mata** também o **Majin**, o **Bio-Android**, o **Meta**, o **Namekuseijin**, o **Tsujin** e o **Yardrat** (antes eles se desfaziam ou entravam em coma).
 - O peso de treino continua esmagando como antes.
 ```
 

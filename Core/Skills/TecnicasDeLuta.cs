@@ -264,6 +264,8 @@ public static class TecnicasDeLuta
 		["Devil_Bringer"] = "leva pra outro planeta",
 		["Kai_Kai"] = "leva pra outro planeta",
 		["Instant_Transmission"] = "leva ate uma assinatura conhecida",
+		// (2026-10-30) o botao do pedido 158, que entrou no jogo sem linha aqui (a `--catalogoteste` 3b o acusou)
+		["Teleport_Block"] = "fecha o corpo pro Instant Transmission dos outros: e selo de viagem, nao golpe",
 		["Go_To_Heaven_Or_Hell"] = "leva pro Outro Mundo",
 		["Holy_Shortcut"] = "leva pra Arconia",
 		["Space_Flight"] = "deixa o planeta",

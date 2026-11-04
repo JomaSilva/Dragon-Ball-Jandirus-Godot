@@ -225,6 +225,8 @@ public sealed partial class GameServer
 					+ $"Quem o derrotar ganha karma (+{VilaoAvulso.KarmaPorDerrotar}) e reputação com o planeta (+{VilaoAvulso.ReputacaoPorDerrotar:0}). "
 					+ $"Ele vai embora em {VilaoAvulso.DuracaoS / 60:0} minutos.");
 		}
+		// (2026-10-31, o pedido 198) O JORNAL GALACTICO conta o vilao que apareceu, e onde -- ver `GameServer.JornalGalactico.cs`.
+		Noticiar(TipoDeNoticia.VilaoAtacando, $"o vilão {e.Nome} espalha o terror em {NomeDoPlaneta(zona.Name)}.");
 		GD.Print($"[viloes] {e.Nome} ({npc.Race}, BP {npc.Ficha.BP:N0}, media do planeta {media:N0}) apareceu em {zona.Name} "
 			   + $"em ({onde.X:0}, {onde.Y:0}); {_viloes.Count} evento(s) de pe");
 		return npc;
@@ -299,7 +301,12 @@ public sealed partial class GameServer
 				Avisar(heroi, $"você fica com o que o vilão carregava: {premio:N0} zeni.");
 				GD.Print($"[viloes] {heroi.Name} derrotou {e.Nome} e ficou com {premio:N0} zeni");
 			}
+			// (2026-10-31, o pedido 196) ...E O DA TERRA, AS VEZES, DEIXA A CHAVE DA SALA DO TEMPO -- direto pra mochila de quem o derrotou, na
+			// mesma vez unica do premio. Ver `GameServer.ChaveDaSala.cs`.
+			ChaveDoVilao(heroi, e.Zona, e.Nome);
 			AnunciarNoPlaneta(e.Zona, $"{NomeVisivel(heroi)} {(morreu ? "acabou com" : "derrotou")} o vilão {e.Nome}!");
+			// (2026-10-31, o pedido 198) ...e o JORNAL GALACTICO conta -- ver `GameServer.JornalGalactico.cs`.
+			Noticiar(TipoDeNoticia.VilaoDerrotado, $"{NomeVisivel(heroi)} derrotou o vilão {e.Nome} em {NomeDoPlaneta(e.Zona.Name)}.");
 		}
 		else AnunciarNoPlaneta(e.Zona, $"o vilão {e.Nome} caiu.");
 	}

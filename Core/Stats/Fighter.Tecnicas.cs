@@ -266,6 +266,20 @@ public partial class Fighter
 		double num = Math.Max(MaxKi, 1);
 		double eff = Math.Log(Math.Max(kiefficiencyskill, 5)) / Math.Log(9);
 		// (v0.4.0) vezes o consumo racial (Primal Evolution, Mindless Beast) -- e o fator de custo de TODA tecnica, entao vale pra todas.
-		return Math.Sqrt(num / 140) * PDrainMod * GlobalKiDrainMod * DrainMod / eff * racialCustoKi;
+		// (2026-11-01, o pedido 220) ...e o do morto (`FatorDeKiDoEstado`), pelo mesmo motivo.
+		return Math.Sqrt(num / 140) * PDrainMod * GlobalKiDrainMod * DrainMod / eff * racialCustoKi * FatorDeKiDoEstado;
 	}
+
+	/// <summary>
+	/// (2026-11-01, o pedido 220) O MORTO GASTA 25% MENOS KI -- o dono: *"faça com q pessoas mortas nao tenham mais stamina infinita, mas
+	/// tenha uma reduçao de 25% do uso de ki (de tudo, ate de gasto de formas)"*. E o fator de todo Ki que o corpo PAGA pra fazer alguma
+	/// coisa: o das tecnicas (pelo <see cref="BaseDrain"/>, onde ele ja entra) e o de cada custo que nao passa por ele -- o dreno das
+	/// formas e dos passivos, o voo, o nado, a corrida e o dash, a guarda e a esquiva, o soco, a transmissao, as tecnicas de custo em fatia
+	/// do tanque. NAO entra no Ki que tiram DELE (a estocada do bio, a mordida, o membro decepado), no excesso de carga que escorre (nao e
+	/// uso, e a fisica da carga), nem no Ki que ele passa a outro corpo (o que sai tem de ser o que chega).
+	/// </summary>
+	public double FatorDeKiDoEstado => dead ? KiDoMorto : 1;
+
+	/// <summary>O quanto do custo de Ki o morto paga (o pedido 220: 25% a menos).</summary>
+	public const double KiDoMorto = 0.75;
 }

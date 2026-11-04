@@ -998,6 +998,7 @@ public partial class MapaEstelar : Control
 		// justamente no zoom em que ele acabou de aparecer.
 		foreach (SistemaSolar s in SistemasNaTela()) DesenharSistema(s);
 		foreach (PlanetaNoEspaco p in NaTela()) DesenharPlaneta(p, eu);
+		DesenharSupersDoRadar();
 
 		DesenharRota(eu);
 		DesenharEu(eu);
@@ -1006,6 +1007,26 @@ public partial class MapaEstelar : Control
 
 		// O SELO E TIRADO DEPOIS DA VARREDURA DESTE DESENHO: e com os blocos que ela trouxe que a carta ficou certa.
 		_seloDesenhado = Selo();
+	}
+
+	/// <summary>
+	/// (2026-10-29, o pedido 173) AS SUPER ESFERAS QUE O SUPER RADAR MARCA: um ponto dourado com anel e o numero de cada uma, por cima dos
+	/// mundos -- apagado quando a esfera ja tem dono. Quem manda as sete e o servidor, so pra quem tem o Super Radar na mochila
+	/// (`GameClient.SupersNoMapa`); sem ele a lista vem vazia e nada se desenha.
+	/// </summary>
+	private void DesenharSupersDoRadar()
+	{
+		if (GameClient.Instance?.SupersNoMapa is not { Count: > 0 } supers) return;
+		Font fonte = ThemeDB.FallbackFont;
+		foreach (GameClient.SuperNoMapa s in supers)
+		{
+			Vector2 c = ParaTela(s.Pos);
+			if (c.X < -20 || c.Y < -20 || c.X > Size.X + 20 || c.Y > Size.Y + 20) continue;
+			Color cor = new(MenuJogo.OuroDivino, s.TemDono ? 0.45f : 0.95f);
+			DrawCircle(c, 4f, cor);
+			DrawArc(c, 7f, 0, Mathf.Tau, 20, cor, 1.2f);
+			DrawString(fonte, c + new Vector2(9, 4), s.Numero.ToString(), HorizontalAlignment.Left, -1, 11, cor);
+		}
 	}
 
 	/// <summary>
@@ -1177,9 +1198,8 @@ public partial class MapaEstelar : Control
 			}
 			// O ANEL LARANJA continua dizendo "tem mapa proprio": com a arte, a cor do disco deixou de dize-lo.
 			if (p.Premade) DrawArc(c, r + 2, 0, Mathf.Tau, 24, new Color(cor, 0.55f), 1.5f);
-			// O ANEL DOURADO: este mundo tem ATMOSFERA DIVINA (dono, 2026-10-10). A carta o sabe pela seed, como
-			// sabe a gravidade -- ver `Core.World.AtmosferaDivina`. Um mundo destruido nao o ganha (ramo de cima).
-			if (MenuJogo.MundoDivino(p)) DrawArc(c, r + 3.5f, 0, Mathf.Tau, 28, new Color(MenuJogo.OuroDivino, 0.95f), 1.5f);
+			// (2026-10-29, o pedido 174) O ANEL DOURADO DA ATMOSFERA DIVINA SAIU: *"n deixe aparecer god ki planets no nav system"* -- ver a
+			// legenda da aba Nav. O mundo divino se acha voando (o halo dele no espaco) ou pousando.
 		}
 
 		// O ANEL ROXO: a CASA DO BILLS, depois de ele a contar (dono, 2026-10-11 -- ver `MenuJogo.Bills.cs`). Por

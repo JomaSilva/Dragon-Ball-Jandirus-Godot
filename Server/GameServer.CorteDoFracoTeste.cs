@@ -38,15 +38,25 @@ namespace Jandirus.Server;
 /// </summary>
 public partial class GameServer
 {
-	/// <summary>O "tiro de 5": o golpe FRACO -- abaixo do antigo corte por dano (10). Entre iguais, hoje ele fere.</summary>
-	private const double DanoFracoDoCorte = 5;
+	/// <summary>
+	/// O "tiro de 5": o golpe FRACO -- abaixo do antigo corte por dano (10). Entre iguais, hoje ele fere.
+	/// (2026-10-30, o pedido 177) A METADE DO CORTE, e nao o 5 cravado: o corte e medido em dano e acompanha o botao do ki
+	/// (`DanoDeKi.CorteDoFraco`, 10 com o botao em 2, 5 com 1) -- com o 5 fixo, o tiro "fraco" ficava EM CIMA do corte novo e o jogo de antes
+	/// passava a feri-lo.
+	/// </summary>
+	private static readonly double DanoFracoDoCorte = DanoDeKi.CorteDoFraco / 2;
 
 	/// <summary>
 	/// O GOLPE DE BANCADA: 12 por impacto, pouco acima do antigo corte por dano. E o dano das cenas que medem o que um
 	/// tiro faz a um corpo sem derrubar o boneco no meio da medida -- e, por passar de 10, e golpe tambem no jogo de
 	/// antes (os contra-exemplos com o `KiContraCorpo.RegraDeAntesDeTeste` precisam disso).
+	///
+	/// (2026-10-30, o pedido 177) 1,2 VEZES O CORTE, e nao o 12 cravado: o corte e o empate das maos acompanham o botao do ki
+	/// (`DanoDeKi.CorteDoFraco`, `EmbateDeKi.DanoQueAsMaosEmpatam`), e o golpe de bancada tem de ficar ENTRE os dois -- acima do corte (10 com o
+	/// botao em 2, 5 com 1) e abaixo do que as maos empatam (20 e 10). O raio de bancada do embate de guarda (`BaseQueFere`) e calibrado neste
+	/// numero: com o 12 fixo e as maos em 10, a r2 do ag/nerfki viu a guarda perder o embate que ganhava.
 	/// </summary>
-	private const double DanoQueFereDoCorte = 12;
+	private static readonly double DanoQueFereDoCorte = 1.2 * DanoDeKi.CorteDoFraco;
 
 	/// <summary>
 	/// Os dois lados do degrau da parede, em vezes o poder do tiro: logo ABAIXO (apanha e fica) e logo ACIMA (parede)
@@ -71,7 +81,7 @@ public partial class GameServer
 		ImpactoDoCorte b = BolaDeDanoCravado(chao, BpDaParedeDaEscada, DanoQueFereDoCorte);
 		GD.Print($"[projetil]      (medido) BOLA de {b.Dano:0.00} em quem tem {b.Vezes:0.##}x o poder dela: {b.Relatos.Count} relato(s), vida {b.Vida:+0.###;-0.###;0}, pericia +{b.Pericia:0.0}, "
 				 + $"fim {b.Tiro.Fim} a {(b.Tiro.Pos - b.Alvo.Pos).Length:0.0} px do corpo");
-		AfirmarPj("PREPARO: o corpo e PAREDE pro tiro (cinco vezes o poder dele) e a bola sai com o dano final cravado em 12 -- um golpe, pelo corte antigo",
+		AfirmarPj("PREPARO: o corpo e PAREDE pro tiro (cinco vezes o poder dele) e a bola sai com o dano final cravado no golpe de bancada -- um golpe, pelo corte antigo",
 				  KiContraCorpo.EhParede(b.Vezes) && Math.Abs(b.Dano - DanoQueFereDoCorte) < 1e-6 && !DanoDeKi.FracoDemais(b.Dano),
 				  $"{b.Vezes:0.###}x o poder do tiro, dano final {b.Dano:0.######}");
 		AfirmarPj("BOLA NA PAREDE: nao fere -- a vida de quem leva nao muda, por mais que o golpe valha",
@@ -96,7 +106,7 @@ public partial class GameServer
 		// ---------------------------------------------------------------- (b) o degrau, no jogo
 		ImpactoDoCorte abaixo = BolaDeDanoCravado(chao, BpDoFeixeDaEscada * VezesLogoAbaixoDaParede, DanoQueFereDoCorte);
 		ImpactoDoCorte acima = BolaDeDanoCravado(chao, BpDoFeixeDaEscada * VezesLogoAcimaDaParede, DanoQueFereDoCorte);
-		AfirmarPj("O DEGRAU NO JOGO: logo abaixo de quatro vezes o poder do tiro o corpo APANHA; logo acima, e parede -- o mesmo golpe de 12 nos dois",
+		AfirmarPj("O DEGRAU NO JOGO: logo abaixo de quatro vezes o poder do tiro o corpo APANHA; logo acima, e parede -- o mesmo golpe de bancada nos dois",
 				  abaixo.Vezes < KiContraCorpo.VezesDaParede && abaixo.Vida < -0.1 && abaixo.Relatos.Count == 1
 				  && acima.Vezes >= KiContraCorpo.VezesDaParede && Math.Abs(acima.Vida) < 1e-9 && acima.Relatos.Count == 0,
 				  $"{abaixo.Vezes:0.###}x: vida {abaixo.Vida:+0.###;-0.###;0}, {abaixo.Relatos.Count} relato(s) | {acima.Vezes:0.###}x: vida {acima.Vida:+0.###;-0.###;0}, {acima.Relatos.Count} relato(s)");
@@ -266,45 +276,45 @@ public partial class GameServer
 		// O QUE O CORTE POR DANO JOGAVA FORA. O tiro de 5 de um igual estourava sem ferir (`objects.dm:355-357`) -- o
 		// vilao de mesmo poder atirando sem efeito. Hoje quem nao e parede apanha, valha o golpe o que valer.
 		ImpactoDoCorte fraca = BolaDeDanoCravado(chao, BpDoIgualDaEscada, DanoFracoDoCorte);
-		AfirmarPj("PREPARO: a bola sai com o dano final cravado em 5 -- abaixo do antigo corte por dano -- contra um igual",
+		AfirmarPj("PREPARO: a bola sai com o dano final cravado na METADE do antigo corte por dano -- contra um igual",
 				  Math.Abs(fraca.Dano - DanoFracoDoCorte) < 1e-6 && DanoDeKi.FracoDemais(fraca.Dano) && Math.Abs(fraca.Vezes - 1) < 0.01,
 				  $"dano final {fraca.Dano:0.######}, {fraca.Vezes:0.###}x o poder do tiro");
-		AfirmarPj("O TIRO FRACO DE UM IGUAL E GOLPE: a bola de 5 fere e sai como golpe",
+		AfirmarPj("O TIRO FRACO DE UM IGUAL E GOLPE: a bola fraca fere e sai como golpe",
 				  fraca.Vida < -0.1 && fraca.Relatos.Count == 1 && (Desfecho)fraca.Relatos[0].Desfecho == Desfecho.Acertou,
 				  $"vida {fraca.Vida:+0.###;-0.###;0}, {fraca.Relatos.Count} relato(s)");
 		RaioDoCorte fraco = RaioDeDanoCravado(raia, BpDoIgualDaEscada, DanoFracoDoCorte, tiques: 30);
-		AfirmarPj("...e o raio de 5 por batida tambem: fere um igual a cada ciclo de moer, e nao na cadencia de quem bate sem ferir",
+		AfirmarPj("...e o raio fraco tambem: fere um igual a cada ciclo de moer, e nao na cadencia de quem bate sem ferir",
 				  fraco.Vida < -0.1 && fraco.Relatos >= 2 && fraco.MenorIntervalo >= 5 && fraco.MaiorIntervalo <= 8 && fraco.Raio.BatendoSemFerir == 0,
 				  $"vida {fraco.Vida:+0.###;-0.###;0}, {fraco.Relatos} relato(s), intervalos de {fraco.MenorIntervalo} a {fraco.MaiorIntervalo} tiques");
 
 		// ---------------------------------------------------------------- (z) os defeitos injetados
 		// O JOGO DE ANTES DE 2026-10-12: o corte por DANO, e nenhuma parede. As reguas de cima tem que ficar VERMELHAS
-		// com ele -- pelos dois lados: o golpe de 12 fere quem hoje e parede, e o tiro de 5 nao fere quem hoje apanha.
+		// com ele -- pelos dois lados: o golpe de bancada fere quem hoje e parede, e o tiro fraco nao fere quem hoje apanha.
 		KiContraCorpo.RegraDeAntesDeTeste = true;
 		try
 		{
 			b = BolaDeDanoCravado(chao, BpDaParedeDaEscada, DanoQueFereDoCorte);
-			AfirmarPj("(defeito injetado: o jogo de antes) BOLA de 12 em quem hoje e parede: tira vida e sai como golpe",
+			AfirmarPj("(defeito injetado: o jogo de antes) BOLA do golpe de bancada em quem hoje e parede: tira vida e sai como golpe",
 					  b.Vida < -0.1 && b.Relatos.Count == 1 && (Desfecho)b.Relatos[0].Desfecho == Desfecho.Acertou,
 					  $"vida {b.Vida:+0.###;-0.###;0}, {b.Relatos.Count} relato(s)");
 
 			furo = BolaDeDanoCravado(chao, BpDaParedeDaEscada, DanoQueFereDoCorte, receita: r => r.Piercer = true);
-			AfirmarPj("(defeito injetado: o jogo de antes) PERFURANTE de 12: fere quem hoje e parede e ATRAVESSA o corpo",
+			AfirmarPj("(defeito injetado: o jogo de antes) PERFURANTE do golpe de bancada: fere quem hoje e parede e ATRAVESSA o corpo",
 					  furo.Vida < -0.1 && furo.Tiro.Pos.X > furo.Alvo.Pos.X + T,
 					  $"vida {furo.Vida:+0.###;-0.###;0}, bola {(furo.Tiro.Pos.X - furo.Alvo.Pos.X) / T:0.0} tiles alem do corpo");
 
 			fr = RaioDeDanoCravado(raia, BpDaParedeDaEscada, DanoQueFereDoCorte, tiques: 30);
-			AfirmarPj("(defeito injetado: o jogo de antes) RAIO de 12: fere quem hoje e parede a cada ciclo de moer -- e o LEVA",
+			AfirmarPj("(defeito injetado: o jogo de antes) RAIO do golpe de bancada: fere quem hoje e parede a cada ciclo de moer -- e o LEVA",
 					  fr.Vida < -0.1 && fr.Relatos >= 2 && fr.Andou > T && fr.MaiorIntervalo <= 8,
 					  $"vida {fr.Vida:+0.###;-0.###;0}, {fr.Relatos} relato(s), andou {fr.Andou:0.0} px, intervalos ate {fr.MaiorIntervalo} tiques");
 
 			fraca = BolaDeDanoCravado(chao, BpDoIgualDaEscada, DanoFracoDoCorte);
-			AfirmarPj("(defeito injetado: o jogo de antes) BOLA de 5 num igual: estoura sem ferir e sem relato -- o vilao de mesmo poder atirando sem efeito",
+			AfirmarPj("(defeito injetado: o jogo de antes) BOLA fraca num igual: estoura sem ferir e sem relato -- o vilao de mesmo poder atirando sem efeito",
 					  Math.Abs(fraca.Vida) < 1e-9 && fraca.Relatos.Count == 0 && fraca.Tiro.Fim == FimDeProjetil.Acertou,
 					  $"vida {fraca.Vida:+0.###;-0.###;0}, {fraca.Relatos.Count} relato(s), fim {fraca.Tiro.Fim}");
 
 			fraco = RaioDeDanoCravado(raia, BpDoIgualDaEscada, DanoFracoDoCorte, tiques: 75);
-			AfirmarPj("(defeito injetado: o jogo de antes) RAIO de 5 num igual: bate sem ferir, na cadencia de quem nao fere",
+			AfirmarPj("(defeito injetado: o jogo de antes) RAIO fraco num igual: bate sem ferir, na cadencia de quem nao fere",
 					  Math.Abs(fraco.Vida) < 1e-9 && fraco.Relatos == 0 && fraco.Batidas.Count >= 4 && fraco.MenorIntervalo >= 12,
 					  $"vida {fraco.Vida:+0.###;-0.###;0}, {fraco.Relatos} relato(s), {fraco.Batidas.Count} batidas com intervalos de {fraco.MenorIntervalo} a {fraco.MaiorIntervalo} tiques");
 		}

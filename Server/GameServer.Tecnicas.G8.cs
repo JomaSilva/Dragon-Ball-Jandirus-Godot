@@ -277,6 +277,7 @@ public sealed partial class GameServer
 		// lia o id cru, no mundo inteiro. Ver `AlvoAoAlcance`.
 		ServerPlayer? alvo = AlvoAoAlcance(pl, pl.AlvoId.ToString(), TilesDaTelaG8, out ServerPlayer? longe);
 		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque alguem antes (duplo clique nele).");
@@ -351,6 +352,7 @@ public sealed partial class GameServer
 		// embora depois da marca. Ver `AlvoAoAlcance`.
 		ServerPlayer? alvo = AlvoAoAlcance(pl, pl.AlvoId.ToString(), TilesDaJuventudeG8, out ServerPlayer? longe);
 		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque quem voce quer rejuvenescer (duplo clique nele).");

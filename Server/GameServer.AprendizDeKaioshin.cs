@@ -154,7 +154,8 @@ public partial class GameServer
 	}
 
 	private string? PorQueNaoNomeiaEste(ServerPlayer mestre, ServerPlayer alvo) =>
-		AprendizDeKaioshin.PorQueNaoNomeia(EKaioshin(mestre), QuantosGuia(mestre.Conta), EhJogador(alvo) && alvo.Assinatura.Length > 0,
+		// (2026-11-01, o pedido 212) nem aprendiz da mesma conexao: a lista, a oferta e o aceite perguntam por aqui -- ver `GameServer.MesmoIp.cs`
+		UsoNoMesmoIp(mestre, alvo) ? MotivoDoMesmoIp : AprendizDeKaioshin.PorQueNaoNomeia(EKaioshin(mestre), QuantosGuia(mestre.Conta), EhJogador(alvo) && alvo.Assinatura.Length > 0,
 			!alvo.Ficha.dead && !alvo.Ficha.KO, CargoDe(alvo).Length > 0, _aprendizes.ContainsKey(alvo.Assinatura));
 
 	/// <summary>

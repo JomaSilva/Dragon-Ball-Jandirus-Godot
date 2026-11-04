@@ -359,6 +359,11 @@ public partial class GameServer
 			+ "continua adormecido enquanto o elo 1 CORRE (o portao sequencial)",
 			  !Elo(_cadeia[1].Id).Disparou);
 
+		// (2026-11-01, o pedido 210) O REGISTRO DO JOGADOR SAI: ao abrir o elo 1 com 20 mil de BP na Terra, o jogador da bancada bateu -- e
+		// deixou anotado -- o marco do elo seguinte, que agora e o do RADITZ (500, so na Terra); um marco registrado por JOGADOR dispara de
+		// direito quando o elo 1 fecha. O que esta regua mede e o corpo SEM DONO, entao o registro do jogador e apagado antes.
+		foreach (EstadoDoElo seguinte in _sagas.Elos.Skip(1)) { seguinte.MarcoBatidoPor = ""; seguinte.MarcoBatidoComBp = 0; }
+
 		// ---- e agora o elo 1 FECHA, com os dois robos vivos ----
 		// O corpo sumindo e tratado como derrota (`if(!boss1) s1_state = 3`, BossEvents.dm:554).
 		RemoverNpc(chefe);
@@ -386,6 +391,8 @@ public partial class GameServer
 		// aparece inteira, que e o que o dono descreveu.
 		// ==========================================================================================
 		PapelDeNpc papelDele = cidadao.Papel!;
+		ZoneKey zonaDoGigante = cidadao.Zone, ondeOMarcoConta = ZoneKey.Premade(_cadeia[1].Planeta);
+		Vec2 posDoGigante = cidadao.Pos;
 		bool CadeiaNaoSeDescarrega()
 		{
 			Zerar();
@@ -401,8 +408,21 @@ public partial class GameServer
 			"com o portao aberto a mao, o corpo sem dono de 3,5 B nao acorda elo nenhum",
 			"o gigante responde 'sou jogador' -- e a cascata do relato aparece",
 			CadeiaNaoSeDescarrega,
-			() => { cidadao.Peer = pl.Peer; cidadao.Papel = null; },
-			() => { cidadao.Peer = null; cidadao.Papel = papelDele; });
+			// (2026-11-01, o pedido 210) ...E O GIGANTE VAI PRA TERRA com o defeito: o elo seguinte agora e o do RADITZ, cujo marco so conta quem
+			// esta na Terra -- no Planeta Vegeta nem um "jogador" de 3,5 B o acenderia, e o defeito nao teria cascata pra mostrar. Ele anda ANTES
+			// de virar "jogador" (e volta DEPOIS de deixar de ser): a troca de zona de quem tem `Peer` falaria com o cliente da bancada.
+			() =>
+			{
+				MoverCorpoDeZona(cidadao, ondeOMarcoConta, PontoDeNascimento(ondeOMarcoConta));
+				cidadao.Peer = pl.Peer;
+				cidadao.Papel = null;
+			},
+			() =>
+			{
+				cidadao.Peer = null;
+				cidadao.Papel = papelDele;
+				MoverCorpoDeZona(cidadao, zonaDoGigante, posDoGigante);
+			});
 	}
 
 	// =====================================================================

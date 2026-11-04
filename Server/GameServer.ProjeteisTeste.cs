@@ -204,6 +204,7 @@ public partial class GameServer
 			AFaiscaEstouraNaCabeca();
 			UmEncontroUmSorteio();
 			AParedeNaoSenteOTiro();
+			ONerfDoKi();
 			ABancadaSeCobra();
 		}
 		finally
@@ -2571,7 +2572,7 @@ public partial class GameServer
 	private void OLevadoQueCresceESolto(Vec2 raia)
 	{
 		const int T = ZoneCollision.TileSize;
-		const double Cheia = DanoQueFereDoCorte, NoArrasto = DanoQueFereDoCorte * KiContraCorpo.FracaoDaBatidaNoArrasto;
+		double Cheia = DanoQueFereDoCorte, NoArrasto = DanoQueFereDoCorte * KiContraCorpo.FracaoDaBatidaNoArrasto;   // (o pedido 177) acompanha o botao do ki
 		static bool Todas(List<double> batidas, double valor) => batidas.Count > 0 && batidas.TrueForAll(b => Math.Abs(b - valor) < 1e-6);
 		static string Lista(List<double> batidas) => string.Join(", ", batidas.Select(b => $"{b:0.###}"));
 		static bool NaBatidaSeguinte(int antes, int depois) => antes > 0 && depois > antes && depois - antes <= TiquesAteABatidaSeguinte;
@@ -3646,6 +3647,44 @@ public partial class GameServer
 		AfirmarPj("um soco que encosta em quem canaliza derruba o raio dele (com o raio ainda vivo)",
 				  !_canais.ContainsKey(canal.Id) && vivoAoCair, $"em {t} tiques; raio vivo ao cair {vivoAoCair}");
 		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// (2026-10-30, o pedido 177) O KI SAI COM A METADE DO DANO
+	// =====================================================================
+	/// <summary>
+	/// O PEDIDO 177 -- o dono: *"acho q seria bom nerfar o beam em geral um pouco, talvez abaixando o global ki dmg pra 1 ao invés de 2 ou
+	/// menos"*. Na mesa, pelas funcoes do servidor: o tiro de referencia faz 6 (eram 12), a mesma batida num corpo e a METADE da que o botao em
+	/// 2 dava, as quatro bolas que o DM escreve com o botao dentro ficam com a potencia de antes, e o embate de guarda nao muda (os dois limiares
+	/// medidos em dano acompanham o botao). As reguas escrevem os NUMEROS do pedido, e nao leem so a constante que um mutante mudaria.
+	/// </summary>
+	private void ONerfDoKi()
+	{
+		GD.Print("[projetil] --- (o pedido 177) o ki sai com a metade do dano ---");
+		double referencia = DanoDeKi.BrutoContra(1, 1, 0, 0);
+		AfirmarPj("(o pedido 177) **O KI SAI COM A METADE DO DANO**: o tiro de referencia (mods 1, potencia 1, sem defesa) faz 6 -- eram 12 com o botao em 2",
+				  Math.Abs(referencia - 6) < 1e-9, $"{referencia:0.###}");
+
+		// A MESMA BATIDA NUM CORPO, com o botao de agora e com o 2 de antes: a cadeia inteira (armadura, pericia, gap de poder) por cima.
+		var corpo = new CombatState(new Fighter { Ekidef = 2, Etechnique = 2, Ekiskill = 2, expressedBP = 1_000 });
+		double agora = DanoDeKi.Final(1, 1, 0, 1_000, corpo, bloqueando: false);
+		double botao = DanoDeKi.DanoGlobalDeKi, comDois;
+		try
+		{
+			DanoDeKi.DanoGlobalDeKi = 2;
+			comDois = DanoDeKi.Final(1, 1, 0, 1_000, corpo, bloqueando: false);
+		}
+		finally { DanoDeKi.DanoGlobalDeKi = botao; }
+		AfirmarPj("(o pedido 177) ...e a MESMA batida num corpo e a metade da que o botao em 2 dava",
+				  comDois > 0 && Math.Abs(agora / comDois - 0.5) < 1e-9, $"{agora:0.###} agora x {comDois:0.###} com o botao em 2");
+
+		double bola = DanoDeKi.PotenciaDeBolaDoDm(2, 3, 100);
+		AfirmarPj("(o pedido 177) ...e as quatro bolas que o DM escreve com o botao dentro (o Tiro Carregado, a Barragem, a Hellzone, as Balas) ficam com a potencia de antes: 2 x Ekioff 3 x log10(100) x o 2 do DM = 24",
+				  Math.Abs(bola - 24) < 1e-9, $"{bola:0.###}");
+
+		AfirmarPj("(o pedido 177) ...e o EMBATE DE GUARDA NAO MUDA: as maos empatam com o raio de 10 por ponto do botao (eram 20 com ele em 2), e o corte dos fracos e 5 por ponto (10 com 2)",
+				  Math.Abs(EmbateDeKi.DanoQueAsMaosEmpatam - 10 * DanoDeKi.DanoGlobalDeKi) < 1e-9 && Math.Abs(DanoDeKi.CorteDoFraco - 5 * DanoDeKi.DanoGlobalDeKi) < 1e-9,
+				  $"maos {EmbateDeKi.DanoQueAsMaosEmpatam:0.###}; corte {DanoDeKi.CorteDoFraco:0.###}; botao {DanoDeKi.DanoGlobalDeKi:0.###}");
 	}
 
 	/// <summary>Tira da bancada tudo que ela pos no mundo. Chamado tambem entre familias.</summary>

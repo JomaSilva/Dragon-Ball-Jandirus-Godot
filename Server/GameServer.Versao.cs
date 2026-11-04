@@ -357,6 +357,16 @@ public partial class GameServer
 		// chefe no disco e o reinicio, o Cell que volta do alem, o vilao do Inferno, o marco batido e a auditoria do boot. O jogador entra pela
 		// porta. Ver `GameServer.ChefesTeste.cs`.
 		if (Array.IndexOf(args, "--chefesteste") >= 0) RodarBancadaDosChefes(porta);
+		// `--saiyajinteste`: (2026-11-01, o pedido 210) a SAGA SAIYAJIN -- a ordem do anime, o marco de quem esta na Terra, a space pod com a
+		// cratera, a queda do Raditz que avisa os 7 dias, Nappa e Vegeta em pods separadas, o Vegeta que so observa e Namek que espera. O
+		// jogador entra pela porta. Ver `GameServer.SagaSaiyajinTeste.cs`.
+		if (Array.IndexOf(args, "--saiyajinteste") >= 0) RodarBancadaDaSagaSaiyajin(porta);
+		// `--buuteste`: (2026-11-01, o pedido 218) o MAJIN BOO -- o gordo neutro, a divisao, o Super Boo que nocauteia e absorve com uma imagem
+		// so, o Kid com a esfera rosa e a fuga pro Ceu, e a morte que nao e o fim. O jogador entra pela porta. Ver `GameServer.SagaDoBuuTeste.cs`.
+		if (Array.IndexOf(args, "--buuteste") >= 0) RodarBancadaDoBoo(porta);
+		// `--gosmateste`: (2026-11-01, o pedido 219) a GOSMA DO MAJIN -- larga e recolhe, o preco, a caca, o grude e quem se solta, o engolido
+		// que voa pro Majin e a absorcao ao encostar, a zona que a desfaz, o golpe que a desfaz, e o Super Boo. Ver `GameServer.GosmaTeste.cs`.
+		if (Array.IndexOf(args, "--gosmateste") >= 0) RodarBancadaDaGosma(porta);
 		// `--campeaoteste`: (2026-10-26) o CAMPEAO DO MUNDO ANTERIOR -- a limpeza que o guarda, os 50% que o acordam na Terra, o reinicio, a
 		// derrota com o premio e a vez unica, a limpeza seguinte e o verbo do admin. Numa pasta de saves temporaria; os jogadores entram pela
 		// porta. Ver `GameServer.CampeaoDoWipeTeste.cs`.

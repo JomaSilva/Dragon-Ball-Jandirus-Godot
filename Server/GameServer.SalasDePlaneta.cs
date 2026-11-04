@@ -234,6 +234,8 @@ public sealed partial class GameServer
 		if (pl.Voando) { Avisar(pl, "pouse antes de atravessar a porta."); return true; }
 		// (2026-10-27) a Sala fechada no comeco do mundo vale aqui tambem (o pedido 112) -- ver `SalaDoTempoAberta`
 		if (!SalaDoTempoAberta(NowMs())) { Avisar(pl, FraseDaSalaFechada(NowMs())); return true; }
+		// (2026-11-01, o pedido 222) e o piso de 20 milhoes de poder base tambem -- ver `BpBaseMinimoDaSala`
+		if (!PoderBaseDaSala(pl)) { Avisar(pl, FraseDoPisoDaSala); return true; }
 
 		ZoneKey sala = SalaDePlaneta.Interior(pl.Zone);
 		int dentro = QuantosNaSalaDePlaneta(sala);

@@ -110,6 +110,11 @@ public partial class GameServer
 		// morte. Fica ESCRITO porque a ausencia precisa ser lida como escolha.
 		// ==========================================================================================
 
+		// (2026-11-01, o pedido 216) A VIDA DOS KAIOSHINS E LIGADA A DO DEUS DA DESTRUICAO: o Kaioshin de jogador que cai e ANOTADO aqui, e
+		// so anotado -- o aviso ao Deus (e a morte dele, com o ultimo) sai no tique, fora dos lacos de dano. Antes do corte de baixo porque
+		// quem conta e o personagem na vaga (conta e slot), e nao o canal de rede. Ver `GameServer.VidaLigada.cs`.
+		KaioshinCaiu(pl);
+
 		if (!EhJogador(pl)) return;   // corpo sem dono nao le mensagem nenhuma
 
 		// A AUREOLA SAIU DESTA FRASE junto com o bit: ela nao se acende aqui. O que este instante tem
@@ -603,7 +608,7 @@ public partial class GameServer
 		Avisar(pl, $"Enma Daioh lê a sua ficha: \"Uma alma equilibrada. Pode descansar no Outro Mundo -- ou voltar, por "
 				 + $"{PrecoDoEnmaPara(pl):N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"" + FraseDoHakaiNoEnma(pl));
 		// (v0.3.0) AS DUAS SAIDAS NOVAS DA MESA -- ver `GameServer.PasseEReencarnacao.cs`.
-		Avisar(pl, $"Enma Daioh: \"Ou, por {Alem.PrecoDoPasseDoEnma:N0} zeni, {Alem.DiasDoPasseDoEnma} dias entre os vivos -- morto, de "
+		Avisar(pl, $"Enma Daioh: \"Ou, por {CustosDoAlem.PrecoDoPasse:N0} zeni, {CustosDoAlem.DiasDoPasse} dias entre os vivos -- morto, de "
 				   + "auréola, e de volta pra cá no fim. E quem cansou de quem é pode REENCARNAR: começar de novo, com um eco de 10% do poder.\"");
 	}
 

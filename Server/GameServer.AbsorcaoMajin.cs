@@ -337,7 +337,10 @@ public partial class GameServer
 		MandarFicha(m);
 
 		// A IMAGEM DO MAJIN, ao lado dele (`:217-218`). Uma por prisioneiro.
-		rec.Guardiao = ErguerOGuardiaoDoMajin(pl, m, interior, InteriorDoMajin.PixelDe(InteriorDoMajin.CelDoGuardiao(cel))).Id;
+		// (2026-11-01, o pedido 218) ...MENOS NO SUPER BOO DA SAGA: UMA imagem so pra todos (*"vai ter apenas 1 clone dele no interior"*) --
+		// a de quem ja esta la dentro serve pro proximo. Ver `ImagemCompartilhadaDoBoo`.
+		rec.Guardiao = ImagemCompartilhadaDoBoo(pl)?.Id
+					   ?? ErguerOGuardiaoDoMajin(pl, m, interior, InteriorDoMajin.PixelDe(InteriorDoMajin.CelDoGuardiao(cel))).Id;
 
 		CurarOMajinQueAbsorveu(pl);
 		RecalcularOMajin(pl);
@@ -576,9 +579,16 @@ public partial class GameServer
 		// ja tira a imagem; esta linha e a rede pra quem saiu por uma porta que nao passou por la.
 		if (!_players.TryGetValue(npc.PresoGuardado, out ServerPlayer? preso) || preso.Zone.Hash != npc.Zone.Hash)
 		{
-			RemoverNpc(npc);
-			return false;
+			// (2026-11-01, o pedido 218) A IMAGEM DO SUPER BOO GUARDA TODOS: o prisioneiro dela saiu, ela passa pro proximo la dentro
+			if (EhImagemDoBoo(npc) && PresoDaImagemDoBoo(npc) is { } outro) { npc.PresoGuardado = outro.Id; preso = outro; }
+			else
+			{
+				RemoverNpc(npc);
+				return false;
+			}
 		}
+		// (2026-11-01, o pedido 218) ...e luta com quem esta DE PE: o caido la dentro espera, os outros enfrentam a mesma imagem
+		else if (EhImagemDoBoo(npc) && PresoDaImagemDoBoo(npc) is { } dePe) { npc.PresoGuardado = dePe.Id; preso = dePe; }
 
 		// VENCIDO, NAO AGE: quem ve isso e solta o prisioneiro e a olhada do `TickDoMajin`.
 		if (npc.Ficha.dead || npc.Ficha.KO) { npc.Moving = false; return false; }
@@ -654,6 +664,8 @@ public partial class GameServer
 					continue;
 				}
 				if (majin != null) Avisar(majin, "um prisioneiro venceu a sua imagem e se libertou!");   // `:291`
+				// (2026-11-01, o pedido 218) A IMAGEM DO SUPER BOO CAIU: todos saem neste tique (a imagem e uma so), e o tique do Boo o vira Kid
+				if (majin != null && EhOBooDaSaga(majin)) _booViraKid.Add(majinId);
 				CuspirDoMajin(majinId, rec, fuga: true);
 			}
 		}

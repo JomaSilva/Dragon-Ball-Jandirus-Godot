@@ -50,6 +50,11 @@ public partial class GameServer
 		w.Put(chefe.Race);
 		w.Put(chefe.Genero);
 		w.PutAppearance(chefe.Visual);
+		// (2026-11-01, o adendo 210l) E O SCOUTER NO ROSTO DO RETRATO: ele nao viaja no `PutAppearance` -- e fato do corpo, que vai no
+		// `S2C.PeerLook` ao lado da aparencia (`Items.EquipamentoNoCorpo`) --, e sem este byte o Raditz, o Nappa e o Vegeta chegavam de
+		// scouter no mundo e sem ele no retrato da cena (a r1 do ag/saiyajinpele, foto `dsaiyajin-5-nappa-chega`). O bit 1, o mesmo do byte
+		// de marcas do `PacoteDeAparencia`.
+		w.Put((byte)(Jandirus.Core.Items.EquipamentoNoCorpo.ScouterNoRosto((chefe.PoderesConcedidos & Protocol.Poder.Scouter) != 0) ? 2 : 0));
 
 		int para = 0;
 		foreach (ServerPlayer o in Jogadores)
@@ -156,6 +161,10 @@ public partial class GameServer
 		if (maisForte == null) return;
 		Fighter m = maisForte.Ficha;
 		npc.Ficha.PericiasNoMaximo(PericiaDoChefe, jogadores);
+		// (2026-10-30, o pedido 176) O BILLS FICA 25% ACIMA TAMBEM NO STAT DE COMBATE, depois do teto suave, stat por stat sobre o maior de quem
+		// joga -- o `FixarAtributos` logo abaixo roda o `Statify`, que aplica o piso. So ele: nos viloes de saga o mesmo piso os deixaria mais
+		// fortes que o 2x que o dono achou "mt op" (o pedido 138). Ver `Fighter.PisoDeCombate`.
+		if (EhOBills(npc)) npc.Ficha.PisoDeCombate = Fighter.PisoAcimaDe(jogadores, VezesOMaisForte);
 		npc.Ficha.FixarAtributos(VezesOMaisForte * m.Rphysoff, VezesOMaisForte * m.Rphysdef, VezesOMaisForte * m.Rtechnique,
 								 VezesOMaisForte * m.Rkioff, VezesOMaisForte * m.Rkidef, VezesOMaisForte * m.Rkiskill,
 								 VezesOMaisForte * m.Rspeed, VezesOMaisForte * m.Rmagiskill);
@@ -165,7 +174,11 @@ public partial class GameServer
 	/// <summary>Este corpo e de um chefe que ganha o dobro: o molde de um chefe de saga, ou o Bills.</summary>
 	private bool ChefeComODobro(ServerPlayer npc) =>
 		npc.Papel is { EhChefe: true } papel
-		&& (EhMoldeDeChefeDeSaga(papel.Molde.Id) || string.Equals(papel.Molde.Id, "bills", StringComparison.OrdinalIgnoreCase));
+		&& (EhMoldeDeChefeDeSaga(papel.Molde.Id) || EhOBills(npc));
+
+	/// <summary>Este corpo e o Bills (o molde dele).</summary>
+	private static bool EhOBills(ServerPlayer npc) =>
+		npc.Papel is { } papel && string.Equals(papel.Molde.Id, Jandirus.Core.Npc.BillsEWhis.MoldeDoBills, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>Quantas vezes os atributos do jogador mais forte o chefe tem: 25% acima (o pedido 138; era 2 desde 2026-10-20).</summary>
 	private const double VezesOMaisForte = 1.25;

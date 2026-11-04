@@ -326,6 +326,80 @@ public partial class GameServer
 		AfirmarSn("   DEFEITO INJETADO (o Sense de antes, so pelo contador da Mente): no nivel 5 ele so ve o campo de visao -- a regua de cima reprovaria",
 				  Acha(semNiveis, tita) == null && Acha(semNiveis, longe) == null && Acha(semNiveis, perto) != null, Nomes(semNiveis));
 
+		// ---- (2026-10-31, o pedido 199) A SALA DO TEMPO E OUTRA DIMENSAO ----
+		// O dono: *"n permita sentir o ki de pessoas dentro da sala do tempo usando sense mesmo ele em nivel 5, nem de dentro e nem pra fora da
+		// sala do tempo"*. Um jogador na Sala da Terra (`Premade`) e um numa sala de planeta (a instancia `Interior` do mesmo mapa).
+		void PorNaZona(ServerPlayer p, ZoneKey z)
+		{
+			ZoneList(p.Zone.Hash).Remove(p);
+			p.Zone = z;
+			ZoneList(p.Zone.Hash).Add(p);
+		}
+		ZoneKey salaDaTerra = ZoneKey.Premade(SalaDoTempo.Zona);
+		ServerPlayer naSala = StCorpo("NaSala", c, 20_000);
+		PorNaZona(naSala, salaDaTerra);
+		ServerPlayer naSalaDePlaneta = StCorpo("NaSalaDePlaneta", c, 20_000);
+		PorNaZona(naSalaDePlaneta, SalaDePlaneta.Interior(4242UL));
+		List<Protocol.PresencaState> deFora = NoNivel(5);
+		AfirmarSn("(o pedido 199) **DE FORA NAO SE SENTE QUEM ESTA NA SALA DO TEMPO**: no nivel 5 o Tita de Namek aparece -- e quem esta na Sala da Terra e numa sala de planeta NAO",
+				  Acha(deFora, tita) != null && Acha(deFora, naSala) == null && Acha(deFora, naSalaDePlaneta) == null, Nomes(deFora));
+		ZoneKey casaDoVidente = eu.Zone;
+		PorNaZona(eu, salaDaTerra);
+		List<Protocol.PresencaState> deDentro = NoNivel(5);
+		AfirmarSn("(o pedido 199) **...E DE DENTRO DA SALA NAO SE SENTE NINGUEM DE FORA**: na Sala da Terra, no nivel 5, nem o Tita de Namek, nem o Perto que ficou na Terra, nem quem esta numa sala de planeta",
+				  Acha(deDentro, tita) == null && Acha(deDentro, perto) == null && Acha(deDentro, naSalaDePlaneta) == null, Nomes(deDentro));
+		AfirmarSn("(o pedido 199) ...e quem divide a MESMA sala continua se sentindo (a mesma zona, a mesma dimensao)",
+				  Acha(deDentro, naSala) != null, Nomes(deDentro));
+		List<Protocol.PresencaState> deDentroComDefeito, deForaComDefeito;
+		SenseCruzaASalaDeTeste = true;
+		try { deDentroComDefeito = NoNivel(5); }
+		finally { SenseCruzaASalaDeTeste = false; }
+		PorNaZona(eu, casaDoVidente);
+		SenseCruzaASalaDeTeste = true;
+		try { deForaComDefeito = NoNivel(5); }
+		finally { SenseCruzaASalaDeTeste = false; }
+		AfirmarSn("   DEFEITO INJETADO (o Sense atravessa a sala, o jogo de antes): de dentro o Tita de Namek volta a aparecer, e de fora os dois das salas -- as reguas de cima reprovariam",
+				  Acha(deDentroComDefeito, tita) != null && Acha(deForaComDefeito, naSala) != null && Acha(deForaComDefeito, naSalaDePlaneta) != null,
+				  $"de dentro: {Nomes(deDentroComDefeito)} || de fora: {Nomes(deForaComDefeito)}");
+
+		// ---- (2026-11-02, o pedido 224) QUEM ESTA ABSORVIDO, COMO QUEM ESTA NA SALA ----
+		// O dono: *"assim como sala do tempo n permita dar sense em quem esta absorvido e nem quem ta absorvido conseguir dar sense pra
+		// fora"*. O absorvido esta no interior do Majin que o absorveu (`InteriorDoMajin.De`, uma zona por Majin): dois presos no mesmo
+		// Majin, o Majin aqui fora, ao lado do Vidente, e um tripulante numa Capital Ship -- outro `Interior`, que nao e absorcao.
+		ServerPlayer oMajin = StCorpo("OMajin", Em(c, 3, 2), 20_000);
+		ZoneKey barriga = InteriorDoMajin.De(oMajin.Id);
+		ServerPlayer absorvido = StCorpo("Absorvido", c, 20_000);
+		PorNaZona(absorvido, barriga);
+		ServerPlayer outroAbsorvido = StCorpo("OutroAbsorvido", Em(c, 3, 0), 20_000);
+		PorNaZona(outroAbsorvido, barriga);
+		ServerPlayer tripulante = StCorpo("Tripulante", c, 20_000);
+		PorNaZona(tripulante, Jandirus.Core.Tech.NaveGrande.ZonaDoInterior(4243));
+		List<Protocol.PresencaState> deForaDoMajin = NoNivel(5);
+		AfirmarSn("(o pedido 224) **DE FORA NAO SE SENTE QUEM ESTA ABSORVIDO**: no nivel 5 o Tita de Namek e o proprio Majin aparecem -- e os dois absorvidos dentro dele NAO",
+				  Acha(deForaDoMajin, tita) != null && Acha(deForaDoMajin, oMajin) != null
+				  && Acha(deForaDoMajin, absorvido) == null && Acha(deForaDoMajin, outroAbsorvido) == null, Nomes(deForaDoMajin));
+		AfirmarSn("(o pedido 224) ...e quem esta numa Capital Ship (outro interior, que nao e absorcao) continua sendo sentido",
+				  Acha(deForaDoMajin, tripulante) != null, Nomes(deForaDoMajin));
+		PorNaZona(eu, barriga);
+		List<Protocol.PresencaState> deDentroDoMajin = NoNivel(5);
+		AfirmarSn("(o pedido 224) **...E QUEM ESTA ABSORVIDO NAO SENTE PRA FORA**: dentro do Majin, no nivel 5, nem o Tita de Namek, nem o Perto que ficou na Terra, nem o proprio Majin, nem o tripulante",
+				  Acha(deDentroDoMajin, tita) == null && Acha(deDentroDoMajin, perto) == null && Acha(deDentroDoMajin, oMajin) == null
+				  && Acha(deDentroDoMajin, tripulante) == null, Nomes(deDentroDoMajin));
+		AfirmarSn("(o pedido 224) ...e quem esta preso no MESMO Majin continua se sentindo (a mesma zona, como na mesma sala)",
+				  Acha(deDentroDoMajin, absorvido) != null && Acha(deDentroDoMajin, outroAbsorvido) != null, Nomes(deDentroDoMajin));
+		List<Protocol.PresencaState> deDentroDoMajinComDefeito, deForaDoMajinComDefeito;
+		SenseCruzaOInteriorDeTeste = true;
+		try { deDentroDoMajinComDefeito = NoNivel(5); }
+		finally { SenseCruzaOInteriorDeTeste = false; }
+		PorNaZona(eu, casaDoVidente);
+		SenseCruzaOInteriorDeTeste = true;
+		try { deForaDoMajinComDefeito = NoNivel(5); }
+		finally { SenseCruzaOInteriorDeTeste = false; }
+		AfirmarSn("   DEFEITO INJETADO (o Sense atravessa o corpo do Majin, o jogo de antes): de dentro o Tita de Namek volta a aparecer, e de fora os dois absorvidos -- as reguas de cima reprovariam",
+				  Acha(deDentroDoMajinComDefeito, tita) != null && Acha(deForaDoMajinComDefeito, absorvido) != null
+				  && Acha(deForaDoMajinComDefeito, outroAbsorvido) != null,
+				  $"de dentro: {Nomes(deDentroDoMajinComDefeito)} || de fora: {Nomes(deForaDoMajinComDefeito)}");
+
 		// ---- O PISO PELA ARVORE DA MENTE: Basic Ki Awareness no 100 escreve kiawarenessskill 20 -- pelo motor de niveis ----
 		eu.Niveis.Por(sense, 1);
 		eu.Livro.Dar(StBasicAwareness);

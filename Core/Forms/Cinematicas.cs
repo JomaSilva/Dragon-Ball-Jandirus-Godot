@@ -3656,6 +3656,8 @@ public static class Cinematicas
 		Forma2 = 2,
 		Forma3 = 3,
 		Forma4 = 4,
+		/// <summary>(2026-11-01, o pedido 218) O Super Boo da saga virando o Kid Boo: a cena da Forma Pura (`MajinPura`), sem forma.</summary>
+		KidBoo = 5,
 	}
 
 	/// <summary>A cena deste degrau da saga. Nulo = um byte que este lado nao conhece (silencio, e nao a cena errada).</summary>
@@ -3665,6 +3667,7 @@ public static class Cinematicas
 		CenaMajin.Forma2 => MajinForma2,
 		CenaMajin.Forma3 => MajinForma3,
 		CenaMajin.Forma4 => MajinForma4,
+		CenaMajin.KidBoo => MajinPura,
 		_ => null,
 	};
 

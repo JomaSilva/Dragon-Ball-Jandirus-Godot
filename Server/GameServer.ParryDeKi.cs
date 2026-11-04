@@ -62,7 +62,7 @@ public sealed partial class GameServer
 		double razao = KiContraCorpo.Razao(alvo.Ficha.expressedBP, p.Bp);
 		if (!(KiContraCorpo.RegraDeAntesDeTeste ? razao >= 1 : KiContraCorpo.PodeDefletir(razao))) return false;
 
-		double custoKi = alvo.Ficha.MaxKi * CombatKnobs.CustoKiDaGuarda;
+		double custoKi = alvo.Ficha.MaxKi * CombatKnobs.CustoKiDaGuarda * alvo.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (alvo.Ficha.Ki < custoKi || !TemComQueAparar(alvo)) return false;
 
 		alvo.Ficha.Ki -= custoKi;

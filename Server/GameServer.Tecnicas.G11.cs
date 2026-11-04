@@ -91,6 +91,7 @@ public sealed partial class GameServer
 		Vivo("Devil_Bringer", DevilBringerG11);
 		Vivo("Kai_Kai", KaiKaiG11);   // (2026-10-23) a tela dos planetas conhecidos -- ver GameServer.KaiKai.cs
 		Vivo("Instant_Transmission", TeletransporteG11);
+		Vivo(Jandirus.Core.Skills.BloqueioDeTeleporte.Verbo, BloqueioDeTeleporteG11);   // (2026-10-29, o pedido 158) -- ver GameServer.Transmissao.cs
 		Vivo("Flip", CambalhotaG11);
 		Vivo("Self_Destruct", AutodestruirG11);
 		Vivo("Psycho_Thread", AlternarFioPsiquicoG11);
@@ -236,13 +237,14 @@ public sealed partial class GameServer
 	private static double CustoDoGrauG11(Fighter f, int grau)
 	{
 		double ks = Math.Max(f.Ekiskill, 0.01);
-		return grau switch
+		double custo = grau switch
 		{
 			1 => 25 / ks * 1 + 5,
 			2 => 35 / ks * 2 + 5,
 			3 => 40 / ks * 3 + 5,
 			_ => 25 / ks + 5,   // o `kireq` de entrada (`:123`)
 		};
+		return custo * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 	}
 
 	/// <summary>
@@ -886,6 +888,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in _players.Values)
 			if (EhPessoa(o) && string.Equals(o.Name, arg, StringComparison.OrdinalIgnoreCase)) { alvo = o; break; }
 		if (alvo == null) { Avisar(pl, $"nao ha ninguem chamado '{arg}' no mundo agora."); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (!AchoAEnergia(pl, alvo)) { Avisar(pl, "voce nao consegue achar a energia dessa pessoa!"); return; }   // (2026-10-18) e o ki divino
 
 		pl.Ficha.observingnow = 1;
@@ -935,6 +938,7 @@ public sealed partial class GameServer
 			return;
 		}
 		if (!EhPessoa(alvo)) { Avisar(pl, "so gente tem potencial adormecido pra despertar."); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (PorQueNaoLibera(alvo, comRecarga: true, proprio: false) is { } recusa) { Avisar(pl, recusa); return; }
 
 		_ofertasDePotencialG11[alvo.Conta] = (pl.Conta, NowMs() + PrazoDaOfertaDePotencialMsG11);
@@ -1134,6 +1138,8 @@ public sealed partial class GameServer
 		f.CooldownAmount += alvo.Ficha.MaxKi / Math.Max(f.MaxKi, 1e-9);   // `:47` -- ver o cabecalho
 		// (2026-10-19) E A CORRENTE DO DU NA TELA DE QUEM ESTA PERTO: um folego por dose. Ver `GameServer.CorrenteDePoder.cs`.
 		AnunciarACorrenteDePoder(pl, alvo);
+		// (2026-10-29, o pedido 163) cinco Saiyajins doando ao mesmo Saiyajin podem abrir o ritual -- ver `GameServer.GodKi.cs`
+		ConferirORitualDosCinco(alvo);
 	}
 
 	/// <summary>O fim da doacao (`givepower.dm:49-53`): o doador desmaia.</summary>
@@ -1510,7 +1516,7 @@ public sealed partial class GameServer
 		if (relogio < 1) { _relogioDoExpandG11[pl.Id] = relogio; return; }
 		_relogioDoExpandG11[pl.Id] = relogio - 1;
 
-		if (_rng.Next(1, 4) == 3) f.Ki -= f.expandlevel / Math.Max(f.Etechnique, 1e-9);
+		if (_rng.Next(1, 4) == 3) f.Ki -= f.expandlevel / Math.Max(f.Etechnique, 1e-9) * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (f.Ki <= 10)
 		{
 			DesligarBuff(pl, "Expand_Body");

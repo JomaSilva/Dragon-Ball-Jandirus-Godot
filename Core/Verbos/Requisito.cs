@@ -150,6 +150,13 @@ public enum Fatos : ulong
 	/// so acende no proprio corpo. Ver `GameServer.NeoTuffle.cs`.
 	/// </summary>
 	DentroDeOutroCorpo = 1ul << 34,
+
+	// ---- (2026-10-29, o pedido 153) o C duplo com ou sem o Potential Unleashed ----
+	/// <summary>
+	/// O Potential Unleashed (o Mistico) esta liberado neste corpo: o botao que o tira (e devolve) do C duplo e dele. Ver
+	/// `EstadoDeForma.CPeloMistico`.
+	/// </summary>
+	MisticoLiberado = 1ul << 35,
 }
 
 /// <summary>

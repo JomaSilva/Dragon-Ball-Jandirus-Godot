@@ -115,8 +115,10 @@ public partial class CargaVisual : Node2D
 	public void Folha(Jandirus.Core.Forms.FolhaDeAura f)
 	{
 		_folhaDaForma = f;
-		_chama.DefinirFolha(Aura.SimboloDaChama(f, _kaioken));
-		if (!_kaioken) _desenho.DefinirFolha(f);
+		_chama.DefinirFolha(Aura.SimboloDaChama(f, _kaioken), _kaioken);
+		// (2026-11-02, o pedido 223) ...MENOS SOBRE A LUZ DO BLUE: a chama dela leva o Kaio-ken por fora (o desenho 4, a chama
+		// vermelha), e o sprite vermelho fica mudo -- *"no blue kaioken o efeito da segunda imagem"*. Ver `ChamaDeAura.LevaOKaioken`.
+		_desenho.DefinirFolha(_kaioken && !ChamaDeAura.LevaOKaioken(f) ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : f);
 	}
 
 	/// <summary>
@@ -132,8 +134,10 @@ public partial class CargaVisual : Node2D
 	{
 		if (_kaioken == ligado) return;
 		_kaioken = ligado;
-		_desenho.DefinirFolha(ligado ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
-		_chama.DefinirFolha(Aura.SimboloDaChama(_folhaDaForma, ligado));
+		// (2026-11-02, o pedido 223) ...MENOS SOBRE A LUZ DO BLUE: a chama dela leva o Kaio-ken por fora (o desenho 4, a chama
+		// vermelha), e o sprite vermelho fica mudo -- *"no blue kaioken o efeito da segunda imagem"*. Ver `ChamaDeAura.LevaOKaioken`.
+		_desenho.DefinirFolha(ligado && !ChamaDeAura.LevaOKaioken(_folhaDaForma) ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
+		_chama.DefinirFolha(Aura.SimboloDaChama(_folhaDaForma, ligado), ligado);
 	}
 
 	private bool _kaioken;

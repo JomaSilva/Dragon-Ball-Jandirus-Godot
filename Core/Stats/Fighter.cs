@@ -76,6 +76,10 @@ public sealed partial class Fighter
 	/// </summary>
 	public int ResurrectedCount;
 
+	// (2026-10-29) OS MUNDOS QUE ESTE PERSONAGEM DESTRUIU (o pedido 150): somado no fim de cada destruicao em que ele foi o algoz
+	// (`GameServer.ConsumarDestruicao`). Com `MissoesDeCargo.MundosDoDestruidor` ou mais, ele vira ameaca pro Deus da Destruicao.
+	public int planetasDestruidos;
+
 	// ============================ AS TRES MARCAS QUE AS ESFERAS DEIXAM NA ALMA ============================
 	// Elas moram aqui, ao lado do `aged_out`, porque sao a mesma classe de coisa: fatos PERMANENTES de
 	// um personagem, que persistem de graca (a ficha inteira vai pro disco) e que **tem que**
@@ -519,6 +523,13 @@ public sealed partial class Fighter
 	/// o aperto acaba e quando o personagem entra no jogo -- e estado de UM aperto, nao do personagem.
 	/// </summary>
 	public double raboPresoMod = 1;
+
+	/// <summary>
+	/// (2026-11-01, o pedido 219) A GOSMA NO CHAO: quanto do poder expresso sobra enquanto a gosma deste Majin esta no mapa (1 = nenhuma) --
+	/// o `goo_trap_bp_mult` de 0,73 do DU (`Stat Loop.dm:192`). Escrito pelo servidor quando ele a larga e devolvido a 1 quando ela some e
+	/// quando o personagem entra no jogo (`GameServer.GosmaDoMajin.cs`): e estado de UMA gosma, nao do personagem.
+	/// </summary>
+	public double gosmaNoMapaMod = 1;
 
 	/// <summary>
 	/// A MAESTRIA DO RABO, de 0 a 100: quanto este corpo ja aprendeu a aguentar o rabo preso. Sobe a cada pegada e
@@ -1038,6 +1049,10 @@ public sealed partial class Fighter
 	public long liberarPotencialEm;
 	public int golesDaAgua;
 	public bool ritualDoKaioshinRecebido;
+	// (2026-10-29) O PRESENTE DO DRAGAO QUE AINDA DORME (o pedido 157): o Namekuseijin que pede PODER abaixo do ki divino dele ganha o
+	// Orange guardado -- aqui fica o nome do dragao que o deu ("" = nenhum). Quando o BP base alcanca o requisito pessoal, a forma
+	// desperta e o chat avisa (`GameServer.ConferirOPresenteDoDragao`).
+	public string orangeDoDragao = "";
 	public double expandlevel;             // Body Expansion.dm:9 -- o grau atual da expansao
 	public double observingnow;            // observe.dm:7/12 -- projetando a mente em alguem
 

@@ -812,9 +812,10 @@ public partial class RoboDaRaiva : Node
 		// ------------------------------------------------------------ 7. (2026-10-18) o CORPO ACHADO: o nome, e so depois a cena
 		// O dono: *"caso seu amigo morra pra outra pessoa (...) e vc ache o corpo morto dele pela primeira vez, seu personagem vai entrar em furia
 		// e vai falar algo relacionando tipo chamar pelo nome algumas vezes e dps disso comeca a cinematica de furia podendo começar a cinematica de
-		// transformação caso a furia desperte a transformação"*. O host vai pra 30 tiles (fora da vista) e o amigo MORRE la; o host chega ao corpo,
-		// e o resto e o pulso de producao do servidor (`PulsoDoCorpoAchado`): os chamados no chat e no balao, e so depois a cena.
-		GD.Print("[draiva] -- 7) o amigo morre LONGE: ao achar o corpo ele chama o nome, e so DEPOIS vem a cena da furia (e, com o requisito, a da transformacao) --");
+		// transformação caso a furia desperte a transformação"*. O host vai pra 10 tiles e o amigo MORRE la -- (2026-10-31, o pedido 193) dentro
+		// dos 22 da fala, mas FORA DA TELA: ele nao viu a morte; o host chega ao corpo, e o resto e o pulso de producao do servidor
+		// (`PulsoDoCorpoAchado`): os chamados no chat e no balao, e so depois a cena.
+		GD.Print("[draiva] -- 7) o amigo morre FORA DA TELA: ao achar o corpo ele chama o nome, e so DEPOIS vem a cena da furia (e, com o requisito, a da transformacao) --");
 		srv.LimparPalcoDaRaivaDeTeste(eu);
 		srv.EsquecerAsFormasDeTeste(eu);
 		palco = srv.PalcoDaRaivaDeTeste(eu);   // um Kuririn novo, vivo, e o algoz; o host com BP 1 (a furia nao vira forma) e o Ki em 20%
@@ -823,13 +824,14 @@ public partial class RoboDaRaiva : Node
 		_furias.Clear();
 		_formas.Clear();
 		_gritos.Clear();
-		bool longe = srv.MatarOAmigoLongeDeTeste(eu, tiles: 30);
+		bool longe = srv.MatarOAmigoLongeDeTeste(eu, tiles: 10);
 		yield return 1.2;
-		Afirmar("(montagem) o host foi pra 30 tiles do amigo (fora da vista, 22) e o amigo MORREU la -- de verdade, e o corpo ficou no chao",
+		Afirmar("(montagem) o host foi pra 10 tiles do amigo (dentro dos 22 da fala, fora da tela) e o amigo MORREU la -- de verdade, e o corpo ficou no chao",
 				longe && palco != null, $"morreu={longe}");
-		Afirmar("**LONGE, NADA**: o host nao viu a morte -- nenhuma fala dele, nenhum pacote de furia, e a raiva calma",
+		Afirmar("(o pedido 193) **FORA DA TELA, NADA**: o host nao viu a morte -- nenhuma fala dele, nenhum pacote de furia, e a raiva calma",
 				_gritos.Count == 0 && _furias.Count == 0 && srv.RaivaDeTeste(eu)?.Nivel == NivelDeRaiva.Nenhuma,
 				$"chat: {Gritos()}; {_furias.Count} pacote(s); {srv.RaivaDeTeste(eu)?.Nivel}");
+		Fotografar("raiva-10a-o-amigo-morre-a-10-tiles-fora-da-tela-e-nada-acontece");
 
 		// A CRATERA DE CADA CENA, contada daqui: o espiao anota EM QUE SEGUNDO da cena o chao abriu, e os contadores do `Decalques` QUAL
 		// arte caiu (a pequena ou a grande).

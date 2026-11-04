@@ -60,6 +60,7 @@ public sealed partial class GameServer
 		ServerPlayer? alvo = Marcado(pl);
 		if (alvo == null || alvo == pl) { Avisar(pl, "marque quem vai receber os brincos (duplo clique na pessoa)."); return; }
 		if (!EhPessoa(alvo)) { Avisar(pl, $"{alvo.Name} não é um jogador: os brincos Potara só vão pras mãos de gente de verdade."); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (alvo.Ficha.KO || CaidoPelaMorte(alvo)) { Avisar(pl, $"{alvo.Name} está caído: espere ele se levantar."); return; }
 		if (Fusao.DistanciaEmTilesDoDm(pl.Pos, alvo.Pos, ZoneCollision.TileSize) > ParDePotara.TilesPraDar)
 		{

@@ -280,7 +280,7 @@ public static partial class Tecnicas
 	public const double InvisKiMinimo = 10;
 
 	/// <summary>KI SHIELD: custo `MaxKi/10` e bonus `max(log_8.3(Ekioff*10), 0)` em Tphysdef E Tkidef.</summary>
-	public static double EscudoCustoKi(Fighter f) => f.MaxKi / 10;
+	public static double EscudoCustoKi(Fighter f) => f.MaxKi / 10 * f.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 
 	public static double EscudoBonus(Fighter f)
 		=> Math.Max(Math.Log(Math.Max(f.Ekioff * 10, 1)) / Math.Log(8.3), 0);

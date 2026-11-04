@@ -139,6 +139,7 @@ public sealed partial class GameServer
 
 			// ---------------------------------------------------------------- ML3) a vitoria
 			double fatorDoReflexo = reflexo != null ? MenteOponentes.Fator(reflexo.Ficha.expressedBP, sonhador.Ficha.expressedBP) : 0;
+			sonhador.Ficha.BPBuffer = 0;   // (o acumulador de ocio entraria no primeiro passe e sujaria a regua do ML3b)
 			double antes = sonhador.Ficha.BP;
 			EscutaDaListaDaMente.Clear();
 			reflexo?.Combate.Nocautear(10);
@@ -148,6 +149,21 @@ public sealed partial class GameServer
 					  sonhador.CloneId == 0 && !_players.ContainsKey(reflexoId) && ganhoDoReflexo > 0 && UltimaLista(sonhador) is { Abrir: true }
 					  && venceu.Any(s => s.Contains("VITORIA")) && NaMente(sonhador),
 					  $"lembranca {sonhador.CloneId}, +{ganhoDoReflexo:0.####} BP (fator {fatorDoReflexo:0.##}); {string.Join(" | ", venceu)}");
+
+			// (2026-10-29, o pedido 160) O PREMIO E O DO TREINO DE VERDADE: 180 s de T (os do spar com habitante) vezes a forca, SEM o corte da
+			// mente (1/4). A regua: um passe do T com a zona inteira, medido agora no mesmo corpo -- e o numero 180 escrito aqui, e nao lido da
+			// constante (a regua que le a propria constante mutada aprova o mutante).
+			double zonaDaMente = sonhador.Ficha.zoneGainMult, bp0 = sonhador.Ficha.BP;
+			sonhador.Ficha.zoneGainMult = 1;
+			sonhador.Ficha.BPBuffer = 0;
+			sonhador.Ficha.TrainGain(new Random(1), 6.0 / (1 + Math.Log(2)));
+			double umPasse = sonhador.Ficha.BP - bp0;
+			sonhador.Ficha.BP = bp0;
+			sonhador.Ficha.zoneGainMult = zonaDaMente;
+			double esperado = Math.Round(180 / SegundosPorFicha * fatorDoReflexo) * umPasse;
+			AfirmarMl("ML3b. (pedido 160) **O PREMIO E O DO TREINO DE VERDADE**: 180 s de T vezes a forca, SEM o corte da mente (1/4) -- e nao mais o '1 de BP'",
+					  zonaDaMente < 1 && umPasse > 0 && Math.Abs(ganhoDoReflexo / esperado - 1) < 0.05,
+					  $"+{ganhoDoReflexo:0.####} BP, esperado {esperado:0.####} (um passe {umPasse:0.######}, zona da mente {zonaDaMente:0.##}, fator {fatorDoReflexo:0.##})");
 
 			// ---------------------------------------------------------------- ML4) o BP pela forca
 			if (sonhador.Social.Conhecidos.TryGetValue(amigo.Assinatura, out Conhecido? doAmigo))

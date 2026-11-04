@@ -110,6 +110,10 @@ public partial class GameServer
 	/// O retrato do Whis fora da aula dele, NO SERVIDOR: se assiste a uma luta do Bills, a quantos tiles do Bills
 	/// esta (-1 sem o Bills por perto), se pode ser atingido e o modo. O robo compara com o que a TELA mostra.
 	/// </summary>
+	/// <summary>(2026-10-31, o pedido 205) A quantos pixels cada um esta do proprio posto, NO SERVIDOR (-1 = sem corpo) -- o detalhe do robo.</summary>
+	internal (float Bills, float Whis) DistanciasDosPostosDeTeste() =>
+		(_bills.Corpo is { } b ? (b.Pos - _bills.Posto).Length : -1, _whis.Corpo is { } w ? (w.Pos - _whis.Posto).Length : -1);
+
 	internal (bool Assiste, float TilesDoBills, bool Intocavel, string Modo)? WhisDeTeste()
 	{
 		if (_whis.Corpo is not { } w) return null;

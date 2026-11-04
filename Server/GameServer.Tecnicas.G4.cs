@@ -125,6 +125,7 @@ public partial class GameServer
 
 		if (alvo == null) { Avisar(pl, $"não ha ninguém chamado '{nome}' no mundo agora."); return; }
 		if (alvo == pl) { Avisar(pl, "você ja sabe o que está pensando."); return; }
+		if (RecusaPeloMesmoIp(pl, alvo)) return;   // (2026-11-01, o pedido 212) -- ver `GameServer.MesmoIp.cs`
 		if (!AchoAEnergia(pl, alvo)) { Avisar(pl, $"não consigo achar a energia de {alvo.Name}!"); return; }   // (2026-10-18) e o ki divino
 
 		if (texto.Length == 0)
@@ -198,7 +199,7 @@ public partial class GameServer
 	/// O DM tem **dois** verbs `Revive`, dados por skills diferentes, com corpos diferentes:
 	///
 	///   * `mob/keyable/verb/Revive` (`kai.dm:65-90`) -- da skill RACIAL `/datum/skill/kai/Revive`.
-	///     Ressuscita e acabou;
+	///     Ressuscita e acabou (no DM; desde 2026-10-29, o pedido 165, cobra a vida de quem usa, como a de cargo);
 	///   * `mob/Rank/verb/Revive` (`OtherworldRankSkills.dm:217-267`) -- da skill de CARGO
 	///     `/datum/skill/rank/Revive`, que os nove cargos do Outro Mundo concedem. Alem de
 	///     ressuscitar, ela CONTA (`M.ResurrectedCount += 1`, `:237`) e, **a partir da segunda volta
@@ -294,9 +295,12 @@ public partial class GameServer
 		GD.Print($"[server] {pl.Name} RESSUSCITOU {alvo.Name}"
 				 + (deCargo ? $" (volta n.{alvo.Ficha.ResurrectedCount}, pelo cargo)" : " (skill racial)"));
 
-		// ============================ A SEGUNDA VOLTA CUSTA UMA VIDA ============================
-		// `if(M.ResurrectedCount>1)` (`:241-245` e `:262-266`, o mesmo bloco duas vezes). O teste e
-		// DEPOIS do incremento, entao a primeira volta de uma alma sai de graca e a segunda ja cobra.
+		// ============================ TODA VOLTA CUSTA A VIDA DE QUEM RESSUSCITA ============================
+		// No DM era `if(M.ResurrectedCount>1)` (`:241-245` e `:262-266`): so a versao de CARGO cobrava, e so a partir
+		// da segunda volta de uma alma. (2026-10-29, o pedido 165) O dono, depois de saber disso: *"faça o revive tanto
+		// de kaio quanto dos ranks matarem o usuario, e n ser possivel usar enquanto morto"* -- agora as DUAS cobram, e
+		// desde a primeira volta (o morto ja e recusado na primeira linha deste metodo). O contador de cargo continua
+		// contando, mas nao decide mais nada.
 		//
 		// A MORTE VAI PELA PORTA (`Combate.Morrer`), e nao escrevendo `Ficha.dead = true` como o DM
 		// faz: e ela que arma o relogio da morte, marca a aureola pra viagem, deixa o cadaver e roda o
@@ -307,13 +311,11 @@ public partial class GameServer
 		// Destruicao (o unico seguro do jogo) nao deve poder segurar um pagamento que o proprio
 		// portador escolheu fazer. E a mesma escolha que a absorcao e o verb de admin ja fazem.
 		// ======================================================================================
-		if (deCargo && alvo.Ficha.ResurrectedCount > 1)
-		{
-			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-				Avisar(o, $"{pl.Name} troca a própria vida pela ressurreição de {alvo.Name}!");
-			pl.Combate?.Morrer(ignorarSeguro: true);
-			GD.Print($"[server] {pl.Name} MORREU pagando a {alvo.Ficha.ResurrectedCount}a volta de {alvo.Name}");
-		}
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			Avisar(o, $"{pl.Name} troca a própria vida pela ressurreição de {alvo.Name}!");
+		pl.Combate?.Morrer(ignorarSeguro: true);
+		GD.Print($"[server] {pl.Name} MORREU pagando a volta de {alvo.Name}"
+				 + (deCargo ? $" (a {alvo.Ficha.ResurrectedCount}a, pelo cargo)" : " (skill racial)"));
 	}
 
 	// =====================================================================
@@ -423,8 +425,9 @@ public partial class GameServer
 	private List<ServerPlayer> LevarCaronas(ServerPlayer pl)
 	{
 		var caronas = new List<ServerPlayer>();
+		// (2026-11-01, o pedido 212) quem joga da mesma conexao nao vai de carona -- ver `GameServer.MesmoIp.cs`
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (o != pl && !o.Ficha.dead && _players.ContainsKey(o.Id) && Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4
+			if (o != pl && !o.Ficha.dead && !UsoNoMesmoIp(pl, o) && _players.ContainsKey(o.Id) && Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4
 				&& PorQueNaoSaiDaqui(o).Length == 0)
 				caronas.Add(o);
 		return caronas;

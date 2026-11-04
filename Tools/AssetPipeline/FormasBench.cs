@@ -494,9 +494,20 @@ public static class FormasBench
 		Checa("Blue recusado com 20% de maestria divina (pede 33)",
 			  est2.Avaliar("blue", bpDeSobra, 1, false, new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: "Normal", GodKi: 20))
 				  == RecusaForma.SemGodKi);
-		Checa("Blue liberado com 33%",
-			  est2.Avaliar("blue", bpDeSobra, 1, false, new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: "Normal", GodKi: 33))
-				  == RecusaForma.Pode);
+		// (2026-10-30, o pedido 186) E O BLUE PEDE O SSJ1 DOMINADO E 50% NO SSG -- cobrados DEPOIS do ki divino: a linha de cima recusa por
+		// ki divino um corpo que tambem nao tem as duas maestrias.
+		var deus33 = new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: "Normal", GodKi: 33);
+		est2.Maestria.Por("ssj1", 99);
+		est2.Maestria.Por("ssg", Catalogo.BluePedeSsgPct);
+		Checa("(o pedido 186) **o Blue pede o Super Saiyajin DOMINADO**: com 33% de ki divino, 50% no SSG e o SSJ1 a 99%, SemMaestria",
+			  est2.Avaliar("blue", bpDeSobra, 1, false, deus33) == RecusaForma.SemMaestria, est2.Avaliar("blue", bpDeSobra, 1, false, deus33).ToString());
+		est2.Maestria.Por("ssj1", 100);
+		est2.Maestria.Por("ssg", Catalogo.BluePedeSsgPct - 1);
+		Checa("(o pedido 186) **...e 50% de maestria no Super Saiyajin God**: com o SSJ1 dominado e o SSG a 49%, SemMaestria",
+			  est2.Avaliar("blue", bpDeSobra, 1, false, deus33) == RecusaForma.SemMaestria, est2.Avaliar("blue", bpDeSobra, 1, false, deus33).ToString());
+		est2.Maestria.Por("ssg", Catalogo.BluePedeSsgPct);
+		Checa("Blue liberado com 33% (e, desde o pedido 186, o SSJ1 dominado e 50% no SSG)",
+			  est2.Avaliar("blue", bpDeSobra, 1, false, deus33) == RecusaForma.Pode, est2.Avaliar("blue", bpDeSobra, 1, false, deus33).ToString());
 
 		// ROSE E DE CLASSE, E A CLASSE TROCA A LINHA INTEIRA. A recusa e LinhaFechada e nao
 		// SemClasse de proposito: a escada Rose nao esta "trancada" pro Saiyajin comum, ela
@@ -515,12 +526,25 @@ public static class FormasBench
 				  == RecusaForma.LinhaFechada);
 		var kaioEmSsj1 = new EstadoDeForma { Atual = "ssj1" };
 		kaioEmSsj1.Liberar("rose_ssg");
-		Checa("Rose liberado a quem tem",
-			  kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false,
-						   new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: Catalogo.ClasseRose, GodKi: 33))
-				  == RecusaForma.Pode,
-			  kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false,
-						   new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: Catalogo.ClasseRose, GodKi: 33)).ToString());
+		// (2026-10-30, o pedido 189) O ROSE PEDE O QUE O BLUE PEDE -- o dono: *"Tudo q o blue tem o rose deve ter (menos o kaioken, ele tem o
+		// rose 2)"*. O SSJ1 dominado e 50% no SSG, e o SSG do Kaio e o `rose_ssg`: o `ssg` cheio (uma barra que a classe dele nem abre) nao paga.
+		var kaio33 = new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: Catalogo.ClasseRose, GodKi: 33);
+		kaioEmSsj1.Maestria.Por("ssj1", 99);
+		kaioEmSsj1.Maestria.Por("rose_ssg", Catalogo.BluePedeSsgPct);
+		Checa("(o pedido 189) **o Rose pede o Super Saiyajin DOMINADO, como o Blue**: com 33% de ki divino, 50% no SSG do Kaio e o SSJ1 a 99%, SemMaestria",
+			  kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false, kaio33) == RecusaForma.SemMaestria, kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false, kaio33).ToString());
+		kaioEmSsj1.Maestria.Por("ssj1", 100);
+		kaioEmSsj1.Maestria.Por("rose_ssg", Catalogo.BluePedeSsgPct - 1);
+		kaioEmSsj1.Maestria.Por("ssg", 100);
+		Checa("(o pedido 189) **...e 50% de maestria no SSG DELE (o `rose_ssg`)**: com o SSJ1 dominado, o `ssg` a 100% e o `rose_ssg` a 49%, SemMaestria",
+			  kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false, kaio33) == RecusaForma.SemMaestria, kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false, kaio33).ToString());
+		kaioEmSsj1.Maestria.Por("rose_ssg", Catalogo.BluePedeSsgPct);
+		kaioEmSsj1.Maestria.Por("ssg", 0);
+		Checa("Rose liberado a quem tem (33% e, desde o pedido 189, o SSJ1 dominado e 50% no SSG dele)",
+			  kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false, kaio33) == RecusaForma.Pode, kaioEmSsj1.Avaliar("rose", bpDeSobra, 1, false, kaio33).ToString());
+		Checa("(o pedido 189) ...MENOS O KAIO-KEN: no Rose ele continua vetado, mesmo com 100% de ki divino (o degrau de cima do Kaio e o Rose 2)",
+			  Jandirus.Core.Skills.Kaioken.VetoDaForma(Catalogo.Def("rose"), Catalogo.ClasseRose, 100) != Jandirus.Core.Skills.Kaioken.Veto.Nenhum,
+			  Jandirus.Core.Skills.Kaioken.VetoDaForma(Catalogo.Def("rose"), Catalogo.ClasseRose, 100).ToString());
 
 		// ULTRA EGO x ULTRA INSTINCT: exclusivos
 		var comEgo = new PerfilDeFormas(Raca: "Saiyan", GodKi: 80, EnergiaUe: 30);
@@ -539,6 +563,7 @@ public static class FormasBench
 		// =================================================================================
 		var noSsj1 = new EstadoDeForma { Atual = "ssj1" };
 		noSsj1.Liberar("ssg");
+		ComAsMaestriasDoBlue(noSsj1);   // (2026-10-30, o pedido 186) o Blue pede o SSJ1 dominado e 50% no SSG
 		RecusaForma Div(string forma, string linhagem, string classe, string raca = "Saiyan") =>
 			(forma == "ssg" ? new EstadoDeForma() : noSsj1)
 				.Avaliar(forma, bpDeSobra, 1, false,
@@ -574,8 +599,30 @@ public static class FormasBench
 		RecusaForma Evo(string classe) => noGrade.Avaliar("blue_evolution", bpDeSobra, 1, false,
 			new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: classe, GodKi: 100));
 		noGrade.Maestria.Por("ssj1", Catalogo.Grade2Pct);   // o Evolution pede o que o Grade 2 pede
-		Checa("Blue Evolution liberado ao Elite no Grade 2", Evo("Elite") == RecusaForma.Pode,
+		// (2026-10-30, o pedido 190) E 50% NO BLUE -- o dono: *"(blue evolution tb) ... pelomenos 50% de maestria no ssj blue"*. Com o resto
+		// pago (Elite, Grade 2, 100% de ki divino), o Blue a 49% ainda recusa.
+		noGrade.Maestria.Por("blue", Catalogo.EvolucaoPedeBluePct - 1);
+		Checa("(o pedido 190) **o Blue Evolution pede 50% de maestria NO BLUE**: o Elite no Grade 2, com 100% de ki divino e o Blue a 49%, SemMaestria",
+			  Evo("Elite") == RecusaForma.SemMaestria, Evo("Elite").ToString());
+		noGrade.Maestria.Por("blue", Catalogo.EvolucaoPedeBluePct);
+		Checa("Blue Evolution liberado ao Elite no Grade 2 (e, desde o pedido 190, com 50% no Blue)", Evo("Elite") == RecusaForma.Pode,
 			  Evo("Elite").ToString());
+		// E O ROSE 2 PEDE 50% NO ROSE, como o Evolution no Blue (o "tudo q o blue tem o rose deve ter" do pedido 189): a barra do Blue cheia
+		// (uma que o Kaio nem abre) nao paga.
+		var kaioNoGrade = new EstadoDeForma { Atual = "grade2" };
+		kaioNoGrade.Liberar("rose_ssg");
+		kaioNoGrade.Liberar("rose");
+		kaioNoGrade.Maestria.Por("ssj1", Catalogo.Grade2Pct);
+		kaioNoGrade.Maestria.Por("blue", 100);
+		kaioNoGrade.Maestria.Por("rose", Catalogo.EvolucaoPedeBluePct - 1);
+		var kaio100 = new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Saiyan", Classe: Catalogo.ClasseRose, GodKi: 100);
+		Checa("(o pedido 190) **...e o Rose 2 pede 50% de maestria NO ROSE**: o Kaio no Grade 2, com 100% de ki divino, o Blue a 100% e o Rose a 49%, SemMaestria",
+			  kaioNoGrade.Avaliar("rose2", bpDeSobra, 1, false, kaio100) == RecusaForma.SemMaestria,
+			  kaioNoGrade.Avaliar("rose2", bpDeSobra, 1, false, kaio100).ToString());
+		kaioNoGrade.Maestria.Por("rose", Catalogo.EvolucaoPedeBluePct);
+		Checa("(o pedido 190) ...e com os 50% no Rose o Rose 2 abre",
+			  kaioNoGrade.Avaliar("rose2", bpDeSobra, 1, false, kaio100) == RecusaForma.Pode,
+			  kaioNoGrade.Avaliar("rose2", bpDeSobra, 1, false, kaio100).ToString());
 		Checa("Blue Evolution RECUSADO ao Normal", Evo("Normal") == RecusaForma.SemClasse);
 		Checa("Blue Evolution RECUSADO ao Low-Class", Evo("Low-Class") == RecusaForma.SemClasse);
 
@@ -792,14 +839,16 @@ public static class FormasBench
 		finally { EstadoDeForma.CSurdoAFamiliaDeTeste = false; }
 
 		// A RESERVA: a familia escolhida sem degrau acima, e o C sobe pela outra -- mortais primeiro, no SSJ1, com o SSJ2 fora do alcance
-		// por poder e o Grade sem maestria: o Blue.
-		var semSsj2 = Corpo(false, "ssj1");
+		// por poder e os graus desligados: o Blue. (2026-10-30, o pedido 186) Os graus eram trancados pela falta de maestria; o Blue agora
+		// pede o SSJ1 dominado, que abre os dois -- entao eles saem do caminho pelo botao.
+		var semSsj2 = ComAsMaestriasDoBlue(Corpo(false, "ssj1"));
+		semSsj2.GradesLigados = false;
 		Checa("a outra familia e a RESERVA: mortais primeiro, no SSJ1 com o SSJ2 trancado por poder, o C vai pro Blue",
 			  C(semSsj2, deus, Catalogo.PortaSsj2 - 1) == "blue", C(semSsj2, deus, Catalogo.PortaSsj2 - 1));
 
-		// E A FAMILIA VEM ANTES DOS GRAUS SO PRA QUEM ESCOLHEU AS DIVINAS: no SSJ1 com 60% de maestria e os graus ligados, as divinas
-		// primeiro vao pro Blue; as mortais primeiro, pro Grade 2 (a regra dos graus de sempre).
-		EstadoDeForma GrausLigados(bool divinas) { var e = Corpo(divinas, "ssj1"); e.GradesLigados = true; e.Maestria.Por("ssj1", 60); return e; }
+		// E A FAMILIA VEM ANTES DOS GRAUS SO PRA QUEM ESCOLHEU AS DIVINAS: no SSJ1 dominado (o Blue pede, desde o pedido 186) e os graus
+		// ligados, as divinas primeiro vao pro Blue; as mortais primeiro, pro Grade 2 (a regra dos graus de sempre: o menor ramo acima).
+		EstadoDeForma GrausLigados(bool divinas) { var e = ComAsMaestriasDoBlue(Corpo(divinas, "ssj1")); e.GradesLigados = true; return e; }
 		Checa("divinas primeiro, no SSJ1 com os graus ligados: o Blue (a divina vem antes do Grade 2)",
 			  C(GrausLigados(true), deus) == "blue", C(GrausLigados(true), deus));
 		Checa("mortais primeiro, no mesmo SSJ1: o Grade 2 (os graus continuam no caminho mortal)",
@@ -878,8 +927,10 @@ public static class FormasBench
 			  Tecla(ComSsj3(pula), "ssj3", comum, ki: 0.05) == RecusaForma.SemKi, Tecla(ComSsj3(pula), "ssj3", comum, ki: 0.05).ToString());
 
 		// ---- A TECLA: A FORMA DIVINA JA USADA VAI DIRETO, SEM MAESTRIA -----------------------------------------------------
+		// (2026-10-30, o pedido 186) com as duas maestrias que o Blue pede -- o salto e so do caminho, e a porta continua
 		Checa("**a TECLA do Blue sai da BASE direto pro Blue** (a forma divina ja usada, sem o caminho)",
-			  Tecla(Corpo(null), "blue", deus) == RecusaForma.Pode, Tecla(Corpo(null), "blue", deus).ToString());
+			  Tecla(ComAsMaestriasDoBlue(Corpo(null)), "blue", deus) == RecusaForma.Pode,
+			  Tecla(ComAsMaestriasDoBlue(Corpo(null)), "blue", deus).ToString());
 		Checa("**a TECLA do SSG sai de dentro do Super Saiyajin** (o exemplo do dono)",
 			  Tecla(Corpo(null, "ssj1"), "ssg", deus) == RecusaForma.Pode, Tecla(Corpo(null, "ssj1"), "ssg", deus).ToString());
 		Checa("SO A TECLA: o Blue da base, perguntado como o C, continua pedindo a camada (FormaErrada)",
@@ -888,7 +939,8 @@ public static class FormasBench
 		try
 		{
 			Checa("(defeito injetado: a divina pede o caminho -- o jogo de antes) a mesma regua REPROVA: o Blue da base e recusado",
-				  Tecla(Corpo(null), "blue", deus) == RecusaForma.FormaErrada, Tecla(Corpo(null), "blue", deus).ToString());
+				  Tecla(ComAsMaestriasDoBlue(Corpo(null)), "blue", deus) == RecusaForma.FormaErrada,
+				  Tecla(ComAsMaestriasDoBlue(Corpo(null)), "blue", deus).ToString());
 		}
 		finally { EstadoDeForma.DivinaPedeOCaminhoDeTeste = false; }
 		Checa("a porta do KI DIVINO continua: com 20% de maestria divina, o Blue pela tecla e recusado (SemGodKi)",
@@ -905,6 +957,14 @@ public static class FormasBench
 	private static EstadoDeForma MaestriaNoSsj2(EstadoDeForma e)
 	{
 		e.Maestria.Por("ssj2", Catalogo.Ssj3PedeSsj2Pct);
+		return e;
+	}
+
+	/// <summary>(2026-10-30, o pedido 186) As duas maestrias que o Blue pede alem do ki divino: o SSJ1 dominado e 50% no SSG.</summary>
+	private static EstadoDeForma ComAsMaestriasDoBlue(EstadoDeForma e)
+	{
+		e.Maestria.Por("ssj1", 100);
+		e.Maestria.Por("ssg", Catalogo.BluePedeSsgPct);
 		return e;
 	}
 
@@ -2653,9 +2713,11 @@ public static class FormasBench
 			  Catalogo.Folha(d) == FolhaDeAura.Base && !Catalogo.ChamaDoJogador(d));
 		int r = Convert.ToInt32(d.Aura[..2], 16), g = Convert.ToInt32(d.Aura[2..4], 16), b = Convert.ToInt32(d.Aura[4..], 16);
 		Checa("e ela e ROSA: vermelho no alto, azul no meio, verde embaixo", r >= 220 && b >= g + 60 && r >= b + 30, $"#{d.Aura}");
+		// (2026-10-30) As faiscas viraram RAIOS DE SHADER no pedido 145 (2026-10-28) e a `FolhaColada.FaiscaMajin` saiu do enum -- esta linha
+		// ainda a citava, e o AssetPipeline inteiro nao compilava desde entao (a `plingua`, a `pformas` e a `pdisc` saiam SEM PLACAR).
 		Colada[] coladas = Catalogo.Coladas(d);
-		Checa("as faiscas: UMA colada, a `FaiscaMajin`, sem tinta (a folha ja e carmesim)",
-			  coladas.Length == 1 && coladas[0].Folha == FolhaColada.FaiscaMajin && coladas[0].Tinta == null, string.Join("+", coladas));
+		Checa("as faiscas sao os RAIOS de shader (o pedido 145): nenhuma folha colada, e os raios acesos",
+			  coladas.Length == 0 && d.Raios > 0, $"coladas [{string.Join("+", coladas)}]; raios {d.Raios}");
 		Console.WriteLine();
 	}
 

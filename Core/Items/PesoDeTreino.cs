@@ -60,6 +60,12 @@ public static class PesoDeTreino
 	/// <summary>O comeco do id de um peso com estado: `Weights|`. Sem BARRA, que o canal de itens usa pra separar o argumento.</summary>
 	public const string PrefixoDoId = CatalogoDeItens.Pesos + "|";
 
+	/// <summary>
+	/// (2026-10-29, o pedido 175) O ARGUMENTO DO "PESO IDEAL" no `item_ajustar` (no lugar da porcentagem): o botao do teclado da % pede, e quem
+	/// faz a conta e o servidor -- ele sabe o limite do corpo, que e poder e nao viaja. Ver `GameServer.PorcentagemIdealDoPeso`.
+	/// </summary>
+	public const string ArgumentoDoIdeal = "ideal";
+
 	/// <summary>Este id e de um peso de treino -- o de fabrica ou um com estado?</summary>
 	public static bool EhPeso(string id) => id == CatalogoDeItens.Pesos || id.StartsWith(PrefixoDoId, StringComparison.Ordinal);
 

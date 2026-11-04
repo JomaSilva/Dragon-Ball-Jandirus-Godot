@@ -253,6 +253,8 @@ public partial class GameServer
 
 			// as sete vao pro estranho e ele invoca -- pelo helper, que DERRUBA o dragao anterior
 			PorODragaoDePe(estranho, set);
+			// (2026-10-29, o pedido 156) O PODER E A LIBERACAO DO POTENCIAL: o estranho guarda um banco (o que o treino guardaria) pra soltar
+			estranho.Ficha.hiddenpotential = 200_000;
 			double bpEstranhoAntes = estranho.Ficha.BP;
 			PedirDesejo(estranho, "poder");
 			Checa("...e quem NAO e o criador recebe o poder (senao o bloqueio seria 'ninguem pede')",
@@ -262,19 +264,20 @@ public partial class GameServer
 			// ============================ O NUMERO SO COM SCOUTER (dono, 2026-10-12) ============================
 			// A frase do desejo dizia "sobe de A para B" a qualquer um. A regra principal do BP: em numero so pra
 			// quem tem medidor; os outros ouvem o quanto cresceram (`PoderNaFrase`). Medido no texto que o
-			// `DesejoDePoder` de producao manda, tres vezes -- cada rodada anota o antes e o depois DELA, porque o
+			// desejo de poder de producao manda (o `DesejoDePotencial`, desde 2026-10-29), tres vezes -- cada rodada anota o antes e o depois DELA, porque o
 			// desejo mexe no poder de novo.
 			// ====================================================================================================
 			var rodadas = new List<(double Antes, double Depois)>();
 			var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(estranho, () =>
 			{
 				estranho.Ficha.Tick();   // o teto de treino acompanha o BP novo -- ver a nota do `Tick`, acima
+				estranho.Ficha.hiddenpotential = 200_000;   // (2026-10-29) cada leitura solta um banco
 				double a = estranho.Ficha.BP;
-				DesejoDePoder(estranho, set);
+				DesejoDePotencial(estranho, set);
 				rodadas.Add((a, estranho.Ficha.BP));
 			});
 			Checa("SEM scouter, o desejo de poder diz o quanto ele cresceu e NAO traz o numero de antes nem o de depois",
-				  Disse(semScouter, "você está") && !TrazOPoder(semScouter, rodadas[0].Antes)
+				  Disse(semScouter, "você se sente") && !TrazOPoder(semScouter, rodadas[0].Antes)
 				  && !TrazOPoder(semScouter, rodadas[0].Depois), Ultimos(semScouter));
 			Checa("COM o scouter ligado, a mesma frase traz os dois numeros",
 				  TrazOPoder(comScouter, rodadas[1].Antes) && TrazOPoder(comScouter, rodadas[1].Depois), Ultimos(comScouter));
@@ -534,6 +537,36 @@ public partial class GameServer
 				  falante.Ficha.Zeni > zeniFalanteAntes && _cicloDasSupers == cicloAntesDoDesejo + 1,
 				  $"zeni {zeniFalanteAntes:N0} -> {falante.Ficha.Zeni:N0}, "
 				  + $"ciclo {cicloAntesDoDesejo} -> {_cicloDasSupers}");
+
+			// =====================================================================
+			// 10b. (2026-10-29, o pedido 169) O SUPER RESTAURA TODOS OS PLANETAS -- no lugar do "Curar um planeta"
+			// =====================================================================
+			// O dono: *"Super esfera no lugar do pedido de restaurar um planeta, teria restaurar TODOS os planetas"*. Dois mundos levados ate o
+			// fim pelo relogio de producao (`ComecarDestruicao` + `TickDaDestruicao`), dentro do palco que segura o livro dos mortos no disco.
+			using (PalcoDeMortesDeBancada())
+			{
+				Checa("(169) o menu do Super NAO tem mais o 'Curar um planeta' do Shenron -- e tem o 'Restaurar TODOS os planetas'",
+					  !Desejos.MenuDoSuper(true, false).Any(d => d.Id == "curar_planeta")
+					  && Desejos.MenuDoSuper(true, false).Any(d => d.Id == Desejos.IdDeRestaurarTodos));
+				ZoneKey mundoA = ZoneKey.Premade("Vegeta"), mundoB = ZoneKey.Premade("Arlia");
+				ComecarDestruicao(mundoA, 1e9, "bancada: o Super restaura todos");
+				ComecarDestruicao(mundoB, 1e9, "bancada: o Super restaura todos");
+				for (int i = 0; i < 400 && (MorteDaZona(mundoA)?.Fase == FaseDaMorte.Explodindo || MorteDaZona(mundoB)?.Fase == FaseDaMorte.Explodindo); i++)
+					TickDaDestruicao(1);
+				bool mortos = ZonaMorta(mundoA) && ZonaMorta(mundoB);
+				DarSupers(falante, SuperEsferas.Total);
+				int cicloDoTodos = _cicloDasSupers;
+				ChamarOSuperShenron(falante, Desejos.IdDeRestaurarTodos);
+				Checa("**(169) 'RESTAURAR TODOS OS PLANETAS': os dois mundos destruidos voltam de uma vez** -- e o ciclo das Supers anda",
+					  mortos && !ZonaCondenada(mundoA) && !ZonaCondenada(mundoB) && _cicloDasSupers == cicloDoTodos + 1,
+					  $"mortos antes {mortos}; Vegeta {MorteDaZona(mundoA)?.Fase.ToString() ?? "viva"}, Arlia {MorteDaZona(mundoB)?.Fase.ToString() ?? "viva"}; "
+					  + $"ciclo {cicloDoTodos} -> {_cicloDasSupers}");
+				DarSupers(falante, SuperEsferas.Total);
+				int cicloSemMorto = _cicloDasSupers;
+				List<string> semMorto = Ouvir(() => ChamarOSuperShenron(falante, Desejos.IdDeRestaurarTodos));
+				Checa("...e sem mundo destruido ele recusa -- e as esferas NAO se gastam",
+					  _cicloDasSupers == cicloSemMorto && Disse(semMorto, "nenhum mundo foi destruído"), string.Join(" | ", semMorto));
+			}
 
 			// =====================================================================
 			// 11. O PROCURADOR -- a metade que o dono descreveu com mais detalhe
@@ -845,9 +878,10 @@ public partial class GameServer
 			// (2026-10-26) O "AUMENTAR O MEU POTENCIAL" SAIU DO JOGO -- o dono, ao tirar o potencial antigo: ele somava no estoque uma parte
 			// de "um ano de vida", a conta da idade que nao soma mais. O "Liberar o meu potencial" fica (solta o banco 1,5x).
 			// =====================================================================
-			Checa("**O 'AUMENTAR O MEU POTENCIAL' SAIU DO JOGO** (o dono, 2026-10-26): nem na tabela do Shenron, nem na do Super Shenlong -- e o 'Liberar o meu potencial' fica",
+			Checa("**O 'AUMENTAR O MEU POTENCIAL' SAIU DO JOGO** (o dono, 2026-10-26): nem na tabela do Shenron, nem na do Super Shenlong -- e o 'Liberar o meu potencial' entrou no 'Poder' (2026-10-29)",
 				  !Desejos.Todos.Any(d => d.Id == "aumentar_potencial") && !Desejos.DoSuper.Any(d => d.Id == "sdb_aumentar_potencial")
-				  && Desejos.Todos.Any(d => d.Id == "potencial") && !Desejos.Menu(Esferas.PoderDoEterno, 1, false, false, 0).Any(d => d.Id.Contains("aumentar")),
+				  && !Desejos.Todos.Any(d => d.Id == "potencial") && Desejos.Todos.Any(d => d.Id == "poder")
+				  && !Desejos.Menu(Esferas.PoderDoEterno, 1, false, false, 0).Any(d => d.Id.Contains("aumentar")),
 				  string.Join(",", Desejos.Todos.Select(d => d.Id).Concat(Desejos.DoSuper.Select(d => d.Id)).Where(i => i.Contains("potencial"))));
 			// o set FRACO das reguas do Super, logo abaixo (o poder do set mais fraco de um Shenron de jogador)
 			var fraco = new SetDeEsferas { Id = 990, Poder = 1e4, Desejos = 1, NomeDoDragao = "SHENRON" };
@@ -858,11 +892,12 @@ public partial class GameServer
 			// *"super shenlong seria 4 vezes o poder da black star em tudo, menos no potencial, super shenlong sempre vai ter o pedido supremo"*
 			// e *"ele daria 15 marcos pra n ficar muito broken"*. Medido pelo `ConcederDoSuper` de producao, com o testador de pedinte.
 			string[] doSuper = [.. Desejos.MenuDoSuper(false, false, 0).Select(d => d.Id)];
+			// (2026-10-29, o pedido 169) o "Curar um planeta" saiu do Super: o "Restaurar TODOS os planetas" e a versao dele
 			string[] precisaTer = ["sdb_riqueza", "marcos", "tecnologia", "juventude", "poder", "inteligencia", "juventude_alheia",
-								   "curar_planeta", "potencial", "reviver_todos", "matar", "sdb_reviver", "sdb_supremo"];
+								   "reviver_todos", "matar", "sdb_reviver", "sdb_supremo", Desejos.IdDeRestaurarTodos];
 			bool listaInteira(string[] ids) => precisaTer.All(ids.Contains) && !ids.Contains("dinheiro") && !ids.Contains("reviver")
 											   && !ids.Contains("supremo") && !ids.Contains("aumentar_potencial") && !ids.Contains("nada")
-											   && !ids.Contains("cancelar");
+											   && !ids.Contains("curar_planeta") && !ids.Contains("cancelar");
 			Checa("**O SUPER SHENLONG TEM A LISTA INTEIRA DAS BLACK STAR** (os desejos do Shenron que ele nao tinha) e o Supremo SEMPRE -- sem os "
 				  + "repetidos: a riqueza, o reviver, o potencial e o supremo so na versao dele", listaInteira(doSuper), string.Join(",", doSuper));
 			Desejos.SuperSoComOsDeleDeTeste = true;
@@ -964,6 +999,39 @@ public partial class GameServer
 				  $"podia {podiaComBanco}, soltou {soltou}, BP {bpComBanco:N0} -> {doGuru.Ficha.BP:N0}");
 
 			// =====================================================================
+			// (2026-10-29) O PODER VIROU A LIBERACAO DO POTENCIAL -- o pedido 156
+			// =====================================================================
+			// *"pedir poder deveria mesclar com o pedido de pedir pra liberar o potencial [...] e nao so poder bruto, de nenhuma esfera, esfera
+			// do dragao normal daria 1,5x a pool do potencial, black star 2x e super esfera 3x sendo a melhor"*. Medido no funil de todo pedido
+			// (`Conceder`), com o set de jogador, o das Black Star e o do Super Shenlong.
+			ServerPlayer quemPedePoder = Forjar("bancada: o quemPedePoder do poder", pl.Pos, terra, "bancada_desejo_pp");
+			forjados.Add(quemPedePoder);
+			quemPedePoder.Ficha.unlockPotential = 1;   // o despertar de uma vez na vida (o marco) nao entra na conta
+			SetDeEsferas DoJogador() => new() { Id = 991, Poder = 1e9, Desejos = 1, NomeDoDragao = "SHENRON" };
+			SetDeEsferas Negras() => new() { Id = EsferasNegras.IdDoSet, Poder = 1e9, Desejos = 1, NomeDoDragao = "SHENRON NEGRO" };
+			SetDeEsferas DoSuperShenlong() => new() { Id = Desejos.IdDoSetDoSuper, Poder = 1e9, Desejos = 1, NomeDoDragao = "SUPER SHENLONG" };
+			double OPoderDa(SetDeEsferas s)
+			{
+				quemPedePoder.Ficha.hiddenpotential = 1000;
+				double antes = quemPedePoder.Ficha.BP;
+				return Conceder(quemPedePoder, s, DefDe("poder"), "") ? quemPedePoder.Ficha.BP - antes : -1;
+			}
+			double comum = OPoderDa(DoJogador()), negra = OPoderDa(Negras()), doSuperShenlong = OPoderDa(DoSuperShenlong());
+			Checa("**(156) O PODER SOLTA O BANCO DO POTENCIAL PELO DRAGAO**: mil guardados dao +1.500 no Shenron, +2.000 nas Black Star e +3.000 no Super Shenlong",
+				  Math.Abs(comum - 1500) < 1e-6 && Math.Abs(negra - 2000) < 1e-6 && Math.Abs(doSuperShenlong - 3000) < 1e-6 && quemPedePoder.Ficha.hiddenpotential == 0,
+				  $"shenron {comum:N0}; black star {negra:N0}; super {doSuperShenlong:N0}");
+			quemPedePoder.Ficha.hiddenpotential = 0;
+			double semBanco = quemPedePoder.Ficha.BP;
+			bool gastouSemBanco = Conceder(quemPedePoder, Negras(), DefDe("poder"), "") || Conceder(quemPedePoder, DoSuperShenlong(), DefDe("poder"), "");
+			Checa("**(156) ...E PODER BRUTO, NENHUM**: sem potencial guardado o pedido de poder e recusado sem gastar, e o BP fica onde estava -- nem nas Black Star, nem no Super",
+				  !gastouSemBanco && Math.Abs(quemPedePoder.Ficha.BP - semBanco) < 1e-6, $"gastou {gastouSemBanco}; BP {semBanco:N0} -> {quemPedePoder.Ficha.BP:N0}");
+			Checa("**(156) ...e a janela diz o numero de cada dragao**: 1,5x no Shenron, 2x nas Black Star, 3x no Super",
+				  Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(DoJogador()), 2, true).Contains("1,5x")
+				  && Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(Negras()), 10, false).Contains(" 2x")
+				  && Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(DoSuperShenlong()), 15, false).Contains(" 3x"),
+				  Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(Negras()), 10, false));
+
+			// =====================================================================
 			// (2026-10-22) O MENU DA ESTATUA -- regra do dono
 			// =====================================================================
 			// *"e ao criar um set de esferas crie um menu bem intuitivo e bem feito pro jogador q criou o set escolher os desejos, a quantidade, a
@@ -1036,10 +1104,10 @@ public partial class GameServer
 				finally { ForcaInteiraDeTeste = false; }
 				Checa("   CONTRA-EXEMPLO (defeito injetado: a forca inteira em cada pedido, o jogo de antes) -- 50.000.000, e a regua de cima REPROVA",
 					  Math.Abs(riquezaInteira - Desejos.ZeniDoDesejo) < 1, $"{riquezaInteira:N0}");
-				Checa("...e o potencial usa a forca de UM pedido (a do set pela metade), e a janela diz os numeros divididos: 25.000.000, 1 Marco, 12,5% do teto",
+				Checa("...e o potencial usa a forca de UM pedido (a do set pela metade), e a janela diz os numeros divididos: 25.000.000, 1 Marco -- e o Poder solta 1,5x do banco (2026-10-29: ele nao se divide)",
 					  Math.Abs(PoderDeCadaPedido(doMenu) - doMenu.Poder / 2) < 1e-6 && MarcosNoDragao(doMenu) == 1
 					  && EntradaDoDesejo(pl, doMenu, DefDe("dinheiro"), posso: true, juntas: false).Desc.Contains("25.000.000")
-					  && Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(doMenu), MarcosNoDragao(doMenu), true).Contains("12,5%"),
+					  && Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(doMenu), MarcosNoDragao(doMenu), true).Contains("1,5x"),
 					  $"poder de um pedido {PoderDeCadaPedido(doMenu):N0} de {doMenu.Poder:N0}; marcos {MarcosNoDragao(doMenu)}");
 
 				// ---- o desligado: fora do menu, e o pedido por verbo recusado sem gastar
@@ -1090,6 +1158,84 @@ public partial class GameServer
 			{
 				_dominios.Remove(dominioDaBancada);
 				SupremoSemConferirOBolsoDeTeste = ForcaInteiraDeTeste = DesligadosIgnoradosDeTeste = false;
+			}
+
+			// =====================================================================
+			// (2026-10-31, os pedidos 196 e 197) A CHAVE DA SALA E AS SALAS QUE OS DRAGOES REVELAM
+			// =====================================================================
+			GD.Print("[desejo] -- (os pedidos 196 e 197) a Chave da Sala do Tempo e as salas que os dragoes revelam --");
+			string chave = Jandirus.Core.Items.CatalogoDeItens.ChaveDaSala;
+			DesejoDef DaTabela(string id) => Desejos.Todos.Concat(Desejos.DoSuper).Concat(Desejos.DaBlackStar).First(d => d.Id == id);
+			var shenronDaChave = new SetDeEsferas { Id = 991, Poder = 1e6, Desejos = 1, NomeDoDragao = "SHENRON" };
+			List<string>? avisosDeFora = EscutaDeAvisos;
+			EscutaDeAvisos = [];
+			try
+			{
+				// D1. a chave em todo dragao
+				bool emTodos = Desejos.Menu(Esferas.PoderDoEterno, 1, false, false, 0).Any(d => d.Id == Desejos.IdDaChaveDaSala)
+							   && MenuDaqui(pl, _setNegro).Any(d => d.Id == Desejos.IdDaChaveDaSala)
+							   && Desejos.MenuDoSuper(false, false, 0).Any(d => d.Id == Desejos.IdDaChaveDaSala);
+				Checa("(o pedido 196) D1. **A CHAVE DA SALA DO TEMPO E UM DESEJO DE TODO DRAGAO**: o Shenron, as Black Star e o Super Shenlong a oferecem", emTodos);
+
+				// D2. o desejo da a chave, direto pra mochila -- uma, de qualquer dragao
+				pl.Mochila.Tirar(chave, 99);
+				bool doShenron = Conceder(pl, shenronDaChave, DaTabela(Desejos.IdDaChaveDaSala), "");
+				Checa("(o pedido 196) D2. **O DESEJO DA A CHAVE DIRETO PRA MOCHILA** de quem pede",
+					  doShenron && pl.Mochila.Quantos(chave) == 1, $"concedeu {doShenron}; {pl.Mochila.Quantos(chave)} chave(s)");
+				bool deuOSuper = ConcederDoSuper(pl, pl, DaTabela(Desejos.IdDaChaveDaSala), "");
+				Checa("(o pedido 196) D2b. ...e o Super Shenlong tambem da UMA (e um item, e nao um numero que o fator 20 multiplique)",
+					  deuOSuper && pl.Mochila.Quantos(chave) == 2, $"concedeu {deuOSuper}; {pl.Mochila.Quantos(chave)} chave(s)");
+				pl.Mochila.Tirar(chave, 99);
+
+				// D3. as Black Star: a sala mais perto, de qualquer dilatacao -- so nelas
+				Checa("(o pedido 197) D3. o pedido da sala mais proxima e SO DAS BLACK STAR: o Shenron nao o oferece",
+					  MenuDaqui(pl, _setNegro).Any(d => d.Id == Desejos.IdDaSalaMaisProxima) && !MenuDaqui(pl, shenronDaChave).Any(d => d.Id == Desejos.IdDaSalaMaisProxima));
+				SalaNoUniverso? maisPerto = SalaMaisPertoDe(pl, null);
+				Vec2 daqui = DeOndePedeASala(pl);
+				SistemaId celula = SistemaId.De(daqui);
+				SalaNoUniverso? pelaVarredura = SalaDePlaneta.NaRegiao(SeedDoUniverso, celula.Sx, celula.Sy, 48)
+					.Where(s => !ZonaMorta(Espaco.ZonaDe(s.Corpo))).OrderBy(s => (s.Corpo.Pos - daqui).Length).Cast<SalaNoUniverso?>().FirstOrDefault();
+				EscutaDeAvisos.Clear();
+				bool disseASala = Conceder(pl, _setNegro, DaTabela(Desejos.IdDaSalaMaisProxima), "");
+				string ouviu = string.Join(" | ", EscutaDeAvisos);
+				Checa("(o pedido 197) D3b. **AS BLACK STAR DIZEM A SALA DO TEMPO MAIS PROXIMA**: o mundo sorteado (fora a Terra) com sala mais perto de quem pede -- o nome, o setor e o tempo la dentro",
+					  maisPerto is { } mp && disseASala && !mp.Corpo.Premade && ouviu.Contains(NomeDoMundo(mp.Corpo)) && ouviu.Contains($"[{mp.Sx}:{mp.Sy}]")
+					  && ouviu.Contains(SalaDePlaneta.TextoDaDilatacao(mp.Dilatacao)), $"{maisPerto?.Corpo.Nome}; {ouviu}");
+				Checa("(o pedido 197) D3c. ...e ela e A MAIS PERTO de verdade: a mesma da varredura inteira de 48 celulas em volta",
+					  maisPerto is { } a1 && pelaVarredura is { } b1 && a1.Corpo.Seed == b1.Corpo.Seed, $"{maisPerto?.Corpo.Nome} x {pelaVarredura?.Corpo.Nome}");
+
+				// D4. o Super: a pergunta, e a sala da dilatacao escolhida
+				// A LINHA PELO CAMINHO DE PRODUCAO do menu do Super (`EntradasDoSuper` -> `EntradaDoSuper`), e nao pelo `EntradaDoDesejo`: a r1 media a
+				// funcao errada e passava, e o robo achou a janela sem a pergunta.
+				EntradaDoDragao entrada = EntradasDoSuper(pl, "sdb_invocar", posso: true, registrando: false, ehKaioshin: false, haProcuracao: false)
+					.First(x => x.Id == Desejos.IdDaSalaRevelada);
+				Checa("(o pedido 197) D4. **O SUPER SHENLONG PERGUNTA QUAL SALA**: uma resposta por linha da tabela, de 3 meses a 5 anos por dia",
+					  entrada.TemPergunta && entrada.Escolhas.Count == SalaDePlaneta.Tabela.Length
+					  && entrada.Escolhas[0].Rotulo.StartsWith("3 meses") && entrada.Escolhas[^1].Rotulo.StartsWith("5 anos"),
+					  string.Join(" | ", entrada.Escolhas.Select(c => $"{c.Rotulo} ({c.Pedido})")));
+				// A ESCOLHIDA NAO E A DA MAIS PERTO: o contra-exemplo (a busca sem a escolha) so reprova se as duas forem diferentes
+				double anos = maisPerto?.Dilatacao == 2 ? 1 : 2;
+				SalaNoUniverso? escolhida = SalaMaisPertoDe(pl, anos);
+				EscutaDeAvisos.Clear();
+				bool revelou = ConcederDoSuper(pl, pl, DaTabela(Desejos.IdDaSalaRevelada), anos.ToString(System.Globalization.CultureInfo.InvariantCulture));
+				string ouviuDoSuper = string.Join(" | ", EscutaDeAvisos);
+				Checa($"(o pedido 197) D4b. **...E REVELA A SALA ESCOLHIDA**: a de {SalaDePlaneta.TextoDaDilatacao(anos)} por dia mais perto de quem pede -- o nome e o setor",
+					  escolhida is { } es && Math.Abs(es.Dilatacao - anos) < 1e-9 && revelou && ouviuDoSuper.Contains(NomeDoMundo(es.Corpo))
+					  && ouviuDoSuper.Contains($"[{es.Sx}:{es.Sy}]"), $"{escolhida?.Corpo.Nome} ({escolhida?.Dilatacao}); {ouviuDoSuper}");
+				SalaNoUniverso? semEscolha;
+				SalaReveladaSemEscolhaDeTeste = true;
+				try { semEscolha = SalaMaisPertoDe(pl, anos); }
+				finally { SalaReveladaSemEscolhaDeTeste = false; }
+				Checa("   DEFEITO INJETADO (a busca ignora a escolha): devolve a sala mais perto de QUALQUER dilatacao -- a regua D4b reprovaria",
+					  semEscolha is { } sem && Math.Abs(sem.Dilatacao - anos) > 1e-9, $"{semEscolha?.Corpo.Nome} ({semEscolha?.Dilatacao})");
+				bool foraDaTabela = ConcederDoSuper(pl, pl, DaTabela(Desejos.IdDaSalaRevelada), "7");
+				Checa("(o pedido 197) D4c. ...e uma escolha fora da tabela (7 anos) e recusada sem gastar o pedido", !foraDaTabela);
+			}
+			finally
+			{
+				SalaReveladaSemEscolhaDeTeste = false;
+				pl.Mochila.Tirar(chave, 99);
+				EscutaDeAvisos = avisosDeFora;
 			}
 		}
 		catch (Exception ex)

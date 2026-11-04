@@ -150,12 +150,17 @@ public static class Drill
 	/// planeta pre-feito (500x500) guarda 2,5 milhoes e regenera 28,9 por segundo (os numeros de 2026-10-11,
 	/// com a reserva em lado^2 x 10; antes eram 500 mil e 5,8) -- so tres Drills do nivel 10 juntas tiram mais
 	/// do que ele repoe. Num mundo gerado pequeno (lado 192: 369 mil, 4,3 por segundo) uma do nivel 5 ja tira.
+	///
+	/// (2026-11-01, o pedido 217) E DEZ VEZES DE NOVO -- o dono: *"Drills tb vao ser 10x melhor"*: 100 por segundo por nivel. A reserva do
+	/// planeta decuplicou junto (`Recurso.RecursosPorCelula`, lado^2 x 100), entao as contas de cima continuam valendo, so com um zero a
+	/// mais dos dois lados.
 	/// </summary>
-	public const double TaxaPorNivel = 10.0;
+	public const double TaxaPorNivel = 100.0;
 
 	/// <summary>
 	/// QUANTAS HORAS DE TRABALHO CABEM NO ESTOQUE. Cheia, ela para -- e e o que obriga alguem a passar por
-	/// ela. O teto sobe junto com a taxa: nivel 1 guarda 216.000, nivel 10 guarda 2.160.000 (v0.3.0: a taxa e dez vezes a de antes).
+	/// ela. O teto sobe junto com a taxa: nivel 1 guarda 2.160.000, nivel 10 guarda 21.600.000 (2026-11-01, o pedido 217: a taxa e cem
+	/// vezes a de antes da v0.3.0).
 	/// </summary>
 	public const double HorasDeEstoque = 6.0;
 

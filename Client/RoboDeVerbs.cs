@@ -375,7 +375,7 @@ public partial class RoboDeVerbs : Node
 			("humano no espaço", Gente("Human", "Normal", Lugar.Espaco)),
 			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki, arma de fogo, um amor)",
 				Gente("Human", "Normal", terra, ofertas | Fatos.TemMestre | Fatos.TemAluno | Fatos.DirigeUmaFusao | Fatos.TemCopias | Fatos.GodKiDesperto
-											 | Fatos.TemArmaDeFogo | Fatos.TemUmAmor)),
+											 | Fatos.TemArmaDeFogo | Fatos.TemUmAmor | Fatos.MisticoLiberado)),   // (2026-10-29) o Mistico: o botao do pedido 153
 			("dono deste planeta", Gente("Human", "Normal", terra, Fatos.DominaEstePlaneta | Fatos.DominaAlgum)),
 			("Grande Ancião de Namek", Gente("Namekian", "Dragon clan", terra, cargos: ["elder"])),
 			("Rei de Vegeta", Gente("Saiyan", "Elite", terra, cargos: ["kov"])),

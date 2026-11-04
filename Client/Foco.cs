@@ -31,7 +31,8 @@ public static class Foco
 	// fosforo abria o menu (e levava o foco), o "T" do "Ti" abria o treino, o "M" do "Mg" a meditacao.
 	public static bool Digitando =>
 		Chat.Digitando || MenuJogo.Digitando || TelaDeTecnicas.Digitando || TelaDeTeclas.Digitando
-		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando || JanelaDaEstatua.Digitando || TelaDoEstudo.Digitando;
+		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando || JanelaDaEstatua.Digitando || TelaDoEstudo.Digitando
+		|| TelaDoKaiKai.Digitando;
 
 	/// <summary>
 	/// POSSO DISPARAR UM ATALHO AGORA? A pergunta dos ATALHOS -- menu, aba, mochila, interacao, chat,

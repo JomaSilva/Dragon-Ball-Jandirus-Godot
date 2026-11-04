@@ -49,6 +49,13 @@ public partial class GameServer
 	{
 		if (MarcosDeFormaDesligadosDeTeste || !EhJogador(pl) || pl.Forma is not { } forma) return;
 
+		// (2026-10-30, o pedido 184) o aviso que o login deixou (`RevisarOsMarcosNoLogin`): no primeiro tique o cliente ja tem chat
+		if (_avisoDosMarcosNoLogin.Remove(pl.Id, out string? doLogin) && doLogin != null) Avisar(pl, doLogin);
+
+		// (2026-10-30, o pedido 185) A METADE DO BLUE PAGA O BLUE KAIO-KEN: a maestria do Blue so sobe dentro dele, entao e no tique de quem esta
+		// no Blue que os 50% dela chegam -- os 50% do ki divino tem o tique deles (`TickDaMaestriaDivina`), e o save tem o login
+		if (forma.Atual == Catalogo.IdBlue) PagarOBlueKaioken(pl, avisar: true);
+
 		MarcoConcedido m = MarcosDeForma.Conferir(forma, pl.Ficha);
 		if (m.Multiplicador <= 0) return;
 
@@ -58,6 +65,69 @@ public partial class GameServer
 			  + $"todo ganho de poder agora é x{m.Multiplicador:0.##}.");
 		GD.Print($"[server] {pl.Name}: marco de forma ({(m.PelaFormaDeAgora ? "estreia" : "divida antiga")}) "
 			   + $"-> ganho x{m.Multiplicador:0.##} | marcos: {string.Join(",", pl.Ficha.bp_milestones_done)}");
+	}
+
+	// =====================================================================
+	// (2026-10-30, o pedido 184) OS NIVEIS DIVINOS: O BLUE KAIO-KEN E O LOGIN
+	// =====================================================================
+	/// <summary>
+	/// O AVISO QUE O LOGIN DEIXA PRO PRIMEIRO TIQUE: no `RestaurarFormaEDisciplina` o cliente ainda nao tem chat (o `JoinAccepted` vem
+	/// depois), entao a frase espera aqui e sai na primeira conferencia.
+	/// </summary>
+	private readonly Dictionary<int, string> _avisoDosMarcosNoLogin = [];
+
+	/// <summary>
+	/// OS MARCOS NO LOGIN. Os niveis divinos do dono subiram o valor de etiquetas que o save ja tinha (o ki divino de 5 pra 8, o Blue de 6 pra
+	/// 10, o SSJ4, o FP, o LSSJ3), e o `ReachMilestone` nao paga de novo o que ja esta na ficha: o ganho e revisto aqui, uma vez por entrada
+	/// (`Fighter.ReajustarOsMarcos`). E o Blue Kaio-ken de quem ja tinha passado dos 50% antes desta regra. SO NO LOGIN, e nao a cada tique:
+	/// bancada que zera o ganho pra medir (a `sala`, a `ganho`, a `gravmeta`) nao o ve voltar sozinho no meio da medida.
+	/// </summary>
+	private void RevisarOsMarcosNoLogin(ServerPlayer pl)
+	{
+		double revisto = pl.Ficha.ReajustarOsMarcos();
+		double kaioken = PagarOBlueKaioken(pl, avisar: false);
+		if (kaioken > 0)
+			_avisoDosMarcosNoLogin[pl.Id] = $"MARCO DE PODER! o seu ki divino chegou ao nível do Blue com Kaio-ken: todo ganho de poder agora é x{kaioken:0.##}.";
+		else if (revisto > 0)
+			_avisoDosMarcosNoLogin[pl.Id] = $"MARCO DE PODER! os patamares que você já tinha rompido valem mais agora: todo ganho de poder agora é x{revisto:0.##}.";
+	}
+
+	/// <summary>
+	/// QUEM TEM O BLUE KAIO-KEN: 50% de maestria divina (o dono: *"ao atingir 50% de god ki mastery ativa o milestone do blue kaioken"*) e o
+	/// Kaio-ken por cima do Blue -- o Saiyajin de classe baixa ou media (a mesma pergunta do veto do Kaio-ken, `Kaioken.VetoDaForma`) com a
+	/// METADE DO BLUE DOMADA (`MaestriaNoBlueDoKaioken`, o pedido 185) --, e a raca que ascende, cujo nivel do Blue com o Kaio-ken x20 e o mesmo
+	/// 56x (o pedido 183). As outras classes tem o 56x delas por forma (Blue Evolution, Rose 2, Beast, Limit Breaker), e o marco vem com a forma.
+	/// </summary>
+	private static bool TemOBlueKaioken(ServerPlayer pl)
+	{
+		if (pl.Ficha.godki is not { awakened: true } g || g.mastery < Catalogo.GodkiRoyalePct) return false;
+		if (Jandirus.Core.Races.Ascensao.Ascende(pl.Race, pl.Ficha.Class)) return true;
+		if (MaestriaDaForma(pl, Catalogo.IdBlue) < MaestriaNoBlueDoKaioken) return false;
+		return Jandirus.Core.Skills.Kaioken.VetoDaForma(Catalogo.Def(Catalogo.IdBlue), pl.Ficha.Class, g.mastery)
+			   == Jandirus.Core.Skills.Kaioken.Veto.Nenhum;
+	}
+
+	/// <summary>
+	/// (2026-10-30, o pedido 185) A METADE DO BLUE QUE O MARCO DO BLUE KAIO-KEN PEDE -- o dono: *"o blue kaioken e liberado (blue evolution tb)
+	/// quando vc tem o nivel certo de god ki e pelomenos 50% de maestria no ssj blue"*. A barra do Blue so sobe dentro dele, entao os 50% tambem
+	/// dizem que o Blue e deste corpo (a linhagem e a classe que o abrem): a pergunta pelo `Avaliar` que o 184 fazia saiu. A raca que ascende nao
+	/// tem Blue pra domar e fica so nos 50% de ki divino (escolha minha). E E SO O MARCO: a TECNICA do Kaio-ken no Blue continua abrindo com o
+	/// ki divino (`Kaioken.VetoDaForma`), e o Blue Evolution com o Grade 2.
+	/// </summary>
+	private const double MaestriaNoBlueDoKaioken = 50;
+
+	/// <summary>
+	/// Paga o marco do Blue Kaio-ken a quem o tem (`TemOBlueKaioken`) e devolve o novo multiplicador quando o ganho subiu, ou 0. Quem chama: o
+	/// tique da maestria divina ao cruzar os 50% (`TickDaMaestriaDivina`, so jogador), o tique de quem esta no Blue (`ConferirOsMarcosDeForma`,
+	/// o pedido 185) e o login.
+	/// </summary>
+	private double PagarOBlueKaioken(ServerPlayer pl, bool avisar)
+	{
+		if (!TemOBlueKaioken(pl)) return 0;
+		double m = pl.Ficha.ReachMilestone(Jandirus.Core.Stats.Milestones.BlueKaioken);
+		if (m > 0 && avisar)
+			Avisar(pl, $"MARCO DE PODER! o seu ki divino chegou ao nível do Blue com Kaio-ken: todo ganho de poder agora é x{m:0.##}.");
+		return m;
 	}
 
 	/// <summary>

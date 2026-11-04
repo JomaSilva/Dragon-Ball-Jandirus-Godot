@@ -168,6 +168,8 @@ public partial class GameServer
 		if (NegarAMorteDoSuperPerfeito(npc)) return true;
 		// (2026-10-20) E O ANDROIDE QUE O CELL CACA: o golpe dele que o mataria o derruba, pra ser absorvido -- ver `NegarAMorteDoAndroideDoCell`
 		if (NegarAMorteDoAndroideDoCell(npc)) return true;
+		// (2026-11-01, o pedido 218) O KI QUE MATARIA O FAT BOO OU O SUPER BOO vira a etapa seguinte -- ver `NegarAMorteDoBoo`.
+		if (NegarAMorteDoBoo(npc)) return true;
 		if (ChefeMorreAntesDaHoraDeTeste || npc.Papel is not { EhChefe: true } papel || papel.GatilhoAtual < 0) return false;
 		if (ChefesQueMorremAntesDaHora.Contains(papel.Molde.Id)) return false;
 		if (!LembrancaPodeSubir(npc)) return false;
@@ -267,6 +269,20 @@ public partial class GameServer
 			TrocarAparencias(npc);
 		}
 
+		// (2026-11-02, o pedido 229) O CORPO DO MAJIN BOO DO DEGRAU -- o Fat, o Super e o Kid, pelas folhas da saga do Majin jogador
+		// (`SagaDoBuu.IndiceDoCorpoDoBoo`), como o Cell veste as do bio e o Freeza as do Frost: do dado, pra QUALQUER corpo que entra no
+		// degrau. As folhas ja vem pintadas e vestidas: sem o tinto sorteado do Majin e sem roupa (a do absorvido entra por cima depois,
+		// `VestirAUltimaRefeicao`). So o desenho -- o que o degrau faz e da saga (`AjustarOBooAoDegrau`, no fim daqui).
+		int corpoDoBoo = SagaDoBuu.IndiceDoCorpoDoBoo(novo.CorpoDoBoo);
+		if (corpoDoBoo > 0)
+		{
+			npc.Visual.Corpo = corpoDoBoo;
+			npc.Visual.CorPele = null;
+			npc.Visual.Roupa.Clear();
+			npc.LookDoMajin = null;
+			TrocarAparencias(npc);
+		}
+
 		// O BP PINADO, e a normalizacao junto -- `bev_pin_bp` (BossEvents.dm:230) tambem enche o Ki:
 		// *"transformar renova o folego"*.
 		//
@@ -279,6 +295,10 @@ public partial class GameServer
 		npc.SigAtributos = "";
 
 		if (anunciar && novo.Anuncio.Length > 0) AnunciarNaZona(npc, novo.Anuncio);
+
+		// (2026-11-01, o pedido 218) O BOO DA SAGA: o golpe de cada degrau (o Super nao mata) -- ver `GameServer.SagaDoBuu.cs`. O desenho
+		// e do dado, logo acima (o pedido 229).
+		AjustarOBooAoDegrau(npc);
 
 		GD.Print($"[server] ROTEIRO: '{npc.Name}' entrou no degrau {papel.Estagio + 1}/"
 			   + $"{papel.Molde.Estagios.Length} | BP {npc.Ficha.BP:N0}"

@@ -3902,6 +3902,71 @@ public partial class GameServer
 						cacador.Pos = quem.Pos + new Vec2(70 * ZoneCollision.TileSize, 0);
 						Checa("...e alem de 60 tiles ele LARGA (o leash do `aggro_dist*2`)",
 							  PresaDoHostil(cacador) == null && cacador.PresaEngajada == 0);
+
+						// ============================ (2026-10-29, o pedido 152) QUEM ESCONDE O PODER ============================
+						// *"ao vc relaxar/esconder o poder de luta, eles n conseguiriam te achar , so de entrar dentro de um raio proximo deles, mas se
+						// vc estiver atras de paredes ou mt longe com poder escondido, eles n te achariam"*. O mesmo robo, relaxado: a 10 tiles (dentro
+						// dos 20 de notar) ninguem o acha; a 3, sim; e engajado, ele se perde de novo ao se afastar. A PAREDE: um ponto a ate 5 tiles do
+						// robo com muro no meio, achado no mapa da zona dele (o mesmo `PathBlocked` da vista).
+						// ===============================================================================================
+						const float lado = ZoneCollision.TileSize;
+						bool relaxadoAntes = quem.Ficha.relaxado;
+						quem.Ficha.relaxado = true;
+						try
+						{
+							cacador.PresaEngajada = 0;
+							cacador.Pos = quem.Pos + new Vec2(10 * lado, 0);
+							bool aDez = PresaDoHostil(cacador) == null;
+							cacador.PresaEngajada = 0;
+							cacador.Pos = quem.Pos + new Vec2(3 * lado, 0);
+							bool aTres = PresaDoHostil(cacador)?.Id == quem.Id;
+							cacador.Pos = quem.Pos + new Vec2(10 * lado, 0);
+							bool largou = PresaDoHostil(cacador) == null && cacador.PresaEngajada == 0;
+							Checa("(o pedido 152) **RELAXADO, O HOSTIL SO O ACHA DE PERTO**: a 10 tiles (dentro dos 20 de notar) ele nao o ve, a 3 ve -- "
+								  + "e engajado, o perde de novo ao se afastar a 10",
+								  aDez && aTres && largou, $"a 10: {aDez}; a 3: {aTres}; largou a 10: {largou}");
+
+							Jandirus.Core.World.ZoneCollision? mapa = MapaDaZonaOuCatalogo(quem.Zone);
+							Vec2? atrasDoMuro = null;
+							for (int raio = 2; raio <= 5 && atrasDoMuro == null && mapa != null; raio++)
+								for (int dx = -raio; dx <= raio && atrasDoMuro == null; dx++)
+									for (int dy = -raio; dy <= raio && atrasDoMuro == null; dy++)
+									{
+										var ponto = quem.Pos + new Vec2(dx * lado, dy * lado);
+										if (Vec2.Distance(ponto, quem.Pos) > 5 * lado) continue;
+										int cx = (int)(ponto.X / lado), cy = (int)(ponto.Y / lado);
+										if (!mapa.ServeDeChao(cx, cy) || !mapa.PathBlocked(ponto, quem.Pos)) continue;
+										atrasDoMuro = ponto;
+									}
+							Checa("(montagem, o pedido 152) ha um ponto a ate 5 tiles do robo com um muro no meio", atrasDoMuro != null);
+							if (atrasDoMuro is { } muro)
+							{
+								cacador.PresaEngajada = 0;
+								cacador.Pos = muro;
+								bool naoVeAtrasDoMuro = PresaDoHostil(cacador) == null;
+								quem.Ficha.relaxado = false;
+								cacador.PresaEngajada = 0;
+								bool veSemEsconder = PresaDoHostil(cacador)?.Id == quem.Id;
+								quem.Ficha.relaxado = true;
+								Checa("(o pedido 152) **...E ATRAS DE UMA PAREDE, NEM DE PERTO**: relaxado, a menos de 5 tiles com um muro no meio, ele nao o acha "
+									  + "-- e com o poder a vista, no mesmo lugar, acha",
+									  naoVeAtrasDoMuro && veSemEsconder, $"atras do muro: nao ve {naoVeAtrasDoMuro}; sem esconder ve {veSemEsconder}");
+							}
+
+							EscondidoAchadoDeLongeDeTeste = true;
+							cacador.PresaEngajada = 0;
+							cacador.Pos = quem.Pos + new Vec2(10 * lado, 0);
+							bool comDefeito = PresaDoHostil(cacador)?.Id == quem.Id;
+							EscondidoAchadoDeLongeDeTeste = false;
+							Checa("   (defeito injetado: o hostil acha quem esconde o poder de longe -- o jogo de antes) a 10 tiles ele o ve -- a regua de cima REPROVA",
+								  comDefeito);
+						}
+						finally
+						{
+							quem.Ficha.relaxado = relaxadoAntes;
+							EscondidoAchadoDeLongeDeTeste = false;
+							cacador.PresaEngajada = 0;
+						}
 					}
 					finally
 					{

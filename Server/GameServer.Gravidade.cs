@@ -190,7 +190,8 @@ public sealed partial class GameServer
 		if (g == null || obra == null) { Avisar(pl, "não há máquina de gravidade por perto."); return; }
 		// (2026-10-27, o pedido 136) A MAQUINA QUE JA ESTAVA NUMA SALA DO TEMPO nao liga mais (o dono: "Param de ligar"). Ela acorda
 		// desligada de todo reinicio (o `Grav` nao vai pro disco), entao recusar o ligar basta. Ver `LugarDeObra.AumentamOGanho`.
-		if (LugarDeObra.NaoRendeAqui(obra.Zona, obra.Tipo)) { Avisar(pl, LugarDeObra.NaoRendeNaSala); return; }
+		// (2026-10-29, o pedido 164) E A QUE JA ESTAVA NA ZONA SEGURA DE QUEM NASCE, pela mesma porta -- ver `PorQueNaoRende`.
+		if (PorQueNaoRende(obra) is { } naoRende) { Avisar(pl, naoRende); return; }
 
 		if (g.Energia <= 0) { Avisar(pl, "a máquina está sem bateria."); return; }
 		if (!obra.Aparafusada) { Avisar(pl, "aparafuse a máquina antes de usá-la."); return; }
@@ -438,6 +439,8 @@ public sealed partial class GameServer
 		foreach (Obra o in _noChao)
 		{
 			if (o.Gravidade is not { Grav: > 0, Energia: > 0 } g) continue;
+			// (2026-10-29, o pedido 164) a maquina na zona segura de quem nasce nao liga (`PorQueNaoRende`) -- e a que ja estava ligada para
+			if (PorQueNaoRende(o) != null) continue;
 			if (g.Cheias == null || agora >= g.EncheuEm + (long)(CampoDeGravidade.SegundosEntreEnchentes * 1000))
 				Encher(o, g, agora);
 			_camposLigados.Add(o);
@@ -458,6 +461,9 @@ public sealed partial class GameServer
 			}
 			// (2026-10-19) AO LEME O CAMPO NAO ALCANCA: o casco isola a gravidade de fora, a da maquina tambem -- ver `GameServer.Leme.cs`.
 			if (!LemeNoCampoDeTeste && CascoIsola(pl)) campo = 0;
+			// (2026-10-29, o pedido 164) NA ZONA SEGURA DE QUEM NASCE O CAMPO NAO PESA, venha de onde vier: a maquina posta logo do lado de fora
+			// alcancaria o ponto de nascimento (e quem morre pra gravidade renasceria nela). Ver `NaZonaSeguraDoNascimento`.
+			if (NaZonaSeguraDoNascimento(pl.Zone, pl.Pos)) campo = 0;
 
 			if (Math.Abs(pl.Ficha.gravmult - campo) < 0.001) continue;
 

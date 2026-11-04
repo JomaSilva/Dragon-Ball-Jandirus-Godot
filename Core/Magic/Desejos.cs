@@ -165,8 +165,17 @@ public static class Desejos
 	/// </summary>
 	public const int IdDoSetDoSuper = 2000;
 
-	/// <summary>`originator.BP+=originator.capcheck(originator.relBPmax/4)` (`WishTable.dm:208`).</summary>
-	public const double FracaoDoDesejoDePoder = 0.25;
+	/// <summary>
+	/// (2026-10-29) QUANTAS VEZES O BANCO DO POTENCIAL O DESEJO DE PODER SOLTA, pelo fator deste dragao (<c>FatorDoDragao</c> do servidor): o
+	/// dono, o pedido 156 -- *"pedir poder deveria mesclar com o pedido de pedir pra liberar o potencial [...] e nao so poder bruto, de
+	/// nenhuma esfera, esfera do dragao normal daria 1,5x a pool do potencial, black star 2x e super esfera 3x sendo a melhor"*. O Super (o
+	/// fator dele) solta 3x, as Black Star 2x, e o resto -- o Shenlong, o Porunga e os sets de jogador, de forca inteira ou dividida -- 1,5x.
+	/// Era o `BP += capcheck(relBPmax/4)` do DM vezes o fator: um jogador foi de 300 milhoes a 3 bilhoes num pedido das Black Star.
+	/// </summary>
+	public static double LiberacaoDoPoder(double fator) =>
+		fator >= MultiplicadorDoSuper ? Stats.GainKnobs.LiberaOSuper
+		: fator >= EsferasNegras.MultiplicadorDaBlackStar ? Stats.GainKnobs.LiberaABlackStar
+		: Stats.GainKnobs.LiberaODesejo;
 
 	/// <summary>`originator.genome.add_to_stat("Tech Modifier",2)` (`WishTable.dm:374`).</summary>
 	public const double PontosDeInteligencia = 2;
@@ -261,6 +270,13 @@ public static class Desejos
 				Nome = "Tecnologia", Patamar = 2,
 				Desc = "Um tratado que vale 100 x (sua tecnologia)² de estudo." },
 
+		// (2026-10-31, o pedido 196) A CHAVE DA SALA DO TEMPO -- sem par no DM. O dono: *"permita q esferas tb tenham desejo de dar essa
+		// chave"*. NESTA TABELA de proposito: o Shenron, o Porunga, os sets de jogador, as Black Star e o Super Shenlong (que copia a lista) a
+		// oferecem. Uma chave em qualquer dragao: e um item, e nao um numero que o fator multiplique.
+		new() { Id = IdDaChaveDaSala, Dm = "(regra do dono, 2026-10-31)", Linha = "sem par no DM -- o pedido 196",
+				Nome = "Chave da Sala do Tempo", Patamar = 2,
+				Desc = "Uma chave que abre a porta da Sala do Tempo sem a autorização do Guardião -- uma entrada, e ela quebra. A porta continua com as regras dela (os 2 primeiros dias do mundo ou os 20 milhões de BP), a lotação e a recarga." },
+
 		// -------------------------------------------------- TrueWishPower >= 3
 		new() { Id = "reviver", Dm = "Revive", Linha = "WishTable.dm:214-237",
 				Nome = "Ressuscitar alguém", Patamar = 3, Alvo = AlvoDoDesejo.Morto,
@@ -272,9 +288,17 @@ public static class Desejos
 				// uma das respostas da segunda etapa da janela (`GameServer.MenuDoDragao.cs`).
 				Desc = "O corpo volta aos 25 anos, o auge. Só pra si mesmo dá pra escolher 10 -- e 10 custa 9% do poder." },
 
-		new() { Id = "poder", Dm = "Power", Linha = "WishTable.dm:205-213",
+		// ============================ (2026-10-29) O PODER VIROU A LIBERACAO DO POTENCIAL -- o pedido 156 ============================
+		// O "Power" do DM (`BP += capcheck(relBPmax/4)`, vezes o fator do dragao) saiu: o dono, *"o pedido de ganho de poder ta muito apelao
+		// da blackstar, um jogador foi de 300m pra 3B com 1 pedido, pedir poder deveria mesclar com o pedido de pedir pra liberar o
+		// potencial"*. O "Liberar o meu potencial" (a regra do dono de 2026-10-13 e 2026-10-15, sem par no `WishTable.dm`) entrou nele e saiu
+		// da tabela: o banco do potencial se solta pelo fator do dragao (`LiberacaoDoPoder`), e o Namekuseijin ganha ainda o Potential
+		// Unleashed e o Orange -- o Orange GUARDADO enquanto o poder dele nao alcanca o do ki divino (o pedido 157). Quem decide o que cada um
+		// recebe e o servidor: `GameServer.Desejos.DesejoDePotencial` e `PorQueNaoLiberaOPotencial`. O bloqueio do criador do DM continua.
+		// ================================================================================================================
+		new() { Id = "poder", Dm = "Power", Linha = "WishTable.dm:205-213 (o efeito e a regra do dono de 2026-10-29)",
 				Nome = "Poder", Patamar = 3,
-				Desc = "Um quarto do que ainda cabe no seu teto de treino. O CRIADOR do set não pode pedir." },
+				Desc = "O dragão solta 1,5x o potencial que você guardou treinando e lutando -- poder bruto, nenhum. Um Namekuseijin ganha também o Potential Unleashed e o Orange. O CRIADOR do set não pode pedir." },
 
 		new() { Id = "inteligencia", Dm = "Intelligence", Linha = "WishTable.dm:372-375",
 				Nome = "Inteligência", Patamar = 3,
@@ -315,21 +339,6 @@ public static class Desejos
 		new() { Id = "super_saiyajin", Dm = "Super Saiyan", Linha = "WishTable.dm:409-455",
 				Nome = "Super Saiyajin", Patamar = 6, PedeSangueSaiyajin = true,
 				Desc = "Libera o Super Saiyajin. Quem já o tem ganha o SSJ2 -- mas só se alguém no mundo já o tiver alcançado." },
-
-		// ============================ REGRA DO DONO (2026-10-13 e 2026-10-15), SEM PAR NO `WishTable.dm` ============================
-		// (2026-10-13) *"adicione a forma "ORANGE" pros nameks, essa forma tem o mesmo buff do beast, porem vc aprende pedindo
-		// pras esferas pra liberar seu potencial"*. (2026-10-15, v0.3.0) *"shenlong poderia ter um desejo pra liberar o
-		// potencial, e caso seja feito por um namek ele ganha alem do potential unlocked, ele ganha a forma mistica e orange.
-		// pra pedir isso ele precisa ter o poder minimo de god ki dele [...] outras racas podem pedir unlock potential em
-		// qualquer momento, mas so ganham a liberacao de potencial, mais nada."* NO MESMO PATAMAR DO SUPER SAIYAJIN, e SEM
-		// PORTAO DE RACA: toda raca o ve. Quem decide o que cada um recebe (e quando o Namekuseijin pode pedir) e o servidor --
-		// `GameServer.Desejos.DesejoDePotencial` e `PorQueNaoLiberaOPotencial`.
-		// ================================================================================================================
-		new() { Id = "potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-13 e 2026-10-15 -- sem par no WishTable.dm",
-				Nome = "Liberar o meu potencial", Patamar = 6,
-				// (2026-10-26) o banco do potencial: o desejo o solta 1,5x (`GainKnobs.LiberaODesejo`); o "Aumentar o meu potencial", que
-				// somava uma parte de um ano de vida no estoque antigo, saiu do jogo com ele (o dono)
-				Desc = "O dragão solta o potencial que você guardou treinando e lutando: 1,5x do que está guardado. Um Namekuseijin com o poder do ki divino ganha também o Potential Unleashed e o Orange." },
 
 		// -------------------------------------------------- TrueWishPower >= 7 E Wishs <= 2
 		new() { Id = "reviver_todos", Dm = "Revive-All", Linha = "WishTable.dm:238-251",
@@ -432,6 +441,19 @@ public static class Desejos
 				Nome = "Reviver um guerreiro caído", Alvo = AlvoDoDesejo.Morto,
 				Desc = "Traz um morto de volta. Nem o Super Shenlong reverte a morte de velhice." },
 
+		// (2026-10-29, o pedido 169) O dono: *"Super esfera no lugar do pedido de restaurar um planeta, teria restaurar TODOS os planetas"*. Sem
+		// par no DM: o "Curar um planeta" do Shenron sai do menu do Super (`DoShenronQueOSuperNaoRepete`), e este entra no lugar.
+		new() { Id = IdDeRestaurarTodos, Dm = "(regra do dono, 2026-10-29)", Linha = "sem par no DM -- o pedido 169",
+				Nome = "Restaurar TODOS os planetas",
+				Desc = "Todo mundo destruído volta a existir, de uma vez." },
+
+		// (2026-10-31, o pedido 197) O dono: *"a super db vai ter um pedido pra ela revelar onde da qualquer sala do tempo procedural , assim
+		// podendo perguntar qual planeta tem a sala de 5 anos ou de 3 meses etc, o jogador escolhe"*. A escolha e a segunda etapa da janela
+		// (`GameServer.MenuDoDragao.cs`); o efeito, `GameServer.ChaveDaSala.cs`.
+		new() { Id = IdDaSalaRevelada, Dm = "(regra do dono, 2026-10-31)", Linha = "sem par no DM -- o pedido 197",
+				Nome = "Revelar uma Sala do Tempo",
+				Desc = "Você escolhe a sala -- de 3 meses a 5 anos lá dentro por dia daqui -- e o dragão revela o planeta mais perto de você que a esconde." },
+
 		new() { Id = "sdb_supremo", Dm = "Strongest in the Universe", Linha = "ProceduralSpace.dm:1631-1637",
 				Nome = "O Mais Forte do Universo (a VIDA por poder)",
 				Desc = "O DOBRO do maior poder do jogo, e UM ANO de vida. Quem PAGA precisa aceitar em pessoa." },
@@ -478,7 +500,12 @@ public static class Desejos
 	/// de dispensar), e os que ele ja tem na versao dele -- riqueza, reviver, aumentar o potencial, o supremo e o corpo Saiyajin.
 	/// </summary>
 	public static readonly HashSet<string> DoShenronQueOSuperNaoRepete =
-		["nada", "cancelar", "dinheiro", "reviver", "aumentar_potencial", "supremo", "corpo_saiyajin"];
+		["nada", "cancelar", "dinheiro", "reviver", "aumentar_potencial", "supremo", "corpo_saiyajin",
+		 // (2026-10-29, o pedido 169) e o "Curar um planeta": no lugar dele, o Super restaura TODOS (`IdDeRestaurarTodos`)
+		 "curar_planeta"];
+
+	/// <summary>(2026-10-29, o pedido 169) O desejo do Super que restaura todos os planetas destruidos de uma vez.</summary>
+	public const string IdDeRestaurarTodos = "sdb_restaurar_todos";
 
 	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): o Super so com os cinco dele, o jogo de antes.</summary>
 	public static bool SuperSoComOsDeleDeTeste;
@@ -500,7 +527,22 @@ public static class Desejos
 		new() { Id = IdDaDancaDaFusao, Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-23 -- sem par no WishTable.dm",
 				Nome = "Aprender a Dança da Fusão",
 				Desc = "O dragão te ensina a Dança da Fusão. Pra fundir, os dois precisam sabê-la, ser da mesma raça e ter poder parecido." },
+
+		// (2026-10-31, o pedido 197) O dono: *"Faça com q black star db tenha um pedido pra falar qual planeta mais proximo(sem ser a terra) q
+		// tem uma sala do tempo procedural"*. Toda sala procedural e de mundo sorteado: a Terra nunca entra (a dela e a do Guardiao).
+		new() { Id = IdDaSalaMaisProxima, Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-31 -- sem par no WishTable.dm (o pedido 197)",
+				Nome = "A Sala do Tempo mais próxima",
+				Desc = "O dragão diz qual é o planeta mais perto de você (fora a Terra) que esconde uma Sala do Tempo -- e quanto tempo passa lá dentro." },
 	];
+
+	/// <summary>(2026-10-31, o pedido 196) O id do desejo da Chave da Sala do Tempo -- o efeito (`GameServer.Conceder`) pergunta por ele.</summary>
+	public const string IdDaChaveDaSala = "chave_da_sala";
+
+	/// <summary>(2026-10-31, o pedido 197) O desejo das Black Star que diz a sala procedural mais proxima.</summary>
+	public const string IdDaSalaMaisProxima = "sala_mais_proxima";
+
+	/// <summary>(2026-10-31, o pedido 197) O desejo do Super Shenlong que revela a sala da dilatacao escolhida.</summary>
+	public const string IdDaSalaRevelada = "sdb_sala_do_tempo";
 
 	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): a janela com o texto fixo de cada desejo, os numeros do Shenron.</summary>
 	public static bool DescricaoFixaDeTeste;
@@ -526,8 +568,9 @@ public static class Desejos
 			// (2026-10-22, r2) "1 Marco", e nao "1 Marcos": a forca dividida da 1 Marco no set de 2 ou 3 pedidos
 			"marcos" => $"{marcos} {(marcos == 1 ? "Marco" : "Marcos")}. UMA VEZ por personagem, pra sempre.",
 			"tecnologia" => $"Um tratado que vale {Num(100 * fator)} x (sua tecnologia)² de estudo.",
-			"poder" => (fator == 1 ? "Um quarto do" : dividida ? $"{Vezes(FracaoDoDesejoDePoder * fator * 100)}% do"
-						: $"{Vezes(FracaoDoDesejoDePoder * fator)} vezes o") + " que ainda cabe no seu teto de treino."
+			// (2026-10-29) o banco do potencial pelo fator do dragao, e nunca dividido: um segundo pedido acharia o banco vazio
+			"poder" => $"O dragão solta {Vezes(LiberacaoDoPoder(fator))}x o potencial que você guardou treinando e lutando -- poder bruto, nenhum. "
+					   + "Um Namekuseijin ganha também o Potential Unleashed e o Orange (o Orange desperta quando o poder dele alcançar o do ki divino)."
 					   + (temCriador ? " O CRIADOR do set não pode pedir." : ""),
 			"inteligencia" => $"+{Vezes(PontosDeInteligencia * fator)} no seu multiplicador de aprendizado de tecnologia.",
 			"matar" when dividida => $"Mata quem for MAIS FRACO que {Vezes(fator * 100)}% do poder do set (a força de um pedido). Contra quem for mais forte, falha.",

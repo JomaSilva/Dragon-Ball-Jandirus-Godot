@@ -132,6 +132,57 @@ public sealed partial class GameServer
 		t.Combate.Nocautear(30);
 	}
 
+	/// <summary>
+	/// (2026-10-31, o pedido 201, a cena N7 do robo Tsufurujin) UM VEGETA CAIDO a `dx` tiles do robo: um Saiyajin de 50 milhoes, nocauteado --
+	/// o corpo que o Neo Tuffle toma de vez. Devolve o id, ou zero.
+	/// </summary>
+	internal int PalcoN_Vitima(int id, float dx)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return 0;
+		var vitima = new ServerPlayer
+		{
+			Id = IdBaseDoTuffleDeTeste + _tufflesDoPalco++, Peer = null, Name = "Vegeta", Race = "Saiyan", Genero = "Male", Idade = 30,
+			Zone = pl.Zone, Pos = MapaDaZonaOuCatalogo(pl.Zone)?.PontoLivrePerto(pl.Pos + new Vec2(dx * ZoneCollision.TileSize, 0))
+								  ?? pl.Pos + new Vec2(dx * ZoneCollision.TileSize, 0),
+			Conta = "palco_tuffle_vegeta", Slot = 0,
+			Ficha = new Fighter { Race = "Saiyan", BP = 50_000_000 },
+			Livro = new SkillBook(),
+		};
+		vitima.Ficha.Class = "Elite";
+		PorNoMundo(vitima);
+		vitima.Ficha.Tick(agoraMs: NowMs());
+		vitima.Combate.Nocautear(600);
+		TrocarAparencias(vitima);
+		return vitima.Id;
+	}
+
+	/// <summary>
+	/// (o pedido 201) O robo Neo Tuffle toma de vez o Vegeta caido, pelo `HospedarDeVez` de producao -- com o alvo dado: o Vegeta de palco nao
+	/// tem dono na tela, e o alcance de producao so aceita jogador conectado. Devolve se tomou.
+	/// </summary>
+	internal bool PalcoN_Hospedar(int id, int vitima)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || !_players.TryGetValue(vitima, out ServerPlayer? v)) return false;
+		HospedarDeVez(pl, v);
+		return HospedeiroPermanenteDe(pl) != null;
+	}
+
+	/// <summary>(o pedido 201) Crava o dominio da copia em que o robo esta -- o tique de producao (`DominarOHospedeiro`) faz o resto.</summary>
+	internal void PalcoN_Dominio(int id, double dominio)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl) && HospedeiroPermanenteDe(pl) != null) pl.Ficha.tuffle_dominio = dominio;
+	}
+
+	/// <summary>(o adendo 201d) O BP da copia em que o robo esta e o BP do roubo (zeros fora dela) -- a regua da cena N9.</summary>
+	internal (double Bp, double Roubado) PalcoN_Poder(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) && HospedeiroPermanenteDe(pl) != null ? (pl.Ficha.BP, pl.Ficha.tuffle_bp_roubado) : (0, 0);
+
+	/// <summary>(o pedido 201) Fim da cena: o robo sai da copia (ela cai morta), pelo `SairDoCorpo` de producao.</summary>
+	internal void PalcoN_SairDoHospedeiro(int id)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl) && HospedeiroPermanenteDe(pl) != null) SairDoCorpo(pl);
+	}
+
 	/// <summary>Quem possui o robo agora (0 = ninguem), e se o robo esta nocauteado.</summary>
 	internal (int PossuidoPor, bool Caido) PalcoN_Robo(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? pl) ? (pl.PossuidoPor, pl.Ficha.KO) : (0, false);

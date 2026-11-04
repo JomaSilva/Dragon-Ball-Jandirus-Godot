@@ -238,7 +238,7 @@ public partial class GameServer
 		if (pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe))
 		{ Avisar(pl, "nao da pra voar assim."); return; }
 
-		double custo = Voo.CustoParaLigar(HabilidadeDeVoo(pl), pl.VooRapido);
+		double custo = Voo.CustoParaLigar(HabilidadeDeVoo(pl), pl.VooRapido) * pl.Ficha.FatorDeKiDoEstado;   // (2026-11-01, o pedido 220) o morto paga 25% menos
 		if (pl.Ficha.Ki < custo) { Avisar(pl, "voce esta cansado demais pra voar."); return; }
 
 		pl.Ficha.Ki -= custo;

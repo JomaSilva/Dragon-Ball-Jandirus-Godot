@@ -114,6 +114,20 @@ public partial class MenuJogo
 			irACasa.Pressed += () => { if (MundoDaCasaDeBills() is { } casa) _mapa.VerOMundo(casa); };
 			barra.AddChild(irACasa);
 		}
+
+		// (2026-10-31, o pedido 198i) A MISSAO DA PATRULHA, so pra quem e da Patrulha (*"botao no nav system (so pra eles) que mira o planeta da
+		// missao"*): a carta vai ate o planeta e o seleciona. Ver `MenuJogo.Patrulha.cs`.
+		if (MundoDaMissaoDaPatrulha() != null)
+		{
+			var irAMissao = new Button
+			{
+				Text = "missão da Patrulha",
+				TooltipText = "leva a carta até o planeta da missão da Patrulha, e o seleciona",
+			};
+			irAMissao.AddThemeColorOverride("font_color", JornalGalactico.Ciano);
+			irAMissao.Pressed += () => { if (MundoDaMissaoDaPatrulha() is { } alvo) _mapa.VerOMundo(alvo); };
+			barra.AddChild(irAMissao);
+		}
 		cartaoDaCarta.AddChild(barra);
 		_conteudo.AddChild(_mapa);
 
@@ -180,13 +194,17 @@ public partial class MenuJogo
 		Nota("A cor do ponto e a classe da estrela, medida na propria arte dela. Aproximando, os mundos "
 			 + "aparecem: de longe um ponto (laranja tem mapa próprio, azul-acinzentado é gerado), de perto a arte "
 			 + "do mundo, a mesma que se vê do espaço, com um anel laranja nos de mapa próprio. Duplo clique num MUNDO viaja.", legenda);
-		Nota("O anel DOURADO em volta de um mundo gerado marca uma ATMOSFERA DIVINA: são raros, e quem tem poder de "
-			 + "base pra isso desperta o ki divino ficando neles.", legenda);
+		// (2026-10-29, o pedido 174) A CARTA NAO MARCA MAIS A ATMOSFERA DIVINA -- o dono: *"n deixe aparecer god ki planets no nav system"*. Sem
+		// o anel dourado (aqui e no mapa do sistema), sem a palavra na ficha e sem esta nota: o mundo divino se acha voando (o halo dele no
+		// espaco fica, pela palavra do dono de 2026-10-12) ou pousando (o aviso do chat).
 		if (cli.CasaDeBills.Revelada)
 			Nota("O anel ROXO marca o mundo onde o Bills mora: a gravidade de lá esmaga quem pousa sem preparo. "
 				 + "O botão \"casa de Bills\" da barra leva a carta até ele.", legenda);
 		Nota("A viagem leva o tempo que diz: o piloto anda no passo normal, nao teleporta. "
 			 + "Terra a Namek sao 7 dias in-game, como no anime.", legenda);
+		// (2026-10-29, o pedido 173) as marcas do Super Radar -- so quando ele as manda (`GameClient.SupersNoMapa`)
+		if (cli.SupersNoMapa.Count > 0)
+			Nota("Os pontos DOURADOS numerados são as SUPER ESFERAS que o seu Super Radar sente -- os apagados já têm dono.", legenda);
 
 		if (cli.NaveVista is { } nv)
 			Nota($"A carta está centrada na NAVE (em {nv.Zona}, casco {nv.CascoPct:0}%), e não em você. "
@@ -335,7 +353,7 @@ public partial class MenuJogo
 	/// Os dois lados saem de funcao PURA -- a tabela dos pre-feitos (`planetas.json`, o mesmo
 	/// arquivo que o servidor le) e a seed do gerado. Nenhum pacote de rede.
 	/// </summary>
-	private static string FichaDoPlaneta(Jandirus.Core.World.PlanetaNoEspaco p)
+	internal static string FichaDoPlaneta(Jandirus.Core.World.PlanetaNoEspaco p)
 	{
 		var zona = p.Premade
 			? Jandirus.Core.World.ZoneKey.Premade(p.Nome)
@@ -350,9 +368,8 @@ public partial class MenuJogo
 		if (!p.Premade)
 		{
 			Jandirus.Core.World.MundoProcedural m = Jandirus.Core.World.MundoProcedural.DaSeed(p.Seed, p.Nome);
-			// A ATMOSFERA DIVINA entra na ficha como a gravidade: e do mundo, sai da seed, e se sabe antes de ir.
+			// (2026-10-29, o pedido 174) A ATMOSFERA DIVINA SAIU DA FICHA: *"n deixe aparecer god ki planets no nav system"* -- ver a legenda
 			return $"mundo gerado · {m.Bioma} · gravidade {m.Gravidade:0.##}x · {ceu}"
-				 + (MundoDivino(p) ? " · ATMOSFERA DIVINA" : "")
 				 + (CasaDeBills(p) ? " · CASA DE BILLS" : "");
 		}
 		double g = Planetas.Catalogo?.De(p.Nome).Gravidade ?? 1;

@@ -530,9 +530,11 @@ public partial class GameServer
 
 				DragaoPara(raditz);
 				string[] semPergunta = [.. MenuDe(raditz).Entradas.Where(e => !e.Acao && e.Pode && !e.TemPergunta).Select(e => e.Id)];
-				// (v0.3.0) "Liberar o meu potencial" e de toda raca: o Saiyajin a ve acesa e o laco abaixo a pede. (O "Aumentar o meu
-				// potencial", que entrava ao lado dele, saiu do jogo em 2026-10-26 com o potencial antigo.)
-				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "potencial", "reviver_todos", "supremo"];
+				// (v0.3.0) "Liberar o meu potencial" era de toda raca, e o Saiyajin o via aceso. (2026-10-29) Ele entrou no "Poder" (o pedido
+				// 156): o laco abaixo pede o poder, que solta o banco do potencial. (O "Aumentar o meu potencial" saiu em 2026-10-26.)
+				// (2026-10-31, o pedido 196) e a Chave da Sala do Tempo: o laco a pede pela janela como as outras (a trava de conjunto da 5b)
+				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "reviver_todos", "supremo",
+									  Desejos.IdDaChaveDaSala];
 				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 10 linhas sem pergunta",
 					  semPergunta.ToHashSet().SetEquals(esperadas), string.Join(",", semPergunta));
 
@@ -568,9 +570,9 @@ public partial class GameServer
 				Checa($"JUVENTUDE \"Para mim, extremamente jovem\": {Desejos.IdadeDaJuventudeExtrema} anos",
 					  pediu && raditz.Idade == Desejos.IdadeDaJuventudeExtrema, $"pediu={pediu}, idade {raditz.Idade}");
 
-				// ---- "Liberar o meu potencial" (v0.3.0): TODA raca pede -- o Saiyajin ja o pediu no laco de cima e ganhou SO o
-				//      potencial; o Namekuseijin precisa do poder do ki divino dele, e ganha tambem o Mistico e o Orange
-				Checa("'Liberar o meu potencial' acendeu pro Saiyajin (toda raca pede) -- e ele ganhou SO o potencial: nem o Mistico nem o Orange",
+				// ---- O "Poder" (2026-10-29, os pedidos 156 e 157): a liberacao do potencial, de TODA raca -- o Saiyajin ja o pediu no laco de
+				//      cima e ganhou SO o potencial; o Namekuseijin ganha tambem o Mistico e o Orange (guardado abaixo do ki divino)
+				Checa("'Poder' acendeu pro Saiyajin (toda raca pede) -- e ele ganhou SO o potencial: nem o Mistico nem o Orange",
 					  raditz.Ficha.unlockPotential >= 1 && !raditz.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
 					  && !raditz.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange), $"potencial {raditz.Ficha.unlockPotential}");
 				DragaoPara(raditz);
@@ -578,36 +580,76 @@ public partial class GameServer
 				// motivo. Era "uma vez por vida". O laco acabou de solta-lo: o banco e reposto a mao (o que o treino guardaria).
 				raditz.Ficha.hiddenpotential = 500;
 				DragaoPara(raditz);
-				EntradaDoDragao? doSaiyajin = MenuDe(raditz).Entrada("potencial");
+				EntradaDoDragao? doSaiyajin = MenuDe(raditz).Entrada("poder");
 				bool acesaComBanco = doSaiyajin is { Pode: true };
 				raditz.Ficha.hiddenpotential = 0;
 				DragaoPara(raditz);
-				doSaiyajin = MenuDe(raditz).Entrada("potencial");
-				Checa("...e depois a linha dele SE REPETE: acesa enquanto ha potencial guardado, e APAGADA com o banco vazio, com o motivo",
+				doSaiyajin = MenuDe(raditz).Entrada("poder");
+				Checa("...e depois a linha dele SE REPETE: acesa enquanto ha potencial guardado, e APAGADA com o banco vazio, com o motivo -- poder bruto, nenhum",
 					  acesaComBanco && doSaiyajin is { Pode: false } && doSaiyajin.Motivo.Contains("potencial guardado", StringComparison.Ordinal),
 					  doSaiyajin == null ? "sem linha" : $"acesa com banco={acesaComBanco}; vazio: pode={doSaiyajin.Pode}, motivo={doSaiyajin.Motivo}");
 				ServerPlayer piccolo = Forjar("Piccolo", pl.Pos, terra, "bancada_menu_n");
 				forjados.Add(piccolo);
 				piccolo.Race = "Namekian"; piccolo.Ficha.Race = "Namekian";
+				piccolo.Livro?.DarComoEnsinada(Jandirus.Core.Social.AbsorcaoNamekuseijin.PathDaSkillDoSuperNamekuseijin);   // o laco de baixo so mede o presente
 				DragaoPara(piccolo);
-				EntradaDoDragao? potencial = MenuDe(piccolo).Entrada("potencial");
-				Checa("pro Namekuseijin SEM o poder do ki divino ela vem APAGADA, com o motivo -- e o motivo nao diz numero de poder",
-					  potencial is { Pode: false } && potencial.Motivo.Contains("ki divino", StringComparison.Ordinal) && !potencial.Motivo.Any(char.IsDigit),
-					  potencial == null ? "sem linha" : $"pode={potencial.Pode}, motivo={potencial.Motivo}");
+				EntradaDoDragao? poder = MenuDe(piccolo).Entrada("poder");
+				Checa("pro Namekuseijin SEM o poder do ki divino ela vem ACESA, sem pergunta (o pedido 157: ate 2026-10-29 vinha apagada)",
+					  poder is { Pode: true, TemPergunta: false }, poder == null ? "sem linha" : $"pode={poder.Pode}, motivo={poder.Motivo}");
+				pediu = Pedir(piccolo, "poder");
+				Checa("PODER pelo caminho da janela, abaixo do ki divino: o MISTICO passa a ser dele e o ORANGE fica GUARDADO, por um pedido",
+					  pediu && piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico) && !piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange)
+					  && piccolo.Ficha.orangeDoDragao.Length > 0 && set.Pedidos == 1,
+					  $"pediu={pediu}, guardado '{piccolo.Ficha.orangeDoDragao}', pedidos {set.Pedidos}");
+				DragaoPara(piccolo);
+				poder = MenuDe(piccolo).Entrada("poder");
+				Checa("...e com o presente guardado (e o banco vazio) a linha vem APAGADA, com o motivo do presente -- sem numero de poder",
+					  poder is { Pode: false } && poder.Motivo.Contains("presente", StringComparison.Ordinal) && !poder.Motivo.Any(char.IsDigit),
+					  poder == null ? "sem linha" : $"pode={poder.Pode}, motivo={poder.Motivo}");
 				piccolo.Ficha.BP = Math.Max(piccolo.Ficha.BP, RequisitoDeGodKi(piccolo));
+				ConferirODespertarDoSuperNamekuseijin(piccolo);
 				DragaoPara(piccolo);
-				potencial = MenuDe(piccolo).Entrada("potencial");
-				Checa("...e com o poder do ki divino ela acende, sem pergunta", potencial is { Pode: true, TemPergunta: false },
-					  potencial == null ? "sem linha" : $"pode={potencial.Pode}, motivo={potencial.Motivo}");
-				pediu = Pedir(piccolo, "potencial");
-				Checa("LIBERAR O POTENCIAL pelo caminho da janela: o potencial desperta e o MISTICO e o ORANGE passam a ser dele, por um pedido",
-					  pediu && piccolo.Ficha.unlockPotential >= 1 && piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
-					  && piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange) && set.Pedidos == 1,
-					  $"pediu={pediu}, potencial {piccolo.Ficha.unlockPotential}, pedidos {set.Pedidos}");
-				DragaoPara(piccolo);
-				potencial = MenuDe(piccolo).Entrada("potencial");
-				Checa("...e quem ja tem tudo ve a linha APAGADA, com o motivo", potencial is { Pode: false } && potencial.Motivo.Length > 10,
-					  potencial == null ? "sem linha" : $"pode={potencial.Pode}");
+				poder = MenuDe(piccolo).Entrada("poder");
+				Checa("...e quando o poder chega o Orange desperta -- e quem ja tem tudo ve a linha APAGADA, com o motivo",
+					  piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange) && poder is { Pode: false } && poder.Motivo.Length > 10,
+					  poder == null ? "sem linha" : $"orange {piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange)}; pode={poder.Pode}");
+
+				// ---- (2026-10-29, o pedido 168) O PEDIDO PRA OUTRA PESSOA: um conhecido online (a aba People)
+				raditz.Social.Fotografar(piccolo.Assinatura, piccolo.Name, piccolo.Race, "Male", 25, NowMs());
+				DragaoPara(raditz);
+				EntradaDoDragao? riqueza = MenuDe(raditz).Entrada("dinheiro");
+				bool perguntaPraQuem = riqueza is { Pode: true, Pergunta: "Pra quem?" }
+									   && riqueza.Escolhas.Exists(c => c.Pedido == "dinheiro" && c.Rotulo == ParaMim && c.Pode)
+									   && riqueza.Escolhas.Exists(c => c.Pedido == $"dinheiro #{piccolo.Id}" && c.Pode);
+				double zeniDele = piccolo.Ficha.Zeni, zeniMeu = raditz.Ficha.Zeni;
+				pediu = Pedir(raditz, "dinheiro", resposta: piccolo.Name);   // a linha e a resposta pelo rotulo, como a janela
+				Checa("(o pedido 168) **O PEDIDO VAI PRA UM CONHECIDO ONLINE**: a Riqueza pergunta 'pra quem?' (voce e quem voce conhece), e o zeni cai na "
+					  + "mao dele -- e nao na sua, por um pedido",
+					  perguntaPraQuem && pediu && piccolo.Ficha.Zeni > zeniDele && raditz.Ficha.Zeni == zeniMeu && set.Pedidos == 1,
+					  $"pergunta {perguntaPraQuem}; pediu {pediu}; zeni dele {zeniDele:N0} -> {piccolo.Ficha.Zeni:N0}, meu {zeniMeu:N0} -> {raditz.Ficha.Zeni:N0}");
+
+				raditz.Ficha.wishedpoints = Desejos.MarcosDoDesejo;
+				piccolo.Ficha.wishedpoints = 0;
+				DragaoPara(raditz);
+				EntradaDoDragao? marcos = MenuDe(raditz).Entrada("marcos");
+				bool soEle = marcos is { Pode: true } && marcos.Escolhas.Exists(c => c.Rotulo == ParaMim && !c.Pode)
+							 && marcos.Escolhas.Exists(c => c.Pedido == $"marcos #{piccolo.Id}" && c.Pode);
+				pediu = Pedir(raditz, "marcos", resposta: piccolo.Name);
+				Checa("(o pedido 168) ...e quem ja pediu os Marcos dele ainda os pede PRA UM AMIGO: o 'pra mim' apagado, o dele aceso -- e os marcos vao pra ele",
+					  soEle && pediu && piccolo.Ficha.wishedpoints > 0, $"so ele {soEle}; pediu {pediu}; marcos dele {piccolo.Ficha.wishedpoints}");
+
+				ServerPlayer estranho = Forjar("Estranho", pl.Pos, terra, "bancada_menu_x");
+				forjados.Add(estranho);
+				DragaoPara(raditz);
+				double zeniDoEstranho = estranho.Ficha.Zeni;
+				// O CLIENTE ADULTERADO: a janela nem oferece quem voce nao conhece, entao o verbo vai cru, com o "#id" dele -- quem
+				// recusa e o servidor (`QuemRecebe`), e e ele que esta regua mede
+				Mandar(raditz, MenuDe(raditz).Entrada("dinheiro")?.Verbo ?? "db_desejar", $"dinheiro #{estranho.Id}");
+				bool foiProEstranho = estranho.Ficha.Zeni != zeniDoEstranho;
+				Checa("(o pedido 168) ...e quem voce NAO conhece nao recebe: o pedido e recusado, e nada se gasta",
+					  !foiProEstranho && estranho.Ficha.Zeni == zeniDoEstranho && set.Pedidos == 0,
+					  $"foi {foiProEstranho}; zeni {zeniDoEstranho:N0} -> {estranho.Ficha.Zeni:N0}; pedidos {set.Pedidos}");
+				raditz.Ficha.wishedpoints = 0;
 
 				// A TRAVA DE CONJUNTO: desejo novo na tabela sem prova pelo caminho da janela deixa esta linha vermelha.
 				string[] semProva = [.. Desejos.Todos.Where(d => d.Portado && d.Id != "cancelar").Select(d => d.Id).Where(id => !pelaJanela.Contains(id))];

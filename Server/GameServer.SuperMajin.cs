@@ -23,6 +23,8 @@ public partial class GameServer
 	/// </summary>
 	private static bool SubirPeloPoder(ServerPlayer pl, string id, double ganho, out string marco)
 	{
+		// (2026-10-29, o pedido 163) O SSG DO RITUAL DOS CINCO NAO ENSINA NADA: a barra dele nao anda enquanto o ritual dura
+		if (pl.RitualDeusAte > 0 && id == IdDoSsgDoRitual) { marco = ""; return false; }
 		if (id != SuperMajin.Id) return pl.Forma.Maestria.Subir(id, ganho, out marco);
 
 		double teto = SuperMajin.TetoDaMaestria(pl.Ficha.BP, pl.Forma);

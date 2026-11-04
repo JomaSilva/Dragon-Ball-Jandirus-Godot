@@ -226,6 +226,10 @@ public partial class GameServer
 			// (2026-10-27) O YARDRAT NASCE POVOADO (o pedido 109) -- ver `GameServer.Yardrat.cs`
 			PovoarOYardrat(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed));
 
+			// (2026-11-02, o pedido 227) E O MUNDO COM CIVILIZACAO NASCE COM O POVO DELE, na cidade que o chao ja trouxe -- ver
+			// `GameServer.Civilizacao.cs`. AQUI, antes de o `TerrenoGerado` ser solto: a cidade sai dele.
+			PovoarACivilizacao(g.Ficha, t);
+
 			// A ASSINATURA VAI NO LOG DE PROPOSITO. E o unico jeito barato de descobrir que cliente e
 			// servidor divergiram: o numero daqui tem que bater com o que o cliente imprime ao entrar.
 			//
@@ -251,7 +255,9 @@ public partial class GameServer
 
 		var mortas = new List<ulong>();
 		foreach (ulong hash in _zonasGeradas.Keys)
-			if (!_zones.TryGetValue(hash, out List<ServerPlayer>? gente) || gente.Count == 0)
+			// (2026-11-02, o pedido 227) o mundo em que so ficou o POVO DA CIDADE tambem e vazio: ele sai com o mundo e volta com ele
+			// (`DescarregarOMundoGerado`) -- senao todo mundo com civilizacao visitado ficaria na memoria ate a parada
+			if (!_zones.TryGetValue(hash, out List<ServerPlayer>? gente) || gente.Count == 0 || SoOPovoDaCidade(gente))
 				mortas.Add(hash);
 
 		foreach (ulong hash in mortas) DescarregarOMundoGerado(hash);
@@ -268,6 +274,8 @@ public partial class GameServer
 		_zonasGeradas.Remove(hash);
 		ArrancarPomar(hash);   // as macieiras do mundo saem com ele, e renascem com ele -- ver `GameServer.Pomar.cs`
 		FecharAPortaDaSala(hash);   // ...e a porta da Sala do Tempo dele tambem -- ver `GameServer.SalasDePlaneta.cs`
+		_cidades.Remove(hash);      // ...e a cidade e o povo dela, que renasce com o mundo -- ver `GameServer.Civilizacao.cs`
+		foreach (ServerPlayer p in ZoneList(hash).Where(EhDoPovoDaCidade).ToList()) RemoverNpc(p);
 	}
 
 	/// <summary>

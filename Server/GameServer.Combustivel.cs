@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -30,6 +31,9 @@ namespace Jandirus.Server;
 ///
 /// O TANQUE SO VAI PRA MOCHILA CHEIO (`PegarNave`): o item nao guarda estado e a nave assentada nasce cheia -- recolher e assentar seria
 /// abastecer de graca em qualquer lugar.
+///
+/// (2026-10-31, o pedido 209) O TANQUE CRESCE: o verbo `nave_tanque` sobe um degrau (<see cref="MelhorarOTanque"/>), e todo "cheio"
+/// daqui pergunta pelo tanque DESTA nave (<see cref="CapacidadeDe"/>), e nao pelo de fabrica.
 /// </summary>
 public partial class GameServer
 {
@@ -62,7 +66,10 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>O TANQUE DESTA NAVE agora. O campo negativo e "cheio de fabrica" (ver `Nave.Tanque`); quem nao tem tanque tem zero.</summary>
 	private static double NivelDoTanque(Nave n) =>
-		!Combustivel.TemTanque(n.Tipo) ? 0 : n.Tanque < 0 ? Combustivel.Capacidade(n.Tipo) : n.Tanque;
+		!Combustivel.TemTanque(n.Tipo) ? 0 : n.Tanque < 0 ? CapacidadeDe(n) : n.Tanque;
+
+	/// <summary>(2026-10-31, o pedido 209) O TANQUE CHEIO DESTA NAVE: o de fabrica e os degraus que ela comprou.</summary>
+	private static double CapacidadeDe(Nave n) => Combustivel.Capacidade(n.Tipo, n.DegrausDoTanque);
 
 	/// <summary>Esta nave tem tanque, e ele secou? (O foguete, sem tanque, nunca esta vazio.)</summary>
 	private static bool TanqueVazio(Nave n) => Combustivel.TemTanque(n.Tipo) && NivelDoTanque(n) <= 0;
@@ -178,8 +185,8 @@ public partial class GameServer
 		if (n == null) { Avisar(pl, "não há nenhuma nave por perto pra abastecer."); return; }
 		if (!Combustivel.TemTanque(n.Tipo)) { Avisar(pl, $"{NomeDaNave(n)} não usa combustível."); return; }
 
-		double nivel = NivelDoTanque(n), capacidade = Combustivel.Capacidade(n.Tipo);
-		if (Combustivel.Cheio(n.Tipo, nivel)) { Avisar(pl, $"o tanque de {NomeDaNave(n)} já está cheio ({capacidade:N0})."); return; }
+		double nivel = NivelDoTanque(n), capacidade = CapacidadeDe(n);
+		if (Combustivel.Cheio(n.Tipo, nivel, n.DegrausDoTanque)) { Avisar(pl, $"o tanque de {NomeDaNave(n)} já está cheio ({capacidade:N0})."); return; }
 
 		double falta = Math.Ceiling(capacidade - nivel);
 		double cabeNoBolso = Math.Floor(pl.Ficha.Recursos / Combustivel.RecursosPorUnidade);
@@ -201,12 +208,52 @@ public partial class GameServer
 		n.Tanque = Math.Min(capacidade, nivel + unidades);
 		_pilotosSemCombustivel.Remove(n.PilotoId);
 		GravarNaves();
-		Avisar(pl, Combustivel.Cheio(n.Tipo, n.Tanque)
+		Avisar(pl, Combustivel.Cheio(n.Tipo, n.Tanque, n.DegrausDoTanque)
 			? $"você enche o tanque de {NomeDaNave(n)}: {unidades:N0} de combustível por {custo:N0} recursos."
 			: $"você põe {unidades:N0} de combustível em {NomeDaNave(n)} ({custo:N0} recursos): o tanque fica em "
 			  + $"{n.Tanque:N0} de {capacidade:N0} -- os recursos acabaram antes de encher.");
 		GD.Print($"[server] {pl.Name} abasteceu a nave #{n.Id} com {unidades:0} ({custo:0} recursos) -> {n.Tanque:0}/{capacidade:0}");
 		MandarCombustivelDaNave(n);
+	}
+
+	// =====================================================================
+	// (2026-10-31, o pedido 209) O TANQUE MAIOR -- o verbo `nave_tanque`
+	// =====================================================================
+	/// <summary>
+	/// SOBE UM DEGRAU DO TANQUE (`Combustivel.DegrausDoTanque`). O dono: *"adicione uma forma de melhoria na pod e capital ship de aumentar o
+	/// tanque de combustivel"*. As portas sao as da velocidade (`MelhorarNave`): a nave grande pela ponte ou por dentro, o pod de fora ou
+	/// ao leme; o dono, ou quem chegar se ele a liberou; o teto da tecnologia de quem paga (`TetoPorTecnologia.DegrausDoTanque`); e zeni
+	/// ou o dobro em recursos, pela palavra no fim do pedido (`CobrarOuExplicar`).
+	///
+	/// O ESPACO NOVO VEM VAZIO: o tanque cresce e o combustivel que havia continua o mesmo -- o "cheio de fabrica" (o campo negativo) vira
+	/// o numero de antes ANTES do degrau, senao a melhoria encheria o tanque maior de graca, e o combustivel que o dono pediu pra obrigar
+	/// o pouso viraria uma compra de zeni.
+	/// </summary>
+	private void MelhorarOTanque(ServerPlayer pl, string pedido)
+	{
+		Nave? n = NaveDaPonteDe(pl) ?? NaveDesteInterior(pl) ?? MinhaNaveOuPerto(pl);
+		if (n == null) { Avisar(pl, "não há nenhuma nave por perto."); return; }
+		if (!Combustivel.TemTanque(n.Tipo)) { Avisar(pl, $"{NomeDaNave(n)} não usa combustível."); return; }
+		if (!MexeNaNaveComoDono(n, pl, semDonoEDeTodos: true)) { Avisar(pl, $"{NomeDaNave(n)} é de {n.DonoNome}."); return; }
+		if (n.DegrausDoTanque >= Combustivel.DegrausDoTanque)
+		{ Avisar(pl, $"o tanque de {NomeDaNave(n)} já está no limite ({CapacidadeDe(n):N0} de combustível)."); return; }
+		// O TETO DE QUEM PAGA: a recusa vem antes da cobranca, e a nave que ja passou dele continua como esta (a regra da velocidade).
+		int teto = TetoPorTecnologia.DegrausDoTanque(pl.Ficha.techskill);
+		if (n.DegrausDoTanque >= teto)
+		{ Avisar(pl, TetoPorTecnologia.Recusa($"o tanque de {NomeDaNave(n)}", pl.Ficha.techskill, $"degrau {teto}", proporcional: true)); return; }
+
+		double custo = Combustivel.CustoDoDegrau(n.Tipo, n.DegrausDoTanque);
+		Moeda moeda = Recurso.LerPedidoPago(pedido).Moeda;
+		if (!CobrarOuExplicar(pl, custo, moeda, "o próximo degrau do tanque")) return;
+
+		n.Tanque = NivelDoTanque(n);   // o espaco novo vem vazio -- ver acima
+		n.DegrausDoTanque++;
+		GravarNaves();
+		MandarCombustivelDaNave(n);   // a barra de quem pilota (ou observa) mostra o tanque novo na hora
+		Avisar(pl, $"o tanque de {NomeDaNave(n)} agora leva {CapacidadeDe(n):N0} de combustível (degrau {n.DegrausDoTanque} de "
+				   + $"{Combustivel.DegrausDoTanque}, {Recurso.PrecoEscrito(custo, moeda)}): cheio, ele vai {Combustivel.TilesDeAlcance(n.Tipo, n.DegrausDoTanque):N0} "
+				   + "tiles. O espaço novo vem vazio -- abasteça pra enchê-lo.");
+		GD.Print($"[server] {pl.Name} melhorou o tanque da nave #{n.Id} pro degrau {n.DegrausDoTanque} ({CapacidadeDe(n):0})");
 	}
 
 	// =====================================================================
@@ -230,7 +277,7 @@ public partial class GameServer
 		w.Put(modo);
 		w.Put(n != null ? NomeDaNave(n) : "");
 		w.Put((float)(n != null ? NivelDoTanque(n) : 0));
-		w.Put((float)(n != null ? Combustivel.Capacidade(n.Tipo) : 0));
+		w.Put((float)(n != null ? CapacidadeDe(n) : 0));
 		w.Put((float)(n?.GastoPorSegundo ?? 0));
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}

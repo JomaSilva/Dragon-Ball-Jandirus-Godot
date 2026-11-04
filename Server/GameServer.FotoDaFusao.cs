@@ -198,6 +198,23 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// (2026-11-01, o pedido 211) OS DOIS SE DECLARAM "RIVAL AMIGO" UM DO OUTRO -- pelo funil do `Convivio` (conhecer, o convivio que a
+	/// declaracao pede e declarar), o que o jogador faz na aba People. Devolve se as duas declaracoes ficaram feitas. So o robo
+	/// `--diagfusaorival`.
+	/// </summary>
+	internal bool RivaisNaFotoDeFusao(int idA, int idB)
+	{
+		if (!_players.TryGetValue(idA, out ServerPlayer? a) || !_players.TryGetValue(idB, out ServerPlayer? b)) return false;
+		bool Declarar(ServerPlayer de, ServerPlayer para)
+		{
+			de.Social.Fotografar(para.Assinatura, para.Name, para.Race, para.Genero, para.Idade, NowMs());
+			de.Social.SomarFamiliaridade(para.Assinatura, Convivio.FamiliaridadeExigida(Relacao.RivalBom));
+			return de.Social.Declarar(para.Assinatura, Relacao.RivalBom) == Declaracao.Feita;
+		}
+		return Declarar(a, b) & Declarar(b, a);
+	}
+
+	/// <summary>
 	/// O QUE A FOTO PRECISA LER DE UM CORPO -- e **nada disto e escrito por esta bancada**.
 	///
 	/// A roupa sai do <see cref="ServerPlayer.LookDeFusao"/> quando ha fusao e do `Visual` quando nao

@@ -615,6 +615,18 @@ public sealed partial class GameServer
 				  !_invocacoes.ContainsKey(set.Id) && set.Ciclo == cicloAntes + 1 && espalhadas >= Esferas.Total - 1,
 				  $"ciclo {cicloAntes} -> {set.Ciclo}; {espalhadas} espalhadas");
 
+		// (2026-10-29, o pedido 155) O SLOT INVOCA: o botao "Invocar o dragão" de uma esfera na mochila chama o mesmo funil do INVOCAR
+		AsSeteNaMao();
+		string slotDoUm = new EsferaNaMochila(set.Id, 1, Apagada: false, DeNamek: false).Id;
+		EscutaDaMochila!.Clear();
+		List<string> peloSlot = Ouvir(() => Verbo(pl, "item_invocar", slotDoUm));
+		AfirmarEm("H4. (pedido 155) **O SLOT INVOCA**: \"Invocar o dragão\" numa esfera da mochila sobe o dragao, e as sete vao pro chao aos pes (a mochila vai sem elas)",
+				  _invocacoes.ContainsKey(set.Id) && QuantasCarrega(pl.Id) == 0 && sete.All(e => AosPes(e, pl)) && UltimaMochilaQueSaiu(pl) is { Esferas.Count: 0 },
+				  $"dragao {_invocacoes.ContainsKey(set.Id)}; na mao {QuantasCarrega(pl.Id)}; {Ultimos(peloSlot)}");
+		AfirmarEm("H5. ...e o botao esta na ficha da esfera, que a tela le -- na comum e na Black Star",
+				  new EsferaNaMochila(set.Id, 1, false, false).Ficha.AcoesDoItem.Contains(EsferaNaMochila.AcaoInvocar)
+				  && new EsferaNaMochila(EsferasNegras.IdDoSet, 3, false, false) { Negra = true }.Ficha.AcoesDoItem.Contains(EsferaNaMochila.AcaoInvocar));
+
 		AsSeteNaMao();
 		InvocacaoDeixaNaMochilaDeTeste = true;
 		bool comDefeito;

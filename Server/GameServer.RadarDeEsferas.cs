@@ -96,6 +96,7 @@ public sealed partial class GameServer
 		{
 			if (e.Zona.Hash != pl.Zone.Hash && !RadarVeOutroMundoDeTeste) continue;
 			if (SetPorId(e.Set) is not { } s || (!SetAtivo(s) && !RadarVeApagadaDeTeste)) continue;
+			if (!VeOSet(pl, s)) continue;   // (2026-10-31, o pedido 195) com as esferas por jogador, so as da copia dele
 			if (sinais.Count >= RadarDeEsferas.TetoDeSinais) break;
 
 			if (e.Portador != 0 && _players.TryGetValue(e.Portador, out ServerPlayer? quem))

@@ -48,7 +48,8 @@ public partial class GameServer
 	/// <summary>O Ki de uma viagem deste corpo: o de sempre, e a maestria multiplica (<see cref="TransmissaoEmNiveis.KiComMaestria"/>).</summary>
 	private static double KiDaTransmissao(ServerPlayer pl)
 	{
-		double semMaestria = KireqSemMaestria(pl.Ficha);
+		// (2026-11-01, o pedido 220) o morto paga 25% menos (`Fighter.FatorDeKiDoEstado`)
+		double semMaestria = KireqSemMaestria(pl.Ficha) * pl.Ficha.FatorDeKiDoEstado;
 		return MaestriaDoItNaoBaixaOKiDeTeste ? semMaestria : TransmissaoEmNiveis.KiComMaestria(semMaestria, pl.Ficha.MaestriaDaTransmissao);
 	}
 

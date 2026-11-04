@@ -584,6 +584,7 @@ public sealed partial class GameServer
 		ArteDeKi arte = r.Arte != ArteDeKi.Nenhuma
 			? r.Arte
 			: ArteDeProjetil.De(verbo, pl.Race, pl.Class, SementeDeArte(pl));
+		arte = ArteDasBolasDoBills(pl, r, arte);   // (2026-10-30, o pedido 181) as bolas de ki do Bills vestem a esfera do Hakai, pequena
 
 		var p = new Projetil
 		{
@@ -627,6 +628,8 @@ public sealed partial class GameServer
 			DoLimite = doLimite,   // (2026-10-19) o raio do Shattering the Limit nasce vermelho -- ver `Projetil.DoLimite`
 			ZonaCerta = r.ZonaCerta,
 			Dom = r.Dom,
+			Engole = r.Engole,                       // (2026-10-30, o pedido 181) a Destroyer Sphere -- ver `ReceitaDeProjetil.Engole`
+			VantagemNoEmbate = r.VantagemNoEmbate,   // ...e a vantagem dela numa colisao de ki
 			Colossal = r.Colossal,   // (v0.3.0) a Genkidama -- ver `ReceitaDeProjetil.Colossal`
 			// `A.transform *= wavemult` (`beams.dm:149`) -- a OUTRA metade do `wavemult`, a que
 			// engorda o sprite. Ver `Projetil.EscalaVisual` sobre por que ela nao mora no `Bp`.
@@ -1766,7 +1769,8 @@ public sealed partial class GameServer
 		// A ESCADA POR DIFERENCA DE PODER (dono, 2026-10-12) -- ver `KiContraCorpo`. A razao e medida UMA vez por
 		// impacto: o poder expresso de quem leva contra o poder do tiro.
 		double razao = KiContraCorpo.Razao(alvo.Ficha.expressedBP, p.Bp);
-		bool vaiSerLevado = !KiContraCorpo.RegraDeAntesDeTeste && KiContraCorpo.Arrasta(razao)
+		// (2026-10-30, o pedido 181) ...menos a esfera que ENGOLE (a Destroyer Sphere): ela leva quem fere, mais fraco ou nao
+		bool vaiSerLevado = !KiContraCorpo.RegraDeAntesDeTeste && (KiContraCorpo.Arrasta(razao) || p.Engole)
 							&& p.PodeArrastar() && PodeSerLevadoPeloFeixe(alvo);
 		// LEVANDO O CORPO, cada batida cobra so uma fracao: o grosso do dano e o da explosao no fim do alcance.
 		if (vaiSerLevado) dano *= KiContraCorpo.FracaoDaBatidaNoArrasto;
@@ -1987,9 +1991,12 @@ public sealed partial class GameServer
 		//     * A BOLA continua empurrando de perto, como sempre (o corpo morto tambem voa, ver `--cadaverteste` 5).
 		else if (vaiSerLevado)
 		{
-			p.FatorDoArrasto = KiContraCorpo.FatorDoArrasto(razao, cd.Bloqueando);
+			// (2026-10-30, o pedido 181) A ESFERA QUE ENGOLE: quem ela fere vai pro MEIO dela, na velocidade DELA, e preso la dentro --
+			// defendendo ou nao, mais fraco ou nao (a parede ja saiu la em cima). Ver `ReceitaDeProjetil.Engole` e `EngolirNaEsfera`.
+			if (p.Engole && p.Arrastando != alvo.Id) EngolirNaEsfera(p, alvo);
+			p.FatorDoArrasto = p.Engole ? 1 : KiContraCorpo.FatorDoArrasto(razao, cd.Bloqueando);
 			ComecarArrasto(p, alvo);
-			if (KiContraCorpo.Atordoa(razao, cd.Bloqueando)) cd.Stun = Math.Max(cd.Stun, 2 * Projetil.SegundosPorCicloDeBeam);
+			if (p.Engole || KiContraCorpo.Atordoa(razao, cd.Bloqueando)) cd.Stun = Math.Max(cd.Stun, 2 * Projetil.SegundosPorCicloDeBeam);
 		}
 		else if (p.Tipo == TipoDeProjetil.Beam && !p.EstouraComoBola)
 		{
@@ -2677,6 +2684,19 @@ public sealed partial class GameServer
 		   // mesmo motivo, do `Arremessar`.
 		   && !_emEmbateDeKi.ContainsKey(alvo.Id)
 		   && _players.ContainsKey(alvo.Id);   // vivo ou morto: o feixe carrega o corpo que esta na frente
+
+	/// <summary>
+	/// (2026-10-30, o pedido 181) QUEM A ESFERA DE DESTRUICAO ENGOLE VAI PRO MEIO DELA -- o dono: *"o inimigo vai ficar dentro da esfera
+	/// sendo levado junto com ela"*. Uma vez, no contato: dali o arrasto o leva colado (o <see cref="ArrastarComOFeixe"/> anda o corpo o que a
+	/// esfera andou). Se o meio dela e um chao que este corpo nao pisa (o muro que ela passa por cima no ar, a agua de quem esta a pe), ele
+	/// fica onde encostou -- ainda dentro dela, que o toque ja e na borda.
+	/// </summary>
+	private void EngolirNaEsfera(Projetil p, ServerPlayer alvo)
+	{
+		if (MapaDaZonaOuCatalogo(alvo.Zone) is { } mapa
+			&& MoveRules.Occupied(mapa, p.Pos, Voo.ModoNaAltura(alvo.Altitude, ModoDeTravessiaDe(alvo)))) return;
+		alvo.Pos = p.Pos;
+	}
 
 	/// <summary>
 	/// A CABECA PEGOU ESTE CORPO. So aponta e avisa -- quem empurra e o <see cref="ArrastarComOFeixe"/>.

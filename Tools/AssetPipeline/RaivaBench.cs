@@ -825,6 +825,10 @@ public static class RaivaBench
 		//   * `Fighter.cs`         -- a declaracao do campo e o `ClampAnger` (o teto, que so corta);
 		//   * `GameServer.Formas.cs` -- a `ProjetarRaiva`, a mao unica;
 		//   * `GameServer.RaivaTeste.cs` -- a bancada ao vivo, que REPOE o valor de antes no `finally`.
+		//
+		// (2026-10-30, o pedido 191) E AS BANCADAS ENTRAM PELO NOME AQUI TAMBEM (`EhBancada`), como nas duas regras de cima desde 2026-10-11:
+		// a `BioTeste` (a larva que nem a furia acorda) e a `IrritadoTeste` (o topo do irritado) escrevem o `Anger` e o repoem, e deixaram
+		// esta regra vermelha desde a v0.4.3 sem defeito nenhum no jogo. O que se vigia e a PRODUCAO.
 		string[] podemEscreverARaiva =
 			["Fighter.cs", "GameServer.Formas.cs", "GameServer.RaivaTeste.cs"];
 
@@ -869,7 +873,7 @@ public static class RaivaBench
 					// `Anger = MaxAnger` solto e ate 3x de BP que ninguem baixa.
 					if (System.Text.RegularExpressions.Regex.IsMatch(l, @"\bAnger\s*=[^=]")
 						&& !System.Text.RegularExpressions.Regex.IsMatch(l, @"\bAnger\s*=\s*100\s*;")
-						&& Array.IndexOf(podemEscreverARaiva, nome) < 0)
+						&& Array.IndexOf(podemEscreverARaiva, nome) < 0 && !EhBancada(nome))
 						escritoresDaRaiva.Add($"{nome}:{i + 1}");
 
 					// E A PROJECAO: quem a define, e quem a chama DO TIQUE. Sem a chamada do tique o

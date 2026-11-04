@@ -228,6 +228,15 @@ public partial class GameServer
 			Avisar(pl, $"sobre o Blue, o Kaio-ken vai até x{KaiokenCapNoBlueG2:0} -- além disso o corpo se despedaça.");
 		}
 
+		// (2026-10-30, o pedido 183) E A RACA QUE ASCENDE VAI ATE O MESMO x20, EM TODO NIVEL DA ASCENSAO -- o dono: *"o kaioken fica limitado
+		// a 20x ao chegar nesse nivel [o do Blue], pra assim igualar ao ssj blue kaiokenx20"*, e logo depois *"limite o kaioken pra racas de
+		// ascension pra 20x em todas os niveis de ascension pra balancear"*. Pela raca (`Races.Ascensao.Ascende`): o NPC dela tambem.
+		if (Jandirus.Core.Races.Ascensao.Ascende(pl.Race, pl.Ficha.Class) && amt > KaiokenCapNoBlueG2)
+		{
+			amt = KaiokenCapNoBlueG2;
+			Avisar(pl, $"na Ascensão, o Kaio-ken vai até x{KaiokenCapNoBlueG2:0} -- além disso o corpo se despedaça.");
+		}
+
 		// `if(src.kaioamount<2) src.kaioamount=2`, o `round()` (PISO no DM) e o teto de 100 (SetKaioken:148-150) -- no Core.
 		amt = Jandirus.Core.Skills.Kaioken.Valido(amt);
 

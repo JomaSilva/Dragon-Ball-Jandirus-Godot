@@ -65,7 +65,8 @@ public static class Materializacao
 	/// QUANTO KI SAI: a fracao que os 1.500 do ritual sao da reserva magica deste corpo (`Fighter.MagicCap`), aplicada
 	/// ao Ki cheio dele -- e nunca mais que o Ki inteiro.
 	/// </summary>
-	public static double Custo(Fighter f) => f.MaxKi * Math.Min(1, CustoDoRitual / Math.Max(f.MagicCap, 1));
+	// (2026-11-01, o pedido 220) o morto paga 25% menos (`Fighter.FatorDeKiDoEstado`)
+	public static double Custo(Fighter f) => f.MaxKi * Math.Min(1, CustoDoRitual / Math.Max(f.MagicCap, 1)) * f.FatorDeKiDoEstado;
 
 	/// <summary>
 	/// O ITEM QUE ESTE PEDIDO MATERIALIZA (o id dele, pronto pro chao), ou nulo com o motivo. A folha tem de estar no

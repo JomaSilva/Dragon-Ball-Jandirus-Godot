@@ -87,6 +87,14 @@ public sealed class CombatState
 	/// <summary>(v0.4.0) INVULNERAVEL -- a animacao da Legendary Resurrection. Entra no <see cref="Intocavel"/>.</summary>
 	public bool Invulneravel;
 
+	/// <summary>
+	/// (2026-10-31, o pedido 205) O CORPO QUE NAO SE FERE NEM CAI -- o Whis, que *"so serve de treino e n da pra derrotar"* (o dono).
+	/// Diferente do <see cref="Invulneravel"/> (escudo: o golpe nem encosta): aqui o golpe ENCOSTA -- a esquiva, o bloqueio e o soco
+	/// acontecem como num corpo qualquer, e o treino de quem bate conta --, so a vida nao desce (<see cref="Ferir"/>) e o nocaute nao o
+	/// derruba (<see cref="Nocautear"/>).
+	/// </summary>
+	public bool NaoSeFere;
+
 	/// <summary>(v0.4.0) A escala racial dos debuffs de membro (Warrior's Vitality 0,5; o Demonic 1,1) -- `DebuffsDeMembro.Escalar`.</summary>
 	public double FatorDosMembros = 1;
 
@@ -536,6 +544,8 @@ public sealed class CombatState
 	public bool Ferir(BodyPart membro, double dano, bool letal, bool soNosAninhados = false, bool doMundo = false)
 	{
 		if ((doMundo ? Blindado : Intocavel) || dano <= 0) return false;
+		// (o pedido 205) o golpe encostou -- e conta como golpe --, e a vida fica onde esta: o corpo de treino nao se fere
+		if (NaoSeFere) { GolpesQueFeriram++; return true; }
 		Corpo.Ferir(membro, dano, letal, soNosAninhados);
 		GolpesQueFeriram++;
 
@@ -765,6 +775,9 @@ public sealed class CombatState
 	/// </param>
 	public void Nocautear(double segundos, bool porVital = false)
 	{
+		// (2026-10-31, o pedido 205) o corpo de treino nao cai -- nem pelo golpe, nem pela morte negada, nem pelo peteleco
+		if (NaoSeFere) return;
+
 		// ============================ O NOCAUTE DISPERSA A SOBRECARGA ============================
 		// *"Nocaute reseta o ki: ao ser nocauteado, se o ki estiver acima de 100%, ele volta para 100%. Com
 		// 100% ou menos, nada muda."* -- o item 7 do playtest de 2026-10-10.

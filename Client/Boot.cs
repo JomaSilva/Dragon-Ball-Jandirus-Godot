@@ -630,6 +630,14 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--saidalobby") >= 0 && GetNodeOrNull("RoboDeSaida") == null)
 			AddChild(new RoboDeSaida { Name = "RoboDeSaida" });
 
+		// --diagbotoes (2026-11-01, o pedido 215): O BOTAO NOVO NA TELA -- o paralelogramo azul em degrade, o amarelo do destaque e o cinza do
+		// desligado, medidos no pixel numa amostra do tema (foto `botoes-1-amostra`). Ver RoboDosBotoes.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbotoes") >= 0)
+			AddChild(new RoboDosBotoes { Name = "RoboDosBotoes" });
+		// --diagipecustos (2026-11-01, os pedidos 212 e 213): as FOTOS do mesmo IP recusado (a cura, a fusao e o revive no irmao de conexao) e
+		// dos custos do Outro Mundo (o cartao da aba Admin e a mesa do Enma com o preco novo). Ver RoboDoIpEDosCustos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagipecustos") >= 0)
+			AddChild(new RoboDoIpEDosCustos { Name = "RoboDoIpEDosCustos" });
 		// `--diagmarcavel`: O PIXEL ATRAS DO TEXTO DOS CONTROLES MARCAVEIS -- o defeito que o dono
 		// relatou como *"todos os botoes de checkmark ... ao selecionar e por o mouse em cima, o
 		// texto fica bugado"*. Vizinha da `--diagopcoes` e pela MESMA razao dela, que aqui e ainda
@@ -1370,6 +1378,14 @@ public partial class Boot : Node2D
 		// da `--ascensaoteste` do servidor. Ver RoboDaAscensao. (Aqui no meio da lista, e nao no fim.)
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagascensao") >= 0)
 			AddChild(new RoboDaAscensao { Name = "RoboDaAscensao" });
+		// --diagbioabsorve: (2026-10-31, o pedido 203) o Bio-Androide que passou do que absorveu nao perde poder -- o multiplicador da aba
+		// Forms com o defeito de antes (0,55x), sem ele, e com a media que ainda ajuda. Ver RoboDoBioAbsorve.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbioabsorve") >= 0)
+			AddChild(new RoboDoBioAbsorve { Name = "RoboDoBioAbsorve" });
+		// --diagbionome: (2026-10-31, o pedido 204) o nome do bio-androide se escreve ao gestar -- o E no mainframe, a caixa do nome e a
+		// criatura que desperta com ele. Ver RoboDoNomeDoBio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbionome") >= 0)
+			AddChild(new RoboDoNomeDoBio { Name = "RoboDoNomeDoBio" });
 
 		// --diagsalas: AS SALAS DO TEMPO DE PLANETA NA TELA -- a porta na montanha, a pista da aba World, as regras
 		// com a dilatacao, o interior, a expulsao e a recarga. Modo host; com janela, fotografa. Ver RoboDasSalas.
@@ -1406,6 +1422,11 @@ public partial class Boot : Node2D
 		// servidor do mesmo processo) e com janela, pelas fotos das etapas. Ver RoboDeDesejos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdesejos") >= 0)
 			AddChild(new RoboDeDesejos { Name = "RoboDeDesejos" });
+
+		// --diagesferaslocais (2026-10-31, o pedido 195): as ESFERAS POR JOGADOR -- o cartao da aba Admin, ligar (a copia de cada um), o
+		// `db_ver` dizendo que as sete sao suas, e desligar. Com janela e `--host`. Ver RoboDasEsferasPorJogador.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagesferaslocais") >= 0)
+			AddChild(new RoboDasEsferasPorJogador { Name = "RoboDasEsferasPorJogador" });
 
 		// --diagnav: bancada da CARTA ESTELAR. Um mapa desenhado nao devolve nada -- esta bancada
 		// mede o que o `_Draw` pinta: quantos planetas o enquadramento cobre, se os gerados entram
@@ -1548,6 +1569,21 @@ public partial class Boot : Node2D
 		// do "antes". Modo host + JANELA. Ver RoboDeFotoDoProcedural.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotoprocedural") >= 0)
 			AddChild(new RoboDeFotoDoProcedural { Name = "RoboDeFotoDoProcedural" });
+
+		// --diagvento (2026-11-02, o pedido 226): O VENTO NAS COPAS -- num mundo sorteado, a copa da arvore balanca e o tronco nao, e
+		// com a nevasca balanca mais que na brisa. Modo host + JANELA. Ver RoboDoVento.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvento") >= 0)
+			AddChild(new RoboDoVento { Name = "RoboDoVento" });
+
+		// --diagciv (2026-11-02, o pedido 227): AS CIVILIZACOES DOS MUNDOS SORTEADOS -- a cidade na tela, o povo que anda e fala a lingua
+		// dele. Modo host + JANELA. Ver RoboDaCivilizacao.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagciv") >= 0)
+			AddChild(new RoboDaCivilizacao { Name = "RoboDaCivilizacao" });
+
+		// --diaginvasao (2026-11-02, o pedido 227): OS VILOES SOLTOS ATRAS DO POVO -- o Kid entediado no Ceu, o Boo na cidade e a esfera rosa,
+		// o Kamehameha do Cell no outro mundo. Modo host + JANELA. Ver RoboDaInvasao.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaginvasao") >= 0)
+			AddChild(new RoboDaInvasao { Name = "RoboDaInvasao" });
 
 		// --diaginstalar: o CICLO fabricar -> mochila -> instalar, andado inteiro. Vizinha da
 		// `--diagembarque` porque as duas medem um GESTO e nao um numero, e porque as duas passam
@@ -1765,6 +1801,16 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtrava") >= 0)
 			AddChild(new RoboDaTrava { Name = "RoboDaTrava" });
 
+		// --diagcameratrava (2026-10-31, o pedido 194): a CAMERA DO LOCK-ON -- o meio dos dois, o zoom que afasta em degraus ate o piso do
+		// jogador, e a caixa do menu de pausa que a desliga, com as fotos. Ver RoboDaCameraDoLockOn.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcameratrava") >= 0)
+			AddChild(new RoboDaCameraDoLockOn { Name = "RoboDaCameraDoLockOn" });
+
+		// --diagchavesala (2026-10-31, os pedidos 196 e 197): a CHAVE DA SALA DO TEMPO -- o vilao da Terra que a deixa, a mochila, as Black
+		// Star e o Super Shenlong que revelam salas, o desejo da chave e a porta que ela abre e quebra, com as fotos. Ver RoboDaChaveDaSala.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagchavesala") >= 0)
+			AddChild(new RoboDaChaveDaSala { Name = "RoboDaChaveDaSala" });
+
 		// --diagespacovoo (2026-10-20): NO ESPACO SO SE ANDA VOANDO, na tela -- o corpo local parado no vazio nem tenta o passo, o piloto
 		// automatico espera, e voando (ou ao leme) ele anda. Ver RoboDoEspacoSoVoando.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagespacovoo") >= 0)
@@ -1824,6 +1870,35 @@ public partial class Boot : Node2D
 		// chegada, Namek pela plataforma e o pod meditando; foto de cada passo. Ver RoboDaCapitalShip.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcapital") >= 0)
 			AddChild(new RoboDaCapitalShip { Name = "RoboDaCapitalShip" });
+		// --diagsaiyajin (2026-11-01, o pedido 210): a SAGA SAIYAJIN na tela -- o Raditz que chega de pod aos 500 de BP na Terra, a luta, o aviso dos
+		// 7 dias, as duas chegadas, o Vegeta que so observa o Nappa e a vitoria que solta Namek; foto de cada passo. Ver RoboDaSagaSaiyajin.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsaiyajin") >= 0)
+			AddChild(new RoboDaSagaSaiyajin { Name = "RoboDaSagaSaiyajin" });
+		// --diagfusaorival (2026-11-01, o pedido 211): a FUSAO DE RIVAIS na tela -- os dois que se declararam rival amigo um do outro fundem
+		// pela Potara e o chat diz que a rivalidade deixou a fusao 15% mais forte; foto. Ver RoboDaFusaoDeRivais.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfusaorival") >= 0)
+			AddChild(new RoboDaFusaoDeRivais { Name = "RoboDaFusaoDeRivais" });
+		// --diagvidaligada (2026-11-01, o pedido 216): o jogador no trono do Deus da Destruicao, dois Kaioshins de jogador ao lado; um cai e o
+		// cartao vermelho acende, o ultimo cai e o Deus cai junto -- foto de cada passo. Ver RoboDaVidaLigada.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvidaligada") >= 0)
+			AddChild(new RoboDaVidaLigada { Name = "RoboDaVidaLigada" });
+		// --diagbuu (2026-11-01, o pedido 218): o Majin Boo pela cadeia -- o Fat Boo neutro, a divisao, o Super Boo que absorve, a imagem que
+		// cai, o Kid Boo com a esfera rosa, a Terra condenada e o Kid no Ceu; foto de cada passo. Ver RoboDaSagaDoBuu.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbuu") >= 0)
+			AddChild(new RoboDaSagaDoBuu { Name = "RoboDaSagaDoBuu" });
+		// --diaggosma (2026-11-01, o pedido 219): a gosma do Majin -- larga, aparece, gruda, engole, voa pro Majin com a minha camera e me
+		// entrega pro interior dele; quem se solta, a zona que a desfaz, o golpe que a desfaz e a do Super Boo; foto de cada passo. Ver RoboDaGosma.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggosma") >= 0)
+			AddChild(new RoboDaGosma { Name = "RoboDaGosma" });
+		// --diaglinguanpc (2026-11-01, o pedido 221): A LINGUA DO HABITANTE, na tela -- um habitante saiyajin e um terraqueo dizem a mesma
+		// frase ao lado de um jogador humano: a do saiyajin chega embaralhada e sem a etiqueta, a do terraqueo inteira; a foto. Ver
+		// RoboDaLinguaDoHabitante.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaglinguanpc") >= 0)
+			AddChild(new RoboDaLinguaDoHabitante { Name = "RoboDaLinguaDoHabitante" });
+		// --diagpodtanque (2026-10-31, os pedidos 207-209): o shift ao leme, o outro slot que nao herda a nave e o tanque maior; foto de
+		// cada passo. UM SO: a volta com o outro personagem passa outra vez por aqui -- ver `RoboDoLemeETanque.Vivo`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpodtanque") >= 0 && !RoboDoLemeETanque.Vivo)
+			AddChild(new RoboDoLemeETanque { Name = "RoboDoLemeETanque" });
 		// --diagesferae (2026-10-18): a ESFERA DO DRAGAO pela tecla E -- a dica de pegar, o contra-exemplo e o E de verdade. Ver RoboDaEsferaNaTeclaE.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagesferae") >= 0)
 			AddChild(new RoboDaEsferaNaTeclaE { Name = "RoboDaEsferaNaTeclaE" });
@@ -1839,6 +1914,21 @@ public partial class Boot : Node2D
 		// --diagsentidos (2026-10-18): o SCOUTER com teto e sem ki divino, e os CINCO NIVEIS do Sense -- fotos e contra-exemplos. Ver RoboDosSentidos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsentidos") >= 0)
 			AddChild(new RoboDosSentidos { Name = "RoboDosSentidos" });
+
+		// --diagpatrulha (2026-10-31, o pedido 198): a PATRULHA GALACTICA -- o procurado, a nave que pousa, a prisao, o campo de forca, a
+		// denuncia, a entrega, o Bills e o Jornal Galactico. Com janela e `--host`. Ver RoboDaPatrulha.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpatrulha") >= 0)
+			AddChild(new RoboDaPatrulha { Name = "RoboDaPatrulha" });
+
+		// --diagsoltos (2026-10-31, o pedido 198g): os VILOES DE SAGA SOLTOS -- o Freeza que invade com o exercito, o Cell que caca o mais
+		// forte, a revanche e o jornal. Com janela e `--host`. Ver RoboDosViloesSoltos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsoltos") >= 0)
+			AddChild(new RoboDosViloesSoltos { Name = "RoboDosViloesSoltos" });
+
+		// --diagcargopg (2026-10-31, o pedido 198i): o CARGO DA PATRULHA -- o requisito, o scouter, a missao, o botao da carta e o foragido.
+		// Com janela e `--host`. Ver RoboDoCargoDaPatrulha.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcargopg") >= 0)
+			AddChild(new RoboDoCargoDaPatrulha { Name = "RoboDoCargoDaPatrulha" });
 		// --diagitmaestria (2026-10-23): a MAESTRIA do Instant Transmission -- o cartao da aba Sense, a viagem de 3 s, os 0,2 s no meio da luta. Ver RoboDaMaestriaDaTransmissao.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagitmaestria") >= 0)
 			AddChild(new RoboDaMaestriaDaTransmissao { Name = "RoboDaMaestriaDaTransmissao" });
@@ -2595,15 +2685,30 @@ public partial class Boot : Node2D
 		return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
 	}
 
+	/// <summary>
+	/// (2026-10-31, o pedido 208) O SLOT DA PROXIMA ENTRADA AUTOMATICA, pro robo que sai do jogo e volta com OUTRO personagem da conta
+	/// (`--diagpodtanque`): com ele, o caminho automatico entra NESTE slot -- e cria nele, com este nome, se estiver vazio -- em vez do
+	/// primeiro ocupado. Nulo em jogo, sempre.
+	/// </summary>
+	internal static (int Slot, string Nome)? SlotDoAutoDeTeste;
+
 	/// <summary>No modo automatico ninguem clica: joga o primeiro slot, ou cria no primeiro vazio.</summary>
 	private void AutoEscolher(List<Jandirus.Net.SlotInfo> slots)
 	{
-		for (int i = 0; i < slots.Count; i++)
-			if (slots[i].Ocupado) { GameClient.Instance?.PedirSlot(i); return; }
+		int vaga = 0;
+		string nome = _autoNome;
+		if (SlotDoAutoDeTeste is { } pedido && pedido.Slot >= 0 && pedido.Slot < slots.Count)
+		{
+			if (slots[pedido.Slot].Ocupado) { GameClient.Instance?.PedirSlot(pedido.Slot); return; }
+			(vaga, nome) = pedido;
+		}
+		else
+			for (int i = 0; i < slots.Count; i++)
+				if (slots[i].Ocupado) { GameClient.Instance?.PedirSlot(i); return; }
 
 		var ficha = new CharacterDraft
 		{
-			Name = _autoNome, Race = _autoRaca,
+			Name = nome, Race = _autoRaca,
 			Planet = Array.Find(CharacterDraft.Planetas,
 				pl => Array.IndexOf(CharacterDraft.RacasDoPlaneta(pl), _autoRaca) >= 0) ?? "Earth",
 			Gender = "Male",
@@ -2639,7 +2744,7 @@ public partial class Boot : Node2D
 		// ====================================================================================
 		var visual = new Jandirus.Core.Appearance.Appearance { Cabelo = "Goku" };
 
-		GameClient.Instance?.CriarPersonagem(0, ficha, visual);
+		GameClient.Instance?.CriarPersonagem(vaga, ficha, visual);
 	}
 
 	// ============================ AS TECLAS SAIRAM DAQUI ============================

@@ -86,7 +86,34 @@ public sealed class VisualCatalog
     /// </summary>
     public static bool CabeloNatural(string raca) => raca == "Saiyan";
 
+    /// <summary>
+    /// (2026-11-02, o pedido 227) OS CORPOS DE CADA RACA PROCEDURAL, montados uma vez a partir do nome dela (`RacaProcedural.Do`): uma
+    /// folha so -- a do Kai pintada (`CorLivre`) ou a de um alien com os tons de brilho --, a mesma pra todo o povo.
+    /// </summary>
+    private readonly Dictionary<string, BodyOptions?> _corposProcedurais = new(StringComparer.Ordinal);
+
+    private BodyOptions? CorposProcedurais(string raca)
+    {
+        if (Corpos.ContainsKey(raca)) return null;
+        // a resposta fica guardada, tambem a do "nao e procedural" (o bicho, o droide): o desenho pergunta por corpo
+        if (_corposProcedurais.TryGetValue(raca, out BodyOptions? pronto)) return pronto;
+        if (!Races.RacaProcedural.EhProcedural(raca)) { _corposProcedurais[raca] = null; return null; }
+        Races.RacaProcedural r = Races.RacaProcedural.Do(raca);
+        BodyOptions b;
+        if (r.DePeleLivre && Corpos.GetValueOrDefault(Races.RacaProcedural.CorpoDePeleLivre) is { } kai)
+            b = new BodyOptions { Masculino = [.. kai.Masculino.Take(1)], Feminino = [.. kai.Feminino.Take(1)], CorLivre = true };
+        else
+        {
+            List<string> aliens = Corpos.GetValueOrDefault(Races.RacaProcedural.CorpoDeAlien)?.Masculino ?? [];
+            string? folha = aliens.FirstOrDefault(c => System.IO.Path.GetFileNameWithoutExtension(c) == r.Folha) ?? aliens.FirstOrDefault();
+            b = folha == null ? new BodyOptions { Masculino = [CorpoPadraoM], Feminino = [CorpoPadraoF] } : new BodyOptions { Masculino = [folha], Feminino = [folha], Tons = [.. Races.RacaProcedural.Tons] };
+        }
+        _corposProcedurais[raca] = b;
+        return b;
+    }
+
     public BodyOptions CorposDe(string raca) =>
+        CorposProcedurais(raca) ??
         (SemOsCorposDasRacasNovasDeTeste && Array.IndexOf(RacasComCorpoDesde20261018, raca) >= 0 ? null : Corpos.GetValueOrDefault(raca))
         ?? new BodyOptions
     {
@@ -390,6 +417,9 @@ public sealed class VisualCatalog
         // ======================================================================================================================
         if (Races.SagaDoMajin.FolhaDoCorpo(ap.Corpo) is { } folhaDaSaga) return folhaDaSaga;
 
+        // (2026-11-01, o pedido 218) E O KID BOO DA SAGA, pelo mesmo caminho: a folha da Forma Pura num indice reservado -- ver `Npc.SagaDoBuu`.
+        if (Npc.SagaDoBuu.FolhaDoCorpo(ap.Corpo) is { } folhaDoKid) return folhaDoKid;
+
         // (2026-10-19) E O GRANDE PATRIARCA DE NAMEK, pelo mesmo caminho: a folha dele num indice reservado de `ap.Corpo` -- o
         // `M.icon = 'NamekOld - Guru Style.dmi'` da fabrica do DM. Ver `Npc.Patriarca.Corpo`.
         if (Npc.Patriarca.FolhaDoCorpo(ap.Corpo) is { } folhaDoPatriarca) return folhaDoPatriarca;
@@ -480,6 +510,8 @@ public sealed class VisualCatalog
     {
         BodyOptions b = CorposDe(raca);
         if (b.CorLivre) return (ap.CorPele, 1f);
+        // (2026-11-02, o pedido 227) a raca procedural de folha de alien: o tom e brilho, como o verde do Namekuseijin
+        if (Races.RacaProcedural.EhProcedural(raca)) return (null, Races.RacaProcedural.BrilhoDoTom(ap.Tom));
         if (raca != "Namekian") return (null, 1f);
         // (2026-10-19) A FOLHA DO GRANDE PATRIARCA SAI COMO FOI DESENHADA: os tons clareiam e escurecem o corpo do povo, e a folha dele
         // ja tem a cor dela (`Npc.Patriarca`). O tom sorteado na aparencia do NPC continua na ficha, sem efeito.

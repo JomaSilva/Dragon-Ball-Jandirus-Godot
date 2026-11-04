@@ -1847,9 +1847,10 @@ public sealed partial class GameServer
 				   antesDoDesejo == Jandirus.Core.Forms.RecusaForma.NaoConcedida && piccolo.Forma.Proxima(piccolo.Ficha.BP, Perfil(piccolo))?.Id != orange,
 				   antesDoDesejo.ToString());
 
-		// ---- O3) O DESEJO E DE TODA RACA (v0.3.0 -- ate 2026-10-15 ele era so do Namekuseijin)
+		// ---- O3) O DESEJO E DE TODA RACA (v0.3.0 -- ate 2026-10-15 ele era so do Namekuseijin). (2026-10-29) E ele e o "Poder": o "Liberar
+		//      o meu potencial" entrou no desejo de poder (o pedido 156)
 		bool Lista(double sangue) =>
-			Jandirus.Core.Magic.Desejos.Menu(1e12, 1, false, false, sangue).Any(d => d.Id == "potencial");
+			Jandirus.Core.Magic.Desejos.Menu(1e12, 1, false, false, sangue).Any(d => d.Id == "poder");
 		AfirmarV21("**O DESEJO E DE TODA RACA** (v0.3.0): o menu do dragao o lista sem olhar a raca -- o Mistico e o Orange sao do Namekuseijin, e quem decide e o desejo (`PorQueNaoLiberaOPotencial`)",
 				   Lista(0) && Lista(100));
 

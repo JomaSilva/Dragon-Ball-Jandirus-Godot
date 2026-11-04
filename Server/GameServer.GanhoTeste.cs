@@ -677,6 +677,60 @@ public partial class GameServer
 							  $"BP +{a.Ficha.BP - bp:0.##########}, maestria {a.Ficha.GravMastered:0.#######}");
 				}
 				finally { a.Ficha.gravmult = gravAntes; a.Ficha.GravMastered = maestriaAntes; }
+
+				// ---- (2026-10-29, o pedido 162) contra o NPC a barra tambem conta, e o botao "Igualar ao alvo"
+				SocoMedido NoNpc(double barra, bool relax)
+				{
+					a.Ficha.powerMod = barra;
+					a.Ficha.relaxado = relax;
+					return SocoEm(a, n);
+				}
+				SocoMedido npcCheio = NoNpc(1, false), npcPiso = NoNpc(0.01, false), npcRelaxado = NoNpc(1, true);
+				AfirmarGn($"9k. (o pedido 162) **CONTRA O NPC A BARRA TAMBEM CONTA** (*\"abaixar o poder faz os seus ganhos de treino cairem linearmente\"*): o "
+						  + $"soco com o poder inteiro rende o de sempre, e a 1% (ou relaxado) rende {GainKnobs.TrocaNoPiso:0.##}",
+						  npcCheio.Acertou && npcPiso.Acertou && npcRelaxado.Acertou && Perto(npcCheio.Ganho, unidade)
+						  && Perto(npcPiso.Ganho, unidade * GainKnobs.TrocaNoPiso) && Perto(npcRelaxado.Ganho, unidade * GainKnobs.TrocaNoPiso),
+						  $"cheio {npcCheio.Ganho / unidade:0.###}, a 1% {npcPiso.Ganho / unidade:0.###}, relaxado {npcRelaxado.Ganho / unidade:0.###}");
+
+				a.Ficha.powerMod = 1;
+				a.Ficha.relaxado = false;
+				a.Livro!.DarComoEnsinada(SkillKiControl);
+				a.Niveis.Por(SkillKiControl, 5);
+				ServerPlayer fraco = ForjarV2("Fraco", longe + new Vec2(0, 3 * T), bp / 4);
+				ServerPlayer minusculo = ForjarV2("Minusculo", longe + new Vec2(0, 5 * T), bp / 1000);
+				ServerPlayer forte = ForjarV2("Forte", longe + new Vec2(0, 7 * T), bp * 4);
+				try
+				{
+					double Igualar(ServerPlayer alvoDoBotao, out List<string> disse)
+					{
+						a.Ficha.powerMod = 1;
+						// o expresso de agora, pela conta do tique (o `PrepararParaMedir` o deixa em 1.000, e o botao anterior o baixou)
+						RepercutirPoder(a);
+						a.AlvoId = alvoDoBotao.Id;
+						disse = Ouvir(() => IgualarAoAlvo(a));
+						return a.Ficha.powerMod;
+					}
+					double aoFraco = Igualar(fraco, out List<string> disseFraco);
+					double expressoIgual = a.Ficha.expressedBP / Math.Max(fraco.Ficha.expressedBP, 1e-9);
+					double aoMinusculo = Igualar(minusculo, out List<string> disseMinusculo);
+					double aoForte = Igualar(forte, out List<string> disseForte);
+					AfirmarGn("9l. (o pedido 162) **O BOTAO \"IGUALAR AO ALVO\" BAIXA A BARRA ATE O PODER DELE**: contra quem tem 1/4 do seu poder, o expresso "
+							  + "fica igual ao dele; contra quem expressa 1% ou menos, a barra vai ao piso (e o treino ali rende 1/4); e contra quem e mais forte, "
+							  + "nada se mexe",
+							  Math.Abs(expressoIgual - 1) < 0.05 && aoFraco < 0.5 && aoMinusculo == PoderEmUso.Piso && Disse(disseMinusculo, "1/4")
+							  && aoForte == 1 && Disse(disseForte, "não é mais fraco"),
+							  $"ao fraco {aoFraco:0.###} (expresso {expressoIgual:0.###}x o dele) | {Ultimos(disseFraco)}; ao minusculo {aoMinusculo:0.###}; "
+							  + $"ao forte {aoForte:0.###} | {Ultimos(disseForte)}");
+					b.AlvoId = fraco.Id;
+					List<string> semControle = Ouvir(() => IgualarAoAlvo(b));
+					AfirmarGn("9m. ...e quem nao sabe controlar o proprio poder (sem o Basic Ki Control 5) ouve por que, e a barra fica",
+							  Disse(semControle, "não sabe controlar o próprio poder") && b.Ficha.powerMod == 1, Ultimos(semControle));
+				}
+				finally
+				{
+					a.AlvoId = b.AlvoId = 0;
+					foreach (ServerPlayer x in new[] { fraco, minusculo, forte }) RemoverNpc(x);
+				}
 			}
 			finally
 			{

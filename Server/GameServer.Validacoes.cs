@@ -262,9 +262,14 @@ public sealed partial class GameServer
 	/// bugs"* -- o Freeza que seguia um jogador ate a orbita fazia a tropa fugir e as esferas cairem, e a tropa renascia mais forte na volta.
 	/// Eles nascem no planeta da saga (`NascerNpc` na zona dela) e nunca viajam por conta propria: o corpo de saga simplesmente nao troca de
 	/// zona -- nem de carona, nem por teleporte, nem selado (`PorQueNaoSaiDaqui`, `MoveToZone`, `Selar`).
+	///
+	/// (2026-10-29, o pedido 166) E OS CELL JR do torneio (`_cellJrs`): o dono, *"N permita ser possivel teleportar chefes de saga pra fora dos
+	/// planetas com IT ou kaikai, assim se alguem tentar o vilao continua no planeta e so o jogador q vai teleportar"*. O chefe ja ficava (o
+	/// filtro de cima); os sete clones do Cell nascem sem a marca de saga e iam de carona no Kai Kai de quem estivesse colado.
 	/// </summary>
 	private bool EhDeSaga(ServerPlayer pl) =>
-		!SagaSaiDoPlanetaDeTeste && pl.Peer == null && pl.Papel is { } papel && (papel.DaSaga || papel.Tipo == Jandirus.Core.Npc.TipoDeNpc.Soldado);
+		!SagaSaiDoPlanetaDeTeste && pl.Peer == null && pl.Papel is { } papel
+		&& (papel.DaSaga || papel.Tipo == Jandirus.Core.Npc.TipoDeNpc.Soldado || _cellJrs.Contains(pl.Id));
 
 	/// <summary>DEFEITO INJETADO (bancada `--espacovooteste`, familia S): o corpo de saga volta a sair do planeta. Lido pelo <see cref="EhDeSaga"/>. Falso em jogo, sempre.</summary>
 	internal static bool SagaSaiDoPlanetaDeTeste;

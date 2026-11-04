@@ -822,8 +822,26 @@ public partial class TelaDeInventario : CanvasLayer
 			},
 			FecharTeclado);
 
+		// (2026-10-29, o pedido 175) O PESO IDEAL DESTA GRAVIDADE, de um clique -- o dono: *"coloque um botao na tela de escolher a % do peso q
+		// automaticamente ajusta o peso pro seu ideal naquela gravidade"*. Quem faz a conta e o servidor (o limite do corpo e poder, e nao viaja):
+		// o botao manda "ideal" no lugar do numero, e o servidor diz quanto ficou. Ver `GameServer.PorcentagemIdealDoPeso`.
+		var ideal = new Button
+		{
+			Text = "Peso ideal pra esta gravidade",
+			TooltipText = "o mais pesado que rende sem esmagar além do que a própria gravidade já esmaga",
+		};
+		ideal.Pressed += () =>
+		{
+			GameClient.Instance?.SendVerbo("item_ajustar", $"{def.Id}/{PesoDeTreino.ArgumentoDoIdeal}");
+			FecharTeclado();
+		};
+		var coluna = new VBoxContainer();
+		coluna.AddThemeConstantOverride("separation", 6);
+		coluna.AddChild(t);
+		coluna.AddChild(ideal);
+
 		_teclado = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
-		_teclado.AddChild(t);
+		_teclado.AddChild(coluna);
 		_raiz.AddChild(_teclado);
 	}
 
@@ -1098,6 +1116,8 @@ public partial class TelaDeInventario : CanvasLayer
 		Jandirus.Core.Tech.BancadaDeCriacao.AcaoPentear => "Mudar o penteado",
 		Jandirus.Core.Tech.BancadaDeCriacao.AcaoTingirOsOlhos => "Tingir os olhos",
 		"usar" => "Usar",
+		// (2026-10-29) o slot da Esfera do Dragao chama o dragao, com as sete juntas -- ver `EsferaNaMochila.AcaoInvocar`
+		Jandirus.Core.Magic.EsferaNaMochila.AcaoInvocar => "Invocar o dragão",
 		// O LIVRO DE ENSINAMENTOS (lote G13). "Ler" sozinho serviria -- o `_` la embaixo ja
 		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.
 		"ler" => "Ler (gasta o livro)",

@@ -79,6 +79,14 @@ public sealed class EstagioDeChefe
 	public int DegrauDoBio;
 
 	/// <summary>
+	/// (2026-11-02, o pedido 229) O CORPO DO MAJIN BOO deste degrau -- o `"corpoDoBoo"`: 1 = Fat Boo, 2 = Super Boo, 3 = Kid Boo (as folhas
+	/// da saga do Majin jogador e a da Forma Pura, `SagaDoBuu.IndiceDoCorpoDoBoo`); 0 = nao mexe. Como o <see cref="DegrauDoBio"/>, so o
+	/// DESENHO (a folha, a cor dela e sem roupa): o que cada degrau FAZ (o Super nocauteia e absorve) continua na saga
+	/// (`GameServer.AjustarOBooAoDegrau`).
+	/// </summary>
+	public int CorpoDoBoo;
+
+	/// <summary>
 	/// (2026-10-21) O NOME QUE O JOGADOR LE ao escolher esta etapa na mente ("Forma Final", "Perfeito").
 	/// Vazio = "Etapa N". Nao muda o anuncio da saga.
 	/// </summary>
@@ -176,6 +184,9 @@ public enum TipoDeNpc
 /// </summary>
 public sealed class MoldeDeNpc
 {
+	/// <summary>(2026-11-02, o pedido 227) Uma copia rasa, pro molde de um povo novo: quem a pega troca as listas que muda, nao as edita.</summary>
+	public MoldeDeNpc Copiar() => (MoldeDeNpc)MemberwiseClone();
+
 	/// <summary>Chave do molde. E por ela que o mundo, o admin e o save pedem um NPC.</summary>
 	public string Id = "";
 
@@ -248,6 +259,13 @@ public sealed class MoldeDeNpc
 	/// -- e o embaralho do planeta vazio o deixa onde esta (`GameServer.PasseiaSozinho`): o lugar dele e o papel dele.
 	/// </summary>
 	public bool Vagueia = true;
+
+	/// <summary>
+	/// (2026-11-01, o adendo 210l) DE SCOUTER EQUIPADO (`"scouter": true`): o corpo nasce com o scouter LIGADO no rosto -- o mesmo bit que o
+	/// equipar do jogador acende (`Poder.Scouter`), que o pacote da aparencia le pra desenhar a folha do item (`Items.EquipamentoNoCorpo`). O
+	/// dono, dos tres da saga Saiyajin: *"Os 3 usam scouter tb equipado"*. Falso, o NPC sem scouter de sempre.
+	/// </summary>
+	public bool Scouter;
 
 	// =====================================================================
 	// QUEM ELE E
@@ -414,6 +432,13 @@ public sealed class MoldeDeNpc
 	/// </summary>
 	public double NivelDasSkills;
 
+	/// <summary>
+	/// (2026-10-30, o pedido 176) TODA A VOCACAO NO LIVRO -- o Bills, o dono: *"por ser um dos chefes mais fortes skills no maximo"*. Alem do
+	/// orcamento de marcos de sempre, o sorteio compra cada skill das arvores da <see cref="Vocacao"/> que a ficha puder aprender (as mesmas
+	/// portas do jogador), e o <see cref="NivelDasSkills"/> as poe no nivel. Ver `SorteioDeNpc.ComprarTodaAVocacao`.
+	/// </summary>
+	public bool TodasDaVocacao;
+
 	/// <summary>Degraus especificos, quando um chefe precisa de um nivel que a faixa geral nao daria.</summary>
 	public Dictionary<string, double> Niveis = new(StringComparer.Ordinal);
 
@@ -538,7 +563,9 @@ public sealed class MoldeDeNpc
 			if (Estagios[i].Bp <= 0) p.Add($"'{Id}': estagio {i + 1} sem bp");
 			// o ULTIMO nao tem gatilho (nada o encerra) e os outros TEM: sem isso a escada trava no meio
 			bool ultimo = i == Estagios.Length - 1;
-			if (!ultimo && Estagios[i].GatilhoMembro < 0)
+			// (2026-11-01, o pedido 218) MENOS O MAJIN BOO DA SAGA: os degraus dele sobem por EVENTO (o relogio da divisao e a imagem de
+			// dentro vencida), e nunca por dano -- ver `SagaDoBuu`.
+			if (!ultimo && Estagios[i].GatilhoMembro < 0 && !string.Equals(Id, SagaDoBuu.Molde, StringComparison.OrdinalIgnoreCase))
 				p.Add($"'{Id}': estagio {i + 1} nao e o ultimo e nao tem gatilhoMembro -- a escada pararia nele");
 
 			// (v0.3.0) A CENA DO DEGRAU tem que existir -- e o degrau de FORMA nao a declara: a forma ja tem a dela.
@@ -549,6 +576,8 @@ public sealed class MoldeDeNpc
 				p.Add($"'{Id}': estagio {i + 1} entra na forma '{e.Forma}' e ainda declara a cena '{e.NomeDaCena}' -- a forma ja tem a dela");
 			if (e.DegrauDoBio != 0 && (e.DegrauDoBio < Races.BioAndroids.Imperfeito || e.DegrauDoBio > Races.BioAndroids.Perfeito))
 				p.Add($"'{Id}': estagio {i + 1} com degrauDoBio {e.DegrauDoBio} -- o corpo de chefe bio vai de {Races.BioAndroids.Imperfeito} a {Races.BioAndroids.Perfeito}");
+			if (e.CorpoDoBoo != 0 && (e.CorpoDoBoo < 1 || e.CorpoDoBoo > SagaDoBuu.UltimoCorpoDoBoo))
+				p.Add($"'{Id}': estagio {i + 1} com corpoDoBoo {e.CorpoDoBoo} -- 1 = Fat Boo, 2 = Super Boo, 3 = Kid Boo");
 		}
 
 		// O BICHO tem a propria conferencia (folha de sprite, forca fixa, carne): ver `Animais.Problemas`.
@@ -568,6 +597,15 @@ public sealed class CatalogoDeMoldes
 	public IEnumerable<MoldeDeNpc> Todos => _porId.Values;
 	public int Total => _porId.Count;
 	public MoldeDeNpc? Get(string id) => _porId.GetValueOrDefault(id);
+
+	/// <summary>
+	/// (2026-11-02, o pedido 227) UM MOLDE QUE NAO ESTA NO ARQUIVO: o povo de um mundo com civilizacao, copiado do habitante de sempre
+	/// (`GameServer.Civilizacao.cs`). Quem ja esta no catalogo nao e trocado.
+	/// </summary>
+	public void Registrar(MoldeDeNpc m)
+	{
+		if (m.Id.Length > 0) _porId.TryAdd(m.Id, m);
+	}
 
 	/// <summary>
 	/// O PLANO DE POVOAMENTO, do MESMO arquivo. Mora junto porque a linha do plano so faz sentido
@@ -614,6 +652,7 @@ public sealed class CatalogoDeMoldes
 				Talentos = Lista(e, "talentos"),
 				QuantosTalentos = Num(e, "quantosTalentos", 0),
 				NivelDasSkills = Num(e, "nivelDasSkills", 0),
+				TodasDaVocacao = Bit(e, "todasDaVocacao", false),
 				EscadaAutomatica = Bit(e, "escadaAutomatica", true),
 				Formas = Lista(e, "formas"),
 				Maestria = Num(e, "maestria", 0),
@@ -630,6 +669,7 @@ public sealed class CatalogoDeMoldes
 				Alma = Bit(e, "alma", false),
 				NomesUnicos = Bit(e, "nomesUnicos", false),
 				Vagueia = Bit(e, "vagueia", true),
+				Scouter = Bit(e, "scouter", false),
 			};
 
 			if (e.TryGetProperty("perfil", out JsonElement perfil) && perfil.ValueKind == JsonValueKind.Object)
@@ -687,6 +727,7 @@ public sealed class CatalogoDeMoldes
 						NomeDaCena = Txt(s, "cena"),
 						Cena = Forms.Cinematicas.CenaDeChefePorNome(Txt(s, "cena")) ?? Forms.Cinematicas.CenaDeChefe.Nenhuma,
 						DegrauDoBio = (int)Num(s, "degrauDoBio", 0),
+						CorpoDoBoo = (int)Num(s, "corpoDoBoo", 0),
 						Nome = Txt(s, "nome"),
 					});
 				m.Estagios = [.. l];
